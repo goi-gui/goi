@@ -13,6 +13,9 @@ gallery:
 hello:
 	go run -ldflags=-linkmode=internal ./examples/hello
 
+scroll:
+	go run -ldflags=-linkmode=internal ./examples/scroll
+
 test:
 	go test -race ./...
 
@@ -22,4 +25,4 @@ vet:
 bench:
 	go test -run XXX -bench . -benchmem ./internal/layout/ ./internal/syntax/ ./internal/paint/
 
-.PHONY: build spike counter gallery hello test vet bench
+.PHONY: build spike counter gallery hello scroll test vet bench

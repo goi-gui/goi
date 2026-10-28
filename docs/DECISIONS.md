@@ -243,7 +243,8 @@ batch. This is what the display list will feed.
   shift children by the same amount. The content clips to the content box,
   which is what makes the container look scrollable. The layout does not grow a
   scroll container: it still asks for a bounded main-axis size (`flex: 1` or
-  `height`), like Flutter. `ScrollOffset` clamps on read rather than on write,
+  `height`), like Flutter, and a flex child now gives space back when its
+  content overflows, so `flex: 1` bounds the page instead of growing to fit it. `ScrollOffset` clamps on read rather than on write,
   so an offset set before a relayout comes back when the content grows again.
   Wheel and drag both scroll the nearest scrollable ancestor of the pointer;
   a drag past 4dp cancels the click it started on.

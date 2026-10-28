@@ -150,12 +150,13 @@ func (e *Engine) linear(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH,
 	}
 	used += spacing * float64(len(kids)-1)
 
-	// Grow flex children from their base size.
-	if totalFlex > 0 && main > used {
-		extra := (main - used) / totalFlex
+	// Flex children take the leftover space, and give space back when the
+	// content overflows, so a flex scroll container stays bounded by its parent.
+	if totalFlex > 0 {
+		delta := (main - used) / totalFlex
 		for i, k := range kids {
 			if f := k.Flex(); f > 0 {
-				sizes[i] = clampSize(sizes[i]+extra*f, minSize(k, horizontal), maxSize(k, horizontal))
+				sizes[i] = clampSize(sizes[i]+delta*f, minSize(k, horizontal), maxSize(k, horizontal))
 			}
 		}
 	}

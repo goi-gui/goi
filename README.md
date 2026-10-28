@@ -55,6 +55,7 @@ Wayland is the default build; use `-tags x11` for X11.
 make counter   # counter with hot reload
 make gallery   # every Material 3 component on one page
 make hello     # rounded corners, borders, text
+make scroll    # scrolling page, horizontal strip, ripple
 ```
 
 ## What it does
@@ -66,11 +67,13 @@ make hello     # rounded corners, borders, text
   controls, sliders, text fields, cards, dialogs, sheets, lists, menus,
   app bars, navigation, tabs, progress, pickers, carousel and toolbar. They ship
   with the light and dark baseline schemes, Roboto and Material Symbols.
-- Layout: Column, Row, Stack, flex grow, padding, margin, min/max width.
+- Layout: Column, Row, Stack, flex grow and shrink, padding, margin, min/max
+  width, and `scroll: true` on any container (Row sideways, the rest down).
 - Rendering: instanced SDF rounded rects, circles, arcs and shadows with borders
   and anti-aliasing, text through HarfBuzz-quality shaping and a grayscale
   atlas, HiDPI aware.
-- Input: clicks, hover, keyboard focus, text editing, Tab order groundwork.
+- Input: clicks with Material ripples, hover, keyboard focus, text editing, wheel
+  and drag scrolling, Tab order groundwork.
 - Hot reload: edit the file, the window updates; broken files keep the last good
   tree and print diagnostics.
 

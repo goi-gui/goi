@@ -350,3 +350,28 @@ func TestRowScrollsHorizontally(t *testing.T) {
 		t.Fatalf("ScrollMax = %v, want the chips to overflow", b.ScrollMax())
 	}
 }
+
+// TestFlexShrinksForScroll guards the bounded scroll container: flex: 1 on a
+// page whose content does not fit must clamp the page to the space left, or it
+// grows to its content and has nothing to scroll.
+func TestFlexShrinksForScroll(t *testing.T) {
+	tr := build(t, `Window {
+		Column {
+			Text { id: head width: 10 height: 20 }
+			Column {
+				id: page
+				flex: 1
+				scroll: true
+				Column { id: tall height: 500 }
+			}
+			Text { id: foot width: 10 height: 20 }
+		}
+	}`)
+	New(nil).Layout(tr.Root, 300, 200)
+	want(t, bounds(t, tr, "head"), 0, 0, 10, 20)
+	want(t, bounds(t, tr, "page"), 0, 20, 300, 160)
+	want(t, bounds(t, tr, "foot"), 0, 180, 10, 20)
+	if n, _ := tr.ByID("page"); n.Base().ScrollMax() <= 0 {
+		t.Fatal("page has nothing to scroll")
+	}
+}
