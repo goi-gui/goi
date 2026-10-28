@@ -63,6 +63,10 @@ type NodeBase struct {
 	hooks  *Hooks
 	tree   *Tree
 	AST    *syntax.Element // the element this node was built from
+	// Click is the click handler slot. It lives on every node, so a plain
+	// Rectangle can be a scrim or a hit area without becoming a component; a
+	// component's own Click is the same field.
+	Click Event[ClickEvent]
 	// responsive holds properties declared as a breakpoint map.
 	responsive []responsiveProp
 	// numerics holds expression-valued numeric properties, resolved before

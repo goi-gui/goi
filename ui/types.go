@@ -55,11 +55,12 @@ type (
 	// Bind and is not itself a node.
 	WindowNode = tree.Window
 	// Layout primitives.
-	Column    = tree.Column
-	Row       = tree.Row
-	Stack     = tree.Stack
-	Rectangle = tree.Rectangle
-	Text      = tree.Text
+	Column     = tree.Column
+	Row        = tree.Row
+	Stack      = tree.Stack
+	Positioned = tree.Positioned
+	Rectangle  = tree.Rectangle
+	Text       = tree.Text
 
 	// Material 3 components.
 	Button           = tree.Button

@@ -41,7 +41,6 @@ type Component struct {
 	Step  Prop[float64]
 
 	// Events.
-	Click  Event[ClickEvent]
 	Toggle Event[bool]
 	Change Event[float64]
 	Edit   Event[string]

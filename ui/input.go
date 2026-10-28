@@ -82,6 +82,20 @@ func interactive(n tree.Node) bool {
 	return false
 }
 
+// clickable reports whether a press on n activates it: an interactive
+// component, or any node the app attached a click handler to.
+func clickable(n tree.Node) bool {
+	if c := comp(n); c != nil {
+		if c.Disabled.Get() {
+			return false
+		}
+		if interactive(n) {
+			return true
+		}
+	}
+	return n.Base().Click.Len() > 0
+}
+
 func (i *interactor) MouseMove(x, y float64) {
 	i.cursorX, i.cursorY = x, y
 	if i.selecting && i.textField != nil {
@@ -154,14 +168,17 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 	if hit == nil {
 		return
 	}
-	if c := comp(hit); c != nil && !c.Disabled.Get() && interactive(hit) {
+	if clickable(hit) {
 		i.pressed = hit
-		c.Pressed = true
-		c.Base().MarkDirty(tree.DirtyPaint)
-		if hit.Kind() == "Slider" {
-			i.dragging = true
-			i.drag(x, y)
-		} else {
+		if c := comp(hit); c != nil {
+			c.Pressed = true
+			c.Base().MarkDirty(tree.DirtyPaint)
+			if hit.Kind() == "Slider" {
+				i.dragging = true
+				i.drag(x, y)
+				i.markDirty()
+				return
+			}
 			i.startRipple(hit, x, y)
 		}
 		i.markDirty()
@@ -189,10 +206,7 @@ func (i *interactor) MouseUp(x, y float64, button int) {
 	}
 	target := i.pressed
 	c := comp(target)
-	if c == nil {
-		return
-	}
-	if c.Pressed {
+	if c != nil && c.Pressed {
 		c.Pressed = false
 		c.Base().MarkDirty(tree.DirtyPaint)
 	}
@@ -213,6 +227,12 @@ func (i *interactor) MouseUp(x, y float64, button int) {
 
 // activate runs the component's click behaviour.
 func (i *interactor) activate(n tree.Node, c *tree.Component, x, y float64) {
+	if c == nil {
+		// A plain node with a click handler (a scrim, a custom hit area).
+		n.Base().Click.Emit(tree.ClickEvent{X: x, Y: y, Button: 0})
+		i.markDirty()
+		return
+	}
 	if c.Disabled.Get() {
 		return
 	}
@@ -385,6 +405,9 @@ func (i *interactor) Key(k platform.Key, mods platform.Mods) {
 
 // key handles a key press in framework terms, so tests need no platform types.
 func (i *interactor) key(k tree.Key, mods tree.Mods) {
+	if i.app.win != nil {
+		i.app.win.keys.Emit(tree.KeyEvent{Key: k, Mods: mods})
+	}
 	f := i.focus
 	if f == nil {
 		return

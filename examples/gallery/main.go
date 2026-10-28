@@ -27,6 +27,8 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	// The modal drawer is app state: a reload rebuilds the nodes, not the state.
+	drawerOpen := false
 	if err := win.Bind(func(w *ui.Window) error {
 		// Wire the stateful controls so the gallery behaves, not just draws.
 		// Wire every stateful control that exists on this page.
@@ -41,6 +43,42 @@ func main() {
 		}
 		if f, err := ui.ByID[*ui.TextField](w, "field"); err == nil {
 			f.OnEdit(func(s string) { fmt.Println("field:", s) })
+		}
+
+		// Modal drawer: the menu icon opens it, the scrim and any destination
+		// close it. The top bar itself is the hit area, so only a press in the
+		// leading icon's slot counts.
+		scrim, err := ui.ByID[*ui.Rectangle](w, "scrim")
+		if err != nil {
+			return err
+		}
+		frame, err := ui.ByID[*ui.Positioned](w, "drawerFrame")
+		if err != nil {
+			return err
+		}
+		setOpen := func(open bool) {
+			drawerOpen = open
+			scrim.SetVisible(open)
+			frame.SetVisible(open)
+		}
+		setOpen(drawerOpen)
+		scrim.OnClick(func(ui.ClickEvent) { setOpen(false) })
+		w.OnKey(func(e ui.KeyEvent) {
+			if e.Key == ui.KeyEscape {
+				setOpen(false)
+			}
+		})
+		if bar, err := ui.ByID[*ui.TopAppBar](w, "appbar"); err == nil {
+			bar.OnClick(func(e ui.ClickEvent) {
+				if e.X <= 56 {
+					setOpen(!drawerOpen)
+				}
+			})
+		}
+		for _, id := range []string{"navInbox", "navStarred", "navSent", "navTrash", "navSettings"} {
+			if item, err := ui.ByID[*ui.NavigationItem](w, id); err == nil {
+				item.OnClick(func(ui.ClickEvent) { setOpen(false) })
+			}
 		}
 		return nil
 	}); err != nil {

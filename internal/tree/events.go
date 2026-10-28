@@ -57,8 +57,9 @@ type FocusEvent struct {
 	Focused bool
 }
 
-// OnClick subscribes to a click. Every component has it.
-func (c *Component) OnClick(fn func(ClickEvent)) (off func()) { return c.Click.On(fn) }
+// OnClick subscribes to a click. Every node has one, so a layout primitive can
+// act as a hit area; on components it is the usual button click.
+func (b *NodeBase) OnClick(fn func(ClickEvent)) (off func()) { return b.Click.On(fn) }
 
 // OnToggle subscribes to checked changes (checkbox, switch, chip, radio).
 func (c *Component) OnToggle(fn func(bool)) (off func()) { return c.Toggle.On(fn) }

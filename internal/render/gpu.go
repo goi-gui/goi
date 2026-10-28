@@ -22,6 +22,7 @@ import (
 //	kind 1: filled circle
 //	kind 2: ring or arc (thickness in misc, sweep in params.zw)
 //	kind 3: drop shadow (rounded rect with a soft falloff)
+//	kind 4: glyph quad sampling the atlas (text and icons)
 const shaderWGSL = `
 struct Instance {
 	rect: vec4f,    // x, y, w, h in logical pixels
@@ -39,6 +40,8 @@ struct Viewport {
 
 @group(0) @binding(0) var<uniform> viewport: Viewport;
 @group(0) @binding(1) var<storage, read> instances: array<Instance>;
+@group(0) @binding(2) var atlas: texture_2d<f32>;
+@group(0) @binding(3) var samp: sampler;
 
 struct VSOut {
 	@builtin(position) pos: vec4f,
@@ -51,6 +54,7 @@ struct VSOut {
 	@location(6) pos2: vec2f,
 	@location(7) params: vec4f,
 	@location(8) misc: vec4f,
+	@location(9) uv: vec2f,
 }
 
 @vertex
@@ -73,6 +77,7 @@ fn vs_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
 	out.pos2 = p;
 	out.params = inst.params;
 	out.misc = inst.misc;
+	out.uv = mix(inst.params.zw, inst.misc.xy, c);
 	return out;
 }
 
@@ -113,6 +118,12 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 
 	let aa = 0.5 / max(viewport.size.z, 1.0);
 	let kind = in.params.x;
+
+	if (kind > 3.5) {
+		// Glyph: the atlas holds one coverage value per texel.
+		let a = textureSample(atlas, samp, in.uv).r;
+		return vec4f(in.color.rgb, in.color.a * a);
+	}
 
 	if (kind > 2.5) {
 		// Drop shadow: the quad is the shape grown by the blur radius, so the
@@ -278,12 +289,13 @@ func NewGPU(display, window uintptr, kind TargetKind) (*GPU, error) {
 	}
 	g.format = pickFormat(caps.Formats)
 
-	if err := g.initPipeline(); err != nil {
+	g.textLib = text.NewLibrary()
+	// The atlas binding is part of the shape pipeline, so it must exist first.
+	if err := g.initText(g.textLib); err != nil {
 		g.Release()
 		return nil, err
 	}
-	g.textLib = text.NewLibrary()
-	if err := g.initText(g.textLib); err != nil {
+	if err := g.initPipeline(); err != nil {
 		g.Release()
 		return nil, err
 	}
@@ -327,13 +339,8 @@ func (g *GPU) initPipeline() error {
 	}
 
 	layout, err := g.device.CreateBindGroupLayout(&wgpu.BindGroupLayoutDescriptor{
-		Label: "shapes-layout",
-		Entries: []gputypes.BindGroupLayoutEntry{
-			{Binding: 0, Visibility: gputypes.ShaderStageVertex | gputypes.ShaderStageFragment,
-				Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeUniform}},
-			{Binding: 1, Visibility: gputypes.ShaderStageVertex,
-				Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeReadOnlyStorage}},
-		},
+		Label:   "shapes-layout",
+		Entries: shapeLayoutEntries(),
 	})
 	if err != nil {
 		return fmt.Errorf("bind group layout: %w", err)
@@ -346,6 +353,8 @@ func (g *GPU) initPipeline() error {
 		Entries: []wgpu.BindGroupEntry{
 			{Binding: 0, Buffer: g.uniform, Size: 16},
 			{Binding: 1, Buffer: g.storage, Size: g.storageSize(g.capacity)},
+			{Binding: 2, TextureView: g.text.view},
+			{Binding: 3, Sampler: g.text.sampler},
 		},
 	})
 	if err != nil {
@@ -400,6 +409,21 @@ func (g *GPU) initPipeline() error {
 	return nil
 }
 
+// shapeLayoutEntries is the one bind-group shape the pipeline and any rebuilt
+// bind group share: viewport, instances, atlas, sampler.
+func shapeLayoutEntries() []gputypes.BindGroupLayoutEntry {
+	return []gputypes.BindGroupLayoutEntry{
+		{Binding: 0, Visibility: gputypes.ShaderStageVertex | gputypes.ShaderStageFragment,
+			Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeUniform}},
+		{Binding: 1, Visibility: gputypes.ShaderStageVertex,
+			Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeReadOnlyStorage}},
+		{Binding: 2, Visibility: gputypes.ShaderStageFragment, Texture: &gputypes.TextureBindingLayout{
+			SampleType: gputypes.TextureSampleTypeFloat, ViewDimension: gputypes.TextureViewDimension2D, Multisampled: false}},
+		{Binding: 3, Visibility: gputypes.ShaderStageFragment,
+			Sampler: &gputypes.SamplerBindingLayout{Type: gputypes.SamplerBindingTypeFiltering}},
+	}
+}
+
 func (g *GPU) storageSize(n int) uint64 {
 	return uint64(n) * uint64(unsafe.Sizeof(gpuInstance{}))
 }
@@ -441,9 +465,6 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 	}
 
 	g.instances = g.instances[:0]
-	if g.text != nil {
-		g.text.inst = g.text.inst[:0]
-	}
 	for _, op := range list.Ops {
 		switch op.Kind {
 		case paint.Fill:
@@ -489,11 +510,8 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 			return err
 		}
 	}
-	if g.text != nil && len(g.text.inst) > 0 {
+	if g.text != nil {
 		if err := g.text.upload(g); err != nil {
-			return err
-		}
-		if err := g.queue.WriteBuffer(g.text.storage, 0, glyphsToBytes(g.text.inst)); err != nil {
 			return err
 		}
 	}
@@ -529,12 +547,6 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 		pass.SetVertexBuffer(0, g.storage, 0)
 		pass.Draw(gputypes.DrawArgs{VertexCount: 6, InstanceCount: uint32(len(g.instances))})
 	}
-	if g.text != nil && len(g.text.inst) > 0 {
-		pass.SetPipeline(g.text.pipeline)
-		pass.SetBindGroup(0, g.text.bindG, nil)
-		pass.SetVertexBuffer(0, g.text.storage, 0)
-		pass.Draw(gputypes.DrawArgs{VertexCount: 6, InstanceCount: uint32(len(g.text.inst))})
-	}
 	if err := pass.End(); err != nil {
 		return err
 	}
@@ -566,13 +578,7 @@ func (g *GPU) grow(n int) error {
 		return err
 	}
 	layout, err := g.device.CreateBindGroupLayout(&wgpu.BindGroupLayoutDescriptor{
-		Label: "shapes-layout",
-		Entries: []gputypes.BindGroupLayoutEntry{
-			{Binding: 0, Visibility: gputypes.ShaderStageVertex | gputypes.ShaderStageFragment,
-				Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeUniform}},
-			{Binding: 1, Visibility: gputypes.ShaderStageVertex,
-				Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeReadOnlyStorage}},
-		},
+		Entries: shapeLayoutEntries(),
 	})
 	if err != nil {
 		buf.Release()
@@ -584,6 +590,8 @@ func (g *GPU) grow(n int) error {
 		Entries: []wgpu.BindGroupEntry{
 			{Binding: 0, Buffer: g.uniform, Size: 16},
 			{Binding: 1, Buffer: buf, Size: g.storageSize(capacity)},
+			{Binding: 2, TextureView: g.text.view},
+			{Binding: 3, Sampler: g.text.sampler},
 		},
 	})
 	if err != nil {

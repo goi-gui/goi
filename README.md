@@ -81,7 +81,12 @@ make scroll    # scrolling page, horizontal strip, ripple
   atlas, HiDPI aware.
 - Input: clicks with Material ripples, hover, keyboard focus, text editing with
   selection and clipboard shortcuts, wheel and drag scrolling, Tab order
-  groundwork.
+  groundwork. Any node can take a click (`OnClick`), not only a component, so a
+  scrim or a custom hit area needs no extra element type.
+- Overlays in order: shapes and glyphs share one instance buffer, so a drawer, a
+  dialog or a snackbar paints over the page exactly as the tree orders it.
+- Window-level keys: `win.OnKey` sees every key press, focused or not, which is
+  how a modal drawer closes on Escape.
 - Hot reload: edit the file, the window updates; broken files keep the last good
   tree and print diagnostics.
 

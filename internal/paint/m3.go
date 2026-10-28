@@ -1224,21 +1224,35 @@ func (l *List) paintNavigationRail(c *tree.Component, r tree.Rect, clip tree.Rec
 	}
 }
 
+// m3Of returns the component state behind a node, or nil for a layout node.
+func m3Of(b *tree.NodeBase) *tree.Component {
+	if c, ok := b.Node().(interface{ M3() *tree.Component }); ok {
+		return c.M3()
+	}
+	return nil
+}
+
 func (l *List) paintNavigationDrawer(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
-	rad := [4]float32{0, m3.ShapeLarge, m3.ShapeLarge, 0}
+	// A drawer is a sheet: rounded on the right, elevated above the page.
+	rad := float32(m3.ShapeLarge)
+	radii := [4]float32{0, rad, rad, 0}
+	l.shadowRadii(r, radii, m3.Elevation1, clip)
 	l.Ops = append(l.Ops, Op{
-		Kind: Fill, Shape: RoundedRect, Rect: rectArr(r), Radius: rad,
+		Kind: Fill, Shape: RoundedRect, Rect: rectArr(r), Radius: radii,
 		Color: col.SurfaceContainerLow, Clip: clipArr(clip),
 	})
 	if c.Label.Get() != "" {
 		l.textIn(c.Label.Get(), l.style("titleSmall"), col.OnSurfaceVariant,
 			tree.Rect{X: r.X + 28, Y: r.Y + 16, W: r.W - 56, H: 20}, AlignStart, clip)
 	}
-	kids := c.Base().Kids()
-	if c.SelectedIndex >= 0 && c.SelectedIndex < len(kids) {
-		kb := kids[c.SelectedIndex].Bounds()
-		l.fillRect(tree.Rect{X: r.X + kb.X, Y: r.Y + kb.Y, W: kb.W, H: kb.H}, col.SecondaryContainer, 28, 0, 0, clip)
+	// The active destination is whichever item says so; NavigationItem draws
+	// its own icon and label on top of this band.
+	for _, k := range c.Base().Kids() {
+		if kc := m3Of(k); kc != nil && kc.Selected.Get() {
+			l.fillRect(tree.Rect{X: r.X + k.Bounds().X, Y: r.Y + k.Bounds().Y, W: k.Bounds().W, H: k.Bounds().H},
+				col.SecondaryContainer, 28, 0, 0, clip)
+		}
 	}
 }
 

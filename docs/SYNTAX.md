@@ -127,6 +127,10 @@ default the group is multi-select (checkbox): clicking a segment toggles it.
 `variant: single` makes it single-select (radio): picking a segment clears the
 others, and clicking the selected segment keeps it selected.
 
+`NavigationDrawer` is the panel only; it has no open/closed state of its own.
+A modal drawer is a `Stack` with the page first, then a scrim `Rectangle` and a
+`Positioned` drawer with `visible: false`; Go flips `SetVisible` on both.
+
 Containers that lay children out (`ButtonGroup`, `Toolbar`, `Carousel`, `Tabs`,
 `NavigationBar`, `NavigationRail`, `NavigationDrawer`, `List`, `Menu`, `Card`,
 `Dialog`, `BottomSheet`, `SideSheet`, `DatePicker`, `TimePicker`) also accept

@@ -350,6 +350,18 @@ batch. This is what the display list will feed.
   and the selected segment cannot be cleared by clicking it again. The group
   rounds only the run's outer ends, so a label next to a group does not break
   the shape.
+- **Overlays are painted in display-list order, not by pipeline.** Shapes and
+  glyphs used to go to two separate pipelines and were drawn shapes-then-text, so
+  every label in the window landed on top of a later drawer or dialog. Glyph
+  quads now share the shape instance buffer as kind 4 with the atlas bound once,
+  which keeps the window at one draw call and makes tree order the paint order.
+- **A modal navigation drawer is app state plus three plain elements.** The
+  `.ui` file holds a `Positioned` drawer and a scrim `Rectangle` with
+  `visible: false`; Go toggles `SetVisible`. Any node now carries `OnClick`, so
+  the scrim and the app-bar icon are hit areas without becoming components, and
+  `win.OnKey` closes the drawer on Escape even when nothing is focused.
+  `NavigationDrawer` itself stays a painted panel: the framework does not own
+  open/closed state.
 - **What is intentionally shallow for now:** DatePicker and TimePicker render a
   month grid and a clock dial but do not edit a date; FABMenu renders the FAB and
   leaves its expanded item list to app content; Slider drags but has no keyboard

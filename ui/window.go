@@ -15,7 +15,12 @@ type Window struct {
 	width   int
 	height  int
 	binding func(*Window) error
+	keys    tree.Event[tree.KeyEvent]
 }
+
+// OnKey subscribes to key presses in this window, whether or not a text field
+// has focus. A drawer or a dialog uses it to close on Escape.
+func (w *Window) OnKey(fn func(KeyEvent)) (off func()) { return w.keys.On(fn) }
 
 // T returns the underlying tree. Internal use and tests.
 func (w *Window) T() *tree.Tree { return w.tree }

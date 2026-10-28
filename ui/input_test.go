@@ -179,6 +179,36 @@ func TestSegmentedButtonModes(t *testing.T) {
 	}
 }
 
+func TestPlainNodeClick(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		Stack {
+			Rectangle { id: scrim }
+		}
+	}`, 480, 320)
+	scrim := MustByID[*Rectangle](win, "scrim")
+	clicks := 0
+	scrim.OnClick(func(ClickEvent) { clicks++ })
+	b := absoluteRect(scrim)
+	in.MouseDown(b.X+10, b.Y+10, 0, false)
+	in.MouseUp(b.X+10, b.Y+10, 0)
+	if clicks != 1 {
+		t.Fatalf("plain node clicks = %d, want 1", clicks)
+	}
+}
+
+func TestWindowKeyHandlerRunsWithoutFocus(t *testing.T) {
+	_, win, in := inputFixture(t, `Window { Column { } }`, 480, 320)
+	if in.focus != nil {
+		t.Fatal("fixture already has focus")
+	}
+	var keys []tree.Key
+	win.OnKey(func(e KeyEvent) { keys = append(keys, e.Key) })
+	in.key(escape, noMods)
+	if len(keys) != 1 || keys[0] != KeyEscape {
+		t.Fatalf("window keys = %v, want one escape", keys)
+	}
+}
+
 func TestTextInputCursorKeys(t *testing.T) {
 	_, win, in := inputFixture(t, inputUI, 480, 320)
 	ti := MustByID[*TextField](win, "field")
@@ -345,6 +375,7 @@ var (
 	home      = tree.KeyHome
 	end       = tree.KeyEnd
 	enter     = tree.KeyEnter
+	escape    = tree.KeyEscape
 	noMods    tree.Mods
 )
 

@@ -5,7 +5,6 @@ package render
 import (
 	"fmt"
 	"math"
-	"unsafe"
 
 	"github.com/gogpu/gputypes"
 	"github.com/gogpu/wgpu"
@@ -13,77 +12,13 @@ import (
 	"github.com/ksckaan1/goui/internal/text"
 )
 
-// Text and icons share one pipeline: both are quads sampling the glyph atlas.
-const textWGSL = `
-struct GlyphInstance {
-	rect: vec4f,  // x, y, w, h in logical pixels
-	uv: vec4f,    // u0, v0, u1, v1
-	color: vec4f,
-	clip: vec4f,  // x0, y0, x1, y1
-}
-
-struct Viewport {
-	size: vec4f, // logical w, logical h, scale, unused
-}
-
-@group(0) @binding(0) var<uniform> viewport: Viewport;
-@group(0) @binding(1) var atlas: texture_2d<f32>;
-@group(0) @binding(2) var samp: sampler;
-@group(0) @binding(3) var<storage, read> glyphs: array<GlyphInstance>;
-
-struct VSOut {
-	@builtin(position) pos: vec4f,
-	@location(0) uv: vec2f,
-	@location(1) color: vec4f,
-	@location(2) clip: vec4f,
-	@location(3) pos2: vec2f,
-}
-
-@vertex
-fn vs_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VSOut {
-	var corners = array<vec2f, 6>(
-		vec2f(0.0, 0.0), vec2f(1.0, 0.0), vec2f(0.0, 1.0),
-		vec2f(0.0, 1.0), vec2f(1.0, 0.0), vec2f(1.0, 1.0),
-	);
-	let inst = glyphs[ii];
-	let c = corners[vi];
-	let p = inst.rect.xy + c * inst.rect.zw;
-	var out: VSOut;
-	out.pos = vec4f(p.x / viewport.size.x * 2.0 - 1.0, 1.0 - p.y / viewport.size.y * 2.0, 0.0, 1.0);
-	out.uv = mix(inst.uv.xy, inst.uv.zw, c);
-	out.color = inst.color;
-	out.clip = inst.clip;
-	out.pos2 = p;
-	return out;
-}
-
-@fragment
-fn fs_main(in: VSOut) -> @location(0) vec4f {
-	if (in.pos2.x < in.clip.x || in.pos2.y < in.clip.y ||
-	    in.pos2.x > in.clip.z || in.pos2.y > in.clip.w) { discard; }
-	let a = textureSample(atlas, samp, in.uv).r;
-	return vec4f(in.color.rgb, in.color.a * a);
-}
-`
-
-// glyphInstance is one textured quad. 64 bytes.
-type glyphInstance struct {
-	Rect  [4]float32
-	UV    [4]float32
-	Color [4]float32
-	Clip  [4]float32
-}
-
-// textRenderer owns the atlas texture, its pipeline and instance buffer.
+// textRenderer owns the glyph atlas. Glyph quads go into the same instance
+// buffer as shapes (kind 4), so paint order is exactly the display-list order
+// and the window stays one draw call.
 type textRenderer struct {
-	pipeline *wgpu.RenderPipeline
-	bindG    *wgpu.BindGroup
-	texture  *wgpu.Texture
-	view     *wgpu.TextureView
-	sampler  *wgpu.Sampler
-	storage  *wgpu.Buffer
-	capacity int
-	inst     []glyphInstance
+	texture *wgpu.Texture
+	view    *wgpu.TextureView
+	sampler *wgpu.Sampler
 
 	atlasW, atlasH int
 	atlasDirty     bool
@@ -96,7 +31,7 @@ func (g *GPU) initText(lib *text.Library) error {
 		return nil // no font: text is skipped, the app still runs
 	}
 	atlas := lib.Atlas()
-	t := &textRenderer{atlasW: atlas.W, atlasH: atlas.H, atlasDirty: true, capacity: 4096}
+	t := &textRenderer{atlasW: atlas.W, atlasH: atlas.H, atlasDirty: true, gpu: g}
 
 	tex, err := g.device.CreateTexture(&wgpu.TextureDescriptor{
 		Label:         "glyph-atlas",
@@ -127,107 +62,8 @@ func (g *GPU) initText(lib *text.Library) error {
 		return fmt.Errorf("atlas sampler: %w", err)
 	}
 
-	shader, err := g.device.CreateShaderModule(&wgpu.ShaderModuleDescriptor{Label: "text", WGSL: textWGSL})
-	if err != nil {
-		return fmt.Errorf("text shader: %w", err)
-	}
-	defer shader.Release()
-
-	layout, err := g.device.CreateBindGroupLayout(&wgpu.BindGroupLayoutDescriptor{
-		Label: "text-layout",
-		Entries: []gputypes.BindGroupLayoutEntry{
-			{Binding: 0, Visibility: gputypes.ShaderStageVertex, Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeUniform}},
-			{Binding: 1, Visibility: gputypes.ShaderStageFragment, Texture: &gputypes.TextureBindingLayout{
-				SampleType: gputypes.TextureSampleTypeFloat, ViewDimension: gputypes.TextureViewDimension2D, Multisampled: false}},
-			{Binding: 2, Visibility: gputypes.ShaderStageFragment, Sampler: &gputypes.SamplerBindingLayout{Type: gputypes.SamplerBindingTypeFiltering}},
-			{Binding: 3, Visibility: gputypes.ShaderStageVertex, Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeReadOnlyStorage}},
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("text bind group layout: %w", err)
-	}
-	// The layout is retained for the renderer's lifetime: the glyph buffer's
-	// bind group is rebuilt whenever the buffer grows.
-	g.textLayout = layout
-
-	t.storage, err = g.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Label: "glyphs",
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopyDst,
-		Size:  uint64(t.capacity) * uint64(unsafe.Sizeof(glyphInstance{})),
-	})
-	if err != nil {
-		return fmt.Errorf("glyph buffer: %w", err)
-	}
-	t.gpu = g
-	if err := t.rebuildBindGroup(g, layout); err != nil {
-		return err
-	}
-
-	pl, err := g.device.CreatePipelineLayout(&wgpu.PipelineLayoutDescriptor{
-		Label:            "text-pipeline-layout",
-		BindGroupLayouts: []*wgpu.BindGroupLayout{layout},
-	})
-	if err != nil {
-		return fmt.Errorf("text pipeline layout: %w", err)
-	}
-	defer pl.Release()
-
-	blend := &gputypes.BlendState{
-		Color: gputypes.BlendComponent{SrcFactor: gputypes.BlendFactorSrcAlpha, DstFactor: gputypes.BlendFactorOneMinusSrcAlpha, Operation: gputypes.BlendOperationAdd},
-		Alpha: gputypes.BlendComponent{SrcFactor: gputypes.BlendFactorOne, DstFactor: gputypes.BlendFactorOneMinusSrcAlpha, Operation: gputypes.BlendOperationAdd},
-	}
-	attrs := []gputypes.VertexAttribute{
-		{Format: gputypes.VertexFormatFloat32x4, Offset: 0, ShaderLocation: 0},
-		{Format: gputypes.VertexFormatFloat32x4, Offset: 16, ShaderLocation: 1},
-		{Format: gputypes.VertexFormatFloat32x4, Offset: 32, ShaderLocation: 2},
-		{Format: gputypes.VertexFormatFloat32x4, Offset: 48, ShaderLocation: 3},
-	}
-	t.pipeline, err = g.device.CreateRenderPipeline(&wgpu.RenderPipelineDescriptor{
-		Label:  "text",
-		Layout: pl,
-		Vertex: wgpu.VertexState{
-			Module:     shader,
-			EntryPoint: "vs_main",
-			Buffers: []gputypes.VertexBufferLayout{{
-				ArrayStride: uint64(unsafe.Sizeof(glyphInstance{})),
-				StepMode:    gputypes.VertexStepModeInstance,
-				Attributes:  attrs,
-			}},
-		},
-		Fragment: &wgpu.FragmentState{
-			Module:     shader,
-			EntryPoint: "fs_main",
-			Targets:    []gputypes.ColorTargetState{{Format: g.format, Blend: blend, WriteMask: gputypes.ColorWriteMaskAll}},
-		},
-		Primitive:   gputypes.PrimitiveState{Topology: gputypes.PrimitiveTopologyTriangleList, FrontFace: gputypes.FrontFaceCCW, CullMode: gputypes.CullModeNone},
-		Multisample: gputypes.MultisampleState{Count: 1, Mask: 0xFFFFFFFF},
-	})
-	if err != nil {
-		return fmt.Errorf("text pipeline: %w", err)
-	}
 	g.text = t
 	g.textLib = lib
-	return nil
-}
-
-func (t *textRenderer) rebuildBindGroup(g *GPU, layout *wgpu.BindGroupLayout) error {
-	bg, err := g.device.CreateBindGroup(&wgpu.BindGroupDescriptor{
-		Label:  "text-bindings",
-		Layout: layout,
-		Entries: []wgpu.BindGroupEntry{
-			{Binding: 0, Buffer: g.uniform, Size: 16},
-			{Binding: 1, TextureView: t.view},
-			{Binding: 2, Sampler: t.sampler},
-			{Binding: 3, Buffer: t.storage, Size: uint64(t.capacity) * uint64(unsafe.Sizeof(glyphInstance{}))},
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("text bind group: %w", err)
-	}
-	if t.bindG != nil {
-		t.bindG.Release()
-	}
-	t.bindG = bg
 	return nil
 }
 
@@ -277,16 +113,18 @@ func (t *textRenderer) addOp(op paint.Op) {
 			y := (penY + float64(slot.Offset.Y)) / scale
 			w := float64(slot.Rect.Dx()) / scale
 			h := float64(slot.Rect.Dy()) / scale
-			t.inst = append(t.inst, glyphInstance{
-				Rect: [4]float32{float32(x), float32(y), float32(w), float32(h)},
-				UV: [4]float32{
-					float32(slot.Rect.Min.X) / float32(t.atlasW),
-					float32(slot.Rect.Min.Y) / float32(t.atlasH),
-					float32(slot.Rect.Max.X) / float32(t.atlasW),
-					float32(slot.Rect.Max.Y) / float32(t.atlasH),
-				},
+			g.instances = append(g.instances, gpuInstance{
+				Rect:  [4]float32{float32(x), float32(y), float32(w), float32(h)},
 				Color: col,
 				Clip:  clip,
+				// kind 4 is a glyph quad: params.zw is the UV origin and
+				// misc.xy is the UV far corner.
+				Params: [4]float32{4, 0,
+					float32(slot.Rect.Min.X) / float32(t.atlasW),
+					float32(slot.Rect.Min.Y) / float32(t.atlasH)},
+				Misc: [4]float32{
+					float32(slot.Rect.Max.X) / float32(t.atlasW),
+					float32(slot.Rect.Max.Y) / float32(t.atlasH), 0, 0},
 			})
 		}
 		penX += float64(gl.Advance) / 64 / scale
@@ -295,35 +133,6 @@ func (t *textRenderer) addOp(op paint.Op) {
 		t.atlasDirty = true
 		lib.Atlas().ClearDirty()
 	}
-	if len(t.inst) > t.capacity {
-		t.grow(g, len(t.inst))
-	}
-}
-
-func (t *textRenderer) grow(g *GPU, n int) {
-	capacity := t.capacity * 2
-	for capacity < n {
-		capacity *= 2
-	}
-	buf, err := g.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Label: "glyphs",
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopyDst,
-		Size:  uint64(capacity) * uint64(unsafe.Sizeof(glyphInstance{})),
-	})
-	if err != nil {
-		return
-	}
-	old := t.storage
-	oldCap := t.capacity
-	t.storage = buf
-	t.capacity = capacity
-	if err := t.rebuildBindGroup(g, g.textLayout); err != nil {
-		t.storage = old
-		t.capacity = oldCap
-		buf.Release()
-		return
-	}
-	old.Release()
 }
 
 // upload pushes the atlas if it changed since the last frame.
@@ -342,15 +151,6 @@ func (t *textRenderer) upload(g *GPU) error {
 }
 
 func (t *textRenderer) release() {
-	if t.pipeline != nil {
-		t.pipeline.Release()
-	}
-	if t.bindG != nil {
-		t.bindG.Release()
-	}
-	if t.storage != nil {
-		t.storage.Release()
-	}
 	if t.sampler != nil {
 		t.sampler.Release()
 	}
@@ -360,8 +160,4 @@ func (t *textRenderer) release() {
 	if t.texture != nil {
 		t.texture.Release()
 	}
-}
-
-func glyphsToBytes(glyphs []glyphInstance) []byte {
-	return unsafe.Slice((*byte)(unsafe.Pointer(&glyphs[0])), len(glyphs)*int(unsafe.Sizeof(glyphInstance{})))
 }
