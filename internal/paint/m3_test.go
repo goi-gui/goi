@@ -157,3 +157,30 @@ func TestRippleStaysInsideTheComponent(t *testing.T) {
 		t.Fatalf("no clipped ripple op:\n%s", l.Dump())
 	}
 }
+
+// TestTextFieldSelectionIsHighlighted guards the selection band: it must sit
+// behind the value, tinted with the primary color, from the anchor to the caret.
+func TestTextFieldSelectionIsHighlighted(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window {
+		TextField { id: field label: "Name" width: 240 }
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 400, 400)
+	n, _ := tr.ByID("field")
+	c := n.(*tree.TextField).M3()
+	c.Text.Set("hello")
+	c.Focused = true
+	c.SelAnchor, c.Caret = 1, 4
+
+	l := &List{}
+	l.Build(tr, 400, 400)
+	want := withAlpha(m3.Light().Colors.Primary, m3.SelectionOpacity)
+	for _, op := range l.Ops {
+		if op.Shape == RoundedRect && op.Color == want {
+			return
+		}
+	}
+	t.Fatalf("no selection band:\n%s", l.Dump())
+}

@@ -63,6 +63,8 @@ type Component struct {
 	RippleY  float64
 	// Caret for text fields.
 	Caret int
+	// SelAnchor is the fixed end of a text selection; -1 means none.
+	SelAnchor int
 	// SelectedIndex for tab bars and navigation.
 	SelectedIndex int
 }
@@ -70,6 +72,7 @@ type Component struct {
 // newComponent seeds the shared defaults.
 func newComponent() Component {
 	return Component{
+		SelAnchor:   -1,
 		Label:       newProp(nil, "label", DirtyLayout, ""),
 		Supporting:  newProp(nil, "supporting", DirtyLayout, ""),
 		Text:        newProp(nil, "text", DirtyLayout, ""),

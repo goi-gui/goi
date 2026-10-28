@@ -72,8 +72,9 @@ make scroll    # scrolling page, horizontal strip, ripple
 - Rendering: instanced SDF rounded rects, circles, arcs and shadows with borders
   and anti-aliasing, text through HarfBuzz-quality shaping and a grayscale
   atlas, HiDPI aware.
-- Input: clicks with Material ripples, hover, keyboard focus, text editing, wheel
-  and drag scrolling, Tab order groundwork.
+- Input: clicks with Material ripples, hover, keyboard focus, text editing with
+  selection and clipboard shortcuts, wheel and drag scrolling, Tab order
+  groundwork.
 - Hot reload: edit the file, the window updates; broken files keep the last good
   tree and print diagnostics.
 
@@ -84,7 +85,7 @@ and [docs/DECISIONS.md](docs/DECISIONS.md).
 
 Expressions or bindings in `.ui`, animations, dynamic color and custom themes,
 accessibility tree, multiple windows, drag and drop, custom components in `.ui`,
-text selection/clipboard/IME, and the Scroll and Image widgets.
+IME composition preview, and the Image widget.
 
 ## Tests
 

@@ -13,7 +13,7 @@ import (
 // Input receives raw input translated from GLFW, in logical pixels.
 type Input interface {
 	MouseMove(x, y float64)
-	MouseDown(x, y float64, button int)
+	MouseDown(x, y float64, button int, shift bool)
 	MouseUp(x, y float64, button int)
 	Scroll(dx, dy float64)
 	Key(key Key, mods Mods)
@@ -40,6 +40,10 @@ const (
 	KeyEscape
 	KeyUp
 	KeyDown
+	KeyA
+	KeyC
+	KeyV
+	KeyX
 )
 
 // Mods is modifier state.
@@ -101,7 +105,7 @@ func (p *Window) SetInput(in Input) {
 		x, y := p.cursorLogical()
 		switch action {
 		case glfw.Press:
-			p.input.MouseDown(x, y, int(button))
+			p.input.MouseDown(x, y, int(button), translateMods(mods).Shift)
 		case glfw.Release:
 			p.input.MouseUp(x, y, int(button))
 		}
@@ -247,6 +251,14 @@ func translateKey(k glfw.Key) Key {
 		return KeyUp
 	case glfw.KeyDown:
 		return KeyDown
+	case glfw.KeyA:
+		return KeyA
+	case glfw.KeyC:
+		return KeyC
+	case glfw.KeyV:
+		return KeyV
+	case glfw.KeyX:
+		return KeyX
 	}
 	return KeyNone
 }

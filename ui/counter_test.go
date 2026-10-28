@@ -39,7 +39,7 @@ func TestCounterSurvivesReload(t *testing.T) {
 
 	click := func() {
 		b := absoluteRect(MustByID[*Button](win, "inc"))
-		in.MouseDown(b.X+5, b.Y+5, 0)
+		in.MouseDown(b.X+5, b.Y+5, 0, false)
 		in.MouseUp(b.X+5, b.Y+5, 0)
 	}
 

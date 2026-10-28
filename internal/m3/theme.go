@@ -181,6 +181,9 @@ const (
 	StateDragged = 0.16
 )
 
+// SelectionOpacity is the alpha of the text selection highlight.
+const SelectionOpacity = 0.4
+
 // DisabledOpacity is applied to the whole disabled component.
 const DisabledOpacity = 0.38
 

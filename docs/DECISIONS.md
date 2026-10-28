@@ -131,7 +131,8 @@ batch. This is what the display list will feed.
 - `TextInput` caret arithmetic is byte-based on rune boundaries, so Turkish
   characters do not split and shift the caret correctly.
 - Text editing (insert, backspace, delete, arrows, home/end, Enter) is
-  implemented; selection, clipboard and IME arrive with v1.1.
+  implemented; selection, clipboard and IME commits were added later (see the
+  text-field notes near the end of this file).
 - `hoverBackground` is a property; the input layer only sets the hover flag.
 
 ## Phase 10 — hot reload
@@ -257,13 +258,33 @@ batch. This is what the display list will feed.
   expands or shows a square edge at the corners.
   The clock is wall time clamped to 0.1s per frame, so an idle app does not
   burn frames and a stall does not skip the animation.
+- **Text selection is a pair of byte offsets on `Component`.** `Caret` is the
+  moving end and `SelAnchor` the fixed one (-1 when nothing is selected); both
+  snap to rune boundaries, so Turkish characters cannot be split. The painter
+  draws the band in the value box, the caret from the same shaped advances, and
+  input maps pointer x by measuring prefix widths with the same measurer, so
+  clicks land between the glyphs they follow. Click places the caret,
+  shift-click and shift+arrows extend, drag extends from the press, double click
+  selects a rune class (word, number, punctuation) and triple click selects all.
+- **Clipboard goes through the platform, not a framework cache.** Ctrl+C/X/V
+  copy, cut and paste the selected range (paste replaces it); the platform layer
+  already wraps GLFW's clipboard. Paste flattens newlines to spaces because a
+  TextField is one line. Copy with no selection is a no-op, and the interactor
+  takes get/put hooks so tests do not touch the real clipboard.
+- **IME: commits are supported, composition preview is not.** GLFW on Linux
+  delivers only committed text (through the char callback), so the framework
+  treats every committed rune as insertion at the caret over the selection;
+  dead keys and composed characters therefore arrive as normal text. Preedit,
+  the underlined composing run and the candidate window need a native
+  text-input bridge (Wayland `zwp_text_input_v3`, XIM on X11) that GLFW does not
+  expose; a long value also does not scroll horizontally inside its field yet.
 - **What is intentionally shallow for now:** DatePicker and TimePicker render a
   month grid and a clock dial but do not edit a date; FABMenu renders the FAB and
   leaves its expanded item list to app content; Slider drags but has no keyboard
   handling. There is no scrollbar, no fling/inertia and no mouse-wheel axis
   other than the container's. These are visual and behavioural follow-ups, not
   missing elements.
-- **Not in v1 still:** text selection, clipboard and IME; `Image`, scrollbars
-  and full accessibility. The previous phase notes that say "Checkbox deferred"
-  are superseded: Checkbox, RadioButton, Switch and the rest of the component set
+- **Not in v1 still:** IME composition preview; `Image`, scrollbars and full
+  accessibility. The previous phase notes that say "Checkbox deferred" are
+  superseded: Checkbox, RadioButton, Switch and the rest of the component set
   now exist.

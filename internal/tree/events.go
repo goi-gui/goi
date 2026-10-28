@@ -44,6 +44,12 @@ const (
 	KeyEscape
 	KeyUp
 	KeyDown
+	// Letter keys the editing shortcuts need; text entry itself arrives as
+	// Char events, not keys.
+	KeyA
+	KeyC
+	KeyV
+	KeyX
 )
 
 // FocusEvent is delivered when a node gains or loses focus.

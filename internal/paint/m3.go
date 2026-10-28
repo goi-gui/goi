@@ -815,6 +815,23 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	}
 	labelStyle := l.style("bodyLarge")
 	smallStyle := l.style("bodySmall")
+
+	// Selection sits under the value, in the same box as the caret.
+	if c.Focused {
+		if a, b, ok := c.Selection(); ok {
+			s := c.Text.Get()
+			x0 := lx + textWidth(l, s[:a], labelStyle)
+			x1 := lx + textWidth(l, s[:b], labelStyle)
+			l.Ops = append(l.Ops, Op{
+				Kind: Fill, Shape: RoundedRect,
+				Rect:   [4]float32{float32(x0), float32(r.Y + 26), float32(x1 - x0), 20},
+				Radius: [4]float32{2, 2, 2, 2},
+				Color:  withAlpha(col.Primary, m3.SelectionOpacity),
+				Clip:   clipArr(clip),
+			})
+		}
+	}
+
 	if hasValue {
 		// Label shrinks to the top 16dp band, value occupies the rest.
 		l.textIn(c.Label.Get(), smallStyle, hint,

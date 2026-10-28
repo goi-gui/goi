@@ -121,6 +121,7 @@ func carryOver(old, fresh *tree.Tree) {
 					ti.Text = oldTI.Text
 				}
 				ti.Caret = oldTI.Caret
+				ti.SelAnchor = oldTI.SelAnchor
 			}
 		}
 	}

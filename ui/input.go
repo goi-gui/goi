@@ -2,6 +2,10 @@ package ui
 
 import (
 	"math"
+	"strings"
+	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/ksckaan1/goui/internal/platform"
 	"github.com/ksckaan1/goui/internal/tree"
@@ -34,6 +38,25 @@ type interactor struct {
 	// ripples are the live press animations.
 	ripples []ripple
 
+	// textField is the field the pointer went down on, and selecting marks a
+	// drag that extends its selection. clickCount detects double and triple
+	// clicks by time and distance.
+	textField  *tree.Component
+	selecting  bool
+	clickCount int
+	lastClick  time.Time
+	lastClickX float64
+	lastClickY float64
+	lastField  *tree.Component
+
+	// Clipboard hooks; nil uses the platform clipboard.
+	getClipboard func() string
+	setClipboard func(string)
+
+	// measure shapes a string for caret and selection geometry. The driver sets
+	// it to the same measurer the painter uses; nil falls back to an estimate.
+	measure func(s string, size float64, weight int) float64
+
 	viewportW, viewportH float64
 }
 
@@ -61,6 +84,10 @@ func interactive(n tree.Node) bool {
 
 func (i *interactor) MouseMove(x, y float64) {
 	i.cursorX, i.cursorY = x, y
+	if i.selecting && i.textField != nil {
+		i.caretFromPoint(i.textField, x, true)
+		return
+	}
 	if i.dragScroll(x, y) {
 		return
 	}
@@ -90,27 +117,36 @@ func (i *interactor) MouseMove(x, y float64) {
 	}
 }
 
-func (i *interactor) MouseDown(x, y float64, button int) {
+func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 	i.cursorX, i.cursorY = x, y
 	hit := i.hit(x, y)
 	i.pressX, i.pressY = x, y
 	i.pressed = nil
 	i.dragging = false
 	i.scrolled = false
+	i.textField = nil
+	i.selecting = false
 	i.dragFromX, i.dragFromY = x, y
 	i.scrollNode = nil
-	// A press in a scroll area can become a drag; a slider keeps the pointer.
-	if hit != nil && hit.Kind() != "Slider" {
+	field := fieldAt(hit)
+	// A press in a scroll area can become a drag; a slider keeps the pointer,
+	// and so does a text field, where the drag selects text.
+	if hit != nil && hit.Kind() != "Slider" && field == nil {
 		i.scrollNode = scrollableAt(hit)
 		if i.scrollNode != nil {
 			i.scrollFrom = i.scrollNode.Base().ScrollOffset()
 		}
 	}
 
-	// Text fields take focus wherever the press lands inside them.
-	if f := fieldAt(hit); f != nil {
-		i.setFocus(f)
-		i.caretFromPoint(f, x)
+	// Text fields take focus wherever the press lands inside them. Only the
+	// primary button moves the caret or starts a selection drag.
+	if field != nil {
+		i.setFocus(field)
+		if button == 0 {
+			i.textField = field
+			i.selecting = true
+			i.pressText(field, x, y, shift)
+		}
 		return
 	}
 	i.setFocus(nil)
@@ -144,6 +180,8 @@ func (i *interactor) MouseUp(x, y float64, button int) {
 		i.dragging = false
 		i.scrollNode = nil
 		i.scrolled = false
+		i.textField = nil
+		i.selecting = false
 	}()
 	if i.pressed == nil {
 		i.dragging = false
@@ -282,48 +320,62 @@ func (i *interactor) key(k tree.Key, mods tree.Mods) {
 	if f == nil {
 		return
 	}
+	ctrl, shift := mods.Control(), mods.Shift
 	switch k {
+	case tree.KeyA:
+		if ctrl {
+			f.SelectAll()
+			f.Base().MarkDirty(tree.DirtyPaint)
+		}
+	case tree.KeyC:
+		if ctrl {
+			i.copySelection(f)
+		}
+	case tree.KeyX:
+		if ctrl {
+			if i.copySelection(f) {
+				i.deleteSelection(f)
+			}
+		}
+	case tree.KeyV:
+		if ctrl {
+			i.insert(f, singleLine(i.clipboardText()))
+		}
 	case tree.KeyBackspace:
-		i.deleteBefore(f)
+		if !i.deleteSelection(f) {
+			i.deleteBefore(f)
+		}
 	case tree.KeyDelete:
-		i.deleteAfter(f)
+		if !i.deleteSelection(f) {
+			i.deleteAfter(f)
+		}
 	case tree.KeyLeft:
-		f.Caret = prevRune(f.Text.Get(), f.Caret)
-		f.Base().MarkDirty(tree.DirtyPaint)
+		i.moveCaret(f, -1, shift, ctrl)
 	case tree.KeyRight:
-		f.Caret = nextRune(f.Text.Get(), f.Caret)
-		f.Base().MarkDirty(tree.DirtyPaint)
-	case tree.KeyHome:
-		f.Caret = 0
-		f.Base().MarkDirty(tree.DirtyPaint)
-	case tree.KeyEnd:
-		f.Caret = len(f.Text.Get())
-		f.Base().MarkDirty(tree.DirtyPaint)
+		i.moveCaret(f, 1, shift, ctrl)
+	case tree.KeyHome, tree.KeyUp:
+		i.caretTo(f, 0, shift)
+	case tree.KeyEnd, tree.KeyDown:
+		i.caretTo(f, len(f.Text.Get()), shift)
 	case tree.KeyEnter:
 		f.Submit.Emit(f.Text.Get())
-	}
-	if mods.Control() && (k == tree.KeyLeft || k == tree.KeyRight) {
-		// Word-wise movement is not implemented; keep the caret valid.
+	case tree.KeyEscape:
+		if _, _, ok := f.Selection(); ok {
+			f.ClearSelection()
+			f.Base().MarkDirty(tree.DirtyPaint)
+		}
 	}
 	i.markDirty()
 }
 
+// Char inserts committed text at the caret. IME commits arrive here as runes,
+// so a composed run is inserted over the selection like typed text.
 func (i *interactor) Char(r rune) {
 	f := i.focus
 	if f == nil || r < 32 {
 		return
 	}
-	s := f.Text.Get()
-	c := f.Caret
-	if c > len(s) {
-		c = len(s)
-	}
-	ns := s[:c] + string(r) + s[c:]
-	f.Text.Set(ns)
-	f.Caret = c + len(string(r))
-	f.Base().MarkDirty(tree.DirtyPaint)
-	f.Edit.Emit(ns)
-	i.markDirty()
+	i.insert(f, string(r))
 }
 
 func (i *interactor) Focus(focused bool) {
@@ -569,31 +621,300 @@ func (i *interactor) drag(x, y float64) {
 	i.markDirty()
 }
 
-// caretFromPoint places the caret at the nearest rune boundary to x.
-func (i *interactor) caretFromPoint(f *tree.Component, x float64) {
-	box := absoluteRect(i.focusNode(f))
-	rel := x - box.X - 16
-	if rel < 0 {
-		rel = 0
+// caretFromPoint places the caret at the nearest rune boundary to x, extending
+// the selection when extend is set.
+func (i *interactor) caretFromPoint(f *tree.Component, x float64, extend bool) {
+	idx := i.indexAt(f, x)
+	f.MoveCaret(idx, extend)
+	f.Base().MarkDirty(tree.DirtyPaint)
+	i.markDirty()
+}
+
+// indexAt maps an x position to the nearest byte index inside the field text.
+func (i *interactor) indexAt(f *tree.Component, x float64) int {
+	rel := x - fieldTextStart(i.focusNode(f))
+	if rel <= 0 {
+		return 0
 	}
 	s := f.Text.Get()
-	// shortcut: caret placement assumes 0.55*fontSize per character instead of
-	// shaped advances. Upgrade when text selection lands.
-	per := l_estimateCharWidth(f)
-	idx := int(rel / per)
-	if idx > len(s) {
-		idx = len(s)
+	best, bestD := 0, rel
+	for idx := range s {
+		if idx == 0 {
+			continue
+		}
+		if d := math.Abs(i.textWidth(s[:idx]) - rel); d < bestD {
+			best, bestD = idx, d
+		}
 	}
-	for idx > 0 && idx < len(s) && s[idx]&0xC0 == 0x80 {
-		idx--
+	if d := math.Abs(i.textWidth(s) - rel); d < bestD {
+		best = len(s)
 	}
-	f.Caret = idx
+	return best
+}
+
+// fieldTextStart is where the value text begins inside a field, matching the
+// painter: a 16dp inset plus room for a leading icon.
+func fieldTextStart(n tree.Node) float64 {
+	box := absoluteRect(n)
+	x := box.X + 16
+	if c := comp(n); c != nil && c.Icon.Get() != "" {
+		x += 40
+	}
+	return x
+}
+
+// textWidth is the advance width of field text, measured the same way the
+// painter measures it so carets land between the glyphs they follow.
+func (i *interactor) textWidth(s string) float64 {
+	if s == "" {
+		return 0
+	}
+	if i.measure != nil {
+		return i.measure(s, 16, 400)
+	}
+	// shortcut: without a font library (headless), the painter's 0.55 estimate
+	// stands in for shaped advances.
+	return float64(len([]rune(s))) * 16 * 0.55
+}
+
+// pressText handles a press inside a field: single click places the caret,
+// shift-click extends, double click selects a word, triple click selects all.
+func (i *interactor) pressText(f *tree.Component, x, y float64, shift bool) {
+	idx := i.indexAt(f, x)
+	now := time.Now()
+	multi := f == i.lastField && now.Sub(i.lastClick) < 400*time.Millisecond &&
+		math.Abs(x-i.lastClickX) <= 6 && math.Abs(y-i.lastClickY) <= 6
+	if multi {
+		i.clickCount++
+	} else {
+		i.clickCount = 1
+	}
+	i.lastClick, i.lastClickX, i.lastClickY, i.lastField = now, x, y, f
+
+	switch {
+	case multi && i.clickCount >= 3:
+		f.SelectAll()
+	case multi:
+		a, b := wordBounds(f.Text.Get(), idx)
+		f.SelAnchor, f.Caret = a, b
+	case shift:
+		f.MoveCaret(idx, true)
+	default:
+		f.MoveCaret(idx, false)
+	}
+	f.Base().MarkDirty(tree.DirtyPaint)
+	i.markDirty()
+}
+
+// insert replaces the selection (or the caret position) with text.
+func (i *interactor) insert(f *tree.Component, text string) {
+	if text == "" {
+		return
+	}
+	s := f.Text.Get()
+	a := clampRune(s, f.Caret)
+	b := a
+	if x, y, ok := f.Selection(); ok {
+		a, b = x, y
+	}
+	f.Text.Set(s[:a] + text + s[b:])
+	f.Caret = a + len(text)
+	f.ClearSelection()
+	f.Base().MarkDirty(tree.DirtyPaint)
+	f.Edit.Emit(f.Text.Get())
+	i.markDirty()
+}
+
+// deleteSelection removes the selected range and reports whether there was one.
+func (i *interactor) deleteSelection(f *tree.Component) bool {
+	a, b, ok := f.Selection()
+	if !ok {
+		return false
+	}
+	s := f.Text.Get()
+	f.Text.Set(s[:a] + s[b:])
+	f.Caret = a
+	f.ClearSelection()
+	f.Base().MarkDirty(tree.DirtyPaint)
+	f.Edit.Emit(f.Text.Get())
+	i.markDirty()
+	return true
+}
+
+// copySelection puts the selected text on the clipboard.
+func (i *interactor) copySelection(f *tree.Component) bool {
+	a, b, ok := f.Selection()
+	if !ok {
+		return false
+	}
+	i.putClipboard(f.Text.Get()[a:b])
+	return true
+}
+
+func (i *interactor) clipboardText() string {
+	if i.getClipboard != nil {
+		return i.getClipboard()
+	}
+	return platform.Clipboard()
+}
+
+func (i *interactor) putClipboard(s string) {
+	if s == "" {
+		return
+	}
+	if i.setClipboard != nil {
+		i.setClipboard(s)
+		return
+	}
+	platform.SetClipboard(s)
+}
+
+// singleLine flattens pasted text: a TextField is one line, so newlines become
+// spaces instead of silently drawing outside the box.
+func singleLine(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
+	return strings.ReplaceAll(s, "\n", " ")
+}
+
+// moveCaret moves the caret by one rune or one word. Without shift, an existing
+// selection collapses to the edge the movement points at.
+func (i *interactor) moveCaret(f *tree.Component, dir int, extend, word bool) {
+	s := f.Text.Get()
+	if !extend {
+		if a, b, ok := f.Selection(); ok {
+			to := a
+			if dir > 0 {
+				to = b
+			}
+			f.MoveCaret(to, false)
+			f.Base().MarkDirty(tree.DirtyPaint)
+			return
+		}
+	}
+	to := f.Caret
+	switch {
+	case dir < 0 && word:
+		to = prevWord(s, to)
+	case dir < 0:
+		to = prevRune(s, to)
+	case word:
+		to = nextWord(s, to)
+	default:
+		to = nextRune(s, to)
+	}
+	f.MoveCaret(to, extend)
 	f.Base().MarkDirty(tree.DirtyPaint)
 }
 
-func l_estimateCharWidth(f *tree.Component) float64 {
-	// BodyLarge is 16sp.
-	return 16 * 0.55
+// caretTo moves the caret to an absolute index, extending when shift is held.
+func (i *interactor) caretTo(f *tree.Component, to int, extend bool) {
+	f.MoveCaret(to, extend)
+	f.Base().MarkDirty(tree.DirtyPaint)
+}
+
+// wordBounds expands idx to the run of runes of the same class (space, word or
+// punctuation), which is what a double click selects.
+func wordBounds(s string, idx int) (int, int) {
+	idx = clampRune(s, idx)
+	if idx == len(s) {
+		if len(s) == 0 {
+			return 0, 0
+		}
+		_, size := utf8.DecodeLastRuneInString(s)
+		idx -= size
+	}
+	r, _ := utf8.DecodeRuneInString(s[idx:])
+	cl := runeClass(r)
+	start, end := idx, idx
+	for start > 0 {
+		p, size := utf8.DecodeLastRuneInString(s[:start])
+		if runeClass(p) != cl {
+			break
+		}
+		start -= size
+	}
+	for end < len(s) {
+		q, size := utf8.DecodeRuneInString(s[end:])
+		if runeClass(q) != cl {
+			break
+		}
+		end += size
+	}
+	return start, end
+}
+
+func prevWord(s string, c int) int {
+	c = clampRune(s, c)
+	for c > 0 {
+		r, size := utf8.DecodeLastRuneInString(s[:c])
+		if !unicode.IsSpace(r) {
+			break
+		}
+		c -= size
+	}
+	if c == 0 {
+		return 0
+	}
+	r, _ := utf8.DecodeLastRuneInString(s[:c])
+	cl := runeClass(r)
+	for c > 0 {
+		p, size := utf8.DecodeLastRuneInString(s[:c])
+		if runeClass(p) != cl {
+			break
+		}
+		c -= size
+	}
+	return c
+}
+
+func nextWord(s string, c int) int {
+	c = clampRune(s, c)
+	for c < len(s) {
+		r, size := utf8.DecodeRuneInString(s[c:])
+		if !unicode.IsSpace(r) {
+			break
+		}
+		c += size
+	}
+	if c == len(s) {
+		return c
+	}
+	r, _ := utf8.DecodeRuneInString(s[c:])
+	cl := runeClass(r)
+	for c < len(s) {
+		q, size := utf8.DecodeRuneInString(s[c:])
+		if runeClass(q) != cl {
+			break
+		}
+		c += size
+	}
+	return c
+}
+
+// runeClass groups runes for word selection: 0 space, 1 word, 2 punctuation.
+func runeClass(r rune) int {
+	switch {
+	case unicode.IsSpace(r):
+		return 0
+	case unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_':
+		return 1
+	}
+	return 2
+}
+
+// clampRune clamps a byte index and moves it back to a rune boundary.
+func clampRune(s string, i int) int {
+	if i <= 0 {
+		return 0
+	}
+	if i >= len(s) {
+		return len(s)
+	}
+	for i > 0 && s[i]&0xC0 == 0x80 {
+		i--
+	}
+	return i
 }
 
 // focusNode returns the tree node wrapping a component.
@@ -689,6 +1010,14 @@ func toTreeKey(k platform.Key) tree.Key {
 		return tree.KeyUp
 	case platform.KeyDown:
 		return tree.KeyDown
+	case platform.KeyA:
+		return tree.KeyA
+	case platform.KeyC:
+		return tree.KeyC
+	case platform.KeyV:
+		return tree.KeyV
+	case platform.KeyX:
+		return tree.KeyX
 	}
 	return tree.KeyNone
 }

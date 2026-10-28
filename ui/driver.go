@@ -69,7 +69,7 @@ func (a *App) initWindow(w *Window) error {
 	}
 	d.list.Theme = themeFor(w)
 	d.lastTick = time.Now()
-	d.input = &interactor{app: a, tree: w.tree}
+	d.input = &interactor{app: a, tree: w.tree, measure: d.list.Measure}
 	pw.SetInput(d.input)
 	a.driver = d
 

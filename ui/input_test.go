@@ -52,7 +52,7 @@ func TestClickPressRelease(t *testing.T) {
 	clicks := 0
 	btn.OnClick(func(ClickEvent) { clicks++ })
 
-	in.MouseDown(cx, cy, 0)
+	in.MouseDown(cx, cy, 0, false)
 	in.MouseUp(cx, cy, 0)
 	if clicks != 1 {
 		t.Fatalf("clicks = %d", clicks)
@@ -66,7 +66,7 @@ func TestClickNeedsSameNode(t *testing.T) {
 	clicks := 0
 	btn.OnClick(func(ClickEvent) { clicks++ })
 
-	in.MouseDown(b.X+5, b.Y+5, 0)
+	in.MouseDown(b.X+5, b.Y+5, 0, false)
 	in.MouseUp(b.X+5, b.Y+b.H+60, 0) // released elsewhere
 	if clicks != 0 {
 		t.Fatalf("click fired across nodes: %d", clicks)
@@ -96,7 +96,7 @@ func TestTextInputTyping(t *testing.T) {
 	var changes []string
 	ti.OnEdit(func(s string) { changes = append(changes, s) })
 
-	in.MouseDown(b.X+10, b.Y+10, 0) // focus it
+	in.MouseDown(b.X+10, b.Y+10, 0, false) // focus it
 	in.MouseUp(b.X+10, b.Y+10, 0)
 	for _, r := range "Kaan" {
 		in.Char(r)
@@ -120,7 +120,7 @@ func TestTextInputCursorKeys(t *testing.T) {
 	_, win, in := inputFixture(t, inputUI, 480, 320)
 	ti := MustByID[*TextField](win, "field")
 	b := absoluteRect(ti)
-	in.MouseDown(b.X+10, b.Y+10, 0)
+	in.MouseDown(b.X+10, b.Y+10, 0, false)
 
 	in.Char('ç') // two bytes: caret arithmetic must stay on rune boundaries
 	in.Char('a')
@@ -145,7 +145,7 @@ func TestSubmitOnEnter(t *testing.T) {
 	_, win, in := inputFixture(t, inputUI, 480, 320)
 	ti := MustByID[*TextField](win, "field")
 	b := absoluteRect(ti)
-	in.MouseDown(b.X+10, b.Y+10, 0)
+	in.MouseDown(b.X+10, b.Y+10, 0, false)
 	in.Char('x')
 	var submitted string
 	ti.OnSubmit(func(s string) { submitted = s })
@@ -159,11 +159,11 @@ func TestClickOutsideClearsFocus(t *testing.T) {
 	_, win, in := inputFixture(t, inputUI, 480, 320)
 	ti := MustByID[*TextField](win, "field")
 	b := absoluteRect(ti)
-	in.MouseDown(b.X+10, b.Y+10, 0)
+	in.MouseDown(b.X+10, b.Y+10, 0, false)
 	if in.focus != ti.M3() {
 		t.Fatal("input did not take focus")
 	}
-	in.MouseDown(470, 310, 0)
+	in.MouseDown(470, 310, 0, false)
 	if in.focus != nil {
 		t.Fatal("focus did not clear")
 	}
@@ -325,7 +325,7 @@ func TestDragScrollMovesContentAndCancelsClick(t *testing.T) {
 	btn.OnClick(func(ClickEvent) { clicks++ })
 	b := absoluteRect(btn)
 
-	in.MouseDown(b.X+5, b.Y+5, 0)
+	in.MouseDown(b.X+5, b.Y+5, 0, false)
 	in.MouseMove(b.X+5, b.Y+5-40) // drag up: content follows the pointer
 	if got := page.Base().ScrollOffset(); got != 40 {
 		t.Fatalf("offset after drag = %v, want 40", got)
@@ -345,7 +345,7 @@ func TestClickInsideScrollAreaStillWorks(t *testing.T) {
 	clicks := 0
 	btn.OnClick(func(ClickEvent) { clicks++ })
 	b := absoluteRect(btn)
-	in.MouseDown(b.X+5, b.Y+5, 0)
+	in.MouseDown(b.X+5, b.Y+5, 0, false)
 	in.MouseUp(b.X+5, b.Y+5, 0)
 	if clicks != 1 {
 		t.Fatalf("clicks = %d, want 1", clicks)
@@ -374,7 +374,7 @@ func TestRippleRunsAndFinishes(t *testing.T) {
 	btn := MustByID[*Button](win, "btn")
 	b := absoluteRect(btn)
 
-	in.MouseDown(b.X+20, b.Y+10, 0)
+	in.MouseDown(b.X+20, b.Y+10, 0, false)
 	c := btn.M3()
 	if !c.RippleOn {
 		t.Fatal("press did not start a ripple")
@@ -408,5 +408,145 @@ func TestRippleRunsAndFinishes(t *testing.T) {
 	}
 	if c.RippleOn {
 		t.Fatal("ripple still marked running")
+	}
+}
+
+// focusField clicks the field at its left inset and returns its rect.
+func focusField(t *testing.T, in *interactor, id string, win *Window) Rect {
+	t.Helper()
+	f := MustByID[*TextField](win, id)
+	b := absoluteRect(f)
+	in.MouseDown(b.X+16, b.Y+10, 0, false)
+	in.MouseUp(b.X+16, b.Y+10, 0)
+	return b
+}
+
+func TestSelectAllAndTypeReplaces(t *testing.T) {
+	_, win, in := inputFixture(t, inputUI, 480, 320)
+	ti := MustByID[*TextField](win, "field")
+	ti.Text.Set("hello")
+	focusField(t, in, "field", win)
+
+	in.key(tree.KeyA, tree.Mods{Ctrl: true})
+	if a, b, ok := ti.Selection(); !ok || a != 0 || b != 5 {
+		t.Fatalf("selection = %d..%d ok=%v, want 0..5", a, b, ok)
+	}
+	in.Char('x')
+	if got := ti.Text.Get(); got != "x" {
+		t.Fatalf("text = %q, want x", got)
+	}
+	if _, _, ok := ti.Selection(); ok {
+		t.Fatal("selection survived typing")
+	}
+}
+
+func TestShiftArrowSelectsAndBackspaceDeletes(t *testing.T) {
+	_, win, in := inputFixture(t, inputUI, 480, 320)
+	ti := MustByID[*TextField](win, "field")
+	ti.Text.Set("abc")
+	focusField(t, in, "field", win)
+	in.key(tree.KeyEnd, noMods)
+
+	in.key(tree.KeyLeft, tree.Mods{Shift: true})
+	if a, b, ok := ti.Selection(); !ok || a != 2 || b != 3 {
+		t.Fatalf("selection = %d..%d ok=%v, want 2..3", a, b, ok)
+	}
+	in.key(tree.KeyBackspace, noMods)
+	if got := ti.Text.Get(); got != "ab" {
+		t.Fatalf("text = %q, want ab", got)
+	}
+	if ti.Caret != 2 {
+		t.Fatalf("caret = %d, want 2", ti.Caret)
+	}
+}
+
+func TestCopyCutAndPaste(t *testing.T) {
+	_, win, in := inputFixture(t, inputUI, 480, 320)
+	ti := MustByID[*TextField](win, "field")
+	var clip string
+	in.getClipboard = func() string { return clip }
+	in.setClipboard = func(s string) { clip = s }
+
+	ti.Text.Set("hello")
+	focusField(t, in, "field", win)
+	in.key(tree.KeyA, tree.Mods{Ctrl: true})
+	in.key(tree.KeyC, tree.Mods{Ctrl: true})
+	if clip != "hello" {
+		t.Fatalf("clipboard = %q, want hello", clip)
+	}
+
+	clip = "pasted"
+	in.key(tree.KeyV, tree.Mods{Ctrl: true})
+	if got := ti.Text.Get(); got != "pasted" {
+		t.Fatalf("text after paste = %q, want pasted", got)
+	}
+
+	in.key(tree.KeyA, tree.Mods{Ctrl: true})
+	in.key(tree.KeyX, tree.Mods{Ctrl: true})
+	if got := ti.Text.Get(); got != "" {
+		t.Fatalf("text after cut = %q, want empty", got)
+	}
+	if clip != "pasted" {
+		t.Fatalf("clipboard after cut = %q, want pasted", clip)
+	}
+}
+
+func TestPasteFlattensNewlines(t *testing.T) {
+	_, win, in := inputFixture(t, inputUI, 480, 320)
+	ti := MustByID[*TextField](win, "field")
+	in.getClipboard = func() string { return "one\ntwo" }
+	focusField(t, in, "field", win)
+	in.key(tree.KeyV, tree.Mods{Ctrl: true})
+	if got := ti.Text.Get(); got != "one two" {
+		t.Fatalf("text = %q, want one two", got)
+	}
+}
+
+func TestDragSelectsText(t *testing.T) {
+	_, win, in := inputFixture(t, inputUI, 480, 320)
+	ti := MustByID[*TextField](win, "field")
+	ti.Text.Set("hello world")
+	b := focusField(t, in, "field", win)
+	in.MouseDown(b.X+16, b.Y+10, 0, false)
+	in.MouseMove(b.X+16+5*8.8, b.Y+10)
+	in.MouseUp(b.X+16+5*8.8, b.Y+10, 0)
+	if a, e, ok := ti.Selection(); !ok || a != 0 || e != 5 {
+		t.Fatalf("selection = %d..%d ok=%v, want 0..5", a, e, ok)
+	}
+}
+
+func TestDoubleClickSelectsWord(t *testing.T) {
+	_, win, in := inputFixture(t, inputUI, 480, 320)
+	ti := MustByID[*TextField](win, "field")
+	ti.Text.Set("hello world")
+	b := absoluteRect(ti)
+	x := b.X + 16 + 2*8.8             // inside "hello"
+	in.MouseDown(x, b.Y+10, 0, false) // first click: caret
+	in.MouseUp(x, b.Y+10, 0)
+	in.MouseDown(x, b.Y+10, 0, false) // second click: word selection
+	in.MouseUp(x, b.Y+10, 0)
+	if a, e, ok := ti.Selection(); !ok || a != 0 || e != 5 {
+		t.Fatalf("selection = %d..%d ok=%v, want 0..5", a, e, ok)
+	}
+}
+
+func TestCtrlArrowMovesByWord(t *testing.T) {
+	_, win, in := inputFixture(t, inputUI, 480, 320)
+	ti := MustByID[*TextField](win, "field")
+	ti.Text.Set("hello world")
+	focusField(t, in, "field", win)
+	in.key(tree.KeyHome, noMods)
+
+	in.key(tree.KeyRight, tree.Mods{Ctrl: true})
+	if ti.Caret != 5 {
+		t.Fatalf("caret after ctrl+right = %d, want 5", ti.Caret)
+	}
+	in.key(tree.KeyRight, tree.Mods{Ctrl: true})
+	if ti.Caret != 11 {
+		t.Fatalf("caret after second ctrl+right = %d, want 11", ti.Caret)
+	}
+	in.key(tree.KeyLeft, tree.Mods{Ctrl: true})
+	if ti.Caret != 6 {
+		t.Fatalf("caret after ctrl+left = %d, want 6", ti.Caret)
 	}
 }
