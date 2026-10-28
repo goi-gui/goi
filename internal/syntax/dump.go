@@ -1,0 +1,47 @@
+package syntax
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
+
+// Dump renders an AST as indented text. Tests use it as a golden format; it is
+// also handy when debugging a surprising parse.
+func Dump(f *File) string {
+	if f == nil || f.Root == nil {
+		return "<nil>\n"
+	}
+	var b strings.Builder
+	dumpElement(&b, f.Root, 0)
+	return b.String()
+}
+
+func dumpElement(b *strings.Builder, e *Element, depth int) {
+	indent := strings.Repeat("  ", depth)
+	fmt.Fprintf(b, "%s%s\n", indent, e.Name)
+	for _, m := range e.Members {
+		switch v := m.(type) {
+		case *Property:
+			fmt.Fprintf(b, "%s  %s = %s\n", indent, v.Name, dumpValue(v.Value))
+		case *Element:
+			dumpElement(b, v, depth+1)
+		}
+	}
+}
+
+func dumpValue(v Value) string {
+	switch v := v.(type) {
+	case *String:
+		return strconv.Quote(v.Val)
+	case *Number:
+		return strconv.FormatFloat(v.Val, 'g', -1, 64)
+	case *Bool:
+		return strconv.FormatBool(v.Val)
+	case *Color:
+		return fmt.Sprintf("#%08x", v.RGBA)
+	case *Ident:
+		return v.Val
+	}
+	return "?"
+}

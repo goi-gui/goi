@@ -1,0 +1,14 @@
+Window
+  id = main
+  title = "Escapes ç \\ \"quoted\""
+  width = -1
+  height = 320.25
+  visible = true
+  background = #12345678
+  borderColor = #aabbccff
+  Stack
+    Rectangle
+      id = r
+      width = 10
+      height = 10
+      radius = 4

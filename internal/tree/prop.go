@@ -1,0 +1,199 @@
+package tree
+
+import "github.com/ksckaan1/goui/internal/syntax"
+
+// DirtyKind says what a change affects.
+type DirtyKind uint8
+
+// Dirty kinds. Layout implies paint.
+const (
+	DirtyPaint DirtyKind = iota
+	DirtyLayout
+)
+
+// Prop is a typed, observable property cell. Set is a no-op when the value does
+// not change, so assigning the same value in a handler costs nothing.
+//
+// It is published as ui.Prop[T].
+type Prop[T comparable] struct {
+	base  *NodeBase
+	name  string
+	dirty DirtyKind
+	val   T
+}
+
+func newProp[T comparable](owner *NodeBase, name string, dirty DirtyKind, def T) Prop[T] {
+	return Prop[T]{base: owner, name: name, dirty: dirty, val: def}
+}
+
+// Get returns the current value.
+func (p *Prop[T]) Get() T { return p.val }
+
+// Set stores v and marks the owner dirty if it changed.
+func (p *Prop[T]) Set(v T) {
+	if p.val == v {
+		return
+	}
+	p.val = v
+	if p.base != nil {
+		p.base.mark(p.dirty)
+	}
+}
+
+// Event is a typed event with any number of Go subscribers.
+//
+// It is published as ui.Event[E].
+type Event[E any] struct {
+	handlers []func(E)
+}
+
+// On subscribes fn and returns an unsubscribe function.
+func (e *Event[E]) On(fn func(E)) (off func()) {
+	e.handlers = append(e.handlers, fn)
+	i := len(e.handlers) - 1
+	return func() {
+		if i < len(e.handlers) && e.handlers[i] != nil {
+			e.handlers[i] = nil
+		}
+	}
+}
+
+// Emit calls every subscriber in subscription order. A nil handler (someone
+// unsubscribed) is skipped.
+func (e *Event[E]) Emit(v E) {
+	for _, fn := range e.handlers {
+		if fn != nil {
+			fn(v)
+		}
+	}
+}
+
+// Len reports the number of subscriptions, including removed ones.
+func (e *Event[E]) Len() int { return len(e.handlers) }
+
+// NamedProp is a type-erased view of one property, used by the builder and by
+// hot reload. Nodes construct these once; no reflection is involved.
+type NamedProp struct {
+	Name  string
+	Dirty DirtyKind
+	Get   func() any
+	// SetLiteral applies a parsed literal, reporting false when the literal is
+	// not valid for the property type.
+	SetLiteral func(syntax.Value) bool
+}
+
+// StringProp builds a NamedProp for a string cell.
+func StringProp(b *NodeBase, name string, p *Prop[string]) NamedProp {
+	wire(b, name, p)
+	return NamedProp{
+		Name: name,
+		Get:  func() any { return p.val },
+		SetLiteral: func(v syntax.Value) bool {
+			switch s := v.(type) {
+			case *syntax.String:
+				p.val = s.Val
+			case *syntax.Ident:
+				p.val = s.Val
+			default:
+				return false
+			}
+			return true
+		},
+	}
+}
+
+// NumberProp builds a NamedProp for a float64 cell.
+func NumberProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[float64]) NamedProp {
+	wire(b, name, p)
+	return NamedProp{
+		Name:  name,
+		Dirty: dirty,
+		Get:   func() any { return p.val },
+		SetLiteral: func(v syntax.Value) bool {
+			n, ok := v.(*syntax.Number)
+			if !ok {
+				return false
+			}
+			p.val = n.Val
+			return true
+		},
+	}
+}
+
+// BoolProp builds a NamedProp for a bool cell.
+func BoolProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[bool]) NamedProp {
+	wire(b, name, p)
+	return NamedProp{
+		Name:  name,
+		Dirty: dirty,
+		Get:   func() any { return p.val },
+		SetLiteral: func(v syntax.Value) bool {
+			b, ok := v.(*syntax.Bool)
+			if !ok {
+				return false
+			}
+			p.val = b.Val
+			return true
+		},
+	}
+}
+
+// ColorProp builds a NamedProp for a uint32 RGBA cell.
+func ColorProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[uint32]) NamedProp {
+	wire(b, name, p)
+	return NamedProp{
+		Name:  name,
+		Dirty: dirty,
+		Get:   func() any { return p.val },
+		SetLiteral: func(v syntax.Value) bool {
+			switch c := v.(type) {
+			case *syntax.Color:
+				p.val = c.RGBA
+			case *syntax.String:
+				rgba, ok := ParseHexColor(c.Val)
+				if !ok {
+					return false
+				}
+				p.val = rgba
+			default:
+				return false
+			}
+			return true
+		},
+	}
+}
+
+// EnumProp builds a NamedProp whose literal must be one of allowed.
+func EnumProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[string], allowed ...string) NamedProp {
+	wire(b, name, p)
+	return NamedProp{
+		Name:  name,
+		Dirty: dirty,
+		Get:   func() any { return p.val },
+		SetLiteral: func(v syntax.Value) bool {
+			var s string
+			switch x := v.(type) {
+			case *syntax.Ident:
+				s = x.Val
+			case *syntax.String:
+				s = x.Val
+			default:
+				return false
+			}
+			for _, a := range allowed {
+				if s == a {
+					p.val = s
+					return true
+				}
+			}
+			return false
+		},
+	}
+}
+
+// wire connects a property cell to its owner so Set can mark the tree dirty.
+// It runs when the node's table is first built, before any literal is applied.
+func wire[T comparable](b *NodeBase, name string, p *Prop[T]) {
+	p.base = b
+	p.name = name
+}

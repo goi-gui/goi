@@ -1,0 +1,230 @@
+package tree
+
+import (
+	"fmt"
+
+	"github.com/ksckaan1/goui/internal/schema"
+	"github.com/ksckaan1/goui/internal/syntax"
+)
+
+// Tree is a live node tree plus its id index.
+type Tree struct {
+	Root *Window
+	ids  map[string]Node
+}
+
+// ByID returns the node with the given id.
+func (t *Tree) ByID(id string) (Node, bool) {
+	n, ok := t.ids[id]
+	return n, ok
+}
+
+// IDs returns the number of indexed ids.
+func (t *Tree) IDs() int { return len(t.ids) }
+
+// All returns every node, parents before children.
+func (t *Tree) All() []Node {
+	var out []Node
+	var walk func(*NodeBase)
+	walk = func(b *NodeBase) {
+		out = append(out, b.node)
+		for _, c := range b.kids {
+			walk(c)
+		}
+	}
+	walk(&t.Root.NodeBase)
+	return out
+}
+
+// Build instantiates a validated file. The schema defaults are applied first,
+// then the literals from the file. hooks may be nil for headless tests.
+func Build(f *syntax.File, hooks *Hooks) (*Tree, error) {
+	if f == nil || f.Root == nil {
+		return nil, fmt.Errorf("tree: no root element")
+	}
+	t := &Tree{ids: map[string]Node{}}
+	root, err := t.build(f.Root, nil, hooks)
+	if err != nil {
+		return nil, err
+	}
+	w, ok := root.(*Window)
+	if !ok {
+		return nil, fmt.Errorf("tree: root must be Window, got %s", root.Kind())
+	}
+	t.Root = w
+	t.clearDirty()
+	return t, nil
+}
+
+// clearDirty marks every node clean, so a freshly built tree does not schedule
+// a frame before anything changed.
+func (t *Tree) clearDirty() {
+	for _, n := range t.All() {
+		n.Base().ClearDirty()
+	}
+}
+
+// BuildSource parses, validates and instantiates in one go.
+func BuildSource(src []byte, hooks *Hooks) (*Tree, syntax.Diagnostics) {
+	f, diag := syntax.Parse(src)
+	if !diag.Empty() {
+		return nil, diag
+	}
+	if _, diag := schema.Validate(f); !diag.Empty() {
+		return nil, diag
+	}
+	t, err := Build(f, hooks)
+	if err != nil {
+		return nil, syntax.Diagnostics{{Message: err.Error()}}
+	}
+	return t, nil
+}
+
+func (t *Tree) build(el *syntax.Element, parent *NodeBase, hooks *Hooks) (Node, error) {
+	def, ok := schema.Lookup(el.Name)
+	if !ok {
+		return nil, fmt.Errorf("unknown element %q", el.Name)
+	}
+	n := newNode(el.Name)
+	if n == nil {
+		return nil, fmt.Errorf("unknown element %q", el.Name)
+	}
+	b := n.Base()
+	b.node = n
+	b.parent = parent
+	b.AST = el
+	b.properties() // wires every Prop cell to b before any value is written
+	applyDefaults(b, def)
+	b.hooks = hooks
+	if parent != nil {
+		parent.kids = append(parent.kids, b)
+	}
+
+	for _, p := range el.Props() {
+		if p.Name == "id" {
+			id, _ := literalText(p.Value)
+			b.id = id
+			if id != "" {
+				if _, dup := t.ids[id]; dup {
+					return nil, fmt.Errorf("duplicate id %q", id)
+				}
+				t.ids[id] = n
+			}
+			continue
+		}
+		if !b.SetPropLiteral(p.Name, p.Value) {
+			return nil, fmt.Errorf("%s.%s: value not valid for the property type", el.Name, p.Name)
+		}
+	}
+
+	for _, c := range el.Children() {
+		if _, err := t.build(c, b, hooks); err != nil {
+			return nil, err
+		}
+	}
+	return n, nil
+}
+
+// applyDefaults seeds every property of the node from the schema.
+func applyDefaults(b *NodeBase, def *schema.Element) {
+	for _, pd := range def.Attrs {
+		if pd.Name == "id" || pd.Default == nil {
+			continue
+		}
+		b.SetPropLiteral(pd.Name, defaultValueLiteral(pd.Default))
+	}
+	b.ClearDirty() // defaults are not a user-visible change
+}
+
+// literalText returns the text of a String or Ident literal.
+func literalText(v syntax.Value) (string, bool) {
+	switch x := v.(type) {
+	case *syntax.String:
+		return x.Val, true
+	case *syntax.Ident:
+		return x.Val, true
+	}
+	return "", false
+}
+
+// defaultValueLiteral converts a schema default into a syntax literal so the
+// node property setters stay the single write path.
+func defaultValueLiteral(v any) syntax.Value {
+	switch x := v.(type) {
+	case string:
+		return &syntax.Ident{Val: x}
+	case float64:
+		return &syntax.Number{Val: x}
+	case bool:
+		return &syntax.Bool{Val: x}
+	case uint32:
+		return &syntax.Color{RGBA: x}
+	}
+	return &syntax.Ident{}
+}
+
+func newNode(name string) Node {
+	b := func() NodeBase {
+		return NodeBase{
+			visible:     newProp(nil, "visible", DirtyLayout, true),
+			margin:      newProp(nil, "margin", DirtyLayout, 0.0),
+			padding:     newProp(nil, "padding", DirtyLayout, 0.0),
+			borderW:     newProp(nil, "borderWidth", DirtyLayout, 0.0),
+			flex:        newProp(nil, "flex", DirtyLayout, 0.0),
+			alignSelf:   newProp(nil, "alignSelf", DirtyLayout, ""),
+			width:       newProp(nil, "width", DirtyLayout, -1.0),
+			height:      newProp(nil, "height", DirtyLayout, -1.0),
+			minWidth:    newProp(nil, "minWidth", DirtyLayout, 0.0),
+			maxWidth:    newProp(nil, "maxWidth", DirtyLayout, -1.0),
+			background:  newProp(nil, "background", DirtyPaint, uint32(0)),
+			borderColor: newProp(nil, "borderColor", DirtyPaint, uint32(0)),
+			radius:      newProp(nil, "radius", DirtyPaint, 0.0),
+		}
+	}
+	switch name {
+	case "Window":
+		return &Window{NodeBase: b(), Title: newProp(nil, "title", DirtyPaint, "")}
+	case "Column", "Row", "Stack":
+		c := Container{
+			NodeBase: b(),
+			Spacing:  newProp(nil, "spacing", DirtyLayout, 0.0),
+			Align:    newProp(nil, "align", DirtyLayout, "start"),
+		}
+		switch name {
+		case "Column":
+			return &Column{Container: c}
+		case "Row":
+			return &Row{Container: c}
+		default:
+			return &Stack{Container: c}
+		}
+	case "Rectangle":
+		return &Rectangle{NodeBase: b()}
+	case "Text":
+		return &Text{
+			NodeBase: b(),
+			Text:     newProp(nil, "text", DirtyLayout, ""),
+			FontSize: newProp(nil, "fontSize", DirtyLayout, 16.0),
+			Color:    newProp(nil, "color", DirtyPaint, uint32(0x000000FF)),
+			Align:    newProp(nil, "align", DirtyLayout, "start"),
+			Wrap:     newProp(nil, "wrap", DirtyLayout, false),
+		}
+	case "Button":
+		return &Button{
+			NodeBase:        b(),
+			Text:            newProp(nil, "text", DirtyLayout, ""),
+			FontSize:        newProp(nil, "fontSize", DirtyLayout, 16.0),
+			Color:           newProp(nil, "color", DirtyPaint, uint32(0xFFFFFFFF)),
+			HoverBackground: newProp(nil, "hoverBackground", DirtyPaint, uint32(0)),
+		}
+	case "TextInput":
+		return &TextInput{
+			NodeBase:    b(),
+			Text:        newProp(nil, "text", DirtyLayout, ""),
+			Placeholder: newProp(nil, "placeholder", DirtyLayout, ""),
+			FontSize:    newProp(nil, "fontSize", DirtyLayout, 16.0),
+			Color:       newProp(nil, "color", DirtyPaint, uint32(0x000000FF)),
+		}
+	}
+	return nil
+}
