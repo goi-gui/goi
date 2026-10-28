@@ -122,6 +122,11 @@ They share one vocabulary: `label`, `supporting`, `text`, `placeholder`, `icon`,
 `internal/componentdef` is the single table that the schema and the node tree
 both read, so an element can never validate without existing.
 
+`SegmentedButton` segments form a group with their contiguous siblings. By
+default the group is multi-select (checkbox): clicking a segment toggles it.
+`variant: single` makes it single-select (radio): picking a segment clears the
+others, and clicking the selected segment keeps it selected.
+
 Containers that lay children out (`ButtonGroup`, `Toolbar`, `Carousel`, `Tabs`,
 `NavigationBar`, `NavigationRail`, `NavigationDrawer`, `List`, `Menu`, `Card`,
 `Dialog`, `BottomSheet`, `SideSheet`, `DatePicker`, `TimePicker`) also accept

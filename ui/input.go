@@ -230,7 +230,7 @@ func (i *interactor) activate(n tree.Node, c *tree.Component, x, y float64) {
 			c.Selected.Set(!c.Selected.Get())
 			c.Toggle.Emit(c.Selected.Get())
 		}
-	case "Tab", "SegmentedButton", "MenuItem", "ListItem":
+	case "Tab", "MenuItem", "ListItem":
 		if p := n.Base().Parent(); p != nil {
 			if pc := comp(p); pc != nil {
 				for idx, kid := range p.Base().Kids() {
@@ -244,9 +244,78 @@ func (i *interactor) activate(n tree.Node, c *tree.Component, x, y float64) {
 		if n.Kind() != "MenuItem" && n.Kind() != "ListItem" {
 			c.Selected.Set(true)
 		}
+	case "SegmentedButton":
+		i.activateSegment(n, c)
 	}
 	c.Click.Emit(tree.ClickEvent{X: x, Y: y})
 	i.markDirty()
+}
+
+// activateSegment applies the group's mode to the contiguous run of segments
+// around n. Multi (the default) toggles each segment independently; single
+// (`variant: single`) keeps exactly one selected, like a radio group.
+func (i *interactor) activateSegment(n tree.Node, c *tree.Component) {
+	single := c.Variant.Get() == "single"
+	if c.Selected.Get() {
+		if single {
+			return
+		}
+		c.Selected.Set(false)
+		c.Toggle.Emit(false)
+	} else {
+		if single {
+			for _, sib := range segmentRun(n) {
+				if oc := comp(sib); oc != nil && oc != c && oc.Selected.Get() {
+					oc.Selected.Set(false)
+					oc.Toggle.Emit(false)
+				}
+			}
+		}
+		c.Selected.Set(true)
+		c.Toggle.Emit(true)
+	}
+	if p := n.Base().Parent(); p != nil {
+		if pc := comp(p); pc != nil {
+			for idx, kid := range p.Base().Kids() {
+				if kid.Base() == n.Base() {
+					pc.SelectedIndex = idx
+					pc.Select.Emit(idx)
+				}
+			}
+		}
+	}
+}
+
+// segmentRun returns the contiguous SegmentedButton siblings around n. A
+// non-segment sibling, such as a label, ends the run and starts a new group.
+func segmentRun(n tree.Node) []tree.Node {
+	p := n.Base().Parent()
+	if p == nil {
+		return []tree.Node{n}
+	}
+	kids := p.Base().Kids()
+	idx := -1
+	for j, k := range kids {
+		if k == n.Base() {
+			idx = j
+			break
+		}
+	}
+	if idx < 0 {
+		return []tree.Node{n}
+	}
+	start, end := idx, idx
+	for start > 0 && kids[start-1].Node().Kind() == "SegmentedButton" {
+		start--
+	}
+	for end < len(kids)-1 && kids[end+1].Node().Kind() == "SegmentedButton" {
+		end++
+	}
+	run := make([]tree.Node, 0, end-start+1)
+	for j := start; j <= end; j++ {
+		run = append(run, kids[j].Node())
+	}
+	return run
 }
 
 // Scroll turns wheel and touchpad input into a scroll offset on the nearest
@@ -605,7 +674,7 @@ func (i *interactor) drag(x, y float64) {
 	c := comp(i.pressed)
 	_ = y
 	box := absoluteRect(i.pressed)
-	inset := 10.0
+	inset := 2.0 // half the 4dp handle, matching paintSlider
 	trackW := box.W - 2*inset
 	if trackW <= 0 {
 		return

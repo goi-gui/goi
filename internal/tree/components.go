@@ -128,7 +128,7 @@ func (c *Component) one(name string) NamedProp {
 		return EnumProp(b, "variant", DirtyPaint, &c.Variant,
 			"filled", "tonal", "elevated", "outlined", "text", "standard",
 			"primary", "secondary", "small", "large", "extended", "assist",
-			"filter", "input", "suggestion")
+			"filter", "input", "suggestion", "single", "multi")
 	case "size":
 		return EnumProp(b, "size", DirtyLayout, &c.Size, "xs", "sm", "md", "lg", "xl")
 	case "disabled":

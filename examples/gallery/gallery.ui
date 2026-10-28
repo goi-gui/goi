@@ -68,9 +68,16 @@ Window {
 				Row {
 					spacing: 0
 					align: center
-					SegmentedButton { label: "Day" width: 80 }
-					SegmentedButton { label: "Week" width: 80 selected: true }
-					SegmentedButton { label: "Month" width: 90 }
+					SegmentedButton { label: "Day" width: 80 variant: single }
+					SegmentedButton { label: "Week" width: 80 variant: single selected: true }
+					SegmentedButton { label: "Month" width: 90 variant: single }
+				}
+				Row {
+					spacing: 0
+					align: center
+					SegmentedButton { label: "Bold" width: 76 }
+					SegmentedButton { label: "Italic" width: 76 selected: true }
+					SegmentedButton { label: "Underline" width: 96 }
 				}
 
 				Text { text: "Chips" role: "titleMedium" }
@@ -179,6 +186,7 @@ Window {
 				flex: 1
 				align: start
 				padding: 16
+				scroll: true
 
 				Text { text: "Cards" role: "titleMedium" }
 				Card { label: "Elevated" supporting: "Surface container low" width: 260 height: 76 }

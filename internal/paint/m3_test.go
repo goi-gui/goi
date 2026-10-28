@@ -49,24 +49,68 @@ func TestButtonVariants(t *testing.T) {
 	}
 }
 
-func TestSliderDrawsTrackAndHandle(t *testing.T) {
+func TestSliderDrawsExpressiveTrack(t *testing.T) {
 	l := m3list(t, `Window { Slider { value: 0.5 min: 0 max: 1 width: 200 } }`)
 	col := m3.Light().Colors
-	var active, handle bool
+	var active, inactive, handle, stop [4]float32
+	var activeRadii, inactiveRadii [4]float32
 	for _, op := range l.Ops {
 		if op.Kind != Fill {
 			continue
 		}
-		if op.Color == col.Primary && op.Rect[2] == 4 {
-			handle = true
-		}
-		if op.Color == col.Primary && op.Rect[2] > 4 {
-			active = true
+		switch {
+		case op.Color == col.Primary && op.Rect[3] == 16:
+			active, activeRadii = op.Rect, op.Radius
+		case op.Color == col.SecondaryContainer && op.Rect[3] == 16:
+			inactive, inactiveRadii = op.Rect, op.Radius
+		case op.Color == col.Primary && op.Rect[2] == 4 && op.Rect[3] == 44:
+			handle = op.Rect
+		case op.Shape == Circle && op.Rect[2] == 4 && op.Color == col.Primary:
+			stop = op.Rect
 		}
 	}
-	if !active || !handle {
-		t.Fatalf("slider ops missing: active=%v handle=%v\n%s", active, handle, l.Dump())
+	if active[2] == 0 || inactive[2] == 0 || handle[2] == 0 || stop[2] == 0 {
+		t.Fatalf("slider parts missing:\n%s", l.Dump())
 	}
+	if active[3] != 16 || inactive[3] != 16 || handle[3] != 44 {
+		t.Fatalf("sizes active=%v inactive=%v handle=%v", active, inactive, handle)
+	}
+	if active[0]+active[2] != handle[0]-6 {
+		t.Fatalf("active track does not stop 6dp before the handle: %v / %v", active, handle)
+	}
+	if inactive[0] != handle[0]+handle[2]+6 {
+		t.Fatalf("inactive track does not start 6dp after the handle: %v / %v", inactive, handle)
+	}
+	if activeRadii[0] != 8 || activeRadii[1] != 2 || inactiveRadii[0] != 2 || inactiveRadii[1] != 8 {
+		t.Fatalf("track radii active=%v inactive=%v", activeRadii, inactiveRadii)
+	}
+	if stop[0]+2 != inactive[0]+inactive[2]-8 {
+		t.Fatalf("stop dot = %v, want 4dp at 8dp from the inactive end", stop)
+	}
+}
+
+func TestSliderHandleNarrowsWhenPressed(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window { Slider { value: 0.5 width: 200 } }`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 400, 400)
+	for _, n := range tr.All() {
+		if n.Kind() == "Slider" {
+			n.(*tree.Slider).M3().Pressed = true
+		}
+	}
+	l := &List{}
+	l.Build(tr, 400, 400)
+	for _, op := range l.Ops {
+		if op.Kind == Fill && op.Color == m3.Light().Colors.Primary && op.Rect[3] == 44 {
+			if op.Rect[2] != 2 {
+				t.Fatalf("pressed handle width = %v, want 2", op.Rect[2])
+			}
+			return
+		}
+	}
+	t.Fatalf("no handle:\n%s", l.Dump())
 }
 
 func TestCheckboxDrawsCheckWhenChecked(t *testing.T) {
@@ -205,6 +249,47 @@ func TestSplitButtonPaintsTwoPills(t *testing.T) {
 	}
 	if main[3] != trail[3] || trail[2] != 48 {
 		t.Fatalf("segments = %v / %v, want equal height and a 48dp menu segment", main, trail)
+	}
+}
+
+// TestSplitButtonRadiusIsStable guards the hover bug: only the state layer may
+// react, the pill shape itself must not change while hovered or pressed.
+func TestSplitButtonRadiusIsStable(t *testing.T) {
+	radiiFor := func(hover, pressed bool) [][4]float32 {
+		tr, diag := tree.BuildSource([]byte(
+			`Window { SplitButton { label: "Split" width: 180 height: 40 } }`), nil)
+		if !diag.Empty() {
+			t.Fatalf("%v", diag)
+		}
+		layout.New(nil).Layout(tr.Root, 400, 400)
+		for _, n := range tr.All() {
+			if n.Kind() == "SplitButton" {
+				c := n.(*tree.SplitButton).M3()
+				c.Hover, c.Pressed = hover, pressed
+			}
+		}
+		l := &List{}
+		l.Build(tr, 400, 400)
+		var radii [][4]float32
+		for _, op := range l.Ops {
+			if op.Kind == Fill && op.Color == m3.Light().Colors.Primary {
+				radii = append(radii, op.Radius)
+			}
+		}
+		return radii
+	}
+	want := radiiFor(false, false)
+	for _, state := range []struct{ hover, pressed bool }{{true, false}, {false, true}} {
+		got := radiiFor(state.hover, state.pressed)
+		if len(got) != len(want) {
+			t.Fatalf("segments = %d, want %d", len(got), len(want))
+		}
+		for i := range got {
+			if got[i] != want[i] {
+				t.Fatalf("hover=%v pressed=%v radii = %v, want %v",
+					state.hover, state.pressed, got, want)
+			}
+		}
 	}
 }
 

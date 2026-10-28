@@ -116,6 +116,69 @@ func TestTextInputTyping(t *testing.T) {
 	}
 }
 
+func TestSearchBarTyping(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		Column { SearchBar { id: search width: 300 } }
+	}`, 480, 320)
+	bar := MustByID[*SearchBar](win, "search")
+	b := absoluteRect(bar)
+	in.MouseDown(b.X+10, b.Y+10, 0, false)
+	in.MouseUp(b.X+10, b.Y+10, 0)
+	for _, r := range "find" {
+		in.Char(r)
+	}
+	if got := bar.Text.Get(); got != "find" {
+		t.Fatalf("search text = %q after clicking and typing", got)
+	}
+	if in.focus != bar.M3() {
+		t.Fatal("search bar did not take focus")
+	}
+}
+
+func TestSegmentedButtonModes(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		Column {
+			Row {
+				SegmentedButton { id: day label: "Day" width: 80 }
+				SegmentedButton { id: week label: "Week" width: 80 selected: true }
+			}
+			Row {
+				SegmentedButton { id: one label: "One" width: 80 variant: single selected: true }
+				SegmentedButton { id: two label: "Two" width: 80 variant: single }
+			}
+		}
+	}`, 480, 320)
+	day, week := MustByID[*SegmentedButton](win, "day"), MustByID[*SegmentedButton](win, "week")
+	one, two := MustByID[*SegmentedButton](win, "one"), MustByID[*SegmentedButton](win, "two")
+	click := func(c *SegmentedButton) {
+		b := absoluteRect(c)
+		in.MouseDown(b.X+b.W/2, b.Y+b.H/2, 0, false)
+		in.MouseUp(b.X+b.W/2, b.Y+b.H/2, 0)
+	}
+
+	// Multi is the default: a second click clears the segment, and siblings
+	// keep their own state.
+	click(week)
+	if week.Selected.Get() {
+		t.Fatal("multi segment did not toggle off")
+	}
+	click(day)
+	if !day.Selected.Get() || week.Selected.Get() {
+		t.Fatalf("multi selection = day:%v week:%v, want day only", day.Selected.Get(), week.Selected.Get())
+	}
+
+	// Single behaves like a radio group: picking another moves the selection,
+	// and clicking the selected segment leaves it selected.
+	click(two)
+	if one.Selected.Get() || !two.Selected.Get() {
+		t.Fatalf("single selection = one:%v two:%v, want two only", one.Selected.Get(), two.Selected.Get())
+	}
+	click(two)
+	if !two.Selected.Get() {
+		t.Fatal("single segment cleared itself; radio selection must stay")
+	}
+}
+
 func TestTextInputCursorKeys(t *testing.T) {
 	_, win, in := inputFixture(t, inputUI, 480, 320)
 	ti := MustByID[*TextField](win, "field")

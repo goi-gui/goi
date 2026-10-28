@@ -489,9 +489,10 @@ func (l *List) paintButtonGroup(c *tree.Component, r tree.Rect, clip tree.Rect) 
 func (l *List) paintSplitButton(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	bg, fg, border, elev, bw := l.buttonColors(c)
 
-	// Expressive keeps two segments apart with a 2dp gap. Outer ends stay full,
-	// inner corners are only lightly rounded (and round more on hover/press), so
-	// the pair reads as one control that is split, not one pill with a line.
+	// Expressive keeps two segments apart with a 2dp gap. Outer ends stay full
+	// and inner corners are only lightly rounded, so the pair reads as one
+	// control that is split, not one pill with a line. The radii never change
+	// with hover or press: only the state layer moves.
 	const (
 		gap   = 2.0
 		menuW = 48.0
@@ -505,9 +506,6 @@ func (l *List) paintSplitButton(c *tree.Component, r tree.Rect, clip tree.Rect) 
 	trail := tree.Rect{X: r.X + mainW + gap, Y: r.Y, W: trailW, H: r.H}
 	outer := float32(r.H / 2)
 	inner := float32(4)
-	if c.Hover || c.Pressed {
-		inner = 12
-	}
 	segs := []struct {
 		r     tree.Rect
 		radii [4]float32
@@ -552,37 +550,32 @@ func (l *List) paintSplitButton(c *tree.Component, r tree.Rect, clip tree.Rect) 
 
 func (l *List) paintSegmentedButton(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
-	radius := 0.0
-	if c.Selected.Get() {
-		// Selected segment: secondaryContainer.
-	}
 	bg := uint32(0)
 	fg := disabledAlpha(c, col.OnSurface)
 	if c.Selected.Get() {
 		bg = col.SecondaryContainer
 		fg = disabledAlpha(c, col.OnSecondaryContainer)
 	}
-	// The group rounds only its outer ends: first child left, last child right.
-	left, right := 0.0, 0.0
-	if p := c.Base().Parent(); p != nil {
-		kids := p.Base().Kids()
-		if len(kids) > 0 {
-			if kids[0] == c.Base() {
-				left = r.H / 2
-			}
-			if kids[len(kids)-1] == c.Base() {
-				right = r.H / 2
-			}
-		}
+	// The group rounds only its outer ends: the first and last segment of the
+	// contiguous SegmentedButton run in a parent. Siblings inside the run keep
+	// square corners so a border between them reads as one divider.
+	left, right := segmentEdges(c)
+	radii := [4]float32{}
+	if left {
+		radii[0], radii[3] = float32(r.H/2), float32(r.H/2)
+	}
+	if right {
+		radii[1], radii[2] = float32(r.H/2), float32(r.H/2)
 	}
 	l.Ops = append(l.Ops, Op{
 		Kind: Fill, Shape: RoundedRect, Rect: rectArr(r),
-		Radius:      [4]float32{float32(left), float32(right), float32(right), float32(left)},
+		Radius:      radii,
 		Color:       bg,
 		BorderColor: col.Outline, BorderWidth: 1,
 		Clip: clipArr(clip),
 	})
-	l.stateLayer(c, r, 0, fg, clip)
+	l.ripple(c, r, 0, fg, clip)
+	l.tint(c, r, radii, fg, clip)
 
 	labelW := 0.0
 	if c.Label.Get() != "" {
@@ -606,7 +599,28 @@ func (l *List) paintSegmentedButton(c *tree.Component, r tree.Rect, clip tree.Re
 		l.textIn(c.Label.Get(), l.style("labelLarge"), fg,
 			tree.Rect{X: start + iconW, Y: r.Y, W: labelW + 4, H: r.H}, AlignStart, clip)
 	}
-	_ = radius
+}
+
+// segmentEdges reports whether a segmented button starts or ends a run of
+// segments in its parent, so only the run's outer ends get full radius.
+func segmentEdges(c *tree.Component) (left, right bool) {
+	p := c.Base().Parent()
+	if p == nil {
+		return true, true
+	}
+	kids := p.Base().Kids()
+	idx := -1
+	for i, k := range kids {
+		if k == c.Base() {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return true, true
+	}
+	return idx == 0 || kids[idx-1].Node().Kind() != "SegmentedButton",
+		idx == len(kids)-1 || kids[idx+1].Node().Kind() != "SegmentedButton"
 }
 
 func (l *List) paintChip(c *tree.Component, r tree.Rect, clip tree.Rect) {
@@ -766,8 +780,18 @@ func (l *List) paintSwitch(c *tree.Component, r tree.Rect, clip tree.Rect) {
 func (l *List) paintSlider(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
 	cy := r.Y + r.H/2
-	inset := 10.0
-	track := tree.Rect{X: r.X + inset, Y: cy - 2, W: r.W - 2*inset, H: 4}
+	// Expressive XS slider: a 16dp full-rounded track split by a 6dp gap on
+	// each side of a 4x44dp handle. The handle narrows to 2dp while pressed or
+	// focused; the 4dp stop dot sits at the inactive end.
+	const (
+		inset      = 2.0 // half the handle, so the handle touches the bounds
+		trackH     = 16.0
+		handleW    = 2.0 // half the resting handle width
+		gap        = 6.0
+		stopSize   = 4.0
+		cornerFull = trackH / 2
+	)
+	track := tree.Rect{X: r.X + inset, Y: cy - trackH/2, W: r.W - 2*inset, H: trackH}
 	v := c.Value.Get()
 	lo, hi := c.Min.Get(), c.Max.Get()
 	frac := 0.0
@@ -779,33 +803,53 @@ func (l *List) paintSlider(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	active := col.Primary
 	inactive := col.SecondaryContainer
 	handle := col.Primary
+	stop := active
 	if c.Disabled.Get() {
-		active = withAlpha(active, m3.DisabledOpacity)
-		inactive = withAlpha(inactive, m3.DisabledContainerOpacity)
-		handle = withAlpha(handle, m3.DisabledOpacity)
+		active = withAlpha(col.OnSurface, m3.DisabledOpacity)
+		inactive = withAlpha(col.OnSurface, m3.DisabledContainerOpacity)
+		handle = withAlpha(col.OnSurface, m3.DisabledOpacity)
+		stop = active
 	}
-	l.fillRect(track, inactive, 2, 0, 0, clip)
-	activeW := track.W * frac
-	l.fillRect(tree.Rect{X: track.X, Y: track.Y, W: activeW, H: track.H}, active, 2, 0, 0, clip)
 
-	// M3 expressive handle: a 4x44 rounded bar.
-	hx := track.X + activeW
-	l.Ops = append(l.Ops, Op{
-		Kind: Fill, Shape: RoundedRect,
-		Rect:   [4]float32{float32(hx - 2), float32(cy - 22), 4, 44},
-		Radius: [4]float32{2, 2, 2, 2},
-		Color:  handle,
-		Clip:   clipArr(clip),
-	})
-	// Focus halo.
-	if c.Focused || c.Hover {
+	// The handle centre; the two track segments stop 6dp away from its edge.
+	hx := track.X + track.W*frac
+	activeEnd := hx - handleW - gap
+	if activeEnd > track.X {
 		l.Ops = append(l.Ops, Op{
-			Kind: Fill, Shape: Circle,
-			Rect:  [4]float32{float32(hx - 10), float32(cy - 10), 20, 20},
-			Color: withAlpha(handle, m3.StateHover),
-			Clip:  clipArr(clip),
+			Kind: Fill, Shape: RoundedRect,
+			Rect:   [4]float32{float32(track.X), float32(track.Y), float32(activeEnd - track.X), float32(trackH)},
+			Radius: [4]float32{cornerFull, 2, 2, cornerFull},
+			Color:  active, Clip: clipArr(clip),
 		})
 	}
+	inactiveStart := hx + handleW + gap
+	if inactiveStart < track.Right() {
+		l.Ops = append(l.Ops, Op{
+			Kind: Fill, Shape: RoundedRect,
+			Rect:   [4]float32{float32(inactiveStart), float32(track.Y), float32(track.Right() - inactiveStart), float32(trackH)},
+			Radius: [4]float32{2, cornerFull, cornerFull, 2},
+			Color:  inactive, Clip: clipArr(clip),
+		})
+		l.Ops = append(l.Ops, Op{
+			Kind: Fill, Shape: Circle,
+			Rect: [4]float32{
+				float32(track.Right() - cornerFull - stopSize/2), float32(cy - stopSize/2),
+				stopSize, stopSize,
+			},
+			Color: stop, Clip: clipArr(clip),
+		})
+	}
+
+	hw := handleW * 2
+	if c.Pressed || c.Focused {
+		hw = 2
+	}
+	l.Ops = append(l.Ops, Op{
+		Kind: Fill, Shape: RoundedRect,
+		Rect:   [4]float32{float32(hx - hw/2), float32(cy - 22), float32(hw), 44},
+		Radius: [4]float32{float32(hw / 2), float32(hw / 2), float32(hw / 2), float32(hw / 2)},
+		Color:  handle, Clip: clipArr(clip),
+	})
 }
 
 func clamp01(v float64) float64 {
@@ -950,6 +994,17 @@ func (l *List) paintSearchBar(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	} else {
 		l.textIn(text, l.style("bodyLarge"), fg,
 			tree.Rect{X: r.X + 52, Y: r.Y, W: r.W - 104, H: r.H}, AlignStart, clip)
+	}
+	// Caret, so typing into the bar is visible. Search has no label band, so the
+	// caret uses the full line height.
+	if c.Focused {
+		n := minInt(c.Caret, len(c.Text.Get()))
+		x := r.X + 52 + textWidth(l, c.Text.Get()[:n], l.style("bodyLarge"))
+		l.Ops = append(l.Ops, Op{
+			Kind: Fill, Shape: RoundedRect,
+			Rect:  [4]float32{float32(x), float32(r.Y + r.H/2 - 10), 2, 20},
+			Color: col.Primary, Clip: clipArr(clip),
+		})
 	}
 	if c.Trailing.Get() != "" {
 		l.iconIn(c.Trailing.Get(), 24, hint, r.Right()-28, r.Y+r.H/2, clip)

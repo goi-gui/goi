@@ -335,10 +335,21 @@ batch. This is what the display list will feed.
   (the gallery columns use 16dp).
 - **Split button is two segments, not one pill with a divider.** M3 Expressive
   uses a 2dp gap, a 48dp menu segment and different corner radii per segment:
-  full at the outer ends, 4dp at the gap (12dp while hovered or pressed, so the
-  halves look less joined). Each segment gets its own fill, shadow and state
-  layer; the trailing segment shows `arrow_drop_down`. Both share one `Click`,
-  so pressing either segment runs the same handler.
+  full at the outer ends and 4dp at the gap. Each segment gets its own fill,
+  shadow and state layer; the trailing segment shows `arrow_drop_down`. Hover
+  and press only move the state layer, never the radii. Both segments share one
+  `Click`, so pressing either runs the same handler.
+- **Slider follows the Expressive XS geometry.** The 16dp track is split by a
+  6dp gap on each side of the handle, with full radius at the outer ends and 2dp
+  at the gap. The handle is a 4x44dp pill that narrows to 2dp while pressed or
+  focused, and the inactive end carries the 4dp stop dot. Pointer values map
+  across the handle-centre range, not the old 10dp inset.
+- **Segmented buttons are one group per contiguous run of siblings.** The
+  default is multi-select: each segment toggles, so a second click clears it.
+  `variant: single` gives radio behaviour: picking a segment clears the others,
+  and the selected segment cannot be cleared by clicking it again. The group
+  rounds only the run's outer ends, so a label next to a group does not break
+  the shape.
 - **What is intentionally shallow for now:** DatePicker and TimePicker render a
   month grid and a clock dial but do not edit a date; FABMenu renders the FAB and
   leaves its expanded item list to app content; Slider drags but has no keyboard

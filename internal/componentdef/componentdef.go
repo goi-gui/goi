@@ -171,5 +171,6 @@ func EnumValues(name string) []string {
 		"filled", "tonal", "elevated", "outlined", "text", "standard",
 		"primary", "secondary", "tertiary", "small", "large", "extended",
 		"assist", "filter", "input", "suggestion", "horizontal", "vertical",
+		"single", "multi",
 	}
 }
