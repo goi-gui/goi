@@ -200,13 +200,21 @@ func (l *List) ripple(c *tree.Component, r tree.Rect, radius float64, color uint
 	if p > 0.6 {
 		fade = 1 - (p-0.6)/0.4
 	}
+	// The disc is only clipped to its ancestors, so cut it to the component's
+	// own box and round that with the shape radius: otherwise it spills past a
+	// pill or a chip.
+	cr := intersect(clip, r)
+	rad := float32(radius)
+	if cr != r {
+		rad = 0 // a scrolled or nested edge cuts the shape; keep the cut straight
+	}
 	l.Ops = append(l.Ops, Op{
 		Kind:       Fill,
 		Shape:      Circle,
 		Rect:       [4]float32{float32(c.RippleX - size/2), float32(c.RippleY - size/2), float32(size), float32(size)},
 		Color:      withAlpha(color, m3.StatePressed*fade),
-		ClipRadius: float32(radius),
-		Clip:       clipArr(clip),
+		ClipRadius: rad,
+		Clip:       clipArr(cr),
 	})
 }
 

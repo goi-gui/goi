@@ -251,8 +251,10 @@ batch. This is what the display list will feed.
 - **Ripples are driven by the frame clock, not by the painter.** `startRipple`
   records the press point, `tick(dt)` advances a 0.45s life (expand to 60%,
   then fade) on the UI goroutine, and the state layer maps the progress to a
-  disc. The disc carries `ClipRadius` so it is rounded to the pill or card it
-  sits in; without it the corners of a pressed pill show a square edge.
+  disc. The disc is clipped to the component's own box, not only to its
+  ancestors (the page), and carries `ClipRadius` so it is rounded to the pill or
+  card it sits in; without either, the disc spills past the button while it
+  expands or shows a square edge at the corners.
   The clock is wall time clamped to 0.1s per frame, so an idle app does not
   burn frames and a stall does not skip the animation.
 - **What is intentionally shallow for now:** DatePicker and TimePicker render a

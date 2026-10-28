@@ -3,7 +3,9 @@ package paint
 import (
 	"testing"
 
+	"github.com/ksckaan1/goui/internal/layout"
 	"github.com/ksckaan1/goui/internal/m3"
+	"github.com/ksckaan1/goui/internal/tree"
 )
 
 // dump builds the list and returns it, failing on a parse error.
@@ -115,5 +117,43 @@ func TestNavigationItemStacksInWideBar(t *testing.T) {
 	}
 	if icon.Rect[1] >= label.Rect[1] {
 		t.Fatalf("icon y=%v, label y=%v: want icon above label", icon.Rect[1], label.Rect[1])
+	}
+}
+
+// TestRippleStaysInsideTheComponent guards the press feedback box: the disc is
+// wider than a pill while it expands, so clipping it to its ancestors (the
+// page) let it spill outside the button.
+func TestRippleStaysInsideTheComponent(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window {
+		Column {
+			padding: 40
+			Button { id: pill width: 200 height: 56 label: "Go" }
+		}
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 400, 400)
+	n, _ := tr.ByID("pill")
+	r := n.Base().Bounds()
+	c := n.(*tree.Button).M3()
+	c.RippleOn, c.Ripple, c.Pressed = true, 0.4, true
+	c.RippleX, c.RippleY = r.X+r.W/2, r.Y+r.H/2
+
+	l := &List{}
+	l.Build(tr, 400, 400)
+	var found bool
+	for _, op := range l.Ops {
+		if op.Shape != Circle || op.ClipRadius == 0 {
+			continue
+		}
+		found = true
+		want := [4]float32{float32(r.X), float32(r.Y), float32(r.W), float32(r.H)}
+		if op.Clip != want {
+			t.Fatalf("ripple clip = %v, want the button box %v", op.Clip, want)
+		}
+	}
+	if !found {
+		t.Fatalf("no clipped ripple op:\n%s", l.Dump())
 	}
 }
