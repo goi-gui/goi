@@ -4,6 +4,7 @@ package render
 
 import (
 	"fmt"
+	"math"
 	"unsafe"
 
 	"github.com/gogpu/gputypes"
@@ -161,11 +162,18 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 
 	let bw = in.border.w;
 	if (bw > 0.0) {
+		// The fill and the border band are disjoint, and each carries its own
+		// anti-aliased coverage. Blend them in premultiplied space, then convert
+		// back to straight alpha so neither is darkened twice at the edges.
+		// The band uses its own signed distance so a 1dp border keeps full
+		// coverage along curves instead of losing it to two clipped steps.
 		let inner = 1.0 - smoothstep(-aa, aa, d + bw);
-		let edge = max(cov - inner, 0.0);
-		let rgb = in.color.rgb * inner + in.border.rgb * edge;
-		let a = in.color.a * inner + in.border.a * edge;
-		return vec4f(rgb, a * cov);
+		let band = abs(d + bw * 0.5) - bw * 0.5;
+		let fa = in.color.a * inner;
+		let ba = in.border.a * (1.0 - smoothstep(-aa, aa, band));
+		let a = fa + ba;
+		if (a <= 0.0) { discard; }
+		return vec4f((in.color.rgb * fa + in.border.rgb * ba) / a, a);
 	}
 	return vec4f(in.color.rgb, cov * in.color.a);
 }
@@ -431,7 +439,7 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 		switch op.Kind {
 		case paint.Fill:
 			g.instances = append(g.instances, gpuInstance{
-				Rect:   op.Rect,
+				Rect:   snapRect(op.Rect, g.scale),
 				Radius: op.Radius,
 				Color:  rgba(op.Color),
 				Border: borderVec(op.BorderColor, op.BorderWidth),
@@ -441,7 +449,7 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 			})
 		case paint.Shadow:
 			g.instances = append(g.instances, gpuInstance{
-				Rect:   op.Rect,
+				Rect:   snapRect(op.Rect, g.scale),
 				Radius: op.Radius,
 				Color:  rgba(op.Color),
 				Clip:   clipVec(op.Clip),
@@ -619,6 +627,22 @@ func (g *GPU) Release() {
 
 // shapeKind maps a paint shape to the shader's kind: 0 rect, 1 circle/arc,
 // 2 shadow. Arc and Circle share the ring code.
+// snapRect rounds a box's edges to whole device pixels. A 1dp border at a
+// fractional x starts on two rows at 90% and 10% coverage, which reads as a
+// broken line; snapped, both edges land on one row each. Adjacent boxes share
+// their edges, so snapping them all keeps them flush.
+func snapRect(r [4]float32, scale float32) [4]float32 {
+	s := scale
+	if s <= 0 {
+		s = 1
+	}
+	x0 := math.Round(float64(r[0])*float64(s)) / float64(s)
+	y0 := math.Round(float64(r[1])*float64(s)) / float64(s)
+	x1 := math.Round(float64(r[0]+r[2])*float64(s)) / float64(s)
+	y1 := math.Round(float64(r[1]+r[3])*float64(s)) / float64(s)
+	return [4]float32{float32(x0), float32(y0), float32(x1 - x0), float32(y1 - y0)}
+}
+
 func shapeKind(s paint.Shape) float32 {
 	switch s {
 	case paint.Circle:

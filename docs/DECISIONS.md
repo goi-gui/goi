@@ -213,6 +213,26 @@ batch. This is what the display list will feed.
   width.** Bar and rail items stack the icon over the label; drawer items put
   them in a row. Width was a proxy that broke as soon as a bar was wide enough
   for its equal-width items to look like a drawer.
+- **A border is its own anti-aliased band.** The fill and the border are
+  disjoint coverages blended in premultiplied space and converted back to
+  straight alpha, so the shared edge is not darkened twice. The band uses its
+  own signed distance (`abs(d + bw/2) - bw/2`) rather than being the leftover of
+  the fill coverage: with the leftover, a 1dp border loses half its coverage
+  along curves and turns into a dotted line at some radii.
+- **Shape edges snap to whole device pixels in the renderer.** A 1dp border on
+  a box at `y = 113.2` covers two rows at 90% and 10%, which reads as a broken,
+  ragged line, and a 1dp divider turns into a two-row grey smear. `snapRect`
+  rounds both edges to the device grid (half a logical pixel at 2x), so a border,
+  divider or outline lands on whole rows. Neighbouring boxes snap from their
+  absolute edges, so they stay flush.
+- **Text rasterizes at device resolution and each glyph snaps to that grid.**
+  Covering a fractional box centres a run at a fractional baseline; the linear
+  sampler then smears every stem over two columns, and small or light text goes
+  grey (measured: darkest pixel 73 instead of 28 on the same label). The face is
+  created at `size * scale`, and the pen origin, each glyph's x and the baseline
+  are rounded in device pixels, so a glyph covers exactly the texels the atlas
+  holds. Advance widths keep the shaper's spacing; each glyph moves by at most
+  half a device pixel.
 - **Interaction stays in the input layer.** Hover/pressed/focused are plain
   fields on `Component`; painters draw the state layer (8/10/10% of the
   foreground), and `disabled` applies M3's 38%/12% treatment. Ripples and

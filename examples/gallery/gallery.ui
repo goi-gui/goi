@@ -25,7 +25,7 @@ Window {
 				flex: 1
 				align: start
 
-				Text { text: "Buttons" role: "titleMedium" color: #49454F }
+				Text { text: "Buttons" role: "titleMedium" }
 				Row {
 					spacing: 8
 					align: center
@@ -42,7 +42,7 @@ Window {
 					Button { label: "Disabled" disabled: true }
 				}
 
-				Text { text: "Icon buttons" role: "titleMedium" color: #49454F }
+				Text { text: "Icon buttons" role: "titleMedium" }
 				Row {
 					spacing: 8
 					align: center
@@ -52,7 +52,7 @@ Window {
 					IconButton { icon: favorite variant: outlined }
 				}
 
-				Text { text: "FAB" role: "titleMedium" color: #49454F }
+				Text { text: "FAB" role: "titleMedium" }
 				Row {
 					spacing: 12
 					align: center
@@ -61,7 +61,7 @@ Window {
 					FAB { label: "Compose" icon: edit variant: extended }
 				}
 
-				Text { text: "Split and segmented" role: "titleMedium" color: #49454F }
+				Text { text: "Split and segmented" role: "titleMedium" }
 				SplitButton { label: "Split" icon: add width: 180 }
 				Row {
 					spacing: 0
@@ -71,7 +71,7 @@ Window {
 					SegmentedButton { label: "Month" width: 90 }
 				}
 
-				Text { text: "Chips" role: "titleMedium" color: #49454F }
+				Text { text: "Chips" role: "titleMedium" }
 				Row {
 					spacing: 8
 					align: center
@@ -80,7 +80,7 @@ Window {
 					Chip { label: "Suggestion" variant: suggestion }
 				}
 
-				Text { text: "Badges" role: "titleMedium" color: #49454F }
+				Text { text: "Badges" role: "titleMedium" }
 				Row {
 					spacing: 12
 					align: center
@@ -97,20 +97,20 @@ Window {
 				align: start
 				padding: 16
 
-				Text { text: "Selection" role: "titleMedium" color: #49454F }
+				Text { text: "Selection" role: "titleMedium" }
 				Checkbox { id: check label: "Checkbox" checked: true width: 180 }
 				RadioButton { label: "Radio button" checked: true width: 180 }
 				Switch { id: switchOn label: "Switch" checked: true width: 180 }
 
-				Text { text: "Slider" role: "titleMedium" color: #49454F }
+				Text { text: "Slider" role: "titleMedium" }
 				Slider { id: slider value: 0.4 min: 0 max: 1 width: 260 }
 
-				Text { text: "Text fields" role: "titleMedium" color: #49454F }
+				Text { text: "Text fields" role: "titleMedium" }
 				TextField { id: field label: "Label" placeholder: "Filled text field" variant: filled width: 260 }
 				TextField { label: "Label" placeholder: "Outlined field" variant: outlined width: 260 }
 				TextField { label: "Email" text: "user@example.com" icon: mail variant: filled width: 260 }
 
-				Text { text: "Search" role: "titleMedium" color: #49454F }
+				Text { text: "Search" role: "titleMedium" }
 				SearchBar { placeholder: "Search components" width: 300 }
 			}
 
@@ -121,12 +121,12 @@ Window {
 				align: start
 				padding: 16
 
-				Text { text: "Cards" role: "titleMedium" color: #49454F }
+				Text { text: "Cards" role: "titleMedium" }
 				Card { label: "Elevated" supporting: "Surface container low" width: 260 height: 76 }
 				Card { label: "Filled" supporting: "Highest container" variant: filled width: 260 height: 76 }
 				Card { label: "Outlined" supporting: "1dp outline" variant: outlined width: 260 height: 76 }
 
-				Text { text: "List" role: "titleMedium" color: #49454F }
+				Text { text: "List" role: "titleMedium" }
 				List {
 					width: 280
 					ListItem { label: "List item" icon: person trailingIcon: chevron_right }
@@ -135,7 +135,7 @@ Window {
 					ListItem { label: "Selected" icon: star selected: true }
 				}
 
-				Text { text: "Tabs" role: "titleMedium" color: #49454F }
+				Text { text: "Tabs" role: "titleMedium" }
 				Tabs {
 					width: 280
 					Tab { label: "Overview" selected: true }
@@ -143,7 +143,7 @@ Window {
 					Tab { label: "Details" }
 				}
 
-				Text { text: "Progress" role: "titleMedium" color: #49454F }
+				Text { text: "Progress" role: "titleMedium" }
 				LinearProgress { value: 0.6 width: 260 }
 				Row {
 					spacing: 20
@@ -152,7 +152,7 @@ Window {
 					LoadingIndicator { }
 				}
 
-				Text { text: "Menu, snackbar, tooltip" role: "titleMedium" color: #49454F }
+				Text { text: "Menu, snackbar, tooltip" role: "titleMedium" }
 				Menu {
 					width: 220
 					MenuItem { label: "Cut" icon: content_cut }

@@ -35,7 +35,7 @@ Window {
 			padding: 16
 			align: start
 
-			Text { text: "FAB menu, button group, toolbar" role: "titleMedium" color: #49454F }
+			Text { text: "FAB menu, button group, toolbar" role: "titleMedium" }
 			Row {
 				spacing: 16
 				align: center
@@ -60,14 +60,14 @@ Window {
 				}
 			}
 
-			Text { text: "Date and time pickers" role: "titleMedium" color: #49454F }
+			Text { text: "Date and time pickers" role: "titleMedium" }
 			Row {
 				spacing: 16
 				DatePicker { label: "Select date" width: 300 height: 340 }
 				TimePicker { label: "10:15" width: 300 height: 340 }
 			}
 
-			Text { text: "Carousel" role: "titleMedium" color: #49454F }
+			Text { text: "Carousel" role: "titleMedium" }
 			Carousel {
 				width: 640
 				height: 140
@@ -79,7 +79,7 @@ Window {
 				}
 			}
 
-			Text { text: "Dialog, sheets, snackbar" role: "titleMedium" color: #49454F }
+			Text { text: "Dialog, sheets, snackbar" role: "titleMedium" }
 			Row {
 				spacing: 16
 				align: start

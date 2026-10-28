@@ -4,6 +4,7 @@ package render
 
 import (
 	"fmt"
+	"math"
 	"unsafe"
 
 	"github.com/gogpu/gputypes"
@@ -239,18 +240,25 @@ func (t *textRenderer) addOp(op paint.Op) {
 	g := t.gpu
 	lib := g.textLib
 
+	// Rasterize at the device resolution, then snap each glyph quad to the
+	// physical pixel grid. Without the snap, a centred run lands on a half
+	// pixel and the linear sampler smears every stem across two columns.
+	scale := float64(g.scale)
+	if scale <= 0 {
+		scale = 1
+	}
 	var face *text.Face
 	if op.Icon {
-		face = lib.IconFace(float64(op.FontSize))
+		face = lib.IconFace(float64(op.FontSize) * scale)
 	} else {
-		face = lib.Face(float64(op.FontSize), text.Weight(op.Weight))
+		face = lib.Face(float64(op.FontSize)*scale, text.Weight(op.Weight))
 	}
 	if face == nil {
 		return
 	}
 	out := face.Shape(op.Text)
 	penX := float64(op.TextX)
-	runW := float64(out.Advance) / 64
+	runW := float64(out.Advance) / 64 / scale
 	boxW := float64(op.BoxW)
 	switch op.Align {
 	case paint.AlignCenter:
@@ -258,17 +266,17 @@ func (t *textRenderer) addOp(op paint.Op) {
 	case paint.AlignEnd:
 		penX += boxW - runW
 	}
-	penY := float64(op.TextY)
+	penY := math.Round(float64(op.TextY) * scale)
 	col := rgba(op.Color)
 	clip := clipVec(op.Clip)
 
 	for _, gl := range out.Glyphs {
 		slot, ok := lib.Atlas().Slot(face, uint16(gl.GlyphID))
 		if ok {
-			x := penX + float64(slot.Offset.X)
-			y := penY + float64(slot.Offset.Y)
-			w := float64(slot.Rect.Dx())
-			h := float64(slot.Rect.Dy())
+			x := math.Round((penX+float64(slot.Offset.X)/scale)*scale) / scale
+			y := (penY + float64(slot.Offset.Y)) / scale
+			w := float64(slot.Rect.Dx()) / scale
+			h := float64(slot.Rect.Dy()) / scale
 			t.inst = append(t.inst, glyphInstance{
 				Rect: [4]float32{float32(x), float32(y), float32(w), float32(h)},
 				UV: [4]float32{
@@ -281,7 +289,7 @@ func (t *textRenderer) addOp(op paint.Op) {
 				Clip:  clip,
 			})
 		}
-		penX += float64(gl.Advance) / 64
+		penX += float64(gl.Advance) / 64 / scale
 	}
 	if !lib.Atlas().Dirty.Empty() {
 		t.atlasDirty = true

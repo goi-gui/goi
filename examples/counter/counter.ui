@@ -15,7 +15,6 @@ Window {
 			id: label
 			text: "0"
 			role: displayLarge
-			color: #6750A4
 		}
 
 		Row {
