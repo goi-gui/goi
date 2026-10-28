@@ -151,11 +151,12 @@ func (l *List) shadow(r tree.Rect, radius float64, dp int, clip tree.Rect) {
 	})
 }
 
-// stateLayer overlays the M3 interaction tint on a shape.
+// stateLayer overlays the M3 interaction tint and the press ripple on a shape.
 func (l *List) stateLayer(c *tree.Component, r tree.Rect, radius float64, color uint32, clip tree.Rect) {
 	if c.Disabled.Get() {
 		return
 	}
+	l.ripple(c, r, radius, color, clip)
 	a := 0.0
 	if c.Pressed {
 		a = m3.StatePressed
@@ -175,6 +176,37 @@ func (l *List) stateLayer(c *tree.Component, r tree.Rect, radius float64, color 
 		Radius: [4]float32{rad, rad, rad, rad},
 		Color:  withAlpha(color, a),
 		Clip:   clipArr(clip),
+	})
+}
+
+// ripple expands a circle from the press point over the component's shape. The
+// interactor owns the clock; paint only maps progress to geometry.
+func (l *List) ripple(c *tree.Component, r tree.Rect, radius float64, color uint32, clip tree.Rect) {
+	if !c.RippleOn || c.Ripple <= 0 {
+		return
+	}
+	// Expand over the first 60% of the life, then fade out.
+	p := c.Ripple
+	grow := p / 0.6
+	if grow > 1 {
+		grow = 1
+	}
+	grow = 1 - (1-grow)*(1-grow) // ease out
+	reach := math.Hypot(
+		maxf(c.RippleX-r.X, r.Right()-c.RippleX),
+		maxf(c.RippleY-r.Y, r.Bottom()-c.RippleY))
+	size := 2 * reach * grow
+	fade := 1.0
+	if p > 0.6 {
+		fade = 1 - (p-0.6)/0.4
+	}
+	l.Ops = append(l.Ops, Op{
+		Kind:       Fill,
+		Shape:      Circle,
+		Rect:       [4]float32{float32(c.RippleX - size/2), float32(c.RippleY - size/2), float32(size), float32(size)},
+		Color:      withAlpha(color, m3.StatePressed*fade),
+		ClipRadius: float32(radius),
+		Clip:       clipArr(clip),
 	})
 }
 

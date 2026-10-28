@@ -24,6 +24,7 @@ Window {
 				spacing: 14
 				flex: 1
 				align: start
+				scroll: true
 
 				Text { text: "Buttons" role: "titleMedium" }
 				Row {
@@ -96,6 +97,7 @@ Window {
 				flex: 1
 				align: start
 				padding: 16
+				scroll: true
 
 				Text { text: "Selection" role: "titleMedium" }
 				Checkbox { id: check label: "Checkbox" checked: true width: 180 }

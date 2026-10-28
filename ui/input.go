@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"math"
+
 	"github.com/ksckaan1/goui/internal/platform"
 	"github.com/ksckaan1/goui/internal/tree"
 )
@@ -19,6 +21,18 @@ type interactor struct {
 	// dragging marks a slider drag.
 	dragging bool
 	focus    *tree.Component
+
+	// cursor is the last pointer position; the wheel scrolls whatever is under it.
+	cursorX, cursorY float64
+	// A press inside a scroll area may turn into a drag, which cancels the click.
+	scrollNode tree.Node
+	scrollFrom float64
+	dragFromX  float64
+	dragFromY  float64
+	scrolled   bool
+
+	// ripples are the live press animations.
+	ripples []ripple
 
 	viewportW, viewportH float64
 }
@@ -46,6 +60,10 @@ func interactive(n tree.Node) bool {
 }
 
 func (i *interactor) MouseMove(x, y float64) {
+	i.cursorX, i.cursorY = x, y
+	if i.dragScroll(x, y) {
+		return
+	}
 	hit := i.hit(x, y)
 	if hit == i.hover && !i.dragging {
 		return
@@ -73,10 +91,21 @@ func (i *interactor) MouseMove(x, y float64) {
 }
 
 func (i *interactor) MouseDown(x, y float64, button int) {
+	i.cursorX, i.cursorY = x, y
 	hit := i.hit(x, y)
 	i.pressX, i.pressY = x, y
 	i.pressed = nil
 	i.dragging = false
+	i.scrolled = false
+	i.dragFromX, i.dragFromY = x, y
+	i.scrollNode = nil
+	// A press in a scroll area can become a drag; a slider keeps the pointer.
+	if hit != nil && hit.Kind() != "Slider" {
+		i.scrollNode = scrollableAt(hit)
+		if i.scrollNode != nil {
+			i.scrollFrom = i.scrollNode.Base().ScrollOffset()
+		}
+	}
 
 	// Text fields take focus wherever the press lands inside them.
 	if f := fieldAt(hit); f != nil {
@@ -96,6 +125,8 @@ func (i *interactor) MouseDown(x, y float64, button int) {
 		if hit.Kind() == "Slider" {
 			i.dragging = true
 			i.drag(x, y)
+		} else {
+			i.startRipple(hit, x, y)
 		}
 		i.markDirty()
 		return
@@ -111,6 +142,8 @@ func (i *interactor) MouseUp(x, y float64, button int) {
 	defer func() {
 		i.pressed = nil
 		i.dragging = false
+		i.scrollNode = nil
+		i.scrolled = false
 	}()
 	if i.pressed == nil {
 		i.dragging = false
@@ -178,28 +211,65 @@ func (i *interactor) activate(n tree.Node, c *tree.Component, x, y float64) {
 	i.markDirty()
 }
 
+// Scroll turns wheel and touchpad input into a scroll offset on the nearest
+// scrollable ancestor of the pointer.
 func (i *interactor) Scroll(dx, dy float64) {
-	hit := i.hit(i.lastX(), i.lastY())
-	for n := hit; n != nil; n = n.Base().Parent() {
-		if scrollable(n) {
-			c := comp(n)
-			c.ScrollY -= dy * 48
-			if c.ScrollY < 0 {
-				c.ScrollY = 0
-			}
-			n.Base().MarkDirty(tree.DirtyPaint)
-			i.markDirty()
-			return
-		}
+	n := scrollableAt(i.hit(i.cursorX, i.cursorY))
+	if n == nil {
+		return
 	}
+	b := n.Base()
+	delta := dy
+	if b.ScrollAxis() == tree.AxisX {
+		// Most mice only have a vertical wheel; use it for a horizontal area.
+		if dx == 0 {
+			dx = dy
+		}
+		delta = dx
+	}
+	b.SetScrollOffset(b.ScrollOffset() - delta*48)
+	b.MarkDirty(tree.DirtyPaint)
+	i.markDirty()
 }
 
-func scrollable(n tree.Node) bool {
-	switch n.Kind() {
-	case "List", "Menu", "NavigationDrawer", "Dialog", "DatePicker":
-		return true
+// dragScroll follows the pointer while a press inside a scroll area moves. It
+// reports whether it consumed the move, which also suppresses hover.
+func (i *interactor) dragScroll(x, y float64) bool {
+	n := i.scrollNode
+	if n == nil {
+		return false
 	}
-	return false
+	delta := y - i.dragFromY
+	if n.Base().ScrollAxis() == tree.AxisX {
+		delta = x - i.dragFromX
+	}
+	if !i.scrolled {
+		if math.Abs(delta) < 4 {
+			return false
+		}
+		// Past the slop: this is a scroll, not a click.
+		i.scrolled = true
+		if c := comp(i.pressed); c != nil && c.Pressed {
+			c.Pressed = false
+			c.Base().MarkDirty(tree.DirtyPaint)
+		}
+		i.pressed = nil
+		i.dragging = false
+	}
+	n.Base().SetScrollOffset(i.scrollFrom - delta)
+	n.Base().MarkDirty(tree.DirtyPaint)
+	i.markDirty()
+	return true
+}
+
+// scrollableAt returns the nearest node at or above n that scrolls.
+func scrollableAt(n tree.Node) tree.Node {
+	for ; n != nil; n = n.Base().Parent() {
+		if n.Base().ScrollAxis() != tree.AxisNone {
+			return n
+		}
+	}
+	return nil
 }
 
 func (i *interactor) Key(k platform.Key, mods platform.Mods) {
@@ -316,13 +386,11 @@ func walkHit(b *tree.NodeBase, ox, oy float64, x, y float64, clip tree.Rect, fou
 		H: box.H - 2*(b.Padding()+b.BorderWidth()),
 	}
 	kidClip := intersectRect(clip, inner)
-	oy2 := 0.0
-	if c := comp(b.Node()); c != nil && scrollable(b.Node()) {
-		oy2 = -c.ScrollY
-	}
+	ox2, oy2 := scrollShift(b)
 	kids := b.Kids()
 	for n := len(kids) - 1; n >= 0; n-- {
 		kb := kids[n].Bounds()
+		kb.X += ox2
 		kb.Y += oy2
 		walkHitOffset(kids[n], ox, oy, kb, x, y, kidClip, found)
 		if *found != nil {
@@ -348,13 +416,11 @@ func walkHitOffset(b *tree.NodeBase, ox, oy float64, bounds tree.Rect, x, y floa
 		H: box.H - 2*(b.Padding()+b.BorderWidth()),
 	}
 	kidClip := intersectRect(clip, inner)
-	oy2 := 0.0
-	if c := comp(b.Node()); c != nil && scrollable(b.Node()) {
-		oy2 = -c.ScrollY
-	}
+	ox2, oy2 := scrollShift(b)
 	kids := b.Kids()
 	for n := len(kids) - 1; n >= 0; n-- {
 		kb := kids[n].Bounds()
+		kb.X += ox2
 		kb.Y += oy2
 		walkHitOffset(kids[n], ox, oy, kb, x, y, kidClip, found)
 		if *found != nil {
@@ -386,8 +452,16 @@ func (i *interactor) windowH() float64 {
 	return 0
 }
 
-func (i *interactor) lastX() float64 { return i.pressX }
-func (i *interactor) lastY() float64 { return i.pressY }
+// scrollShift is how much a node's children are moved by its scroll offset.
+func scrollShift(b *tree.NodeBase) (x, y float64) {
+	switch b.ScrollAxis() {
+	case tree.AxisX:
+		return -b.ScrollOffset(), 0
+	case tree.AxisY:
+		return 0, -b.ScrollOffset()
+	}
+	return 0, 0
+}
 
 // setFocus moves keyboard focus, clearing the old field.
 func (i *interactor) setFocus(c *tree.Component) {
@@ -543,6 +617,12 @@ func absoluteRect(n tree.Node) tree.Rect {
 		pb := p.Base().Bounds()
 		x += pb.X
 		y += pb.Y
+		switch p.Base().ScrollAxis() {
+		case tree.AxisX:
+			x -= p.Base().ScrollOffset()
+		case tree.AxisY:
+			y -= p.Base().ScrollOffset()
+		}
 	}
 	return tree.Rect{X: x, Y: y, W: b.W, H: b.H}
 }

@@ -34,6 +34,7 @@ Window {
 			flex: 1
 			padding: 16
 			align: start
+			scroll: true
 
 			Text { text: "FAB menu, button group, toolbar" role: "titleMedium" }
 			Row {

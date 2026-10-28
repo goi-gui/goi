@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ksckaan1/goui/internal/layout"
+	"github.com/ksckaan1/goui/internal/paint"
 	"github.com/ksckaan1/goui/internal/tree"
 )
 
@@ -283,3 +284,129 @@ var (
 	enter     = tree.KeyEnter
 	noMods    tree.Mods
 )
+
+const scrollUI = `Window {
+	Column {
+		id: page
+		height: 100
+		scroll: true
+		Column {
+			height: 300
+			padding: 30
+			Button { id: inner width: 80 height: 40 label: "Row" }
+		}
+	}
+}`
+
+func TestWheelScrollsAndClamps(t *testing.T) {
+	_, win, in := inputFixture(t, scrollUI, 400, 400)
+	page, _ := win.tree.ByID("page")
+	in.MouseMove(50, 50)
+
+	in.Scroll(0, -1)
+	if got := page.Base().ScrollOffset(); got != 48 {
+		t.Fatalf("offset after one notch = %v, want 48", got)
+	}
+	in.Scroll(0, -100) // far past the end
+	if got := page.Base().ScrollOffset(); got != 200 {
+		t.Fatalf("offset = %v, want clamped to 200", got)
+	}
+	in.Scroll(0, 100)
+	if got := page.Base().ScrollOffset(); got != 0 {
+		t.Fatalf("offset = %v, want 0 after scrolling back", got)
+	}
+}
+
+func TestDragScrollMovesContentAndCancelsClick(t *testing.T) {
+	_, win, in := inputFixture(t, scrollUI, 400, 400)
+	page, _ := win.tree.ByID("page")
+	btn := MustByID[*Button](win, "inner")
+	clicks := 0
+	btn.OnClick(func(ClickEvent) { clicks++ })
+	b := absoluteRect(btn)
+
+	in.MouseDown(b.X+5, b.Y+5, 0)
+	in.MouseMove(b.X+5, b.Y+5-40) // drag up: content follows the pointer
+	if got := page.Base().ScrollOffset(); got != 40 {
+		t.Fatalf("offset after drag = %v, want 40", got)
+	}
+	in.MouseUp(b.X+5, b.Y+5-40, 0)
+	if clicks != 0 {
+		t.Fatalf("drag fired a click: %d", clicks)
+	}
+	if btn.Pressed {
+		t.Fatal("button stayed pressed after the drag")
+	}
+}
+
+func TestClickInsideScrollAreaStillWorks(t *testing.T) {
+	_, win, in := inputFixture(t, scrollUI, 400, 400)
+	btn := MustByID[*Button](win, "inner")
+	clicks := 0
+	btn.OnClick(func(ClickEvent) { clicks++ })
+	b := absoluteRect(btn)
+	in.MouseDown(b.X+5, b.Y+5, 0)
+	in.MouseUp(b.X+5, b.Y+5, 0)
+	if clicks != 1 {
+		t.Fatalf("clicks = %d, want 1", clicks)
+	}
+}
+
+// scrolledHit follows the offset: a child that moved up must be hit at its new
+// place, and not at the old one.
+func TestHitFollowsScroll(t *testing.T) {
+	_, win, in := inputFixture(t, scrollUI, 400, 400)
+	page, _ := win.tree.ByID("page")
+	btn := MustByID[*Button](win, "inner")
+	b := absoluteRect(btn)
+	page.Base().SetScrollOffset(30)
+	if hit := in.hit(b.X+5, b.Y+5-30); hit != btn.Base().Node() {
+		t.Fatalf("hit at the scrolled position = %v", hit)
+	}
+}
+
+const rippleUI = `Window {
+	Button { id: btn width: 120 height: 48 label: "Tap" }
+}`
+
+func TestRippleRunsAndFinishes(t *testing.T) {
+	_, win, in := inputFixture(t, rippleUI, 200, 200)
+	btn := MustByID[*Button](win, "btn")
+	b := absoluteRect(btn)
+
+	in.MouseDown(b.X+20, b.Y+10, 0)
+	c := btn.M3()
+	if !c.RippleOn {
+		t.Fatal("press did not start a ripple")
+	}
+	if !in.tick(0.1) {
+		t.Fatal("tick reported no animation")
+	}
+	if c.Ripple <= 0 || c.Ripple >= 1 {
+		t.Fatalf("progress = %v", c.Ripple)
+	}
+	if c.RippleX != b.X+20 || c.RippleY != b.Y+10 {
+		t.Fatalf("origin = %v,%v", c.RippleX, c.RippleY)
+	}
+
+	// The display list carries the expanding disc, clipped to the button shape.
+	l := &paint.List{}
+	l.Build(win.tree, 200, 200)
+	var found bool
+	for _, op := range l.Ops {
+		if op.Shape == paint.Circle && op.ClipRadius > 0 {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no ripple op:\n%s", l.Dump())
+	}
+
+	in.MouseUp(b.X+20, b.Y+10, 0)
+	if in.tick(1) {
+		t.Fatal("ripple outlived its duration")
+	}
+	if c.RippleOn {
+		t.Fatal("ripple still marked running")
+	}
+}

@@ -63,7 +63,7 @@ batch. This is what the display list will feed.
   after every reload, so app state must be declared outside it. The framework
   only carries widget-internal state (focus, TextInput value/caret, scroll
   offset) and Go-set property values whose `.ui` literal did not change.
-- **Widgets in v1:** Text, Button, TextInput. Checkbox/Scroll/Image deferred.
+- **Widgets in v1:** Text, Button, TextInput. `Image` is still deferred.
 - **`opacity` deferred** — it needs offscreen layers to be correct.
 - **Numbers are `float64`**, colors are `uint32` (0xRRGGBBAA).
 - **`visible: false`** removes the node from layout and hit-testing entirely.
@@ -235,14 +235,32 @@ batch. This is what the display list will feed.
   half a device pixel.
 - **Interaction stays in the input layer.** Hover/pressed/focused are plain
   fields on `Component`; painters draw the state layer (8/10/10% of the
-  foreground), and `disabled` applies M3's 38%/12% treatment. Ripples and
-  transitions are fields (`Anim`, `Ripple`) but nothing animates them yet.
+  foreground), and `disabled` applies M3's 38%/12% treatment.
+- **Scrolling is a common `scroll: true` property, not a Scroll element.** A
+  `Row` scrolls horizontally and every other element vertically, so the axis
+  follows the container's flow instead of a second `axis` property; the offset
+  lives on `NodeBase` (`SetScrollOffset`/`ScrollOffset`) and paint/hit-testing
+  shift children by the same amount. The content clips to the content box,
+  which is what makes the container look scrollable. The layout does not grow a
+  scroll container: it still asks for a bounded main-axis size (`flex: 1` or
+  `height`), like Flutter. `ScrollOffset` clamps on read rather than on write,
+  so an offset set before a relayout comes back when the content grows again.
+  Wheel and drag both scroll the nearest scrollable ancestor of the pointer;
+  a drag past 4dp cancels the click it started on.
+- **Ripples are driven by the frame clock, not by the painter.** `startRipple`
+  records the press point, `tick(dt)` advances a 0.45s life (expand to 60%,
+  then fade) on the UI goroutine, and the state layer maps the progress to a
+  disc. The disc carries `ClipRadius` so it is rounded to the pill or card it
+  sits in; without it the corners of a pressed pill show a square edge.
+  The clock is wall time clamped to 0.1s per frame, so an idle app does not
+  burn frames and a stall does not skip the animation.
 - **What is intentionally shallow for now:** DatePicker and TimePicker render a
   month grid and a clock dial but do not edit a date; FABMenu renders the FAB and
   leaves its expanded item list to app content; Slider drags but has no keyboard
-  handling; there is no ripple animation. These are visual and behavioural
-  follow-ups, not missing elements.
-- **Not in v1 still:** text selection, clipboard and IME; `Image`, scroll views
+  handling. There is no scrollbar, no fling/inertia and no mouse-wheel axis
+  other than the container's. These are visual and behavioural follow-ups, not
+  missing elements.
+- **Not in v1 still:** text selection, clipboard and IME; `Image`, scrollbars
   and full accessibility. The previous phase notes that say "Checkbox deferred"
   are superseded: Checkbox, RadioButton, Switch and the rest of the component set
   now exist.

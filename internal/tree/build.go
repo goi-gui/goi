@@ -172,6 +172,7 @@ func newNode(name string) Node {
 			borderW:     newProp(nil, "borderWidth", DirtyLayout, 0.0),
 			flex:        newProp(nil, "flex", DirtyLayout, 0.0),
 			alignSelf:   newProp(nil, "alignSelf", DirtyLayout, ""),
+			scroll:      newProp(nil, "scroll", DirtyPaint, false),
 			width:       newProp(nil, "width", DirtyLayout, -1.0),
 			height:      newProp(nil, "height", DirtyLayout, -1.0),
 			minWidth:    newProp(nil, "minWidth", DirtyLayout, 0.0),

@@ -33,6 +33,10 @@ type NodeBase struct {
 
 	bounds Rect
 
+	// Scroll offsets are runtime state, clamped against the content extent when
+	// read, so stale values after a relayout cannot scroll past the end.
+	scrollX, scrollY float64
+
 	// dirty is true when the node needs work; kind is the strongest of the
 	// pending kinds (layout implies paint).
 	dirty bool
@@ -44,6 +48,7 @@ type NodeBase struct {
 	borderW     Prop[float64]
 	flex        Prop[float64]
 	alignSelf   Prop[string]
+	scroll      Prop[bool]
 	width       Prop[float64]
 	height      Prop[float64]
 	minWidth    Prop[float64]

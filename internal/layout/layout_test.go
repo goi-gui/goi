@@ -298,3 +298,55 @@ func BenchmarkLayout10k(b *testing.B) {
 		e.Layout(tr.Root, 1024, 768)
 	}
 }
+
+// TestScrollExtentIsContentPastBox guards the wheel/drag clamp: a scrolling
+// column may only move as far as its children reach past the content box.
+func TestScrollExtentIsContentPastBox(t *testing.T) {
+	tr := build(t, `Window {
+		Column {
+			id: page
+			height: 100
+			padding: 10
+			scroll: true
+			Column { id: content height: 300 }
+		}
+	}`)
+	New(nil).Layout(tr.Root, 400, 400)
+	n, _ := tr.ByID("page")
+	b := n.Base()
+	// Content starts at y=10 and is 300 tall, so it ends at 310; the visible
+	// bottom of the content box is 100-10=90.
+	if got := b.ScrollMax(); got != 220 {
+		t.Fatalf("ScrollMax = %v, want 220", got)
+	}
+	b.SetScrollOffset(1000)
+	if got := b.ScrollOffset(); got != 220 {
+		t.Fatalf("clamped offset = %v, want 220", got)
+	}
+	b.SetScrollOffset(-5)
+	if got := b.ScrollOffset(); got != 0 {
+		t.Fatalf("negative offset = %v, want 0", got)
+	}
+}
+
+// TestRowScrollsHorizontally checks the axis follows the container's flow.
+func TestRowScrollsHorizontally(t *testing.T) {
+	tr := build(t, `Window {
+		Row {
+			id: strip
+			width: 100
+			scroll: true
+			Chip { label: "one" }
+			Chip { label: "two" }
+		}
+	}`)
+	New(nil).Layout(tr.Root, 400, 100)
+	n, _ := tr.ByID("strip")
+	b := n.Base()
+	if b.ScrollAxis() != tree.AxisX {
+		t.Fatalf("axis = %v, want AxisX", b.ScrollAxis())
+	}
+	if b.ScrollMax() <= 0 {
+		t.Fatalf("ScrollMax = %v, want the chips to overflow", b.ScrollMax())
+	}
+}

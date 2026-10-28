@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"sync/atomic"
+	"time"
 
 	"github.com/ksckaan1/goui/internal/layout"
 	"github.com/ksckaan1/goui/internal/m3"
@@ -27,6 +28,9 @@ type gpuDriver struct {
 	pendingW, pendingH int
 	pendingScale       float32
 	resized            bool
+
+	// lastTick drives the animations (ripples), which run on wall-clock time.
+	lastTick time.Time
 }
 
 func (a *App) initPlatform() error {
@@ -64,6 +68,7 @@ func (a *App) initWindow(w *Window) error {
 		return w
 	}
 	d.list.Theme = themeFor(w)
+	d.lastTick = time.Now()
 	d.input = &interactor{app: a, tree: w.tree}
 	pw.SetInput(d.input)
 	a.driver = d
@@ -137,6 +142,17 @@ func (a *App) frame() {
 		}
 		a.win.width = d.pendingW
 		a.win.height = d.pendingH
+	}
+
+	// Advance animations before the frame check so they can ask for a frame.
+	now := time.Now()
+	dt := now.Sub(d.lastTick).Seconds()
+	d.lastTick = now
+	if dt > 0.1 {
+		dt = 0.1 // don't jump after a long idle
+	}
+	if d.input != nil && d.input.tick(dt) {
+		a.needsFrame = true
 	}
 
 	if !a.needsFrame {

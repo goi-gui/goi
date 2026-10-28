@@ -72,6 +72,9 @@ type Op struct {
 	// Clip is the intersection of every ancestor's content box, as x, y, w, h.
 	// Ops outside it are still emitted; the renderer discards those fragments.
 	Clip [4]float32
+	// ClipRadius rounds the corners of Clip, so an op can stay inside a pill or
+	// a rounded card. 0 means a plain rectangle.
+	ClipRadius float32
 
 	// Text fields.
 	Text     string
@@ -141,12 +144,10 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 		inner.H = 0
 	}
 	childClip := intersect(clip, inner)
-	oy := 0.0
-	if c, ok := b.Node().(componentNode); ok && scrollsVertically(c.M3()) {
-		oy = -c.M3().ScrollY
-	}
+	ox, oy := scrollShift(b)
 	for _, k := range b.Kids() {
 		kb := k.Bounds()
+		kb.X += ox
 		kb.Y += oy
 		l.walkOffset(k, x, y, kb, childClip)
 	}
@@ -183,12 +184,10 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 		inner.H = 0
 	}
 	childClip := intersect(clip, inner)
-	oy := 0.0
-	if c, ok := b.Node().(componentNode); ok && scrollsVertically(c.M3()) {
-		oy = -c.M3().ScrollY
-	}
+	ox, oy := scrollShift(b)
 	for _, k := range b.Kids() {
 		kb := k.Bounds()
+		kb.X += ox
 		kb.Y += oy
 		l.walkOffset(k, x, y, kb, childClip)
 	}
@@ -201,13 +200,15 @@ type componentNode interface {
 	M3() *tree.Component
 }
 
-// scrollsVertically reports containers whose children move with ScrollY.
-func scrollsVertically(c *tree.Component) bool {
-	switch c.Node().Kind() {
-	case "List", "Menu", "NavigationDrawer", "NavigationBar", "NavigationRail", "Dialog", "DatePicker":
-		return true
+// scrollShift is how far a node's children are moved by its scroll offset.
+func scrollShift(b *tree.NodeBase) (x, y float64) {
+	switch b.ScrollAxis() {
+	case tree.AxisX:
+		return -b.ScrollOffset(), 0
+	case tree.AxisY:
+		return 0, -b.ScrollOffset()
 	}
-	return false
+	return 0, 0
 }
 
 // fillRect appends a rounded rectangle with an optional border.

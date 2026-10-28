@@ -94,6 +94,7 @@ var common = []Prop{
 	{Name: "visible", Type: TypeBool, Dirty: DirtyLayout, Default: true, Common: true},
 	{Name: "flex", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0, Common: true},
 	{Name: "alignSelf", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "", Common: true},
+	{Name: "scroll", Type: TypeBool, Dirty: DirtyPaint, Default: false, Common: true},
 }
 
 func withCommon(extra ...Prop) []Prop {

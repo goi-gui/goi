@@ -102,6 +102,15 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 	if (in.pos2.x < in.clip.x || in.pos2.y < in.clip.y ||
 	    in.pos2.x > in.clip.z || in.pos2.y > in.clip.w) { discard; }
 
+	// Optional rounded clip, so a ripple stays inside a pill or a card.
+	let clipR = in.misc.y;
+	if (clipR > 0.0) {
+		let csize = in.clip.zw - in.clip.xy;
+		let limit = min(csize.x, csize.y) * 0.5;
+		let d = sd_round_rect(in.pos2 - in.clip.xy, csize, min(clipR, limit));
+		if (d > 0.0) { discard; }
+	}
+
 	let aa = 0.5 / max(viewport.size.z, 1.0);
 	let kind = in.params.x;
 
@@ -445,7 +454,7 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 				Border: borderVec(op.BorderColor, op.BorderWidth),
 				Clip:   clipVec(op.Clip),
 				Params: [4]float32{shapeKind(op.Shape), 0, op.StartAngle, op.EndAngle},
-				Misc:   [4]float32{op.Thickness, 0, 0, 0},
+				Misc:   [4]float32{op.Thickness, op.ClipRadius, 0, 0},
 			})
 		case paint.Shadow:
 			g.instances = append(g.instances, gpuInstance{
