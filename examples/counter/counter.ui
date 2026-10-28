@@ -1,0 +1,48 @@
+// The counter example window.
+Window {
+	id: main
+	title: "Counter"
+	width: 480
+	height: 320
+	background: #1b1d22
+
+	Column {
+		padding: 24
+		spacing: 12
+		align: center
+
+		Text {
+			id: label
+			text: "0"
+			fontSize: 48
+			color: #ffffff
+		}
+
+		Button {
+			id: inc
+			text: "Increase"
+			background: #3b82f6
+			color: #ffffff
+			radius: 8
+		}
+
+		Button {
+			id: reset
+			text: "Reset"
+			background: #2a2d34
+			color: #d0d4dc
+			radius: 8
+		}
+
+		TextInput {
+			id: name
+			placeholder: "Your name"
+			width: 240
+			height: 36
+			background: #2a2d34
+			color: #ffffff
+			padding: 8
+			radius: 6
+		}
+	}
+}

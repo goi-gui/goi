@@ -37,9 +37,13 @@ type App struct {
 	driver     driver
 	quitOnce   sync.Once
 	needsFrame bool
+
+	// OnError receives rendering errors (a lost surface, a validation failure).
+	// When nil they are printed and the app keeps running.
+	OnError func(error)
 }
 
-// driver is the platform event loop. Implemented in Phase 6.
+// driver is the platform event loop.
 type driver interface {
 	// run blocks until the app quits, calling frame for each loop iteration.
 	run(frame func()) error
@@ -156,21 +160,4 @@ func (a *App) markDirty(tree.DirtyKind) {
 	if a.driver != nil {
 		a.driver.wake()
 	}
-}
-
-// initPlatform is replaced by the real GLFW/WebGPU setup on the platforms that
-// have one; the headless build leaves driver nil.
-func (a *App) initPlatform() error { return nil }
-
-// initWindow is called after the tree is built, once the platform layer exists.
-func (a *App) initWindow(w *Window) error { return nil }
-
-// frame is one loop iteration: run posted work, then layout and paint when
-// something is dirty. The platform layer calls it.
-func (a *App) frame() {
-	a.drainPosted()
-	if !a.needsFrame {
-		return
-	}
-	a.needsFrame = false
 }

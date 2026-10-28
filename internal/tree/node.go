@@ -82,6 +82,13 @@ func (b *NodeBase) Children() []Node {
 	return out
 }
 
+// Node returns the concrete node behind this base.
+func (b *NodeBase) Node() Node { return b.node }
+
+// Kids returns the child nodes without copying. Internal to the framework:
+// layout and paint walk it on the UI goroutine.
+func (b *NodeBase) Kids() []*NodeBase { return b.kids }
+
 // Bounds returns the rectangle assigned by the last layout pass, relative to
 // the parent.
 func (b *NodeBase) Bounds() Rect { return b.bounds }
