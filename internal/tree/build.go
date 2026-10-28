@@ -11,6 +11,8 @@ import (
 type Tree struct {
 	Root *Window
 	ids  map[string]Node
+	// responsive lists the nodes that declared at least one breakpoint map.
+	responsive []*NodeBase
 }
 
 // ByID returns the node with the given id.
@@ -112,9 +114,18 @@ func (t *Tree) build(el *syntax.Element, parent *NodeBase, hooks *Hooks) (Node, 
 			}
 			continue
 		}
+		if m, ok := p.Value.(*syntax.Map); ok {
+			if !b.setResponsive(p.Name, m) {
+				return nil, fmt.Errorf("%s.%s: invalid responsive value", el.Name, p.Name)
+			}
+			continue
+		}
 		if !b.SetPropLiteral(p.Name, p.Value) {
 			return nil, fmt.Errorf("%s.%s: value not valid for the property type", el.Name, p.Name)
 		}
+	}
+	if len(b.responsive) > 0 {
+		t.responsive = append(t.responsive, b)
 	}
 
 	for _, c := range el.Children() {

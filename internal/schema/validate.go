@@ -94,9 +94,50 @@ func propNames(def *Element) []string {
 	return out
 }
 
-// checkValue verifies the literal kind and records the element's id.
+// checkValue verifies the literal kind and records the element's id. A map is
+// the responsive form: one ordinary literal per breakpoint.
 func (v *validator) checkValue(e *syntax.Element, p *syntax.Property, pd *Prop) {
 	val := p.Value
+	if m, ok := val.(*syntax.Map); ok {
+		v.checkMap(e, pd, m)
+		return
+	}
+	v.checkLiteral(e, pd, val)
+}
+
+// checkMap verifies a responsive value. id is not responsive (it names a node
+// once) and maps do not nest.
+func (v *validator) checkMap(e *syntax.Element, pd *Prop, m *syntax.Map) {
+	if pd.Type == TypeID {
+		v.add(m.At, m.At+1, fmt.Sprintf("%s.%s cannot be responsive", e.Name, pd.Name), "")
+		return
+	}
+	seen := map[string]bool{}
+	for _, entry := range m.Entries {
+		keyAt, keyEnd := entry.KeyAt, entry.KeyAt+syntax.Pos(len(entry.Key))
+		if _, ok := BreakpointMin(entry.Key); !ok {
+			v.add(keyAt, keyEnd,
+				fmt.Sprintf("%s.%s has no breakpoint %q", e.Name, pd.Name, entry.Key),
+				syntax.Suggest(entry.Key, BreakpointNames()))
+			continue
+		}
+		if seen[entry.Key] {
+			v.add(keyAt, keyEnd,
+				fmt.Sprintf("%s.%s repeats the breakpoint %q", e.Name, pd.Name, entry.Key), "")
+			continue
+		}
+		seen[entry.Key] = true
+		if nested, ok := entry.Value.(*syntax.Map); ok {
+			v.add(nested.At, nested.At+1,
+				fmt.Sprintf("%s.%s: a breakpoint value cannot be another map", e.Name, pd.Name), "")
+			continue
+		}
+		v.checkLiteral(e, pd, entry.Value)
+	}
+}
+
+// checkLiteral verifies one non-map value against the property type.
+func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) {
 	at, end := val.Pos(), val.Pos()+1
 	fail := func(want string) {
 		v.add(at, end, fmt.Sprintf("%s.%s expects %s, got %s", e.Name, pd.Name, want, kindName(val)), "")
@@ -189,6 +230,8 @@ func kindName(val syntax.Value) string {
 		return "a color"
 	case syntax.IdentKind:
 		return "an identifier"
+	case syntax.MapKind:
+		return "a map"
 	}
 	return "an unknown value"
 }

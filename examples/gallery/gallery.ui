@@ -93,7 +93,7 @@ Window {
 
 				Text { text: "Grid and wrap" role: "titleMedium" }
 				Grid {
-					columns: 2
+					columns: { base: 1, md: 2 }
 					spacing: 8
 					Card { label: "Grid" supporting: "Cell one" height: 72 variant: filled }
 					Card { label: "Grid" supporting: "Cell two" height: 72 }

@@ -476,3 +476,29 @@ func TestGridContainerChildFillsCell(t *testing.T) {
 	// The grid stretches to the column, so each cell is (208-8)/2 = 100.
 	want(t, bounds(t, tr, "a"), 0, 0, 100, 8)
 }
+
+func TestResponsiveGridColumns(t *testing.T) {
+	tr := build(t, `Window {
+		Grid {
+			width: 300
+			spacing: 10
+			columns: { base: 1, md: 3 }
+			Text { id: a height: 10 }
+			Text { id: b height: 10 }
+			Text { id: c height: 10 }
+		}
+	}`)
+	e := New(nil)
+
+	tr.ApplyBreakpoints(500)
+	e.Layout(tr.Root, 300, 200)
+	want(t, bounds(t, tr, "a"), 0, 0, 300, 10)
+	want(t, bounds(t, tr, "b"), 0, 20, 300, 10)
+	want(t, bounds(t, tr, "c"), 0, 40, 300, 10)
+
+	tr.ApplyBreakpoints(800)
+	e.Layout(tr.Root, 300, 200)
+	want(t, bounds(t, tr, "a"), 0, 0, 93.333, 10)
+	want(t, bounds(t, tr, "b"), 103.333, 0, 93.333, 10)
+	want(t, bounds(t, tr, "c"), 206.666, 0, 93.333, 10)
+}

@@ -288,6 +288,17 @@ batch. This is what the display list will feed.
   beyond the sum of their cells. Their height depends on the width they actually
   receive, so the layout recomputes it after the cross size is known rather than
   trusting the parent's available width.
+- **Responsive properties are maps, applied by the frame loop.** A property may
+  be `{ base: ..., sm: ..., md: ..., lg: ..., xl: ... }` on Tailwind's min-width
+  scale (640/768/1024/1280 logical px). The builder records the map and applies
+  `base` immediately, so a headless tree and the initial window size are
+  sensible; `Tree.ApplyBreakpoints(width)` then picks the largest tier at or
+  below the width and marks the node dirty only when the value actually changes.
+  `id` stays scalar, maps do not nest, and the node's pre-map value (its
+  constructor or schema default) is the fallback when `base` is absent. The file
+  owns a responsive property: `Prop.Set` cannot win, because the next frame
+  rewrites it. Maps are syntax, not a new property type, so every existing
+  element accepts them without schema changes.
 - **Only surfaces clip their children, not layout flow.** `NodeBase.ClipsChildren`
   is true for scroll viewports, `Window`, `Stack` and painted components; `Column`,
   `Row`, `Toolbar` and `ButtonGroup` let content spill. Clipping every node to its

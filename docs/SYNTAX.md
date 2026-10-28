@@ -32,7 +32,9 @@ File      = Element EOF
 Element   = Ident "{" { Member } "}"
 Member    = Property | Element
 Property  = Ident ":" Value [";"]
-Value     = String | Number | Bool | Color | Ident
+Value     = String | Number | Bool | Color | Ident | Map
+Map       = "{" [ MapEntry { "," MapEntry } [","] ] "}"
+MapEntry  = Ident ":" Value
 ```
 
 Newlines are not tokens. A member is a property when the identifier is followed
@@ -48,6 +50,7 @@ by `:` and a child element when it is followed by `{`, so `name: value` and
 | `480`, `32.5`, `-1` | number | one numeric type everywhere (`float64`) |
 | `true`, `false` | bool | |
 | `#rgb`, `#rrggbb`, `#rrggbbaa` | color | alpha defaults to `ff`; `"#rrggbb"` quoted also works |
+| `{ base: 8, md: 16 }` | map | responsive value, one entry per breakpoint |
 
 ## Elements
 
@@ -105,13 +108,52 @@ values and overrides the parent's `align` for one child.
 `width` and `height` default to `-1`, meaning automatic. `visible: false`
 removes the element from layout and from hit-testing entirely.
 
+## Responsive values
+
+Any property except `id` also accepts a map keyed by breakpoint:
+
+```
+Column {
+    padding: { base: 8, md: 16 }
+    Grid {
+        columns: { base: 1, md: 2, lg: 3 }
+        Card { label: "One" }
+        Card { label: "Two" }
+    }
+}
+```
+
+Breakpoints are min-widths in logical pixels, like Tailwind. The entry with the
+largest minimum that is not above the window width wins.
+
+| Tier | Applies from |
+|---|---|
+| `base` | 0 |
+| `sm` | 640 |
+| `md` | 768 |
+| `lg` | 1024 |
+| `xl` | 1280 |
+
+`{ base: 1, md: 2, lg: 3 }` is therefore 1 below 768, 2 from 768 and 3 from
+1024. The `base` entry, when present, is applied as soon as the file is loaded,
+so it also sizes the initial window when used on `Window.width`.
+
+`base` is optional. Without it the property keeps its normal default below the
+lowest tier that is present. `id` cannot be responsive and a tier cannot contain
+another map.
+
+The tree stores the map; the frame loop rewrites those properties before layout
+whenever the window width changes. The file owns a responsive property: a value
+set from Go with `Prop.Set` is replaced on the next frame.
+
 ## Rules and diagnostics
 
 - Exactly one root element, and it must be `Window`.
 - `id` must match `[a-z][A-Za-z0-9_]*` and be unique within the file.
-- Unknown element, unknown property, wrong literal type, unknown enum value and
-  duplicate ids are errors, each reported with `file:line:col`, the offending
-  line and a caret. A small edit distance adds a "did you mean" hint.
+- Unknown element, unknown property, wrong literal type, unknown enum value,
+  unknown or repeated breakpoint, nested map, responsive `id` and duplicate ids
+  are errors, each reported with `file:line:col`, the offending line and a
+  caret. A small edit distance adds a "did you mean" hint.
 - The parser recovers, so one typo does not hide the rest of the file.
 
 ## What is not in v1

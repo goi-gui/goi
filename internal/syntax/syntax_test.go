@@ -225,3 +225,52 @@ func FuzzParse(f *testing.F) {
 		}
 	})
 }
+
+func TestParseResponsiveMap(t *testing.T) {
+	f, diag := Parse([]byte(`Window {
+		width: { base: 320, md: 480, lg: 640 }
+		background: { md: #123456 }
+	}`))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	m, ok := f.Root.Prop("width").Value.(*Map)
+	if !ok {
+		t.Fatalf("width = %T, want *Map", f.Root.Prop("width").Value)
+	}
+	if len(m.Entries) != 3 {
+		t.Fatalf("entries = %d", len(m.Entries))
+	}
+	if m.Entries[0].Key != "base" || m.Entries[0].Value.(*Number).Val != 320 {
+		t.Fatalf("first entry = %+v", m.Entries[0])
+	}
+	if m.Entries[2].Key != "lg" || m.Entries[2].Value.(*Number).Val != 640 {
+		t.Fatalf("last entry = %+v", m.Entries[2])
+	}
+	bg, ok := f.Root.Prop("background").Value.(*Map)
+	if !ok || bg.Entries[0].Value.(*Color).RGBA != 0x123456FF {
+		t.Fatalf("background = %#v", f.Root.Prop("background").Value)
+	}
+	if got := Dump(f); !strings.Contains(got, "width = { base: 320, md: 480, lg: 640 }") {
+		t.Fatalf("dump:\n%s", got)
+	}
+}
+
+func TestParseMapTrailingCommaAndSpaces(t *testing.T) {
+	f, diag := Parse([]byte(`Window {
+		width: {
+			base: 1,
+			md: 2,
+		}
+		height: {}
+	}`))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	if m := f.Root.Prop("width").Value.(*Map); len(m.Entries) != 2 {
+		t.Fatalf("entries = %d", len(m.Entries))
+	}
+	if m := f.Root.Prop("height").Value.(*Map); len(m.Entries) != 0 {
+		t.Fatalf("height entries = %d", len(m.Entries))
+	}
+}

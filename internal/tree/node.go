@@ -62,6 +62,8 @@ type NodeBase struct {
 	byName map[string]int
 	hooks  *Hooks
 	AST    *syntax.Element // the element this node was built from
+	// responsive holds properties declared as a breakpoint map.
+	responsive []responsiveProp
 }
 
 // NodeBase returns the node's shared state.

@@ -74,6 +74,11 @@ func TestDiagnosticCases(t *testing.T) {
 		{"leaf with child", `Window { Rectangle { Text { } } }`, "cannot contain", ""},
 		{"bad color literal", `Window { background: #12345 }`, "color must be", ""},
 		{"bad enum type", `Window { Column { align: 3 } }`, "expects an identifier", ""},
+		{"unknown breakpoint", `Window { width: { md: 1, xxl: 2 } }`, "no breakpoint", "xl"},
+		{"bad breakpoint value", `Window { width: { md: "wide" } }`, "expects a number", ""},
+		{"nested map", `Window { width: { md: { base: 1 } } }`, "cannot be another map", ""},
+		{"responsive id", `Window { Text { id: { md: a } } }`, "cannot be responsive", ""},
+		{"repeated breakpoint", `Window { width: { md: 1, md: 2 } }`, "repeats the breakpoint", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -97,6 +102,17 @@ func TestDiagnosticCases(t *testing.T) {
 				t.Fatalf("diagnostics %q missing hint %q", msg, tc.hint)
 			}
 		})
+	}
+}
+
+func TestResponsiveValues(t *testing.T) {
+	_, diag := validate(t, `Window {
+		width: { base: 320, md: 480, lg: 640 }
+		background: { md: #123456 }
+		Column { padding: { sm: 8 } align: { lg: center } }
+	}`)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
 	}
 }
 

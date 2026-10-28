@@ -70,6 +70,8 @@ make scroll    # scrolling page, horizontal strip, ripple
 - Layout: Column, Row, Stack, Wrap and Grid, flex grow and shrink, padding,
   margin, min/max width, and `scroll: true` on any container (Row sideways, the
   rest down).
+- Responsive values per property: `padding: { base: 8, md: 16 }`, with
+  Tailwind's `sm`/`md`/`lg`/`xl` min-width breakpoints applied on resize.
 - Rendering: instanced SDF rounded rects, circles, arcs and shadows with borders
   and anti-aliasing, text through HarfBuzz-quality shaping and a grayscale
   atlas, HiDPI aware.

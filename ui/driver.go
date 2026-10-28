@@ -155,6 +155,10 @@ func (a *App) frame() {
 		a.needsFrame = true
 	}
 
+	// Responsive properties follow the window width. Applying them marks the
+	// tree dirty when a value changes, so this runs before the frame check.
+	a.win.tree.ApplyBreakpoints(float64(d.pendingW) / float64(maxScale(d.pendingScale)))
+
 	if !a.needsFrame {
 		return
 	}

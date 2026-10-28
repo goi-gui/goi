@@ -18,6 +18,7 @@ const (
 	tokLBrace
 	tokRBrace
 	tokColon
+	tokComma
 	tokSemicolon
 	tokBool
 	tokError
@@ -62,6 +63,9 @@ func (l *lexer) run() ([]token, Diagnostics) {
 		case c == ':':
 			l.off++
 			l.emit(token{kind: tokColon, pos: Pos(start), end: Pos(l.off)})
+		case c == ',':
+			l.off++
+			l.emit(token{kind: tokComma, pos: Pos(start), end: Pos(l.off)})
 		case c == ';':
 			l.off++
 			l.emit(token{kind: tokSemicolon, pos: Pos(start), end: Pos(l.off)})

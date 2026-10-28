@@ -84,10 +84,11 @@ const (
 	BoolKind
 	ColorKind
 	IdentKind
+	MapKind
 )
 
 // Value is a property literal. The concrete type is one of *String,
-// *Number, *Bool, *Color or *Ident.
+// *Number, *Bool, *Color, *Ident or *Map.
 type Value interface {
 	Kind() ValueKind
 	Pos() Pos
@@ -124,6 +125,19 @@ type Ident struct {
 	Val string
 }
 
+// Map is `{ key: value, ... }`, the responsive form of a property value.
+type Map struct {
+	At      Pos
+	Entries []MapEntry
+}
+
+// MapEntry is one `key: value` pair inside a Map.
+type MapEntry struct {
+	Key   string
+	KeyAt Pos
+	Value Value
+}
+
 // Kind implementations.
 
 func (s *String) Kind() ValueKind { return StringKind }
@@ -131,6 +145,7 @@ func (n *Number) Kind() ValueKind { return NumberKind }
 func (b *Bool) Kind() ValueKind   { return BoolKind }
 func (c *Color) Kind() ValueKind  { return ColorKind }
 func (i *Ident) Kind() ValueKind  { return IdentKind }
+func (m *Map) Kind() ValueKind    { return MapKind }
 
 // Pos implementations.
 
@@ -139,3 +154,4 @@ func (n *Number) Pos() Pos { return n.At }
 func (b *Bool) Pos() Pos   { return b.At }
 func (c *Color) Pos() Pos  { return c.At }
 func (i *Ident) Pos() Pos  { return i.At }
+func (m *Map) Pos() Pos    { return m.At }

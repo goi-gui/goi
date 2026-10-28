@@ -115,7 +115,7 @@ func (p *parser) parseElement() *Element {
 		case tokRBrace:
 			el.Close = p.next().pos
 			return el
-		case tokSemicolon:
+		case tokSemicolon, tokComma:
 			p.next() // stray separators are harmless
 			continue
 		case tokIdent:
@@ -164,7 +164,6 @@ func (p *parser) parseProperty() (*Property, bool) {
 		p.sync()
 		return nil, false
 	}
-	p.next()
 	prop.Value = v
 
 	// Optional `;`. A newline also terminates a property, and newlines are not
@@ -179,15 +178,22 @@ func (p *parser) parseValue() (Value, bool) {
 	t := p.peek()
 	switch t.kind {
 	case tokString:
+		p.next()
 		return &String{At: t.pos, Val: t.text}, true
 	case tokNumber:
+		p.next()
 		return &Number{At: t.pos, Val: t.num}, true
 	case tokBool:
+		p.next()
 		return &Bool{At: t.pos, Val: t.b}, true
 	case tokColor:
+		p.next()
 		return &Color{At: t.pos, RGBA: t.rgba}, true
 	case tokIdent:
+		p.next()
 		return &Ident{At: t.pos, Val: t.text}, true
+	case tokLBrace:
+		return p.parseMap()
 	case tokError:
 		// The lexer already reported this; stay quiet so the file does not
 		// produce two diagnostics for one typo.
@@ -198,5 +204,70 @@ func (p *parser) parseValue() (Value, bool) {
 	default:
 		p.errorf(t, "expected a value")
 		return nil, false
+	}
+}
+
+// parseMap parses `{ key: value, ... }`, the responsive form of a value.
+func (p *parser) parseMap() (Value, bool) {
+	open := p.next()
+	m := &Map{At: open.pos}
+	for {
+		t := p.peek()
+		switch t.kind {
+		case tokEOF:
+			p.errorf(t, "unexpected end of file: missing '}' in value")
+			return nil, false
+		case tokRBrace:
+			p.next()
+			return m, true
+		case tokComma, tokSemicolon:
+			p.next()
+		case tokIdent:
+			key := p.next()
+			if p.peek().kind != tokColon {
+				p.errorf(p.peek(), "expected ':' after a map key")
+				p.skipEntry()
+				continue
+			}
+			p.next()
+			v, ok := p.parseValue()
+			if !ok {
+				p.skipEntry()
+				continue
+			}
+			m.Entries = append(m.Entries, MapEntry{Key: key.text, KeyAt: key.pos, Value: v})
+		default:
+			p.errorf(t, "expected a map key")
+			p.skipEntry()
+		}
+	}
+}
+
+// skipEntry advances to the next map entry boundary after a broken one.
+func (p *parser) skipEntry() {
+	for {
+		switch p.peek().kind {
+		case tokEOF, tokRBrace, tokComma:
+			return
+		case tokLBrace:
+			depth := 0
+			for {
+				t := p.next()
+				if t.kind == tokEOF {
+					return
+				}
+				if t.kind == tokLBrace {
+					depth++
+				}
+				if t.kind == tokRBrace {
+					depth--
+					if depth == 0 {
+						return
+					}
+				}
+			}
+		default:
+			p.next()
+		}
 	}
 }

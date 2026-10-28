@@ -42,6 +42,15 @@ func dumpValue(v Value) string {
 		return fmt.Sprintf("#%08x", v.RGBA)
 	case *Ident:
 		return v.Val
+	case *Map:
+		parts := make([]string, len(v.Entries))
+		for i, e := range v.Entries {
+			parts[i] = e.Key + ": " + dumpValue(e.Value)
+		}
+		if len(parts) == 0 {
+			return "{}"
+		}
+		return "{ " + strings.Join(parts, ", ") + " }"
 	}
 	return "?"
 }
