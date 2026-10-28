@@ -5,6 +5,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/ksckaan1/goui/internal/hotreload"
 	"github.com/ksckaan1/goui/internal/tree"
 )
 
@@ -37,6 +38,8 @@ type App struct {
 	driver     driver
 	quitOnce   sync.Once
 	needsFrame bool
+
+	watcher *hotreload.Reloader
 
 	// OnError receives rendering errors (a lost surface, a validation failure).
 	// When nil they are printed and the app keeps running.
@@ -99,6 +102,11 @@ func (a *App) LoadWindow(path string, opts ...Option) (*Window, error) {
 	if err := a.initWindow(w); err != nil {
 		return nil, err
 	}
+	if o.HotReload {
+		if err := a.enableWatcher(); err != nil {
+			return nil, err
+		}
+	}
 	return w, nil
 }
 
@@ -142,6 +150,18 @@ func (a *App) Run() error {
 		return fmt.Errorf("ui: Run needs a platform driver (use NewApp)")
 	}
 	return a.driver.run(a.frame)
+}
+
+// Close releases the file watcher and platform resources. Run calls it on exit;
+// call it yourself only when you never call Run.
+func (a *App) Close() {
+	if a.watcher != nil {
+		a.watcher.Close()
+		a.watcher = nil
+	}
+	if a.driver != nil {
+		a.driver.close()
+	}
 }
 
 // Quit stops the event loop.

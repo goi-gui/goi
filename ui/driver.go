@@ -102,6 +102,10 @@ func (d *gpuDriver) close() {
 		return
 	}
 	d.closing = true
+	if d.app.watcher != nil {
+		d.app.watcher.Close()
+		d.app.watcher = nil
+	}
 	if d.gpu != nil {
 		d.gpu.Release()
 		d.gpu = nil

@@ -20,6 +20,9 @@ type Prop[T comparable] struct {
 	name  string
 	dirty DirtyKind
 	val   T
+	// goSet marks a value written by Go code, so hot reload knows it should not
+	// be reverted to the .ui literal.
+	goSet bool
 }
 
 func newProp[T comparable](owner *NodeBase, name string, dirty DirtyKind, def T) Prop[T] {
@@ -35,6 +38,7 @@ func (p *Prop[T]) Set(v T) {
 		return
 	}
 	p.val = v
+	p.goSet = true
 	if p.base != nil {
 		p.base.mark(p.dirty)
 	}
@@ -80,6 +84,16 @@ type NamedProp struct {
 	// SetLiteral applies a parsed literal, reporting false when the literal is
 	// not valid for the property type.
 	SetLiteral func(syntax.Value) bool
+	// CopyFrom copies the value of another node's property of the same name and
+	// type. Hot reload uses it to carry Go-set values across a reload.
+	CopyFrom func(NamedProp) bool
+	// goSet reports whether Go changed this property.
+	goSet func() bool
+}
+
+// GoSet reports whether Go code changed this property since the tree was built.
+func (p NamedProp) GoSet() bool {
+	return p.goSet != nil && p.goSet()
 }
 
 // StringProp builds a NamedProp for a string cell.
@@ -99,6 +113,15 @@ func StringProp(b *NodeBase, name string, p *Prop[string]) NamedProp {
 			}
 			return true
 		},
+		CopyFrom: func(src NamedProp) bool {
+			v, ok := src.Get().(string)
+			if !ok {
+				return false
+			}
+			p.val = v
+			return true
+		},
+		goSet: func() bool { return p.goSet },
 	}
 }
 
@@ -117,6 +140,15 @@ func NumberProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[float64]) Nam
 			p.val = n.Val
 			return true
 		},
+		CopyFrom: func(src NamedProp) bool {
+			v, ok := src.Get().(float64)
+			if !ok {
+				return false
+			}
+			p.val = v
+			return true
+		},
+		goSet: func() bool { return p.goSet },
 	}
 }
 
@@ -135,6 +167,15 @@ func BoolProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[bool]) NamedPro
 			p.val = b.Val
 			return true
 		},
+		CopyFrom: func(src NamedProp) bool {
+			v, ok := src.Get().(bool)
+			if !ok {
+				return false
+			}
+			p.val = v
+			return true
+		},
+		goSet: func() bool { return p.goSet },
 	}
 }
 
@@ -160,6 +201,15 @@ func ColorProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[uint32]) Named
 			}
 			return true
 		},
+		CopyFrom: func(src NamedProp) bool {
+			v, ok := src.Get().(uint32)
+			if !ok {
+				return false
+			}
+			p.val = v
+			return true
+		},
+		goSet: func() bool { return p.goSet },
 	}
 }
 
@@ -188,6 +238,20 @@ func EnumProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[string], allowe
 			}
 			return false
 		},
+		CopyFrom: func(src NamedProp) bool {
+			v, ok := src.Get().(string)
+			if !ok {
+				return false
+			}
+			for _, a := range allowed {
+				if v == a {
+					p.val = v
+					return true
+				}
+			}
+			return false
+		},
+		goSet: func() bool { return p.goSet },
 	}
 }
 

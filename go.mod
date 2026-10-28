@@ -11,6 +11,7 @@ require (
 )
 
 require (
+	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/go-webgpu/goffi v0.6.3 // indirect
 	github.com/go-webgpu/webgpu v0.5.5 // indirect
 	github.com/gogpu/gpucontext v0.31.3 // indirect
