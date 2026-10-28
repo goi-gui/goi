@@ -130,6 +130,10 @@ func (f *Face) Measure(s string, maxWidth float64) (w, h float64) {
 	if maxWidth <= 0 || adv <= maxWidth {
 		return adv, f.LineHeight()
 	}
+	// shortcut: line count is total advance divided by the wrap width, which is
+	// right for Latin prose and wrong when one word is wider than the column.
+	// Upgrade to real line breaking (go-text/typesetting/segmenter) when Text
+	// gains multi-line rendering.
 	lines := int(adv/maxWidth) + 1
 	return maxWidth, float64(lines) * f.LineHeight()
 }

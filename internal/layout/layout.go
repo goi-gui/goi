@@ -26,8 +26,9 @@ func (FakeMeasurer) Measure(text string, fontSize, maxWidth float64) (float64, f
 	}
 	w := float64(len(text)) * fontSize * 0.5
 	h := fontSize * 1.2
-	// shortcut: no real line breaking; wrapping only clamps the width, so the
-	// height is right for a single line. The text package replaces this.
+	// shortcut: FakeMeasurer is line-agnostic, so wrapped text gets a single-line
+	// height. Real measuring (internal/text) handles wrapping; upgrade this if a
+	// test needs multi-line heights without a font.
 	if maxWidth > 0 && w > maxWidth {
 		w = maxWidth
 	}

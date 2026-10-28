@@ -80,7 +80,7 @@ func (a *Atlas) alloc(w, h int) (image.Rectangle, bool) {
 		a.shelfH = 0
 	}
 	if a.penY+h > a.H {
-		return image.Rectangle{}, false // shortcut: no eviction; see Phase 8 notes
+		return image.Rectangle{}, false // shortcut: no atlas eviction; glyphs stop appearing once the 1024² atlas is full. Upgrade when a real app hits it (many sizes × many scripts).
 	}
 	r := image.Rect(a.penX, a.penY, a.penX+w, a.penY+h)
 	a.penX += w + 1

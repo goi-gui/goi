@@ -287,7 +287,7 @@ func (i *interactor) caretFromPoint(ti *tree.TextInput, x float64) {
 	b := ti.Base().Bounds()
 	ox := absoluteX(ti)
 	rel := x - ox - b.X
-	// shortcut: 8px per byte; the text package will provide real hit testing.
+	// shortcut: caret placement assumes 8px per byte instead of shaped advances, so a click inside a proportional glyph lands on the nearest byte. Upgrade when selection lands.
 	idx := int(rel / 8)
 	s := ti.Text.Get()
 	if idx < 0 {

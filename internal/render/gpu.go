@@ -20,6 +20,7 @@ struct Instance {
 	radius: vec4f,  // tl, tr, br, bl
 	color: vec4f,
 	border: vec4f,  // rgb + width
+	clip: vec4f,    // x0, y0, x1, y1 in logical pixels
 }
 
 struct Viewport {
@@ -36,6 +37,8 @@ struct VSOut {
 	@location(2) radius: vec4f,
 	@location(3) color: vec4f,
 	@location(4) border: vec4f,
+	@location(5) clip: vec4f,
+	@location(6) pos2: vec2f,
 }
 
 @vertex
@@ -54,6 +57,8 @@ fn vs_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
 	out.radius = inst.radius;
 	out.color = inst.color;
 	out.border = inst.border;
+	out.clip = inst.clip;
+	out.pos2 = p;
 	return out;
 }
 
@@ -70,6 +75,10 @@ fn corner_radius(r: vec4f, p: vec2f, s: vec2f) -> f32 {
 
 @fragment
 fn fs_main(in: VSOut) -> @location(0) vec4f {
+	// Hard clip against the node's content box, matching a scissor rectangle.
+	if (in.pos2.x < in.clip.x || in.pos2.y < in.clip.y ||
+	    in.pos2.x > in.clip.z || in.pos2.y > in.clip.w) { discard; }
+
 	let r = corner_radius(in.radius, in.local, in.size);
 	let h = in.size * 0.5;
 	let q = abs(in.local - h) - (h - vec2f(r));
@@ -98,6 +107,7 @@ type gpuInstance struct {
 	Radius [4]float32
 	Color  [4]float32
 	Border [4]float32
+	Clip   [4]float32
 }
 
 // GPU is the WebGPU renderer.
@@ -271,6 +281,7 @@ func (g *GPU) initPipeline() error {
 		{Format: gputypes.VertexFormatFloat32x4, Offset: 16, ShaderLocation: 1},
 		{Format: gputypes.VertexFormatFloat32x4, Offset: 32, ShaderLocation: 2},
 		{Format: gputypes.VertexFormatFloat32x4, Offset: 48, ShaderLocation: 3},
+		{Format: gputypes.VertexFormatFloat32x4, Offset: 64, ShaderLocation: 4},
 	}
 	g.pipeline, err = g.device.CreateRenderPipeline(&wgpu.RenderPipelineDescriptor{
 		Label:  "sdf",
@@ -330,9 +341,9 @@ func (g *GPU) Resize(width, height int, scale float32) error {
 	})
 }
 
-// Render converts the display list to instances, uploads them and draws.
-// shortcut: one instance per op, one draw call, no batching across clips yet.
-// The renderer ignores clipping for now; nested content is clipped by layout.
+// Render converts the display list to instances, uploads them and draws. The
+// clip rectangle travels with each instance and is applied in the fragment
+// shader, so the whole frame is one draw call per pipeline.
 func (g *GPU) Render(list *paint.List, width, height int) error {
 	if g.closed || width <= 0 || height <= 0 {
 		return nil
@@ -344,22 +355,29 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 	}
 
 	g.instances = g.instances[:0]
+	if g.text != nil {
+		g.text.inst = g.text.inst[:0]
+	}
 	for _, op := range list.Ops {
-		if op.Kind != paint.Fill {
-			continue // text arrives with the text package
+		switch op.Kind {
+		case paint.Fill:
+			border := rgba(op.BorderColor)
+			border[3] = op.BorderWidth
+			if op.BorderColor == 0 || op.BorderWidth <= 0 {
+				border[3] = 0
+			}
+			g.instances = append(g.instances, gpuInstance{
+				Rect:   op.Rect,
+				Radius: op.Radius,
+				Color:  rgba(op.Color),
+				Border: border,
+				Clip:   clipRect(op.Clip),
+			})
+		case paint.Text:
+			if g.text != nil {
+				g.text.addOp(op)
+			}
 		}
-		border := rgba(op.BorderColor)
-		border[3] = op.BorderWidth
-		inst := gpuInstance{
-			Rect:   op.Rect,
-			Radius: op.Radius,
-			Color:  rgba(op.Color),
-			Border: border,
-		}
-		if op.BorderColor == 0 || op.BorderWidth <= 0 {
-			inst.Border[3] = 0
-		}
-		g.instances = append(g.instances, inst)
 	}
 	if len(g.instances) > g.capacity {
 		if err := g.grow(len(g.instances)); err != nil {
@@ -380,16 +398,12 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 			return err
 		}
 	}
-
-	if g.text != nil {
-		g.text.build(g, list)
-		if len(g.text.inst) > 0 {
-			if err := g.text.upload(g); err != nil {
-				return err
-			}
-			if err := g.queue.WriteBuffer(g.text.storage, 0, glyphsToBytes(g.text.inst)); err != nil {
-				return err
-			}
+	if g.text != nil && len(g.text.inst) > 0 {
+		if err := g.text.upload(g); err != nil {
+			return err
+		}
+		if err := g.queue.WriteBuffer(g.text.storage, 0, glyphsToBytes(g.text.inst)); err != nil {
+			return err
 		}
 	}
 
@@ -412,7 +426,7 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 			View:       view,
 			LoadOp:     gputypes.LoadOpClear,
 			StoreOp:    gputypes.StoreOpStore,
-			ClearValue: gputypes.Color{R: 1, G: 0, B: 1, A: 1},
+			ClearValue: gputypes.Color{R: 0, G: 0, B: 0, A: 1},
 		}},
 	})
 	if err != nil {
@@ -444,6 +458,11 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 		return fmt.Errorf("present: %w", err)
 	}
 	return nil
+}
+
+// clipRect converts a display-list clip to x0, y0, x1, y1.
+func clipRect(c [4]float32) [4]float32 {
+	return [4]float32{c[0], c[1], c[0] + c[2], c[1] + c[3]}
 }
 
 // grow reallocates the instance buffer and its bind group.

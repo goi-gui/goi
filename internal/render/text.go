@@ -17,6 +17,7 @@ struct GlyphInstance {
 	rect: vec4f,  // x, y, w, h in logical pixels
 	uv: vec4f,    // u0, v0, u1, v1
 	color: vec4f,
+	clip: vec4f,  // x0, y0, x1, y1
 }
 
 struct Viewport {
@@ -32,6 +33,8 @@ struct VSOut {
 	@builtin(position) pos: vec4f,
 	@location(0) uv: vec2f,
 	@location(1) color: vec4f,
+	@location(2) clip: vec4f,
+	@location(3) pos2: vec2f,
 }
 
 @vertex
@@ -47,11 +50,15 @@ fn vs_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
 	out.pos = vec4f(p.x / viewport.size.x * 2.0 - 1.0, 1.0 - p.y / viewport.size.y * 2.0, 0.0, 1.0);
 	out.uv = mix(inst.uv.xy, inst.uv.zw, c);
 	out.color = inst.color;
+	out.clip = inst.clip;
+	out.pos2 = p;
 	return out;
 }
 
 @fragment
 fn fs_main(in: VSOut) -> @location(0) vec4f {
+	if (in.pos2.x < in.clip.x || in.pos2.y < in.clip.y ||
+	    in.pos2.x > in.clip.z || in.pos2.y > in.clip.w) { discard; }
 	let a = textureSample(atlas, samp, in.uv).r;
 	return vec4f(in.color.rgb, in.color.a * a);
 }
@@ -62,6 +69,7 @@ type glyphInstance struct {
 	Rect  [4]float32
 	UV    [4]float32
 	Color [4]float32
+	Clip  [4]float32
 }
 
 // textRenderer owns the atlas texture, its pipeline and instance buffer.
@@ -77,6 +85,8 @@ type textRenderer struct {
 
 	atlasW, atlasH int
 	atlasDirty     bool
+
+	gpu *GPU // back-reference for buffers and the atlas library
 }
 
 func (g *GPU) initText(lib *text.Library) error {
@@ -168,6 +178,7 @@ func (g *GPU) initText(lib *text.Library) error {
 		{Format: gputypes.VertexFormatFloat32x4, Offset: 0, ShaderLocation: 0},
 		{Format: gputypes.VertexFormatFloat32x4, Offset: 16, ShaderLocation: 1},
 		{Format: gputypes.VertexFormatFloat32x4, Offset: 32, ShaderLocation: 2},
+		{Format: gputypes.VertexFormatFloat32x4, Offset: 48, ShaderLocation: 3},
 	}
 	t.pipeline, err = g.device.CreateRenderPipeline(&wgpu.RenderPipelineDescriptor{
 		Label:  "text",
@@ -192,6 +203,7 @@ func (g *GPU) initText(lib *text.Library) error {
 	if err != nil {
 		return fmt.Errorf("text pipeline: %w", err)
 	}
+	t.gpu = g
 	g.text = t
 	g.textLib = lib
 	return nil
@@ -218,51 +230,52 @@ func (t *textRenderer) rebuildBindGroup(g *GPU, layout *wgpu.BindGroupLayout) er
 	return nil
 }
 
-// build converts text ops into glyph instances, rasterizing into the atlas.
-func (t *textRenderer) build(g *GPU, list *paint.List) {
-	t.inst = t.inst[:0]
+// addOp converts one text op into glyph instances, rasterizing into the atlas
+// on first use.
+func (t *textRenderer) addOp(op paint.Op) {
+	g := t.gpu
+	if op.Text == "" {
+		return
+	}
 	lib := g.textLib
-	for _, op := range list.Ops {
-		if op.Kind != paint.Text || op.Text == "" {
-			continue
-		}
-		face := lib.Face(float64(op.FontSize))
-		if face == nil {
-			continue
-		}
-		out := face.Shape(op.Text)
-		penX := float64(op.TextX)
-		// Alignment is applied by shifting the whole run once its width is known.
-		runW := float64(out.Advance) / 64
-		switch op.Align {
-		case paint.AlignCenter:
-			penX += (float64(op.Rect[2]) - runW) / 2
-		case paint.AlignEnd:
-			penX += float64(op.Rect[2]) - runW
-		}
-		penY := float64(op.TextY)
-		col := rgba(op.Color)
+	face := lib.Face(float64(op.FontSize))
+	if face == nil {
+		return
+	}
+	out := face.Shape(op.Text)
+	penX := float64(op.TextX)
+	// Alignment is applied by shifting the whole run once its width is known.
+	runW := float64(out.Advance) / 64
+	switch op.Align {
+	case paint.AlignCenter:
+		penX += (float64(op.Rect[2]) - runW) / 2
+	case paint.AlignEnd:
+		penX += float64(op.Rect[2]) - runW
+	}
+	penY := float64(op.TextY)
+	col := rgba(op.Color)
+	clip := clipRect(op.Clip)
 
-		for _, gl := range out.Glyphs {
-			slot, ok := lib.Atlas().Slot(face, uint16(gl.GlyphID), int(op.FontSize*4))
-			if ok {
-				x := penX + float64(slot.Offset.X)
-				y := penY + float64(slot.Offset.Y)
-				w := float64(slot.Rect.Dx())
-				h := float64(slot.Rect.Dy())
-				t.inst = append(t.inst, glyphInstance{
-					Rect: [4]float32{float32(x), float32(y), float32(w), float32(h)},
-					UV: [4]float32{
-						float32(slot.Rect.Min.X) / float32(t.atlasW),
-						float32(slot.Rect.Min.Y) / float32(t.atlasH),
-						float32(slot.Rect.Max.X) / float32(t.atlasW),
-						float32(slot.Rect.Max.Y) / float32(t.atlasH),
-					},
-					Color: col,
-				})
-			}
-			penX += float64(gl.Advance) / 64
+	for _, gl := range out.Glyphs {
+		slot, ok := lib.Atlas().Slot(face, uint16(gl.GlyphID), int(op.FontSize*4))
+		if ok {
+			x := penX + float64(slot.Offset.X)
+			y := penY + float64(slot.Offset.Y)
+			w := float64(slot.Rect.Dx())
+			h := float64(slot.Rect.Dy())
+			t.inst = append(t.inst, glyphInstance{
+				Rect: [4]float32{float32(x), float32(y), float32(w), float32(h)},
+				UV: [4]float32{
+					float32(slot.Rect.Min.X) / float32(t.atlasW),
+					float32(slot.Rect.Min.Y) / float32(t.atlasH),
+					float32(slot.Rect.Max.X) / float32(t.atlasW),
+					float32(slot.Rect.Max.Y) / float32(t.atlasH),
+				},
+				Color: col,
+				Clip:  clip,
+			})
 		}
+		penX += float64(gl.Advance) / 64
 	}
 	if !lib.Atlas().Dirty.Empty() {
 		t.atlasDirty = true

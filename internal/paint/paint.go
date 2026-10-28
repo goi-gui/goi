@@ -34,8 +34,8 @@ type Op struct {
 	BorderColor uint32
 	BorderWidth float32
 
-	// Clip is the intersection of every ancestor's content box. Ops outside it
-	// are still emitted; the renderer scissors them.
+	// Clip is the intersection of every ancestor's content box, as x, y, w, h.
+	// Ops outside it are still emitted; the renderer discards those fragments.
 	Clip [4]float32
 
 	// Text fields.

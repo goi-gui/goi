@@ -152,3 +152,15 @@ batch. This is what the display list will feed.
   GLFW is cgo, so "compiles for" is not "works on".
 - Known unverified: no macOS or Windows machine was available while building
   this, so those two are exercised only by CI.
+
+## Phase 11 — post-review fixes
+
+- **Clipping moved into the fragment shader, not the scissor.** The first attempt
+  batched ops by clip and used `SetScissorRect` with `FirstInstance`, which
+  requires the `IndirectFirstInstance` feature and failed validation on Vulkan.
+  Each instance now carries its clip rectangle and the shader discards fragments
+  outside it: one draw call per pipeline, no per-run state, same visual result.
+  A WGSL `any(vec < vec)` comparison also failed in naga's SPIR-V backend, so the
+  test is written as four scalar comparisons. Both are worth remembering.
+- **Colors are uploaded as 0..1 floats.** An earlier version passed 0..255 and
+  every fill drew white; `rgba()` divides by 255 in one place.
