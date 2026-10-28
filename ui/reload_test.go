@@ -12,11 +12,11 @@ import (
 // src, so reload logic can be exercised headlessly.
 func reloadApp(t *testing.T, src string) (*App, *Window) {
 	t.Helper()
-	tr, diag := tree.BuildSource([]byte(src), nil)
+	a := newHeadlessApp()
+	tr, diag := tree.BuildSource([]byte(src), &tree.Hooks{Marked: a.markDirty})
 	if !diag.Empty() {
 		t.Fatalf("%v", diag)
 	}
-	a := newHeadlessApp()
 	w := &Window{tree: tr, app: a, title: tr.Root.Title.Get()}
 	a.win = w
 	return a, w

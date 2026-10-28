@@ -18,7 +18,9 @@ type interactor struct {
 	pressed tree.Node
 	focus   *tree.TextInput
 
-	dragging bool
+	// viewportW and viewportH are the logical client size. They mirror the
+	// driver so hit-testing works identically in headless tests.
+	viewportW, viewportH float64
 }
 
 func (i *interactor) MouseMove(x, y float64) {
@@ -69,11 +71,16 @@ func (i *interactor) Scroll(dx, dy float64) {
 }
 
 func (i *interactor) Key(k platform.Key, mods platform.Mods) {
+	i.key(toTreeKey(k), tree.Mods{Shift: mods.Shift, Ctrl: mods.Ctrl, Alt: mods.Alt, Super: mods.Super})
+}
+
+// key handles a key press in framework terms, so tests need no platform types.
+func (i *interactor) key(k tree.Key, mods tree.Mods) {
 	ti := i.focus
 	if ti == nil {
 		return
 	}
-	switch toTreeKey(k) {
+	switch k {
 	case tree.KeyBackspace:
 		i.deleteBefore(ti)
 	case tree.KeyDelete:
@@ -121,6 +128,8 @@ func (i *interactor) Resize(width, height int, scale float32) {
 		d.pendingW, d.pendingH, d.pendingScale = width, height, scale
 		d.resized = true
 	}
+	i.viewportW = float64(width) / float64(maxScale(scale))
+	i.viewportH = float64(height) / float64(maxScale(scale))
 	if i.tree.Root != nil {
 		i.tree.Root.Base().MarkDirty(tree.DirtyLayout)
 	}
@@ -180,6 +189,9 @@ func walkHit(b *tree.NodeBase, ox, oy float64, x, y float64, clip tree.Rect, fou
 }
 
 func (i *interactor) windowW() float64 {
+	if i.viewportW > 0 {
+		return i.viewportW
+	}
 	if d, ok := i.app.driver.(*gpuDriver); ok {
 		return d.windowLogicalW()
 	}
@@ -187,6 +199,9 @@ func (i *interactor) windowW() float64 {
 }
 
 func (i *interactor) windowH() float64 {
+	if i.viewportH > 0 {
+		return i.viewportH
+	}
 	if d, ok := i.app.driver.(*gpuDriver); ok {
 		return d.windowLogicalH()
 	}
