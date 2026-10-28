@@ -180,9 +180,8 @@ func (p *parser) parseValue() (Value, bool) {
 	case tokString:
 		p.next()
 		return &String{At: t.pos, Val: t.text}, true
-	case tokNumber:
-		p.next()
-		return &Number{At: t.pos, Val: t.num}, true
+	case tokNumber, tokLParen:
+		return p.parseExpr()
 	case tokBool:
 		p.next()
 		return &Bool{At: t.pos, Val: t.b}, true
@@ -190,6 +189,10 @@ func (p *parser) parseValue() (Value, bool) {
 		p.next()
 		return &Color{At: t.pos, RGBA: t.rgba}, true
 	case tokIdent:
+		// `name` is an enum or id, `name.prop` is a reference.
+		if p.peek2().kind == tokDot {
+			return p.parseExpr()
+		}
 		p.next()
 		return &Ident{At: t.pos, Val: t.text}, true
 	case tokLBrace:
@@ -203,6 +206,104 @@ func (p *parser) parseValue() (Value, bool) {
 		return nil, false
 	default:
 		p.errorf(t, "expected a value")
+		return nil, false
+	}
+}
+
+// parseExpr parses the additive level: a sum or difference of products.
+func (p *parser) parseExpr() (Value, bool) {
+	return p.parseAdd()
+}
+
+func (p *parser) parseAdd() (Value, bool) {
+	left, ok := p.parseMul()
+	if !ok {
+		return nil, false
+	}
+	for {
+		op := ""
+		switch p.peek().kind {
+		case tokPlus:
+			op = "+"
+		case tokMinus:
+			op = "-"
+		default:
+			return left, true
+		}
+		p.next()
+		right, ok := p.parseMul()
+		if !ok {
+			return nil, false
+		}
+		left = &Binary{At: left.Pos(), Op: op, Left: left, Right: right}
+	}
+}
+
+func (p *parser) parseMul() (Value, bool) {
+	left, ok := p.parseTerm()
+	if !ok {
+		return nil, false
+	}
+	for {
+		op := ""
+		switch p.peek().kind {
+		case tokStar:
+			op = "*"
+		case tokSlash:
+			op = "/"
+		default:
+			return left, true
+		}
+		p.next()
+		right, ok := p.parseTerm()
+		if !ok {
+			return nil, false
+		}
+		left = &Binary{At: left.Pos(), Op: op, Left: left, Right: right}
+	}
+}
+
+// parseTerm parses one number, percentage, reference, or a parenthesised
+// expression. Expressions only use numeric values, so a bare identifier is
+// always followed by `.property` here.
+func (p *parser) parseTerm() (Value, bool) {
+	t := p.peek()
+	switch t.kind {
+	case tokNumber:
+		p.next()
+		if p.peek().kind == tokPercent {
+			p.next()
+			return &Percent{At: t.pos, Val: t.num}, true
+		}
+		return &Number{At: t.pos, Val: t.num}, true
+	case tokLParen:
+		p.next()
+		v, ok := p.parseExpr()
+		if !ok {
+			return nil, false
+		}
+		if p.peek().kind != tokRParen {
+			p.errorf(p.peek(), "expected ')'")
+			return nil, false
+		}
+		p.next()
+		return v, true
+	case tokIdent:
+		id := p.next()
+		if p.peek().kind != tokDot {
+			p.errorf(p.peek(), "expected '.' after the id in an expression")
+			return nil, false
+		}
+		p.next()
+		prop := p.peek()
+		if prop.kind != tokIdent {
+			p.errorf(prop, "expected a property name after '.'")
+			return nil, false
+		}
+		p.next()
+		return &Ref{At: id.pos, ID: id.text, Prop: prop.text}, true
+	default:
+		p.errorf(t, "expected a number or reference")
 		return nil, false
 	}
 }

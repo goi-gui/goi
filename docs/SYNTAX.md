@@ -32,9 +32,12 @@ File      = Element EOF
 Element   = Ident "{" { Member } "}"
 Member    = Property | Element
 Property  = Ident ":" Value [";"]
-Value     = String | Number | Bool | Color | Ident | Map
+Value     = String | Number | Bool | Color | Ident | Map | Expression
 Map       = "{" [ MapEntry { "," MapEntry } [","] ] "}"
 MapEntry  = Ident ":" Value
+Expression = Term { ("+" | "-") Term }
+Term      = Factor { ("*" | "/") Factor }
+Factor    = Number | Number "%" | Ident "." Ident | "(" Expression ")"
 ```
 
 Newlines are not tokens. A member is a property when the identifier is followed
@@ -133,6 +136,32 @@ values and overrides the parent's `align` for one child.
 
 `width` and `height` default to `-1`, meaning automatic. `visible: false`
 removes the element from layout and from hit-testing entirely.
+
+## Expressions and percentages
+
+Any numeric property accepts an arithmetic expression. A reference reads
+another element's property by id (`id.property`), so the value follows that
+element automatically. Operators are `+ - * /` and parentheses, with the usual
+precedence; division by zero leaves the property at its previous value, and a
+reference cycle is ignored instead of hanging.
+
+```
+Row {
+    Rectangle { id: side width: 200 height: 40 }
+    Rectangle { width: side.width / 2 height: 40 }
+    Rectangle { width: (side.width + 40) * 0.5 height: 40 }
+}
+```
+
+`width` and `height` also accept a percentage of the space the parent offers:
+`width: 50%` is half of the parent's content box, so it follows a resize without
+a breakpoint. A percentage may be part of an expression (`width: 50% - 8`).
+Percentages are only valid for `width` and `height`; a property whose value is a
+percentage cannot be referenced, because it depends on its own parent.
+
+Expressions are resolved before layout; percentages are resolved during layout,
+when the parent's content size is known. Like responsive values, they are owned
+by the file: a later `Prop.Set` from Go is overwritten on the next layout.
 
 ## Responsive values
 

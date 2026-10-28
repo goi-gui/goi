@@ -129,6 +129,42 @@ func TestParseEnumIdent(t *testing.T) {
 	}
 }
 
+func TestParseExpressions(t *testing.T) {
+	src := `A {
+		w: 50%
+		x: box.width / 2
+		y: (a.width + 16) * 2 - 4
+		z: -1
+		n: a.width-8
+	}`
+	f, diag := Parse([]byte(src))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	want := `A
+  w = 50%
+  x = (box.width / 2)
+  y = (((a.width + 16) * 2) - 4)
+  z = -1
+  n = (a.width - 8)
+`
+	if got := Dump(f); got != want {
+		t.Fatalf("dump mismatch\n--- got ---\n%s--- want ---\n%s", got, want)
+	}
+}
+
+func TestParseExpressionDiagnostics(t *testing.T) {
+	for _, src := range []string{
+		"A { w: box.width / }",
+		"A { w: (1 + 2 }",
+		"A { w: box. }",
+	} {
+		if _, diag := Parse([]byte(src)); diag.Empty() {
+			t.Errorf("%s: expected a diagnostic", src)
+		}
+	}
+}
+
 func TestDiagnostics(t *testing.T) {
 	cases := []struct {
 		name string
@@ -143,7 +179,7 @@ func TestDiagnostics(t *testing.T) {
 		{"missing value", "A { s: }", "expected a value"},
 		{"missing colon", "A { s \"x\" }", "expected"},
 		{"two roots", "A { } B { }", "after the root element"},
-		{"lone minus", "A { n: - }", "expected a digit"},
+		{"lone minus", "A { n: - }", "expected a value"},
 		{"no root", "", "expected an element"},
 		{"junk char", "A { s: 1 @ }", "unexpected character"},
 	}

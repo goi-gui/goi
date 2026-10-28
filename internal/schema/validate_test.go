@@ -80,6 +80,11 @@ func TestDiagnosticCases(t *testing.T) {
 		{"responsive id", `Window { Text { id: { md: a } } }`, "cannot be responsive", ""},
 		{"repeated breakpoint", `Window { width: { md: 1, md: 2 } }`, "repeats the breakpoint", ""},
 		{"positioned outside stack", `Window { Column { Positioned { left: 1 } } }`, "direct child of Stack", ""},
+		{"percent on padding", `Window { padding: 50% }`, "only supported for width and height", ""},
+		{"unknown ref id", `Window { Text { id: a width: b.width } }`, "unknown id", ""},
+		{"unknown ref prop", `Window { Text { id: a width: a.nope } }`, "has no property", ""},
+		{"ref not a number", `Window { Text { id: a text: "x" } Text { width: a.text } }`, "is not a number", ""},
+		{"ref to percent", `Window { Text { id: a width: 50% } Text { width: a.width } }`, "cannot be referenced", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -123,6 +128,22 @@ func TestResponsiveValues(t *testing.T) {
 		width: { base: 320, md: 480, lg: 640 }
 		background: { md: #123456 }
 		Column { padding: { sm: 8 } align: { lg: center } }
+	}`)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+}
+
+func TestExpressionValues(t *testing.T) {
+	_, diag := validate(t, `Window {
+		width: 400
+		Column {
+			Rectangle { id: a width: 120 height: 40 }
+			Rectangle { id: b width: a.width / 2 height: 25% }
+			Rectangle { id: c width: (a.width + b.width) * 0.5 - 4 }
+			Rectangle { id: d width: { base: 50%, md: a.width - 8 } }
+			Rectangle { id: e width: a.width-8 }
+		}
 	}`)
 	if !diag.Empty() {
 		t.Fatalf("%v", diag)

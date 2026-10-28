@@ -21,6 +21,14 @@ const (
 	tokComma
 	tokSemicolon
 	tokBool
+	tokDot
+	tokPlus
+	tokMinus
+	tokStar
+	tokSlash
+	tokPercent
+	tokLParen
+	tokRParen
 	tokError
 )
 
@@ -69,11 +77,42 @@ func (l *lexer) run() ([]token, Diagnostics) {
 		case c == ';':
 			l.off++
 			l.emit(token{kind: tokSemicolon, pos: Pos(start), end: Pos(l.off)})
+		case c == '.':
+			l.off++
+			l.emit(token{kind: tokDot, pos: Pos(start), end: Pos(l.off)})
+		case c == '+':
+			l.off++
+			l.emit(token{kind: tokPlus, pos: Pos(start), end: Pos(l.off)})
+		case c == '-':
+			// A '-' starts a negative number only where a value is expected;
+			// after a value it is the subtraction operator, so `a.width - 1`
+			// needs no spacing rule.
+			if l.off+1 < len(l.src) && isDigit(l.src[l.off+1]) && !l.endsValue() {
+				l.lexNumber(start)
+				continue
+			}
+			l.off++
+			l.emit(token{kind: tokMinus, pos: Pos(start), end: Pos(l.off)})
+		case c == '*':
+			l.off++
+			l.emit(token{kind: tokStar, pos: Pos(start), end: Pos(l.off)})
+		case c == '/':
+			l.off++
+			l.emit(token{kind: tokSlash, pos: Pos(start), end: Pos(l.off)})
+		case c == '%':
+			l.off++
+			l.emit(token{kind: tokPercent, pos: Pos(start), end: Pos(l.off)})
+		case c == '(':
+			l.off++
+			l.emit(token{kind: tokLParen, pos: Pos(start), end: Pos(l.off)})
+		case c == ')':
+			l.off++
+			l.emit(token{kind: tokRParen, pos: Pos(start), end: Pos(l.off)})
 		case c == '"':
 			l.lexString(start)
 		case c == '#':
 			l.lexColor(start)
-		case c == '-' || (c >= '0' && c <= '9'):
+		case c >= '0' && c <= '9':
 			l.lexNumber(start)
 		case c == '_' || isLetter(c):
 			l.lexIdent(start)
@@ -87,6 +126,19 @@ func (l *lexer) run() ([]token, Diagnostics) {
 }
 
 func (l *lexer) emit(t token) { l.toks = append(l.toks, t) }
+
+// endsValue reports whether the last emitted token can end a value, which makes
+// a following '-' a subtraction rather than a negative sign.
+func (l *lexer) endsValue() bool {
+	if len(l.toks) == 0 {
+		return false
+	}
+	switch l.toks[len(l.toks)-1].kind {
+	case tokNumber, tokIdent, tokBool, tokString, tokColor, tokPercent, tokRParen, tokRBrace:
+		return true
+	}
+	return false
+}
 
 func (l *lexer) fail(start, end int, msg string) {
 	l.diag = append(l.diag, Diagnostic{Pos: Pos(start), End: Pos(end), Message: msg})

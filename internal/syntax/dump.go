@@ -42,6 +42,12 @@ func dumpValue(v Value) string {
 		return fmt.Sprintf("#%08x", v.RGBA)
 	case *Ident:
 		return v.Val
+	case *Percent:
+		return strconv.FormatFloat(v.Val, 'g', -1, 64) + "%"
+	case *Ref:
+		return v.ID + "." + v.Prop
+	case *Binary:
+		return "(" + dumpValue(v.Left) + " " + v.Op + " " + dumpValue(v.Right) + ")"
 	case *Map:
 		parts := make([]string, len(v.Entries))
 		for i, e := range v.Entries {

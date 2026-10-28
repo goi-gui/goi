@@ -61,9 +61,14 @@ type NodeBase struct {
 	props  []NamedProp
 	byName map[string]int
 	hooks  *Hooks
+	tree   *Tree
 	AST    *syntax.Element // the element this node was built from
 	// responsive holds properties declared as a breakpoint map.
 	responsive []responsiveProp
+	// numerics holds expression-valued numeric properties, resolved before
+	// layout and (for percentages) during it.
+	numerics      []numericSpec
+	numericListed bool
 }
 
 // NodeBase returns the node's shared state.

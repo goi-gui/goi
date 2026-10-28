@@ -132,6 +132,15 @@ Window {
 						radius: 2
 					}
 				}
+
+				Text { text: "Expressions" role: "titleMedium" }
+				Column {
+					width: 320
+					spacing: 6
+					Rectangle { id: demoBase width: 240 height: 10 background: #6750A4 radius: 5 }
+					Rectangle { width: demoBase.width / 2 height: 10 background: #4F378B radius: 5 }
+					Rectangle { width: 50% height: 10 background: #D0BCFF radius: 5 }
+				}
 			}
 
 			// ============================== inputs

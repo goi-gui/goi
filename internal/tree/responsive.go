@@ -14,6 +14,9 @@ type responsiveProp struct {
 	prop     NamedProp
 	tiers    []responsiveTier
 	fallback syntax.Value
+	// applied is the value last written, so a breakpoint that does not change
+	// is a no-op even for expressions.
+	applied syntax.Value
 }
 
 type responsiveTier struct {
@@ -30,6 +33,7 @@ func (b *NodeBase) setResponsive(name string, m *syntax.Map) bool {
 		return false
 	}
 	rp := responsiveProp{prop: b.props[i], fallback: valueLiteral(b.props[i].Get())}
+	rp.applied = rp.fallback
 	for _, e := range m.Entries {
 		min, ok := schema.BreakpointMin(e.Key)
 		if !ok {
@@ -38,7 +42,8 @@ func (b *NodeBase) setResponsive(name string, m *syntax.Map) bool {
 		// Base is the value for a window narrower than sm, which is also the
 		// only value the tree can assume before it knows the real width.
 		if e.Key == schema.BaseBreakpoint {
-			rp.prop.SetLiteral(e.Value)
+			b.applyValue(name, e.Value)
+			rp.applied = e.Value
 		}
 		rp.tiers = append(rp.tiers, responsiveTier{min: min, value: e.Value})
 	}
@@ -53,17 +58,26 @@ func (b *NodeBase) setResponsive(name string, m *syntax.Map) bool {
 // applyBreakpoints writes the value of the largest tier whose threshold is at
 // or below width, and marks the node dirty only when the value changed.
 func (b *NodeBase) applyBreakpoints(width float64) {
-	for _, rp := range b.responsive {
+	for i := range b.responsive {
+		rp := &b.responsive[i]
 		v := rp.fallback
 		for _, t := range rp.tiers {
 			if t.min <= width {
 				v = t.value
 			}
 		}
-		if v == nil || literalMatches(rp.prop.Get(), v) {
+		if v == nil {
 			continue
 		}
-		if rp.prop.SetLiteral(v) {
+		if rp.applied != nil && LiteralEqual(rp.applied, v) {
+			// An expression is re-resolved each layout, so only a plain value
+			// needs the Go-set check to stay file-owned.
+			if isExpression(v) || literalMatches(rp.prop.Get(), v) {
+				continue
+			}
+		}
+		if b.applyValue(rp.prop.Name, v) {
+			rp.applied = v
 			b.mark(rp.prop.Dirty)
 		}
 	}

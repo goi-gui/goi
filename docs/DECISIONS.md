@@ -309,6 +309,18 @@ batch. This is what the display list will feed.
   owns a responsive property: `Prop.Set` cannot win, because the next frame
   rewrites it. Maps are syntax, not a new property type, so every existing
   element accepts them without schema changes.
+- **Expressions are re-evaluated on each layout, not wired as observers.** A
+  numeric property may be a reference (`id.prop`), arithmetic (`+ - * /`,
+  parentheses) or a percentage. A reference reads the target's property cell,
+  so `abc.width / 2` follows a Go `Set` or a resize on the next frame without a
+  binding registry or subscription lifetime to manage; a cycle simply fails to
+  evaluate and leaves the previous value. Percentages are parsed as their own
+  literal and resolved during layout, because the parent's content box is only
+  known then; the validator limits them to `width`/`height` and rejects a
+  reference to a percentage-valued property, which would depend on a different
+  parent. Expressions and responsive maps share one write path: the selected
+  value is stored and applied only when it changes, so a breakpoint can switch
+  between a number and an expression without leaving both active.
 - **Only surfaces clip their children, not layout flow.** `NodeBase.ClipsChildren`
   is true for scroll viewports, `Window`, `Stack` and painted components; `Column`,
   `Row`, `Toolbar` and `ButtonGroup` let content spill. Clipping every node to its

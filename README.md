@@ -72,6 +72,8 @@ make scroll    # scrolling page, horizontal strip, ripple
   container (Row sideways, the rest down).
 - Responsive values per property: `padding: { base: 8, md: 16 }`, with
   Tailwind's `sm`/`md`/`lg`/`xl` min-width breakpoints applied on resize.
+- Value expressions: `width: side.width / 2` follows another element's
+  property, and `width: 50%` is half of the parent's content box.
 - Rendering: instanced SDF rounded rects, circles, arcs and shadows with borders
   and anti-aliasing, text through HarfBuzz-quality shaping and a grayscale
   atlas, HiDPI aware.
@@ -86,9 +88,10 @@ and [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ## Not in v1
 
-Expressions or bindings in `.ui`, animations, dynamic color and custom themes,
-accessibility tree, multiple windows, drag and drop, custom components in `.ui`,
-IME composition preview, and the Image widget.
+Bindings that push Go state back into `.ui` values (the file is evaluated, not
+observed), animations, dynamic color and custom themes, accessibility tree,
+multiple windows, drag and drop, custom components in `.ui`, IME composition
+preview, and the Image widget.
 
 ## Tests
 

@@ -13,6 +13,8 @@ type Tree struct {
 	ids  map[string]Node
 	// responsive lists the nodes that declared at least one breakpoint map.
 	responsive []*NodeBase
+	// numericNodes lists the nodes with at least one expression property.
+	numericNodes []*NodeBase
 }
 
 // ByID returns the node with the given id.
@@ -94,6 +96,7 @@ func (t *Tree) build(el *syntax.Element, parent *NodeBase, hooks *Hooks) (Node, 
 	b := n.Base()
 	b.node = n
 	b.parent = parent
+	b.tree = t
 	b.AST = el
 	b.properties() // wires every Prop cell to b before any value is written
 	applyDefaults(b, def)
@@ -120,7 +123,7 @@ func (t *Tree) build(el *syntax.Element, parent *NodeBase, hooks *Hooks) (Node, 
 			}
 			continue
 		}
-		if !b.SetPropLiteral(p.Name, p.Value) {
+		if !b.applyValue(p.Name, p.Value) {
 			return nil, fmt.Errorf("%s.%s: value not valid for the property type", el.Name, p.Name)
 		}
 	}

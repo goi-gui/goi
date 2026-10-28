@@ -23,13 +23,20 @@ func Validate(f *syntax.File) (*Result, syntax.Diagnostics) {
 	if f == nil || f.Root == nil {
 		return nil, syntax.Diagnostics{{Message: "the file has no root element"}}
 	}
-	v := &validator{ids: map[*syntax.Element]string{}, seen: map[string]syntax.Pos{}}
+	v := &validator{
+		ids:   map[*syntax.Element]string{},
+		elems: map[string]*syntax.Element{},
+		seen:  map[string]syntax.Pos{},
+	}
 	if _, ok := Lookup(f.Root.Name); !ok {
 		v.elementUnknown(f.Root)
 	} else if f.Root.Name != "Window" {
 		v.add(f.Root.NameAt, f.Root.Close, "the root element must be Window", syntax.Suggest(f.Root.Name, RootNames()))
 	}
 	v.walk(f.Root, "")
+	if v.diag.Empty() {
+		v.walkRefs(f.Root)
+	}
 	if !v.diag.Empty() {
 		return nil, v.diag
 	}
@@ -37,9 +44,10 @@ func Validate(f *syntax.File) (*Result, syntax.Diagnostics) {
 }
 
 type validator struct {
-	ids  map[*syntax.Element]string
-	seen map[string]syntax.Pos
-	diag syntax.Diagnostics
+	ids   map[*syntax.Element]string
+	elems map[string]*syntax.Element
+	seen  map[string]syntax.Pos
+	diag  syntax.Diagnostics
 }
 
 func (v *validator) add(at, end syntax.Pos, msg, hint string) {
@@ -164,6 +172,7 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 		}
 		v.seen[txt] = at
 		v.ids[e] = txt
+		v.elems[txt] = e
 
 	case TypeString:
 		switch val.(type) {
@@ -175,7 +184,7 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 		}
 
 	case TypeNumber:
-		if _, ok := val.(*syntax.Number); !ok {
+		if !v.checkNumeric(e, pd, val) {
 			fail("a number")
 		}
 
@@ -211,7 +220,112 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 	}
 }
 
-// literalText returns the text of a String or Ident value.
+// checkNumeric accepts a number, a percentage, a reference or an arithmetic
+// expression. Percentages only make sense where a parent offers a width or
+// height; more than one `%` in one value would mix unrelated parent axes, so
+// the whole value must be one percentage.
+func (v *validator) checkNumeric(e *syntax.Element, pd *Prop, val syntax.Value) bool {
+	switch x := val.(type) {
+	case *syntax.Number:
+		return true
+	case *syntax.Percent:
+		if pd.Name != "width" && pd.Name != "height" {
+			v.add(x.At, x.At+1,
+				fmt.Sprintf("%s.%s: a percentage is only supported for width and height", e.Name, pd.Name), "")
+		}
+		return true
+	case *syntax.Ref:
+		return true // the target is checked in walkRefs, after every id exists
+	case *syntax.Binary:
+		if valueHasPercent(x.Left) || valueHasPercent(x.Right) {
+			if pd.Name != "width" && pd.Name != "height" {
+				v.add(x.At, x.At+1,
+					fmt.Sprintf("%s.%s: a percentage is only supported for width and height", e.Name, pd.Name), "")
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// walkRefs checks every reference once all ids are known, so a forward
+// reference works like a backward one.
+func (v *validator) walkRefs(e *syntax.Element) {
+	def, ok := Lookup(e.Name)
+	if !ok {
+		return
+	}
+	for _, p := range e.Props() {
+		v.checkRefs(e, def.Prop(p.Name), p.Value)
+	}
+	for _, c := range e.Children() {
+		v.walkRefs(c)
+	}
+}
+
+func (v *validator) checkRefs(e *syntax.Element, pd *Prop, val syntax.Value) {
+	switch x := val.(type) {
+	case *syntax.Map:
+		for _, entry := range x.Entries {
+			v.checkRefs(e, pd, entry.Value)
+		}
+	case *syntax.Binary:
+		v.checkRefs(e, pd, x.Left)
+		v.checkRefs(e, pd, x.Right)
+	case *syntax.Ref:
+		if pd == nil {
+			return
+		}
+		at := x.At
+		end := at + syntax.Pos(len(x.ID)+1+len(x.Prop))
+		target, ok := v.elems[x.ID]
+		if !ok {
+			v.add(at, end, fmt.Sprintf("%s.%s references unknown id %q", e.Name, pd.Name, x.ID), "")
+			return
+		}
+		tdef, ok := Lookup(target.Name)
+		if !ok {
+			return
+		}
+		tp := tdef.Prop(x.Prop)
+		switch {
+		case tp == nil:
+			v.add(at, end,
+				fmt.Sprintf("%s.%s: %s has no property %q", e.Name, pd.Name, target.Name, x.Prop),
+				syntax.Suggest(x.Prop, propNames(tdef)))
+		case tp.Type != TypeNumber:
+			v.add(at, end,
+				fmt.Sprintf("%s.%s: %s.%s is not a number", e.Name, pd.Name, target.Name, x.Prop), "")
+		case targetValueHasPercent(target, x.Prop):
+			v.add(at, end,
+				fmt.Sprintf("%s.%s: %s.%s is a percentage, which cannot be referenced", e.Name, pd.Name, target.Name, x.Prop), "")
+		}
+	}
+}
+
+// targetValueHasPercent reports whether the element declares the property as a
+// percentage, directly or in a breakpoint map.
+func targetValueHasPercent(e *syntax.Element, name string) bool {
+	p := e.Prop(name)
+	return p != nil && valueHasPercent(p.Value)
+}
+
+func valueHasPercent(val syntax.Value) bool {
+	switch x := val.(type) {
+	case *syntax.Percent:
+		return true
+	case *syntax.Binary:
+		return valueHasPercent(x.Left) || valueHasPercent(x.Right)
+	case *syntax.Map:
+		for _, entry := range x.Entries {
+			if valueHasPercent(entry.Value) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func literalText(val syntax.Value) (string, bool) {
 	switch v := val.(type) {
 	case *syntax.String:
@@ -236,6 +350,12 @@ func kindName(val syntax.Value) string {
 		return "an identifier"
 	case syntax.MapKind:
 		return "a map"
+	case syntax.PercentKind:
+		return "a percentage"
+	case syntax.RefKind:
+		return "a reference"
+	case syntax.BinaryKind:
+		return "an expression"
 	}
 	return "an unknown value"
 }

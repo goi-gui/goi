@@ -85,10 +85,13 @@ const (
 	ColorKind
 	IdentKind
 	MapKind
+	PercentKind
+	RefKind
+	BinaryKind
 )
 
 // Value is a property literal. The concrete type is one of *String,
-// *Number, *Bool, *Color, *Ident or *Map.
+// *Number, *Bool, *Color, *Ident, *Map, *Percent, *Ref or *Binary.
 type Value interface {
 	Kind() ValueKind
 	Pos() Pos
@@ -138,20 +141,49 @@ type MapEntry struct {
 	Value Value
 }
 
+// Percent is `<number>%`, relative to the space the parent offers. Only width
+// and height accept it.
+type Percent struct {
+	At  Pos
+	Val float64
+}
+
+// Ref is `id.property`, a read of another element's property.
+type Ref struct {
+	At   Pos
+	ID   string
+	Prop string
+}
+
+// Binary is an arithmetic expression: Left Op Right, with Op one of
+// "+", "-", "*", "/".
+type Binary struct {
+	At    Pos
+	Op    string
+	Left  Value
+	Right Value
+}
+
 // Kind implementations.
 
-func (s *String) Kind() ValueKind { return StringKind }
-func (n *Number) Kind() ValueKind { return NumberKind }
-func (b *Bool) Kind() ValueKind   { return BoolKind }
-func (c *Color) Kind() ValueKind  { return ColorKind }
-func (i *Ident) Kind() ValueKind  { return IdentKind }
-func (m *Map) Kind() ValueKind    { return MapKind }
+func (s *String) Kind() ValueKind  { return StringKind }
+func (n *Number) Kind() ValueKind  { return NumberKind }
+func (b *Bool) Kind() ValueKind    { return BoolKind }
+func (c *Color) Kind() ValueKind   { return ColorKind }
+func (i *Ident) Kind() ValueKind   { return IdentKind }
+func (m *Map) Kind() ValueKind     { return MapKind }
+func (p *Percent) Kind() ValueKind { return PercentKind }
+func (r *Ref) Kind() ValueKind     { return RefKind }
+func (b *Binary) Kind() ValueKind  { return BinaryKind }
 
 // Pos implementations.
 
-func (s *String) Pos() Pos { return s.At }
-func (n *Number) Pos() Pos { return n.At }
-func (b *Bool) Pos() Pos   { return b.At }
-func (c *Color) Pos() Pos  { return c.At }
-func (i *Ident) Pos() Pos  { return i.At }
-func (m *Map) Pos() Pos    { return m.At }
+func (s *String) Pos() Pos  { return s.At }
+func (n *Number) Pos() Pos  { return n.At }
+func (b *Bool) Pos() Pos    { return b.At }
+func (c *Color) Pos() Pos   { return c.At }
+func (i *Ident) Pos() Pos   { return i.At }
+func (m *Map) Pos() Pos     { return m.At }
+func (p *Percent) Pos() Pos { return p.At }
+func (r *Ref) Pos() Pos     { return r.At }
+func (b *Binary) Pos() Pos  { return b.At }

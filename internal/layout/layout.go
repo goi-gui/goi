@@ -64,6 +64,7 @@ func New(m Measurer) *Engine {
 
 // Layout arranges root inside a client area of width w and height h.
 func (e *Engine) Layout(root *tree.Window, w, h float64) tree.Rect {
+	root.Base().ApplyNumeric()
 	r := tree.Rect{W: w, H: h}
 	root.Base().SetBounds(r)
 	// A window overlays its children, so a dialog can sit on top of content.
@@ -435,6 +436,7 @@ func (e *Engine) equalRow(b *tree.NodeBase, kids []*tree.NodeBase, availW, avail
 	}
 	w := availW / n
 	for _, k := range kids {
+		k.ResolveSize(availW, availH)
 		if v := k.Width(); v >= 0 {
 			w = v
 		}
@@ -591,6 +593,7 @@ func (e *Engine) positionedExtent(k *tree.NodeBase, availW, availH float64) (flo
 
 // natural returns the intrinsic size of a node.
 func (e *Engine) natural(k *tree.NodeBase, availW, availH float64) (float64, float64) {
+	k.ResolveSize(availW, availH)
 	if cv, ok := componentOf(k); ok {
 		mt := m3.MetricsFor(k.Node().Kind(), cv, e.measure)
 		w, h := mt.W, mt.H

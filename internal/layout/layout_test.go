@@ -3,6 +3,7 @@ package layout
 import (
 	"testing"
 
+	"github.com/ksckaan1/goui/internal/syntax"
 	"github.com/ksckaan1/goui/internal/tree"
 )
 
@@ -38,6 +39,78 @@ func abs(v float64) float64 {
 		return -v
 	}
 	return v
+}
+
+func TestPercentAndReferenceWidth(t *testing.T) {
+	tr := build(t, `Window {
+		Column {
+			id: col
+			padding: 10
+			Rectangle { id: a width: 100 height: 10 }
+			Rectangle { id: half width: 50% height: 10 }
+			Rectangle { id: b width: a.width / 2 height: 10 }
+			Rectangle { id: c width: (a.width + b.width) / 3 height: 10 }
+			Rectangle { id: d width: a.width-8 height: 10 }
+			Rectangle { id: e width: 50% - 10 height: 10 }
+		}
+	}`)
+	New(nil).Layout(tr.Root, 200, 200)
+	// Column content width is 180, so 50% is 90.
+	want(t, bounds(t, tr, "half"), 10, 20, 90, 10)
+	want(t, bounds(t, tr, "b"), 10, 30, 50, 10)
+	want(t, bounds(t, tr, "c"), 10, 40, 50, 10)
+	want(t, bounds(t, tr, "d"), 10, 50, 92, 10)
+	want(t, bounds(t, tr, "e"), 10, 60, 80, 10)
+}
+
+func TestPercentHeight(t *testing.T) {
+	tr := build(t, `Window {
+		Rectangle { id: r width: 10 height: 25% }
+	}`)
+	New(nil).Layout(tr.Root, 300, 200)
+	want(t, bounds(t, tr, "r"), 0, 0, 10, 50)
+}
+
+func TestExpressionFollowsReferenceChange(t *testing.T) {
+	tr := build(t, `Window {
+		Column {
+			Rectangle { id: a width: 100 height: 10 }
+			Rectangle { id: b width: a.width / 2 height: 10 }
+		}
+	}`)
+	e := New(nil)
+	e.Layout(tr.Root, 300, 200)
+	want(t, bounds(t, tr, "b"), 0, 10, 50, 10)
+
+	a, _ := tr.ByID("a")
+	a.Base().SetPropLiteral("width", &syntax.Number{Val: 80})
+	e.Layout(tr.Root, 300, 200)
+	want(t, bounds(t, tr, "b"), 0, 10, 40, 10)
+}
+
+func TestReferenceCycleDoesNotHang(t *testing.T) {
+	tr := build(t, `Window {
+		Column {
+			Rectangle { id: a width: b.width height: 10 }
+			Rectangle { id: b width: a.width height: 10 }
+		}
+	}`)
+	New(nil).Layout(tr.Root, 300, 200)
+}
+
+func TestResponsiveExpressionTier(t *testing.T) {
+	tr := build(t, `Window {
+		Rectangle { id: a width: 100 height: 10 }
+		Rectangle { id: b width: { base: 40, md: a.width / 2 } height: 10 }
+	}`)
+	e := New(nil)
+	tr.ApplyBreakpoints(800)
+	e.Layout(tr.Root, 300, 200)
+	want(t, bounds(t, tr, "b"), 0, 0, 50, 10)
+
+	tr.ApplyBreakpoints(500)
+	e.Layout(tr.Root, 300, 200)
+	want(t, bounds(t, tr, "b"), 0, 0, 40, 10)
 }
 
 func TestColumnStacking(t *testing.T) {
