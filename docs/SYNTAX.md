@@ -57,11 +57,20 @@ by `:` and a child element when it is followed by `{`, so `name: value` and
 | `Column` | yes | `spacing`, `align` |
 | `Row` | yes | `spacing`, `align` |
 | `Stack` | yes | `align` |
+| `Wrap` | yes | `spacing`, `align` |
+| `Grid` | yes | `columns`, `spacing`, `align` |
 | `Rectangle` | no | — |
 | `Text` | no | `text`, `fontSize`, `weight`, `color`, `align`, `wrap`, `role` |
 
 `role` selects a Material 3 type-scale role (`displayLarge` … `labelSmall`) and
 sets size, line height and weight together; `fontSize` and `weight` override it.
+
+`Wrap` runs children left to right and starts a new run when the next child no
+longer fits; `spacing` is both the gap inside a run and the gap between runs.
+
+`Grid` puts children in `columns` equal-width cells. A cell is as wide as the
+grid allows, so a child fills it unless it declares its own `width`; each row is
+as tall as its tallest child and `spacing` separates both columns and rows.
 
 Everything else is a Material 3 component. They are ordinary elements, not a
 separate package. Containers take children; the rest are leaves:

@@ -67,8 +67,9 @@ make scroll    # scrolling page, horizontal strip, ripple
   controls, sliders, text fields, cards, dialogs, sheets, lists, menus,
   app bars, navigation, tabs, progress, pickers, carousel and toolbar. They ship
   with the light and dark baseline schemes, Roboto and Material Symbols.
-- Layout: Column, Row, Stack, flex grow and shrink, padding, margin, min/max
-  width, and `scroll: true` on any container (Row sideways, the rest down).
+- Layout: Column, Row, Stack, Wrap and Grid, flex grow and shrink, padding,
+  margin, min/max width, and `scroll: true` on any container (Row sideways, the
+  rest down).
 - Rendering: instanced SDF rounded rects, circles, arcs and shadows with borders
   and anti-aliasing, text through HarfBuzz-quality shaping and a grayscale
   atlas, HiDPI aware.

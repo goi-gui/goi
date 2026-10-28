@@ -189,7 +189,7 @@ func newNode(name string) Node {
 			Title:    newProp(nil, "title", DirtyPaint, ""),
 			Theme:    newProp(nil, "theme", DirtyPaint, "light"),
 		}
-	case "Column", "Row", "Stack":
+	case "Column", "Row", "Stack", "Wrap", "Grid":
 		c := Container{
 			NodeBase: b(),
 			Spacing:  newProp(nil, "spacing", DirtyLayout, 0.0),
@@ -200,6 +200,10 @@ func newNode(name string) Node {
 			return &Column{Container: c}
 		case "Row":
 			return &Row{Container: c}
+		case "Wrap":
+			return &Wrap{Container: c}
+		case "Grid":
+			return &Grid{Container: c, Columns: newProp(nil, "columns", DirtyLayout, 2.0)}
 		default:
 			return &Stack{Container: c}
 		}

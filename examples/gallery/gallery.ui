@@ -90,6 +90,22 @@ Window {
 					Badge { label: "12" }
 					Badge { label: "99+" }
 				}
+
+				Text { text: "Grid and wrap" role: "titleMedium" }
+				Grid {
+					columns: 2
+					spacing: 8
+					Card { label: "Grid" supporting: "Cell one" height: 72 variant: filled }
+					Card { label: "Grid" supporting: "Cell two" height: 72 }
+					Card { label: "Grid" supporting: "Cell three" height: 72 variant: outlined }
+				}
+				Wrap {
+					spacing: 8
+					Chip { label: "Wrap" icon: event }
+					Chip { label: "Second" }
+					Chip { label: "Third" }
+					Chip { label: "Fourth" }
+				}
 			}
 
 			// ============================== inputs

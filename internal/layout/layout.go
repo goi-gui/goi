@@ -105,6 +105,10 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 		e.linear(b, kids, cw, ch, inset, true, inset)
 	case "Stack":
 		e.stackChildren(b, w, h, inset, inset)
+	case "Wrap":
+		e.wrap(b, kids, cw, ch, inset, inset)
+	case "Grid":
+		e.grid(b, kids, cw, ch, inset, inset)
 	default: // Window, Column
 		e.linear(b, kids, cw, ch, inset, false, inset)
 	}
@@ -196,6 +200,17 @@ func (e *Engine) linear(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH,
 			cs = cross
 		}
 		cs = clampSize(cs, minSize(k, !horizontal), maxSize(k, !horizontal))
+		// A Wrap or Grid wraps to the width it actually gets, which may be a
+		// declared one rather than the parent's, so its height follows cs.
+		if !horizontal && k.Height() < 0 && (k.Node().Kind() == "Wrap" || k.Node().Kind() == "Grid") {
+			inset := k.Padding() + k.BorderWidth()
+			inner := maxf(cs-2*inset, 0)
+			if k.Node().Kind() == "Wrap" {
+				sz = e.wrapHeight(visibleChildren(k), inner, containerOf(k).Spacing.Get()) + 2*inset
+			} else {
+				sz = e.gridHeight(visibleChildren(k), inner, gridColumns(k), containerOf(k).Spacing.Get()) + 2*inset
+			}
+		}
 		crossPos := 0.0
 		if horizontal {
 			crossPos = offsetY + crossAlign(a, availH, cs)
@@ -215,6 +230,200 @@ func (e *Engine) linear(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH,
 		k.SetBounds(r)
 		e.children(k, r.W, r.H)
 	}
+}
+
+// wrap flows children left to right and starts a new run when the next child
+// would cross the right edge. spacing separates children in a run and runs from
+// each other; align places shorter children inside their run.
+func (e *Engine) wrap(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH, offsetX, offsetY float64) {
+	c := containerOf(b)
+	spacing := c.Spacing.Get()
+	align := c.Align.Get()
+
+	type item struct {
+		k       *tree.NodeBase
+		x, w, h float64
+		run     int
+	}
+	items := make([]item, 0, len(kids))
+	var runs []float64
+	x := 0.0
+	for _, k := range kids {
+		mw, mh := e.natural(k, availW, availH)
+		if v := k.Width(); v >= 0 {
+			mw = v
+		}
+		if v := k.Height(); v >= 0 {
+			mh = v
+		}
+		if mw > availW {
+			mw = availW
+		}
+		if x > 0 && x+mw > availW {
+			x = 0
+		}
+		if x == 0 {
+			runs = append(runs, 0)
+		}
+		run := len(runs) - 1
+		if mh > runs[run] {
+			runs[run] = mh
+		}
+		items = append(items, item{k: k, x: x, w: mw, h: mh, run: run})
+		x += mw + spacing
+	}
+
+	y := offsetY
+	runY := make([]float64, len(runs))
+	for i, h := range runs {
+		runY[i] = y
+		y += h + spacing
+	}
+	for _, it := range items {
+		a := it.k.AlignSelf()
+		if a == "" {
+			a = align
+		}
+		h := it.h
+		if a == "stretch" && it.k.Height() < 0 {
+			h = runs[it.run]
+		}
+		m := it.k.Margin()
+		yy := runY[it.run] + crossAlign(a, runs[it.run], h)
+		it.k.SetBounds(tree.Rect{X: offsetX + it.x + m, Y: yy + m, W: it.w, H: h})
+		e.children(it.k, it.w, h)
+	}
+}
+
+// grid places children in equal-width columns; each row is as tall as its
+// tallest child. A container child fills the cell, a sized one is aligned in it.
+func (e *Engine) grid(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH, offsetX, offsetY float64) {
+	c := containerOf(b)
+	cols := gridColumns(b)
+	spacing := c.Spacing.Get()
+	align := c.Align.Get()
+	cellW := (availW - spacing*float64(cols-1)) / float64(cols)
+	if cellW < 0 {
+		cellW = 0
+	}
+
+	n := len(kids)
+	widths := make([]float64, n)
+	heights := make([]float64, n)
+	rowH := make([]float64, (n+cols-1)/cols)
+	for i, k := range kids {
+		_, mh := e.natural(k, cellW, availH)
+		// A cell is tight in width, like GridView; a declared width is aligned
+		// inside the cell instead.
+		mw := cellW
+		if v := k.Width(); v >= 0 {
+			mw = minf(v, cellW)
+		}
+		if v := k.Height(); v >= 0 {
+			mh = v
+		}
+		widths[i], heights[i] = mw, mh
+		if r := i / cols; mh > rowH[r] {
+			rowH[r] = mh
+		}
+	}
+	y := offsetY
+	for i, k := range kids {
+		r, col := i/cols, i%cols
+		a := k.AlignSelf()
+		if a == "" {
+			a = align
+		}
+		h := heights[i]
+		if a == "stretch" && k.Height() < 0 {
+			h = rowH[r]
+		}
+		m := k.Margin()
+		x := offsetX + float64(col)*(cellW+spacing) + crossAlign(a, cellW, widths[i])
+		k.SetBounds(tree.Rect{X: x + m, Y: y + m, W: widths[i], H: h})
+		e.children(k, widths[i], h)
+		if col == cols-1 || i == n-1 {
+			y += rowH[r] + spacing
+		}
+	}
+}
+
+// gridColumns reads the column count, defaulting to one for a bad value.
+func gridColumns(b *tree.NodeBase) int {
+	g, ok := b.Node().(*tree.Grid)
+	if !ok {
+		return 1
+	}
+	if n := int(g.Columns.Get()); n > 0 {
+		return n
+	}
+	return 1
+}
+
+// wrapHeight is the height of a wrapped run of children at the given width.
+func (e *Engine) wrapHeight(kids []*tree.NodeBase, availW, spacing float64) float64 {
+	x, total, run := 0.0, 0.0, 0.0
+	for _, k := range kids {
+		mw, mh := e.natural(k, availW, 0)
+		if v := k.Width(); v >= 0 {
+			mw = v
+		}
+		if v := k.Height(); v >= 0 {
+			mh = v
+		}
+		mw = minf(mw, availW)
+		if x > 0 && x+mw > availW {
+			total += run + spacing
+			x, run = 0, 0
+		}
+		run = maxf(run, mh)
+		x += mw + spacing
+	}
+	if len(kids) > 0 {
+		total += run
+	}
+	return total
+}
+
+// gridHeight is the total height of the grid rows at the given width.
+func (e *Engine) gridHeight(kids []*tree.NodeBase, availW float64, cols int, spacing float64) float64 {
+	cellW := (availW - spacing*float64(cols-1)) / float64(cols)
+	if cellW < 0 {
+		cellW = 0
+	}
+	total := 0.0
+	for i := 0; i < len(kids); i += cols {
+		rowH := 0.0
+		for j := i; j < i+cols && j < len(kids); j++ {
+			_, mh := e.natural(kids[j], cellW, 0)
+			if v := kids[j].Height(); v >= 0 {
+				mh = v
+			}
+			rowH = maxf(rowH, mh)
+		}
+		if i > 0 {
+			total += spacing
+		}
+		total += rowH
+	}
+	return total
+}
+
+// gridNaturalWidth is the sum of the widest child in each column.
+func (e *Engine) gridNaturalWidth(kids []*tree.NodeBase, availW float64, cols int, spacing float64) float64 {
+	colW := make([]float64, cols)
+	for i, k := range kids {
+		w, _ := e.natural(k, availW, 0)
+		if v := k.Width(); v >= 0 {
+			w = v
+		}
+		colW[i%cols] = maxf(colW[i%cols], w)
+	}
+	total := spacing * float64(cols-1)
+	for _, w := range colW {
+		total += w
+	}
+	return total
 }
 
 // equalRow gives each child an equal share of the row, which is what
@@ -408,6 +617,10 @@ func containerOf(b *tree.NodeBase) *tree.Container {
 		return &n.Container
 	case *tree.Stack:
 		return &n.Container
+	case *tree.Wrap:
+		return &n.Container
+	case *tree.Grid:
+		return &n.Container
 	}
 	return &tree.Container{}
 }
@@ -420,6 +633,10 @@ func containerKind(b *tree.NodeBase) (*tree.Container, bool) {
 	case *tree.Row:
 		return &n.Container, true
 	case *tree.Stack:
+		return &n.Container, true
+	case *tree.Wrap:
+		return &n.Container, true
+	case *tree.Grid:
 		return &n.Container, true
 	}
 	return nil, false
@@ -459,6 +676,27 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 	spacing := containerOf(k).Spacing.Get()
 	inset := (k.Padding() + k.BorderWidth()) * 2
 	kind := k.Node().Kind()
+	innerW := maxf(availW-inset, 0)
+
+	switch kind {
+	case "Wrap":
+		total := 0.0
+		for i, c := range kids {
+			w, _ := e.natural(c, innerW, 0)
+			if v := c.Width(); v >= 0 {
+				w = v
+			}
+			if i > 0 {
+				total += spacing
+			}
+			total += w
+		}
+		return minf(total, innerW) + inset, e.wrapHeight(kids, innerW, spacing) + inset
+	case "Grid":
+		cols := gridColumns(k)
+		return minf(e.gridNaturalWidth(kids, innerW, cols, spacing), innerW) + inset,
+			e.gridHeight(kids, innerW, cols, spacing) + inset
+	}
 
 	var mainSum, maxW, maxH float64
 	for i, c := range kids {
@@ -494,7 +732,7 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 
 func isContainer(k *tree.NodeBase) bool {
 	switch k.Node().Kind() {
-	case "Window", "Column", "Row", "Stack",
+	case "Window", "Column", "Row", "Stack", "Wrap", "Grid",
 		"Card", "Dialog", "BottomSheet", "SideSheet", "List", "Menu",
 		"NavigationDrawer", "NavigationBar", "NavigationRail", "Tabs",
 		"Toolbar", "ButtonGroup", "Carousel":
@@ -556,6 +794,13 @@ func clampSize(v, lo, hi float64) float64 {
 
 func maxf(a, b float64) float64 {
 	if a > b {
+		return a
+	}
+	return b
+}
+
+func minf(a, b float64) float64 {
+	if a < b {
 		return a
 	}
 	return b

@@ -83,6 +83,29 @@ type Stack struct{ Container }
 // Kind implements Node.
 func (*Stack) Kind() string { return "Stack" }
 
+// Wrap flows children horizontally and continues on a new run when the width
+// runs out. spacing is both the gap inside a run and the gap between runs.
+type Wrap struct{ Container }
+
+// Kind implements Node.
+func (*Wrap) Kind() string { return "Wrap" }
+
+// Grid lays children out in a fixed number of equal-width columns. spacing is
+// the gap between columns and between rows.
+type Grid struct {
+	Container
+	Columns Prop[float64]
+}
+
+// Kind implements Node.
+func (*Grid) Kind() string { return "Grid" }
+
+func (g *Grid) namedProps() []NamedProp {
+	return append(g.Container.namedProps(),
+		NumberProp(&g.NodeBase, "columns", DirtyLayout, &g.Columns),
+	)
+}
+
 // Rectangle is a plain colored box.
 type Rectangle struct {
 	NodeBase

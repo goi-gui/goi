@@ -129,6 +129,15 @@ var elements = func() []Element {
 		{Name: "Stack", Children: true, Attrs: withCommon(
 			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
 		)},
+		{Name: "Wrap", Children: true, Attrs: withCommon(
+			Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
+			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
+		)},
+		{Name: "Grid", Children: true, Attrs: withCommon(
+			Prop{Name: "columns", Type: TypeNumber, Dirty: DirtyLayout, Default: 2.0},
+			Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
+			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
+		)},
 		{Name: "Rectangle", Children: false, Attrs: withCommon()},
 		{Name: "Text", Children: false, Attrs: withCommon(
 			Prop{Name: "text", Type: TypeString, Dirty: DirtyLayout, Default: ""},

@@ -278,6 +278,16 @@ batch. This is what the display list will feed.
   the underlined composing run and the candidate window need a native
   text-input bridge (Wayland `zwp_text_input_v3`, XIM on X11) that GLFW does not
   expose; a long value also does not scroll horizontally inside its field yet.
+- **Wrap and Grid are layout containers, not new components.** `Wrap` uses the
+  existing `spacing` for the gap inside a run and between runs, so there is no
+  second knob; `align` places shorter children inside their run (`stretch`
+  fills it). `Grid` takes a
+  `columns` count (default 2) and makes each cell tight in width like
+  `GridView`, while a row is as tall as its tallest child (no fixed aspect
+  ratio). Unlike Material components they have no intrinsic width in a Row
+  beyond the sum of their cells. Their height depends on the width they actually
+  receive, so the layout recomputes it after the cross size is known rather than
+  trusting the parent's available width.
 - **Only surfaces clip their children, not layout flow.** `NodeBase.ClipsChildren`
   is true for scroll viewports, `Window`, `Stack` and painted components; `Column`,
   `Row`, `Toolbar` and `ButtonGroup` let content spill. Clipping every node to its

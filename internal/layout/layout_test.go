@@ -375,3 +375,104 @@ func TestFlexShrinksForScroll(t *testing.T) {
 		t.Fatal("page has nothing to scroll")
 	}
 }
+
+func TestWrapStartsNewRun(t *testing.T) {
+	tr := build(t, `Window {
+		Wrap {
+			spacing: 10
+			Text { id: a width: 40 height: 10 }
+			Text { id: b width: 40 height: 20 }
+			Text { id: c width: 40 height: 10 }
+			Text { id: d width: 40 height: 10 }
+		}
+	}`)
+	New(nil).Layout(tr.Root, 100, 200)
+	want(t, bounds(t, tr, "a"), 0, 0, 40, 10)
+	want(t, bounds(t, tr, "b"), 50, 0, 40, 20)
+	// 50+40+10 = 100, so c cannot fit and starts the second run.
+	want(t, bounds(t, tr, "c"), 0, 30, 40, 10)
+	want(t, bounds(t, tr, "d"), 50, 30, 40, 10)
+}
+
+func TestWrapAlignsInsideRun(t *testing.T) {
+	tr := build(t, `Window {
+		Wrap {
+			spacing: 10
+			align: center
+			Text { id: a width: 40 height: 10 }
+			Text { id: b width: 40 height: 20 }
+		}
+	}`)
+	New(nil).Layout(tr.Root, 100, 200)
+	// Run height is 20, so the 10dp child sits 5dp down.
+	want(t, bounds(t, tr, "a"), 0, 5, 40, 10)
+	want(t, bounds(t, tr, "b"), 50, 0, 40, 20)
+}
+
+func TestWrapStretchFillsRun(t *testing.T) {
+	tr := build(t, `Window {
+		Wrap {
+			spacing: 10
+			align: stretch
+			Text { id: a width: 40 }
+			Text { id: b width: 40 fontSize: 32 }
+		}
+	}`)
+	New(nil).Layout(tr.Root, 100, 200)
+	// The short child stretches to the run height set by the tall one.
+	want(t, bounds(t, tr, "a"), 0, 0, 40, 38.4)
+}
+
+func TestWrapHugsItsContentHeight(t *testing.T) {
+	tr := build(t, `Window {
+		Column {
+			align: start
+			Wrap {
+				width: 100
+				spacing: 10
+				Text { width: 40 height: 10 }
+				Text { width: 40 height: 10 }
+				Text { width: 40 height: 10 }
+			}
+			Text { id: below width: 10 height: 10 }
+		}
+	}`)
+	New(nil).Layout(tr.Root, 300, 200)
+	// Two runs of 10dp plus the 10dp gap: the text below starts at 30.
+	want(t, bounds(t, tr, "below"), 0, 30, 10, 10)
+}
+
+func TestGridColumnsAndSpacing(t *testing.T) {
+	tr := build(t, `Window {
+		Grid {
+			columns: 3
+			spacing: 10
+			Text { id: a height: 20 }
+			Text { id: b height: 30 }
+			Text { id: c height: 10 }
+			Text { id: d height: 10 }
+		}
+	}`)
+	New(nil).Layout(tr.Root, 300, 200)
+	// Cells are (300-20)/3 = 93.333 wide; row height is the tallest child.
+	want(t, bounds(t, tr, "a"), 0, 0, 93.333, 20)
+	want(t, bounds(t, tr, "b"), 103.333, 0, 93.333, 30)
+	want(t, bounds(t, tr, "c"), 206.666, 0, 93.333, 10)
+	want(t, bounds(t, tr, "d"), 0, 40, 93.333, 10)
+}
+
+func TestGridContainerChildFillsCell(t *testing.T) {
+	tr := build(t, `Window {
+		Column {
+			align: start
+			Grid {
+				columns: 2
+				spacing: 8
+				Column { id: a padding: 4 }
+			}
+		}
+	}`)
+	New(nil).Layout(tr.Root, 208, 200)
+	// The grid stretches to the column, so each cell is (208-8)/2 = 100.
+	want(t, bounds(t, tr, "a"), 0, 0, 100, 8)
+}
