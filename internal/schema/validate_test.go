@@ -79,6 +79,7 @@ func TestDiagnosticCases(t *testing.T) {
 		{"nested map", `Window { width: { md: { base: 1 } } }`, "cannot be another map", ""},
 		{"responsive id", `Window { Text { id: { md: a } } }`, "cannot be responsive", ""},
 		{"repeated breakpoint", `Window { width: { md: 1, md: 2 } }`, "repeats the breakpoint", ""},
+		{"positioned outside stack", `Window { Column { Positioned { left: 1 } } }`, "direct child of Stack", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -102,6 +103,18 @@ func TestDiagnosticCases(t *testing.T) {
 				t.Fatalf("diagnostics %q missing hint %q", msg, tc.hint)
 			}
 		})
+	}
+}
+
+func TestPositionedInStack(t *testing.T) {
+	_, diag := validate(t, `Window {
+		Stack {
+			Positioned { left: 8 top: 8 width: 40 height: 20 }
+			Positioned { right: 0 bottom: 0 Text { text: "hi" } }
+		}
+	}`)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
 	}
 }
 

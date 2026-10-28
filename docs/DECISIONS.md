@@ -288,6 +288,16 @@ batch. This is what the display list will feed.
   beyond the sum of their cells. Their height depends on the width they actually
   receive, so the layout recomputes it after the cross size is known rather than
   trusting the parent's available width.
+- **Positioned is a Stack child, not a layout of its own.** Like Flutter, the
+  box anchors to the Stack's content edges (`left`/`top`/`right`/`bottom`, `-1`
+  meaning auto), stretches between two opposite edges only when it has no
+  declared size, and otherwise hugs its child or follows the Stack's `align` on
+  an unanchored axis. It is a real element rather than parent data on the child,
+  because `.ui` has no slot for parent-owned attributes; the validator enforces
+  that it sits directly in a Stack. Positioned children still contribute their
+  anchored extent to a Stack's auto size, unlike Flutter, so a stack made only
+  of positioned children does not collapse to zero inside a Column. It does not
+  clip, so shadows inside a positioned box paint.
 - **Responsive properties are maps, applied by the frame loop.** A property may
   be `{ base: ..., sm: ..., md: ..., lg: ..., xl: ... }` on Tailwind's min-width
   scale (640/768/1024/1280 logical px). The builder records the map and applies

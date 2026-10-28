@@ -502,3 +502,93 @@ func TestResponsiveGridColumns(t *testing.T) {
 	want(t, bounds(t, tr, "b"), 103.333, 0, 93.333, 10)
 	want(t, bounds(t, tr, "c"), 206.666, 0, 93.333, 10)
 }
+
+func TestPositionedLeftTop(t *testing.T) {
+	tr := build(t, `Window {
+		Stack {
+			width: 300
+			height: 200
+			Rectangle { id: bg }
+			Positioned { id: box left: 10 top: 20 width: 40 height: 30 }
+		}
+	}`)
+	New(nil).Layout(tr.Root, 300, 200)
+	// A plain Stack child still fills.
+	want(t, bounds(t, tr, "bg"), 0, 0, 300, 200)
+	want(t, bounds(t, tr, "box"), 10, 20, 40, 30)
+}
+
+func TestPositionedStretchesBetweenEdges(t *testing.T) {
+	tr := build(t, `Window {
+		Stack {
+			width: 300
+			height: 200
+			Positioned {
+				id: box
+				left: 10
+				right: 10
+				top: 20
+				bottom: 30
+				Text { text: "x" }
+			}
+		}
+	}`)
+	New(nil).Layout(tr.Root, 300, 200)
+	want(t, bounds(t, tr, "box"), 10, 20, 280, 150)
+}
+
+func TestPositionedRightBottom(t *testing.T) {
+	tr := build(t, `Window {
+		Stack {
+			width: 300
+			height: 200
+			Positioned { id: box right: 15 bottom: 25 width: 50 height: 20 }
+		}
+	}`)
+	New(nil).Layout(tr.Root, 300, 200)
+	want(t, bounds(t, tr, "box"), 235, 155, 50, 20)
+}
+
+func TestPositionedUsesStackAlign(t *testing.T) {
+	tr := build(t, `Window {
+		Stack {
+			width: 300
+			height: 200
+			align: center
+			Positioned { id: box width: 40 height: 20 }
+		}
+	}`)
+	New(nil).Layout(tr.Root, 300, 200)
+	want(t, bounds(t, tr, "box"), 130, 90, 40, 20)
+}
+
+func TestPositionedHugsChild(t *testing.T) {
+	tr := build(t, `Window {
+		Stack {
+			width: 300
+			height: 200
+			Positioned {
+				id: box
+				left: 12
+				top: 8
+				Rectangle { width: 60 height: 24 }
+			}
+		}
+	}`)
+	New(nil).Layout(tr.Root, 300, 200)
+	want(t, bounds(t, tr, "box"), 12, 8, 60, 24)
+}
+
+func TestStackSizesToPositionedExtent(t *testing.T) {
+	tr := build(t, `Window {
+		Column {
+			align: start
+			Stack {
+				Positioned { left: 10 top: 5 width: 40 height: 20 }
+			}
+			Text { id: below width: 10 height: 10 }
+		}
+	}`)
+	New(nil).Layout(tr.Root, 300, 200)
+	want(t, bounds(t, tr, "below"), 0, 25, 10, 10)
+}

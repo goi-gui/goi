@@ -41,7 +41,7 @@ func (b *NodeBase) ClipsChildren() bool {
 		return true
 	}
 	switch b.Node().Kind() {
-	case "Column", "Row", "Wrap", "Grid", "Toolbar", "ButtonGroup":
+	case "Column", "Row", "Positioned", "Wrap", "Grid", "Toolbar", "ButtonGroup":
 		return false
 	}
 	return true

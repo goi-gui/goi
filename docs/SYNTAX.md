@@ -60,6 +60,7 @@ by `:` and a child element when it is followed by `{`, so `name: value` and
 | `Column` | yes | `spacing`, `align` |
 | `Row` | yes | `spacing`, `align` |
 | `Stack` | yes | `align` |
+| `Positioned` | yes | `left`, `top`, `right`, `bottom` |
 | `Wrap` | yes | `spacing`, `align` |
 | `Grid` | yes | `columns`, `spacing`, `align` |
 | `Rectangle` | no | — |
@@ -74,6 +75,31 @@ longer fits; `spacing` is both the gap inside a run and the gap between runs.
 `Grid` puts children in `columns` equal-width cells. A cell is as wide as the
 grid allows, so a child fills it unless it declares its own `width`; each row is
 as tall as its tallest child and `spacing` separates both columns and rows.
+
+`Stack` overlays its children, last on top. A child without a declared size
+fills the stack, so the first child is often a background. `Positioned` is only
+valid as a direct child of `Stack` and anchors itself instead of filling:
+
+```
+Stack {
+    width: 360
+    height: 200
+    background: #E8DEF8
+    radius: 16
+
+    Positioned { left: 16 top: 16 width: 180 height: 88 }   // top-left corner
+    Positioned { right: 16 bottom: 16 Chip { label: "New" } } // bottom-right
+    Positioned { left: 0 right: 0 top: 0 height: 48 }       // across the top
+}
+```
+
+`left`, `top`, `right` and `bottom` default to `-1`, meaning auto. An
+unanchored axis follows the Stack's `align`. Setting both opposite edges
+without a declared `width`/`height` stretches the box between them; an explicit
+size wins over the fill. A box with no offsets hugs its child. Positioned
+children still count toward a Stack's auto size (their anchored extent), so a
+Stack inside a Column does not collapse; give the Stack a size when `right` or
+`bottom` should anchor against a larger area. `Positioned` does not clip.
 
 Everything else is a Material 3 component. They are ordinary elements, not a
 separate package. Containers take children; the rest are leaves:
@@ -150,6 +176,7 @@ set from Go with `Prop.Set` is replaced on the next frame.
 
 - Exactly one root element, and it must be `Window`.
 - `id` must match `[a-z][A-Za-z0-9_]*` and be unique within the file.
+- `Positioned` must be a direct child of `Stack`.
 - Unknown element, unknown property, wrong literal type, unknown enum value,
   unknown or repeated breakpoint, nested map, responsive `id` and duplicate ids
   are errors, each reported with `file:line:col`, the offending line and a

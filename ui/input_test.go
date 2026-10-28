@@ -550,3 +550,29 @@ func TestCtrlArrowMovesByWord(t *testing.T) {
 		t.Fatalf("caret after ctrl+left = %d, want 6", ti.Caret)
 	}
 }
+
+func TestClickPositionedButton(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		Stack {
+			background: #eeeeee
+			Positioned {
+				right: 20
+				bottom: 20
+				Button { id: fab width: 60 height: 40 label: "Go" }
+			}
+		}
+	}`, 300, 200)
+	btn := MustByID[*Button](win, "fab")
+	b := absoluteRect(btn)
+	if b.X != 220 || b.Y != 140 || b.W != 60 || b.H != 40 {
+		t.Fatalf("button rect = %+v, want {220 140 60 40}", b)
+	}
+
+	clicks := 0
+	btn.OnClick(func(ClickEvent) { clicks++ })
+	in.MouseDown(b.X+b.W/2, b.Y+b.H/2, 0, false)
+	in.MouseUp(b.X+b.W/2, b.Y+b.H/2, 0)
+	if clicks != 1 {
+		t.Fatalf("clicks = %d", clicks)
+	}
+}

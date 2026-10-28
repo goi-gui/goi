@@ -29,7 +29,7 @@ func Validate(f *syntax.File) (*Result, syntax.Diagnostics) {
 	} else if f.Root.Name != "Window" {
 		v.add(f.Root.NameAt, f.Root.Close, "the root element must be Window", syntax.Suggest(f.Root.Name, RootNames()))
 	}
-	v.walk(f.Root)
+	v.walk(f.Root, "")
 	if !v.diag.Empty() {
 		return nil, v.diag
 	}
@@ -50,12 +50,16 @@ func (v *validator) elementUnknown(e *syntax.Element) {
 	v.add(e.NameAt, e.NameAt+2, fmt.Sprintf("unknown element %q", e.Name), syntax.Suggest(e.Name, ElementNames()))
 }
 
-// walk validates one element and recurses into its children.
-func (v *validator) walk(e *syntax.Element) {
+// walk validates one element and recurses into its children. parent is the
+// enclosing element name, "" for the root.
+func (v *validator) walk(e *syntax.Element, parent string) {
 	def, ok := Lookup(e.Name)
 	if !ok {
 		v.elementUnknown(e)
 		return // children of an unknown element cannot be meaningfully checked
+	}
+	if e.Name == "Positioned" && parent != "Stack" {
+		v.add(e.NameAt, e.NameAt+syntax.Pos(len(e.Name)), "Positioned must be a direct child of Stack", "")
 	}
 
 	seen := map[string]syntax.Pos{}
@@ -82,7 +86,7 @@ func (v *validator) walk(e *syntax.Element) {
 	}
 
 	for _, c := range e.Children() {
-		v.walk(c)
+		v.walk(c, e.Name)
 	}
 }
 

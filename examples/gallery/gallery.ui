@@ -106,6 +106,32 @@ Window {
 					Chip { label: "Third" }
 					Chip { label: "Fourth" }
 				}
+
+				Text { text: "Stack and positioned" role: "titleMedium" }
+				Stack {
+					width: 380
+					height: 200
+					background: #E8DEF8
+					radius: 16
+					Positioned {
+						left: 16
+						top: 16
+						Card { label: "left: 16" supporting: "top: 16" width: 190 height: 84 variant: filled }
+					}
+					Positioned {
+						right: 16
+						bottom: 16
+						Chip { label: "right: 16, bottom: 16" icon: star }
+					}
+					Positioned {
+						left: 16
+						right: 16
+						bottom: 64
+						height: 4
+						background: #6750A4
+						radius: 2
+					}
+				}
 			}
 
 			// ============================== inputs

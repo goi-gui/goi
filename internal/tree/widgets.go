@@ -83,6 +83,29 @@ type Stack struct{ Container }
 // Kind implements Node.
 func (*Stack) Kind() string { return "Stack" }
 
+// Positioned places itself inside a Stack. left/top are distances from the
+// Stack's content edges; right/bottom anchor the opposite edges. A negative
+// value means "auto", and an unanchored axis follows the Stack's align.
+type Positioned struct {
+	NodeBase
+	Left   Prop[float64]
+	Top    Prop[float64]
+	Right  Prop[float64]
+	Bottom Prop[float64]
+}
+
+// Kind implements Node.
+func (*Positioned) Kind() string { return "Positioned" }
+
+func (p *Positioned) namedProps() []NamedProp {
+	return append(commonProps(&p.NodeBase),
+		NumberProp(&p.NodeBase, "left", DirtyLayout, &p.Left),
+		NumberProp(&p.NodeBase, "top", DirtyLayout, &p.Top),
+		NumberProp(&p.NodeBase, "right", DirtyLayout, &p.Right),
+		NumberProp(&p.NodeBase, "bottom", DirtyLayout, &p.Bottom),
+	)
+}
+
 // Wrap flows children horizontally and continues on a new run when the width
 // runs out. spacing is both the gap inside a run and the gap between runs.
 type Wrap struct{ Container }

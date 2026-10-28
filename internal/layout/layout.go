@@ -103,7 +103,7 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 	switch b.Node().Kind() {
 	case "Row":
 		e.linear(b, kids, cw, ch, inset, true, inset)
-	case "Stack":
+	case "Stack", "Positioned":
 		e.stackChildren(b, w, h, inset, inset)
 	case "Wrap":
 		e.wrap(b, kids, cw, ch, inset, inset)
@@ -459,6 +459,12 @@ func (e *Engine) stackChildren(b *tree.NodeBase, w, h, insetX, insetY float64) {
 		if !k.Visible() {
 			continue
 		}
+		if k.Node().Kind() == "Positioned" {
+			r := e.positionedFrame(k, w-2*insetX, h-2*insetY, insetX, insetY, align)
+			k.SetBounds(r)
+			e.children(k, r.W, r.H)
+			continue
+		}
 		mw, mh := e.natural(k, w-2*insetX, h-2*insetY)
 		cw, ch := mw, mh
 		if v := k.Width(); v >= 0 {
@@ -489,6 +495,98 @@ func (e *Engine) stackChildren(b *tree.NodeBase, w, h, insetX, insetY float64) {
 		k.SetBounds(r)
 		e.children(k, cw, ch)
 	}
+}
+
+// positionedFrame places a Positioned child in a Stack content box. A negative
+// offset is auto: the declared or intrinsic size is used and the Stack's align
+// decides where the box sits. left+right (or top+bottom) without a declared
+// size stretches the box between the two edges.
+func (e *Engine) positionedFrame(k *tree.NodeBase, availW, availH, offsetX, offsetY float64, align string) tree.Rect {
+	p, ok := k.Node().(*tree.Positioned)
+	if !ok {
+		return tree.Rect{X: offsetX, Y: offsetY, W: availW, H: availH}
+	}
+	w, h := e.natural(k, availW, availH)
+	if v := k.Width(); v >= 0 {
+		w = v
+	}
+	if v := k.Height(); v >= 0 {
+		h = v
+	}
+	left, top, right, bottom := p.Left.Get(), p.Top.Get(), p.Right.Get(), p.Bottom.Get()
+
+	x := 0.0
+	switch {
+	case left >= 0 && right >= 0 && k.Width() < 0:
+		w = maxf(availW-left-right, 0)
+		x = left
+	case left >= 0:
+		x = left
+	case right >= 0:
+		x = availW - right - w
+	default:
+		if align == "stretch" && k.Width() < 0 {
+			w = availW
+		} else {
+			x = crossAlign(align, availW, w)
+		}
+	}
+
+	y := 0.0
+	switch {
+	case top >= 0 && bottom >= 0 && k.Height() < 0:
+		h = maxf(availH-top-bottom, 0)
+		y = top
+	case top >= 0:
+		y = top
+	case bottom >= 0:
+		y = availH - bottom - h
+	default:
+		if align == "stretch" && k.Height() < 0 {
+			h = availH
+		} else {
+			y = crossAlign(align, availH, h)
+		}
+	}
+
+	// Margin shrinks the box and shifts it inward, like everywhere else.
+	m := k.Margin()
+	return tree.Rect{X: offsetX + x + m, Y: offsetY + y + m, W: maxf(w-2*m, 0), H: maxf(h-2*m, 0)}
+}
+
+// positionedExtent is how much room a Positioned child takes from its Stack's
+// auto size: the anchored edges plus its own size.
+func (e *Engine) positionedExtent(k *tree.NodeBase, availW, availH float64) (float64, float64) {
+	p, ok := k.Node().(*tree.Positioned)
+	if !ok {
+		return e.natural(k, availW, availH)
+	}
+	w, h := e.natural(k, availW, availH)
+	if v := k.Width(); v >= 0 {
+		w = v
+	}
+	if v := k.Height(); v >= 0 {
+		h = v
+	}
+	left, top, right, bottom := p.Left.Get(), p.Top.Get(), p.Right.Get(), p.Bottom.Get()
+	switch {
+	case left >= 0 && right >= 0 && k.Width() < 0:
+		w = left + right
+	case left >= 0:
+		w += left
+	case right >= 0:
+		w += right
+	}
+	switch {
+	case top >= 0 && bottom >= 0 && k.Height() < 0:
+		h = top + bottom
+	case top >= 0:
+		h += top
+	case bottom >= 0:
+		h += bottom
+	}
+	m := k.Margin()
+	return w + 2*m, h + 2*m
 }
 
 // natural returns the intrinsic size of a node.
@@ -679,6 +777,20 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 	innerW := maxf(availW-inset, 0)
 
 	switch kind {
+	case "Positioned":
+		var maxW, maxH float64
+		innerH := maxf(availH-inset, 0)
+		for _, c := range kids {
+			cw, ch := e.natural(c, innerW, innerH)
+			if v := c.Width(); v >= 0 {
+				cw = v
+			}
+			if v := c.Height(); v >= 0 {
+				ch = v
+			}
+			maxW, maxH = maxf(maxW, cw), maxf(maxH, ch)
+		}
+		return maxW + inset, maxH + inset
 	case "Wrap":
 		total := 0.0
 		for i, c := range kids {
@@ -700,12 +812,17 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 
 	var mainSum, maxW, maxH float64
 	for i, c := range kids {
-		cw, ch := e.natural(c, availW, availH)
-		if v := c.Width(); v >= 0 {
-			cw = v
-		}
-		if v := c.Height(); v >= 0 {
-			ch = v
+		var cw, ch float64
+		if kind == "Stack" && c.Node().Kind() == "Positioned" {
+			cw, ch = e.positionedExtent(c, innerW, maxf(availH-inset, 0))
+		} else {
+			cw, ch = e.natural(c, availW, availH)
+			if v := c.Width(); v >= 0 {
+				cw = v
+			}
+			if v := c.Height(); v >= 0 {
+				ch = v
+			}
 		}
 		switch kind {
 		case "Row":
@@ -732,7 +849,7 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 
 func isContainer(k *tree.NodeBase) bool {
 	switch k.Node().Kind() {
-	case "Window", "Column", "Row", "Stack", "Wrap", "Grid",
+	case "Window", "Column", "Row", "Stack", "Positioned", "Wrap", "Grid",
 		"Card", "Dialog", "BottomSheet", "SideSheet", "List", "Menu",
 		"NavigationDrawer", "NavigationBar", "NavigationRail", "Tabs",
 		"Toolbar", "ButtonGroup", "Carousel":

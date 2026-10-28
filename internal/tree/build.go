@@ -220,6 +220,14 @@ func newNode(name string) Node {
 		}
 	case "Rectangle":
 		return &Rectangle{NodeBase: b()}
+	case "Positioned":
+		return &Positioned{
+			NodeBase: b(),
+			Left:     newProp(nil, "left", DirtyLayout, -1.0),
+			Top:      newProp(nil, "top", DirtyLayout, -1.0),
+			Right:    newProp(nil, "right", DirtyLayout, -1.0),
+			Bottom:   newProp(nil, "bottom", DirtyLayout, -1.0),
+		}
 	case "Text":
 		return &Text{
 			NodeBase: b(),
