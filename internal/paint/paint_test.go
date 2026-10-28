@@ -88,8 +88,8 @@ func TestGoldenDisplayList(t *testing.T) {
 	}
 }`, 200, 120)
 	const want = `fill 0,0 200x120 r=0/0/0/0 color=#101010ff border=#00000000/0 clip=0,0 200x120
-text "0" at 8,26.84 size=20 w=400 align=0 color=#eeeeeeff clip=8,8 184x104
-fill 8,32 40x32 r=6/6/6/6 color=#3b82f6ff border=#00000000/0 clip=8,8 184x104
+text "0" at 8,26.84 size=20 w=400 align=0 color=#eeeeeeff clip=0,0 200x120
+fill 8,32 40x32 r=6/6/6/6 color=#3b82f6ff border=#00000000/0 clip=0,0 200x120
 `
 	if got := l.Dump(); got != want {
 		t.Fatalf("display list mismatch\n--- got ---\n%s\n--- want ---\n%s", got, want)

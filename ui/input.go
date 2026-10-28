@@ -437,7 +437,10 @@ func walkHit(b *tree.NodeBase, ox, oy float64, x, y float64, clip tree.Rect, fou
 		W: box.W - 2*(b.Padding()+b.BorderWidth()),
 		H: box.H - 2*(b.Padding()+b.BorderWidth()),
 	}
-	kidClip := intersectRect(clip, inner)
+	kidClip := clip
+	if b.ClipsChildren() {
+		kidClip = intersectRect(clip, inner)
+	}
 	ox2, oy2 := scrollShift(b)
 	kids := b.Kids()
 	for n := len(kids) - 1; n >= 0; n-- {
@@ -467,7 +470,10 @@ func walkHitOffset(b *tree.NodeBase, ox, oy float64, bounds tree.Rect, x, y floa
 		W: box.W - 2*(b.Padding()+b.BorderWidth()),
 		H: box.H - 2*(b.Padding()+b.BorderWidth()),
 	}
-	kidClip := intersectRect(clip, inner)
+	kidClip := clip
+	if b.ClipsChildren() {
+		kidClip = intersectRect(clip, inner)
+	}
 	ox2, oy2 := scrollShift(b)
 	kids := b.Kids()
 	for n := len(kids) - 1; n >= 0; n-- {

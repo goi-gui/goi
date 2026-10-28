@@ -130,7 +130,6 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 		l.paintText(t, r, clip)
 	}
 
-	// Children clip to this node's box so nothing spills outside its parent.
 	inner := tree.Rect{
 		X: r.X + b.Padding() + b.BorderWidth(),
 		Y: r.Y + b.Padding() + b.BorderWidth(),
@@ -143,7 +142,10 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 	if inner.H < 0 {
 		inner.H = 0
 	}
-	childClip := intersect(clip, inner)
+	childClip := clip
+	if b.ClipsChildren() {
+		childClip = intersect(clip, inner)
+	}
 	ox, oy := scrollShift(b)
 	for _, k := range b.Kids() {
 		kb := k.Bounds()
@@ -183,7 +185,10 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 	if inner.H < 0 {
 		inner.H = 0
 	}
-	childClip := intersect(clip, inner)
+	childClip := clip
+	if b.ClipsChildren() {
+		childClip = intersect(clip, inner)
+	}
 	ox, oy := scrollShift(b)
 	for _, k := range b.Kids() {
 		kb := k.Bounds()

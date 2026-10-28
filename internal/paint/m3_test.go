@@ -184,3 +184,50 @@ func TestTextFieldSelectionIsHighlighted(t *testing.T) {
 	}
 	t.Fatalf("no selection band:\n%s", l.Dump())
 }
+
+// TestSplitButtonPaintsTwoPills guards the Expressive shape: a leading pill and
+// a square menu pill with a 2dp gap, not one container with a divider.
+func TestSplitButtonPaintsTwoPills(t *testing.T) {
+	l := m3list(t, `Window { SplitButton { label: "Split" icon: add width: 180 height: 40 } }`)
+	primary := m3.Light().Colors.Primary
+	var segs [][4]float32
+	for _, op := range l.Ops {
+		if op.Kind == Fill && op.Color == primary && op.Rect[3] > 0 {
+			segs = append(segs, op.Rect)
+		}
+	}
+	if len(segs) != 2 {
+		t.Fatalf("segments = %d, want 2:\n%s", len(segs), l.Dump())
+	}
+	main, trail := segs[0], segs[1]
+	if gap := trail[0] - (main[0] + main[2]); gap != 2 {
+		t.Fatalf("gap = %v, want 2", gap)
+	}
+	if main[3] != trail[3] || trail[2] != 48 {
+		t.Fatalf("segments = %v / %v, want equal height and a 48dp menu segment", main, trail)
+	}
+}
+
+// TestFlowContainersDoNotClipShadows guards the shadow fix: a Row sizes to its
+// content, so clipping children to its box cut the shadow of the first and last
+// button. Only surfaces and scroll viewports clip.
+func TestFlowContainersDoNotClipShadows(t *testing.T) {
+	l := m3list(t, `Window {
+		Column {
+			align: start
+			Row {
+				Button { label: "x" variant: elevated }
+			}
+		}
+	}`)
+	for _, op := range l.Ops {
+		if op.Kind != Shadow {
+			continue
+		}
+		if want := [4]float32{0, 0, 400, 400}; op.Clip != want {
+			t.Fatalf("shadow clip = %v, want %v", op.Clip, want)
+		}
+		return
+	}
+	t.Fatalf("no shadow op:\n%s", l.Dump())
+}

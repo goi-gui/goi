@@ -135,17 +135,24 @@ func (l *List) iconIn(name string, size float64, color uint32, cx, cy float64, c
 
 // shadow appends an elevation shadow behind a rounded rect.
 func (l *List) shadow(r tree.Rect, radius float64, dp int, clip tree.Rect) {
+	rad := float32(radius)
+	l.shadowRadii(r, [4]float32{rad, rad, rad, rad}, dp, clip)
+}
+
+// shadowRadii is shadow for a shape whose corners differ, like a split button.
+func (l *List) shadowRadii(r tree.Rect, radii [4]float32, dp int, clip tree.Rect) {
 	if dp <= 0 {
 		return
 	}
 	blur := float64(dp) * 2.0
 	off := float64(dp) * 0.5
 	sr := tree.Rect{X: r.X - blur, Y: r.Y - blur + off, W: r.W + 2*blur, H: r.H + 2*blur}
+	b := float32(blur)
 	l.Ops = append(l.Ops, Op{
 		Kind:   Shadow,
 		Rect:   rectArr(sr),
-		Radius: [4]float32{float32(radius + blur), float32(radius + blur), float32(radius + blur), float32(radius + blur)},
-		Blur:   float32(blur),
+		Radius: [4]float32{radii[0] + b, radii[1] + b, radii[2] + b, radii[3] + b},
+		Blur:   b,
 		Color:  withAlpha(l.Theme.Colors.Shadow, 0.22),
 		Clip:   clipArr(clip),
 	})
@@ -157,6 +164,12 @@ func (l *List) stateLayer(c *tree.Component, r tree.Rect, radius float64, color 
 		return
 	}
 	l.ripple(c, r, radius, color, clip)
+	rad := float32(radius)
+	l.tint(c, r, [4]float32{rad, rad, rad, rad}, color, clip)
+}
+
+// tint draws only the interaction overlay, for shapes whose corners differ.
+func (l *List) tint(c *tree.Component, r tree.Rect, radii [4]float32, color uint32, clip tree.Rect) {
 	a := 0.0
 	if c.Pressed {
 		a = m3.StatePressed
@@ -168,12 +181,11 @@ func (l *List) stateLayer(c *tree.Component, r tree.Rect, radius float64, color 
 	if a <= 0 {
 		return
 	}
-	rad := float32(radius)
 	l.Ops = append(l.Ops, Op{
 		Kind:   Fill,
 		Shape:  RoundedRect,
 		Rect:   rectArr(r),
-		Radius: [4]float32{rad, rad, rad, rad},
+		Radius: radii,
 		Color:  withAlpha(color, a),
 		Clip:   clipArr(clip),
 	})
@@ -476,26 +488,66 @@ func (l *List) paintButtonGroup(c *tree.Component, r tree.Rect, clip tree.Rect) 
 
 func (l *List) paintSplitButton(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	bg, fg, border, elev, bw := l.buttonColors(c)
-	radius := r.H / 2
-	l.shadow(r, radius, elev, clip)
-	l.fillRect(r, bg, radius, border, bw, clip)
-	l.stateLayer(c, r, radius, fg, clip)
-	// Divisor between the two halves.
-	dividerX := r.Right() - r.H
-	l.Ops = append(l.Ops, Op{
-		Kind: Fill, Shape: RoundedRect,
-		Rect:  [4]float32{float32(dividerX), float32(r.Y + 10), 1, float32(r.H - 20)},
-		Color: withAlpha(fg, 0.3),
-		Clip:  clipArr(clip),
-	})
-	labelBox := tree.Rect{X: r.X + 24, Y: r.Y, W: r.W - r.H - 32, H: r.H}
-	if c.Icon.Get() != "" {
-		l.iconIn(c.Icon.Get(), 18, fg, r.X+24, r.Y+r.H/2, clip)
-		labelBox.X += 26
-		labelBox.W -= 26
+
+	// Expressive keeps two segments apart with a 2dp gap. Outer ends stay full,
+	// inner corners are only lightly rounded (and round more on hover/press), so
+	// the pair reads as one control that is split, not one pill with a line.
+	const (
+		gap   = 2.0
+		menuW = 48.0
+	)
+	mainW, trailW := r.W-menuW-gap, menuW
+	if mainW < 48 {
+		mainW = (r.W - gap) / 2
+		trailW = mainW
 	}
-	l.textIn(c.Label.Get(), l.style("labelLarge"), fg, labelBox, AlignStart, clip)
-	l.iconIn("arrow_drop_down", 24, fg, dividerX+r.H/2, r.Y+r.H/2, clip)
+	main := tree.Rect{X: r.X, Y: r.Y, W: mainW, H: r.H}
+	trail := tree.Rect{X: r.X + mainW + gap, Y: r.Y, W: trailW, H: r.H}
+	outer := float32(r.H / 2)
+	inner := float32(4)
+	if c.Hover || c.Pressed {
+		inner = 12
+	}
+	segs := []struct {
+		r     tree.Rect
+		radii [4]float32
+	}{
+		{main, [4]float32{outer, inner, inner, outer}},
+		{trail, [4]float32{inner, outer, outer, inner}},
+	}
+	for _, s := range segs {
+		l.shadowRadii(s.r, s.radii, elev, clip)
+		l.Ops = append(l.Ops, Op{
+			Kind: Fill, Shape: RoundedRect, Rect: rectArr(s.r),
+			Radius: s.radii, Color: bg,
+			BorderColor: border, BorderWidth: float32(bw),
+			Clip: clipArr(clip),
+		})
+	}
+	// Ripple starts in the segment under the pointer; the shared click state
+	// tints both, since the framework exposes one button here.
+	if !c.Disabled.Get() {
+		hit := main
+		if c.RippleX >= trail.X {
+			hit = trail
+		}
+		l.ripple(c, hit, r.H/2, fg, clip)
+		for _, s := range segs {
+			l.tint(c, s.r, s.radii, fg, clip)
+		}
+	}
+
+	if c.Icon.Get() != "" {
+		// Icon then label, as one centred pair inside the leading segment.
+		labelWidth := textWidth(l, c.Label.Get(), l.style("labelLarge")) + 8 + 18
+		start := main.X + (main.W-labelWidth)/2
+		l.iconIn(c.Icon.Get(), 18, fg, start+9, r.Y+r.H/2, clip)
+		l.textIn(c.Label.Get(), l.style("labelLarge"), fg,
+			tree.Rect{X: start + 18 + 8, Y: r.Y, W: labelWidth - 26, H: r.H}, AlignStart, clip)
+	} else {
+		l.textIn(c.Label.Get(), l.style("labelLarge"), fg, main, AlignCenter, clip)
+	}
+	l.iconIn("arrow_drop_down", 24, fg, trail.X+trail.W/2, r.Y+r.H/2, clip)
 }
 
 func (l *List) paintSegmentedButton(c *tree.Component, r tree.Rect, clip tree.Rect) {

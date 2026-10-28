@@ -32,6 +32,21 @@ func (b *NodeBase) ScrollAxis() Axis {
 	return AxisY
 }
 
+// ClipsChildren reports whether children paint clipped to this node's content
+// box. Scrolling containers must clip their viewport, and components that draw
+// a surface keep their content inside it. Layout containers do not clip, so a
+// shadow or a focus ring is not cut at the edge of the row it sits in.
+func (b *NodeBase) ClipsChildren() bool {
+	if b.ScrollAxis() != AxisNone {
+		return true
+	}
+	switch b.Node().Kind() {
+	case "Column", "Row", "Toolbar", "ButtonGroup":
+		return false
+	}
+	return true
+}
+
 // ScrollMax is the largest useful offset along the node's scroll axis: how far
 // the children reach past the content box.
 func (b *NodeBase) ScrollMax() float64 {

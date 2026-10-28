@@ -278,6 +278,19 @@ batch. This is what the display list will feed.
   the underlined composing run and the candidate window need a native
   text-input bridge (Wayland `zwp_text_input_v3`, XIM on X11) that GLFW does not
   expose; a long value also does not scroll horizontally inside its field yet.
+- **Only surfaces clip their children, not layout flow.** `NodeBase.ClipsChildren`
+  is true for scroll viewports, `Window`, `Stack` and painted components; `Column`,
+  `Row`, `Toolbar` and `ButtonGroup` let content spill. Clipping every node to its
+  content box cut the shadow of any elevated component in a content-sized row
+  and the focus ring at the edge of the column it sat in. A scrolling column
+  still clips its viewport, so content that needs shadow room keeps a padding
+  (the gallery columns use 16dp).
+- **Split button is two segments, not one pill with a divider.** M3 Expressive
+  uses a 2dp gap, a 48dp menu segment and different corner radii per segment:
+  full at the outer ends, 4dp at the gap (12dp while hovered or pressed, so the
+  halves look less joined). Each segment gets its own fill, shadow and state
+  layer; the trailing segment shows `arrow_drop_down`. Both share one `Click`,
+  so pressing either segment runs the same handler.
 - **What is intentionally shallow for now:** DatePicker and TimePicker render a
   month grid and a clock dial but do not edit a date; FABMenu renders the FAB and
   leaves its expanded item list to app content; Slider drags but has no keyboard

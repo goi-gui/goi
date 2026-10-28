@@ -24,6 +24,7 @@ Window {
 				spacing: 14
 				flex: 1
 				align: start
+				padding: 16
 				scroll: true
 
 				Text { text: "Buttons" role: "titleMedium" }
