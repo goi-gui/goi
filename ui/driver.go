@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 
 	"github.com/ksckaan1/goui/internal/layout"
+	"github.com/ksckaan1/goui/internal/m3"
 	"github.com/ksckaan1/goui/internal/paint"
 	"github.com/ksckaan1/goui/internal/platform"
 	"github.com/ksckaan1/goui/internal/render"
@@ -51,12 +52,18 @@ func (a *App) initWindow(w *Window) error {
 		pw.Destroy()
 		return fmt.Errorf("ui: %w", err)
 	}
+	meas := textMeasurer{lib: gpu.Text()}
 	d := &gpuDriver{
 		app:    a,
 		win:    pw,
 		gpu:    gpu,
-		engine: layout.New(textMeasurer{lib: gpu.Text()}),
+		engine: layout.New(meas),
 	}
+	d.list.Measure = func(s string, size float64, weight int) float64 {
+		w, _ := meas.MeasureWeight(s, size, weight)
+		return w
+	}
+	d.list.Theme = themeFor(w)
 	d.input = &interactor{app: a, tree: w.tree}
 	pw.SetInput(d.input)
 	a.driver = d
@@ -144,6 +151,7 @@ func (a *App) frame() {
 		// A relayout moves children, so everything must be repainted.
 		markAll(root.Base(), tree.DirtyPaint)
 	}
+	d.list.Theme = themeFor(a.win)
 	d.list.Build(a.win.tree, float64(d.pendingW)/float64(maxScale(d.pendingScale)), float64(d.pendingH)/float64(maxScale(d.pendingScale)))
 	if err := d.gpu.Render(&d.list, d.pendingW, d.pendingH); err != nil {
 		a.reportError(err)
@@ -180,4 +188,25 @@ func maxScale(s float32) float32 {
 		return 1
 	}
 	return s
+}
+
+func (d *gpuDriver) windowLogicalW() float64 {
+	return float64(d.pendingW) / float64(maxScale(d.pendingScale))
+}
+
+func (d *gpuDriver) windowLogicalH() float64 {
+	return float64(d.pendingH) / float64(maxScale(d.pendingScale))
+}
+
+// themeFor picks the light or dark theme from the window's theme property.
+func themeFor(w *Window) *m3.Theme {
+	if w == nil || w.tree == nil || w.tree.Root == nil {
+		return m3.Light()
+	}
+	if v, ok := w.tree.Root.PropValue("theme"); ok {
+		if s, ok := v.(string); ok && s == "dark" {
+			return m3.Dark()
+		}
+	}
+	return m3.Light()
 }

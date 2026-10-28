@@ -35,7 +35,7 @@ func main() {
 		label := ui.MustByID[*ui.Text](w, "label")
 		inc := ui.MustByID[*ui.Button](w, "inc")
 		reset := ui.MustByID[*ui.Button](w, "reset")
-		name := ui.MustByID[*ui.TextInput](w, "name")
+		name := ui.MustByID[*ui.TextField](w, "name")
 
 		inc.OnClick(func(ui.ClickEvent) {
 			c.n++
@@ -45,7 +45,7 @@ func main() {
 			c.n = 0
 			label.Text.Set("0")
 		})
-		name.OnChange(func(s string) {
+		name.OnEdit(func(s string) {
 			fmt.Println("name:", s)
 		})
 		name.OnSubmit(func(s string) {

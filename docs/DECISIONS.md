@@ -164,3 +164,55 @@ batch. This is what the display list will feed.
   test is written as four scalar comparisons. Both are worth remembering.
 - **Colors are uploaded as 0..1 floats.** An earlier version passed 0..255 and
   every fill drew white; `rgba()` divides by 255 in one place.
+
+## Phase 12 — Material 3 components
+
+- **Components are core elements, not a package.** The 40 component kinds are
+  built-in .ui elements (`Button`, `Chip`, `Dialog`, …) so a file needs no
+  imports and `ByID` stays type-checked (`*ui.Button`). `internal/componentdef`
+  is the single list of kinds and their property subsets; `schema` validates
+  against it and `tree` builds prop tables from it, so they cannot drift.
+  `internal/schema/components_test.go` writes every kind into a file and fails if
+  one does not validate.
+- **One shared `Component` state, per-kind props.** All components embed
+  `tree.Component` (label, icon, variant, checked, value, events, interaction
+  state). Each kind exposes only its own subset through `propsFor`, keeping the
+  "unknown property" diagnostics honest.
+- **Bundled Roboto 400/500/700 and Material Symbols Outlined, not system fonts.**
+  M3's metrics and icon names depend on them. Both are fetched from the Google
+  Fonts CDN as `woff` (which go-text parses) and embedded; Roboto covers all
+  Turkish glyphs, Material Symbols is looked up by ligature (`home`, `add`, …),
+  so no icon-name table is needed. Atlas keys now include the font tag, because
+  three Roboto weights and the icon font share one atlas.
+- **Theme tokens live in `internal/m3`.** Baseline light and dark schemes, the
+  full type scale, the shape scale and elevation constants. Every painter reads
+  those, so a window's `theme: dark` swaps the whole scheme. Custom/dynamic
+  palettes are not exposed.
+- **Display list grew `Shadow`, `Circle` and `Arc`.** The shader kind now
+  distinguishes filled circle, ring/arc and shadow, instead of treating every
+  non-rect as a ring. Shadows grow the quad by the blur radius and evaluate the
+  SDF against the original shape, so the falloff reaches zero at the quad edge
+  and the shape drawn on top hides the solid middle.
+- **Container components reuse the Row/Column layout.** `ButtonGroup`, `Toolbar`,
+  `Carousel`, `Tabs`, `NavigationBar` run their children horizontally;
+  `NavigationRail` and `NavigationDrawer` vertically; `Tabs` and `NavigationBar`
+  split the width equally. This kept the layout engine at one algorithm instead
+  of a second widget layout system. `internal/layout` decides horizontal flow
+  from the kind, and intrinsic size sums children for a row and maximises for a
+  column.
+- **Text gets an M3 role.** `Text.role` selects a type-scale step; `fontSize` and
+  `weight` still override it, so existing files keep working. Buttons and other
+  components measure their labels with the same style they paint.
+- **Interaction stays in the input layer.** Hover/pressed/focused are plain
+  fields on `Component`; painters draw the state layer (8/10/10% of the
+  foreground), and `disabled` applies M3's 38%/12% treatment. Ripples and
+  transitions are fields (`Anim`, `Ripple`) but nothing animates them yet.
+- **What is intentionally shallow for now:** DatePicker and TimePicker render a
+  month grid and a clock dial but do not edit a date; FABMenu renders the FAB and
+  leaves its expanded item list to app content; Slider drags but has no keyboard
+  handling; there is no ripple animation. These are visual and behavioural
+  follow-ups, not missing elements.
+- **Not in v1 still:** text selection, clipboard and IME; `Image`, scroll views
+  and full accessibility. The previous phase notes that say "Checkbox deferred"
+  are superseded: Checkbox, RadioButton, Switch and the rest of the component set
+  now exist.

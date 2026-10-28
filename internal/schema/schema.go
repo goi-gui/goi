@@ -4,8 +4,9 @@
 package schema
 
 import (
-	"fmt"
 	"sort"
+
+	"github.com/ksckaan1/goui/internal/componentdef"
 )
 
 // ValueType is the literal type a property demands.
@@ -56,7 +57,7 @@ type Prop struct {
 	Type    ValueType
 	Dirty   DirtyKind
 	Enum    []string // valid values for TypeEnum
-	Default any      // Value is string/float64/bool/uint32/enum string
+	Default any      // string/float64/bool/uint32/enum string
 	// Common marks properties every element accepts.
 	Common bool
 }
@@ -101,42 +102,75 @@ func withCommon(extra ...Prop) []Prop {
 	return append(out, extra...)
 }
 
-var elements = []Element{
-	{Name: "Window", Children: true, Attrs: withCommon(
-		Prop{Name: "title", Type: TypeString, Dirty: DirtyNone, Default: ""},
-	)},
-	{Name: "Column", Children: true, Attrs: withCommon(
-		Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
-		Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
-	)},
-	{Name: "Row", Children: true, Attrs: withCommon(
-		Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
-		Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
-	)},
-	{Name: "Stack", Children: true, Attrs: withCommon(
-		Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
-	)},
-	{Name: "Rectangle", Children: false, Attrs: withCommon()},
-	{Name: "Text", Children: false, Attrs: withCommon(
-		Prop{Name: "text", Type: TypeString, Dirty: DirtyLayout, Default: ""},
-		Prop{Name: "fontSize", Type: TypeNumber, Dirty: DirtyLayout, Default: 16.0},
-		Prop{Name: "color", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0x000000FF)},
-		Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end"}, Default: "start"},
-		Prop{Name: "wrap", Type: TypeBool, Dirty: DirtyLayout, Default: false},
-	)},
-	{Name: "Button", Children: false, Attrs: withCommon(
-		Prop{Name: "text", Type: TypeString, Dirty: DirtyLayout, Default: ""},
-		Prop{Name: "fontSize", Type: TypeNumber, Dirty: DirtyLayout, Default: 16.0},
-		Prop{Name: "color", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0xFFFFFFFF)},
-		Prop{Name: "hoverBackground", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0)},
-	)},
-	{Name: "TextInput", Children: false, Attrs: withCommon(
-		Prop{Name: "text", Type: TypeString, Dirty: DirtyLayout, Default: ""},
-		Prop{Name: "placeholder", Type: TypeString, Dirty: DirtyLayout, Default: ""},
-		Prop{Name: "fontSize", Type: TypeNumber, Dirty: DirtyLayout, Default: 16.0},
-		Prop{Name: "color", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0x000000FF)},
-	)},
+// textRoles are the M3 type scale names accepted by Text.role.
+var textRoles = []string{
+	"displayLarge", "displayMedium", "displaySmall",
+	"headlineLarge", "headlineMedium", "headlineSmall",
+	"titleLarge", "titleMedium", "titleSmall",
+	"bodyLarge", "bodyMedium", "bodySmall",
+	"labelLarge", "labelMedium", "labelSmall",
 }
+
+var elements = func() []Element {
+	out := []Element{
+		{Name: "Window", Children: true, Attrs: withCommon(
+			Prop{Name: "title", Type: TypeString, Dirty: DirtyNone, Default: ""},
+			Prop{Name: "theme", Type: TypeEnum, Dirty: DirtyPaint, Enum: []string{"light", "dark"}, Default: "light"},
+		)},
+		{Name: "Column", Children: true, Attrs: withCommon(
+			Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
+			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
+		)},
+		{Name: "Row", Children: true, Attrs: withCommon(
+			Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
+			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
+		)},
+		{Name: "Stack", Children: true, Attrs: withCommon(
+			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
+		)},
+		{Name: "Rectangle", Children: false, Attrs: withCommon()},
+		{Name: "Text", Children: false, Attrs: withCommon(
+			Prop{Name: "text", Type: TypeString, Dirty: DirtyLayout, Default: ""},
+			Prop{Name: "fontSize", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
+			Prop{Name: "weight", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
+			Prop{Name: "color", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0)},
+			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end"}, Default: "start"},
+			Prop{Name: "wrap", Type: TypeBool, Dirty: DirtyLayout, Default: false},
+			Prop{Name: "role", Type: TypeEnum, Dirty: DirtyLayout, Enum: textRoles, Default: "bodyMedium"},
+		)},
+	}
+	// Every Material 3 component, with the properties componentdef declares.
+	for _, k := range componentdef.Kinds {
+		var attrs []Prop
+		if componentdef.Flow(k.Name) {
+			// Containers that lay their children out in a row or column accept
+			// the same spacing and alignment as Row and Column.
+			attrs = append(attrs,
+				Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
+				Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
+			)
+		}
+		for _, name := range componentdef.Props(k.Name) {
+			p := Prop{Name: name}
+			switch componentdef.TypeOf(name) {
+			case componentdef.Bool:
+				p.Type, p.Dirty, p.Default = TypeBool, DirtyPaint, false
+			case componentdef.Number:
+				p.Type, p.Dirty, p.Default = TypeNumber, DirtyPaint, 0.0
+				if name == "max" {
+					p.Default = 1.0
+				}
+			case componentdef.Enum:
+				p.Type, p.Dirty, p.Enum = TypeEnum, DirtyLayout, componentdef.EnumValues(name)
+			default:
+				p.Type, p.Dirty, p.Default = TypeString, DirtyLayout, ""
+			}
+			attrs = append(attrs, p)
+		}
+		out = append(out, Element{Name: k.Name, Children: k.Container, Attrs: withCommon(attrs...)})
+	}
+	return out
+}()
 
 var elementIndex = func() map[string]*Element {
 	m := make(map[string]*Element, len(elements))
@@ -164,6 +198,3 @@ func ElementNames() []string {
 
 // RootNames returns the elements allowed as a file root.
 func RootNames() []string { return []string{"Window"} }
-
-// String formats an element definition for documentation.
-func (e *Element) String() string { return fmt.Sprintf("element %s", e.Name) }

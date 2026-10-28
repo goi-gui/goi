@@ -27,9 +27,11 @@ internal/tree ── instantiate ──▶ node tree + id index
 |---|---|---|
 | `internal/syntax` | stdlib | lexer, parser, AST, diagnostics |
 | `internal/schema` | syntax | element/property vocabulary, validation |
-| `internal/tree` | syntax, schema | live nodes, props, events, id index |
-| `internal/layout` | tree | flexbox-lite, measurement |
-| `internal/paint` | tree | display list |
+| `internal/componentdef` | — | the one list of M3 kinds and their properties |
+| `internal/m3` | — | theme tokens, type scale, component metrics |
+| `internal/tree` | syntax, schema, componentdef | live nodes, props, events, id index |
+| `internal/layout` | tree, m3 | flexbox-lite, measurement |
+| `internal/paint` | tree, m3 | display list, component visuals |
 | `internal/text` | — | shaping, rasterization, glyph atlas |
 | `internal/render` | paint, text, gogpu/wgpu | GPU pipelines, texture upload |
 | `internal/platform` | go-gl/glfw | window, native handles, input |
@@ -75,18 +77,23 @@ the watcher goroutine and posts only the tree swap.
 
 ## Rendering
 
-The display list is plain structs (`Fill`, `Text`) with absolute coordinates and
-an inherited clip rectangle. The renderer turns fills into instanced quads with
-an SDF fragment shader (per-corner radius, border, anti-aliased edge) and text
-into textured quads sampling a single-channel glyph atlas. One draw call per
-kind.
+The display list is plain structs (`Fill`, `Shadow`, `Text`) with absolute
+coordinates and an inherited clip rectangle. `Fill` covers rounded rectangles,
+circles and arcs; the renderer turns every one into an instanced quad with an
+SDF fragment shader (per-corner radius, border, sweep, soft shadow) and text into
+textured quads sampling a single-channel glyph atlas. One draw call per pipeline.
+
+Material 3 visuals live only in `internal/paint/m3.go`: the theme supplies the
+color roles, type scale, shape scale and elevation, and each component has one
+painter. All colors, sizes and radii come from `internal/m3`, so a theme swap is
+one pointer change on the display list.
 
 ## Hot reload
 
 `Bind` runs again after every reload, so the app's own state must live outside
 it. The framework carries only what it owns:
 
-- widget state by id: `TextInput` contents and caret, focus;
+- widget state by id: text field contents and caret, focus;
 - every property Go wrote, unless the new file changed that property's literal.
 
 If the new file has errors the old tree keeps running and the diagnostics are

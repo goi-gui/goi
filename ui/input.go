@@ -12,62 +12,194 @@ type interactor struct {
 	app  *App
 	tree *tree.Tree
 
-	// hover is the node under the pointer last frame.
-	hover tree.Node
-	// pressed is the node where the primary button went down.
+	hover   tree.Node
 	pressed tree.Node
-	focus   *tree.TextInput
+	// pressX/Y remember where the button went down, for sliders.
+	pressX, pressY float64
+	// dragging marks a slider drag.
+	dragging bool
+	focus    *tree.Component
 
-	// viewportW and viewportH are the logical client size. They mirror the
-	// driver so hit-testing works identically in headless tests.
 	viewportW, viewportH float64
+}
+
+// comp returns the Material component behind a node, if it has one.
+func comp(n tree.Node) *tree.Component {
+	if n == nil {
+		return nil
+	}
+	if m, ok := n.(interface{ M3() *tree.Component }); ok {
+		return m.M3()
+	}
+	return nil
+}
+
+// interactive reports whether a component kind reacts to the pointer.
+func interactive(n tree.Node) bool {
+	switch n.Kind() {
+	case "Button", "IconButton", "FAB", "FABMenu", "SplitButton", "SegmentedButton",
+		"Chip", "Checkbox", "RadioButton", "Switch", "Slider", "TextField",
+		"SearchBar", "ListItem", "MenuItem", "Tab", "Card":
+		return true
+	}
+	return false
 }
 
 func (i *interactor) MouseMove(x, y float64) {
 	hit := i.hit(x, y)
-	if hit == i.hover {
+	if hit == i.hover && !i.dragging {
 		return
 	}
 	i.hover = hit
+	changed := false
 	for _, n := range i.tree.All() {
-		if b, ok := n.(*tree.Button); ok {
-			b.SetHover(n == hit || isDescendantOf(hit, b))
+		c := comp(n)
+		if c == nil {
+			continue
+		}
+		want := isDescendantOf(hit, n) && interactive(n)
+		if c.Hover != want {
+			c.Hover = want
+			c.Base().MarkDirty(tree.DirtyPaint)
+			changed = true
 		}
 	}
-	i.markDirty()
+	if i.dragging {
+		i.drag(x, y)
+	}
+	if changed {
+		i.markDirty()
+	}
 }
 
 func (i *interactor) MouseDown(x, y float64, button int) {
 	hit := i.hit(x, y)
-	i.pressed = hit
+	i.pressX, i.pressY = x, y
+	i.pressed = nil
+	i.dragging = false
 
-	if ti := textInputAt(hit); ti != nil {
-		i.setFocus(ti)
-		i.caretFromPoint(ti, x)
+	// Text fields take focus wherever the press lands inside them.
+	if f := fieldAt(hit); f != nil {
+		i.setFocus(f)
+		i.caretFromPoint(f, x)
 		return
 	}
 	i.setFocus(nil)
+
+	if hit == nil {
+		return
+	}
+	if c := comp(hit); c != nil && !c.Disabled.Get() && interactive(hit) {
+		i.pressed = hit
+		c.Pressed = true
+		c.Base().MarkDirty(tree.DirtyPaint)
+		if hit.Kind() == "Slider" {
+			i.dragging = true
+			i.drag(x, y)
+		}
+		i.markDirty()
+		return
+	}
+	// Tapping a container selects its nearest selectable child.
+	if sel := selectableAt(i.tree, hit); sel != nil {
+		i.pressed = sel
+	}
 	_ = button
 }
 
 func (i *interactor) MouseUp(x, y float64, button int) {
-	defer func() { i.pressed = nil }()
+	defer func() {
+		i.pressed = nil
+		i.dragging = false
+	}()
 	if i.pressed == nil {
+		i.dragging = false
 		return
 	}
+	target := i.pressed
+	c := comp(target)
+	if c == nil {
+		return
+	}
+	if c.Pressed {
+		c.Pressed = false
+		c.Base().MarkDirty(tree.DirtyPaint)
+	}
+	i.dragging = false
+
 	hit := i.hit(x, y)
-	if hit != i.pressed {
-		return // press and release must be on the same node
+	if target.Kind() == "Slider" {
+		i.markDirty()
+		return
 	}
-	if btn := buttonAt(hit); btn != nil {
-		btn.Click.Emit(tree.ClickEvent{X: x, Y: y, Button: button})
+	if !isDescendantOf(hit, target) && hit != target {
+		return // press and release must land on the same component
 	}
+
+	i.activate(target, c, x, y)
+	_ = button
+}
+
+// activate runs the component's click behaviour.
+func (i *interactor) activate(n tree.Node, c *tree.Component, x, y float64) {
+	if c.Disabled.Get() {
+		return
+	}
+	switch n.Kind() {
+	case "Checkbox", "Switch":
+		c.Checked.Set(!c.Checked.Get())
+		c.Toggle.Emit(c.Checked.Get())
+	case "RadioButton":
+		if !c.Checked.Get() {
+			c.Checked.Set(true)
+			c.Toggle.Emit(true)
+		}
+	case "Chip":
+		if c.Variant.Get() == "filter" || c.Variant.Get() == "input" {
+			c.Selected.Set(!c.Selected.Get())
+			c.Toggle.Emit(c.Selected.Get())
+		}
+	case "Tab", "SegmentedButton", "MenuItem", "ListItem":
+		if p := n.Base().Parent(); p != nil {
+			if pc := comp(p); pc != nil {
+				for idx, kid := range p.Base().Kids() {
+					if kid.Base() == n.Base() {
+						pc.SelectedIndex = idx
+						pc.Select.Emit(idx)
+					}
+				}
+			}
+		}
+		if n.Kind() != "MenuItem" && n.Kind() != "ListItem" {
+			c.Selected.Set(true)
+		}
+	}
+	c.Click.Emit(tree.ClickEvent{X: x, Y: y})
+	i.markDirty()
 }
 
 func (i *interactor) Scroll(dx, dy float64) {
-	_ = dx
-	_ = dy
-	// Scroll containers arrive in v1.1; nothing to do yet.
+	hit := i.hit(i.lastX(), i.lastY())
+	for n := hit; n != nil; n = n.Base().Parent() {
+		if scrollable(n) {
+			c := comp(n)
+			c.ScrollY -= dy * 48
+			if c.ScrollY < 0 {
+				c.ScrollY = 0
+			}
+			n.Base().MarkDirty(tree.DirtyPaint)
+			i.markDirty()
+			return
+		}
+	}
+}
+
+func scrollable(n tree.Node) bool {
+	switch n.Kind() {
+	case "List", "Menu", "NavigationDrawer", "Dialog", "DatePicker":
+		return true
+	}
+	return false
 }
 
 func (i *interactor) Key(k platform.Key, mods platform.Mods) {
@@ -76,41 +208,51 @@ func (i *interactor) Key(k platform.Key, mods platform.Mods) {
 
 // key handles a key press in framework terms, so tests need no platform types.
 func (i *interactor) key(k tree.Key, mods tree.Mods) {
-	ti := i.focus
-	if ti == nil {
+	f := i.focus
+	if f == nil {
 		return
 	}
 	switch k {
 	case tree.KeyBackspace:
-		i.deleteBefore(ti)
+		i.deleteBefore(f)
 	case tree.KeyDelete:
-		i.deleteAfter(ti)
+		i.deleteAfter(f)
 	case tree.KeyLeft:
-		ti.SetCaret(prevRune(ti.Text.Get(), ti.Caret()))
+		f.Caret = prevRune(f.Text.Get(), f.Caret)
+		f.Base().MarkDirty(tree.DirtyPaint)
 	case tree.KeyRight:
-		ti.SetCaret(nextRune(ti.Text.Get(), ti.Caret()))
+		f.Caret = nextRune(f.Text.Get(), f.Caret)
+		f.Base().MarkDirty(tree.DirtyPaint)
 	case tree.KeyHome:
-		ti.SetCaret(0)
+		f.Caret = 0
+		f.Base().MarkDirty(tree.DirtyPaint)
 	case tree.KeyEnd:
-		ti.SetCaret(len(ti.Text.Get()))
+		f.Caret = len(f.Text.Get())
+		f.Base().MarkDirty(tree.DirtyPaint)
 	case tree.KeyEnter:
-		ti.Submit.Emit(ti.Text.Get())
+		f.Submit.Emit(f.Text.Get())
 	}
-	_ = mods
+	if mods.Control() && (k == tree.KeyLeft || k == tree.KeyRight) {
+		// Word-wise movement is not implemented; keep the caret valid.
+	}
 	i.markDirty()
 }
 
 func (i *interactor) Char(r rune) {
-	ti := i.focus
-	if ti == nil || r < 32 {
+	f := i.focus
+	if f == nil || r < 32 {
 		return
 	}
-	s := ti.Text.Get()
-	c := ti.Caret()
+	s := f.Text.Get()
+	c := f.Caret
+	if c > len(s) {
+		c = len(s)
+	}
 	ns := s[:c] + string(r) + s[c:]
-	ti.Text.Set(ns)
-	ti.SetCaret(c + len(string(r)))
-	ti.Change.Emit(ns)
+	f.Text.Set(ns)
+	f.Caret = c + len(string(r))
+	f.Base().MarkDirty(tree.DirtyPaint)
+	f.Edit.Emit(ns)
 	i.markDirty()
 }
 
@@ -136,9 +278,7 @@ func (i *interactor) Resize(width, height int, scale float32) {
 	i.markDirty()
 }
 
-func (i *interactor) Close() {
-	i.app.Quit()
-}
+func (i *interactor) Close() { i.app.Quit() }
 
 func (i *interactor) markDirty() {
 	i.app.needsFrame = true
@@ -154,8 +294,7 @@ func (i *interactor) hit(x, y float64) tree.Node {
 	}
 	var found tree.Node
 	walkHit(i.tree.Root.Base(), 0, 0, x, y, tree.Rect{
-		X: 0, Y: 0,
-		W: i.windowW(), H: i.windowH(),
+		X: 0, Y: 0, W: i.windowW(), H: i.windowH(),
 	}, &found)
 	return found
 }
@@ -176,9 +315,48 @@ func walkHit(b *tree.NodeBase, ox, oy float64, x, y float64, clip tree.Rect, fou
 		W: box.W - 2*(b.Padding()+b.BorderWidth()),
 		H: box.H - 2*(b.Padding()+b.BorderWidth()),
 	}
+	kidClip := intersectRect(clip, inner)
+	oy2 := 0.0
+	if c := comp(b.Node()); c != nil && scrollable(b.Node()) {
+		oy2 = -c.ScrollY
+	}
 	kids := b.Kids()
 	for n := len(kids) - 1; n >= 0; n-- {
-		walkHit(kids[n], ox, oy, x, y, intersectRect(clip, inner), found)
+		kb := kids[n].Bounds()
+		kb.Y += oy2
+		walkHitOffset(kids[n], ox, oy, kb, x, y, kidClip, found)
+		if *found != nil {
+			return
+		}
+	}
+	if box.Contains(x, y) && clip.Contains(x, y) {
+		*found = b.Node()
+	}
+}
+
+func walkHitOffset(b *tree.NodeBase, ox, oy float64, bounds tree.Rect, x, y float64, clip tree.Rect, found *tree.Node) {
+	if !b.Visible() {
+		return
+	}
+	ox += bounds.X
+	oy += bounds.Y
+	box := tree.Rect{X: ox, Y: oy, W: bounds.W, H: bounds.H}
+	inner := tree.Rect{
+		X: box.X + b.Padding() + b.BorderWidth(),
+		Y: box.Y + b.Padding() + b.BorderWidth(),
+		W: box.W - 2*(b.Padding()+b.BorderWidth()),
+		H: box.H - 2*(b.Padding()+b.BorderWidth()),
+	}
+	kidClip := intersectRect(clip, inner)
+	oy2 := 0.0
+	if c := comp(b.Node()); c != nil && scrollable(b.Node()) {
+		oy2 = -c.ScrollY
+	}
+	kids := b.Kids()
+	for n := len(kids) - 1; n >= 0; n-- {
+		kb := kids[n].Bounds()
+		kb.Y += oy2
+		walkHitOffset(kids[n], ox, oy, kb, x, y, kidClip, found)
 		if *found != nil {
 			return
 		}
@@ -208,41 +386,44 @@ func (i *interactor) windowH() float64 {
 	return 0
 }
 
-func (d *gpuDriver) windowLogicalW() float64 {
-	return float64(d.pendingW) / float64(maxScale(d.pendingScale))
-}
+func (i *interactor) lastX() float64 { return i.pressX }
+func (i *interactor) lastY() float64 { return i.pressY }
 
-func (d *gpuDriver) windowLogicalH() float64 {
-	return float64(d.pendingH) / float64(maxScale(d.pendingScale))
-}
-
-// setFocus moves keyboard focus, clearing the old field's repair state.
-func (i *interactor) setFocus(ti *tree.TextInput) {
-	if i.focus == ti {
+// setFocus moves keyboard focus, clearing the old field.
+func (i *interactor) setFocus(c *tree.Component) {
+	if i.focus == c {
 		return
 	}
-	i.focus = ti
+	if i.focus != nil {
+		i.focus.Focused = false
+		i.focus.Base().MarkDirty(tree.DirtyPaint)
+	}
+	i.focus = c
+	if c != nil {
+		c.Focused = true
+		c.Base().MarkDirty(tree.DirtyPaint)
+	}
 	i.markDirty()
 }
 
-// textInputAt returns the TextInput at a hit node or one of its ancestors.
-func textInputAt(n tree.Node) *tree.TextInput {
+// fieldAt finds the text field at or above a hit node.
+func fieldAt(n tree.Node) *tree.Component {
 	for n != nil {
-		if ti, ok := n.(*tree.TextInput); ok {
-			return ti
+		if k := n.Kind(); k == "TextField" || k == "SearchBar" {
+			return comp(n)
 		}
 		n = n.Base().Parent()
 	}
 	return nil
 }
 
-// buttonAt returns the nearest Button ancestor of a hit node.
-func buttonAt(n tree.Node) *tree.Button {
-	for n != nil {
-		if b, ok := n.(*tree.Button); ok {
-			return b
+// selectableAt returns the nearest selectable child of a container hit.
+func selectableAt(t *tree.Tree, hit tree.Node) tree.Node {
+	for n := hit; n != nil; n = n.Base().Parent() {
+		switch n.Kind() {
+		case "Tab", "SegmentedButton", "MenuItem", "ListItem":
+			return n
 		}
-		n = n.Base().Parent()
 	}
 	return nil
 }
@@ -257,55 +438,113 @@ func isDescendantOf(n, ancestor tree.Node) bool {
 	return false
 }
 
-func (i *interactor) deleteBefore(ti *tree.TextInput) {
-	s := ti.Text.Get()
-	c := ti.Caret()
-	if c == 0 {
+func (i *interactor) deleteBefore(f *tree.Component) {
+	s := f.Text.Get()
+	c := f.Caret
+	if c <= 0 || c > len(s) {
 		return
 	}
 	p := prevRune(s, c)
 	ns := s[:p] + s[c:]
-	ti.Text.Set(ns)
-	ti.SetCaret(p)
-	ti.Change.Emit(ns)
+	f.Text.Set(ns)
+	f.Caret = p
+	f.Base().MarkDirty(tree.DirtyPaint)
+	f.Edit.Emit(ns)
 }
 
-func (i *interactor) deleteAfter(ti *tree.TextInput) {
-	s := ti.Text.Get()
-	c := ti.Caret()
+func (i *interactor) deleteAfter(f *tree.Component) {
+	s := f.Text.Get()
+	c := f.Caret
 	if c >= len(s) {
 		return
 	}
 	n := nextRune(s, c)
 	ns := s[:c] + s[n:]
-	ti.Text.Set(ns)
-	ti.Change.Emit(ns)
+	f.Text.Set(ns)
+	f.Base().MarkDirty(tree.DirtyPaint)
+	f.Edit.Emit(ns)
+}
+
+// drag updates a slider from the pointer position.
+func (i *interactor) drag(x, y float64) {
+	if i.pressed == nil || i.pressed.Kind() != "Slider" {
+		return
+	}
+	c := comp(i.pressed)
+	_ = y
+	box := absoluteRect(i.pressed)
+	inset := 10.0
+	trackW := box.W - 2*inset
+	if trackW <= 0 {
+		return
+	}
+	frac := (x - box.X - inset) / trackW
+	if frac < 0 {
+		frac = 0
+	}
+	if frac > 1 {
+		frac = 1
+	}
+	lo, hi := c.Min.Get(), c.Max.Get()
+	v := lo + frac*(hi-lo)
+	if step := c.Step.Get(); step > 0 {
+		v = lo + float64(int((v-lo)/step+0.5))*step
+	}
+	c.Value.Set(v)
+	c.Change.Emit(v)
+	i.markDirty()
 }
 
 // caretFromPoint places the caret at the nearest rune boundary to x.
-func (i *interactor) caretFromPoint(ti *tree.TextInput, x float64) {
-	b := ti.Base().Bounds()
-	ox := absoluteX(ti)
-	rel := x - ox - b.X
-	// shortcut: caret placement assumes 8px per byte instead of shaped advances, so a click inside a proportional glyph lands on the nearest byte. Upgrade when selection lands.
-	idx := int(rel / 8)
-	s := ti.Text.Get()
-	if idx < 0 {
-		idx = 0
+func (i *interactor) caretFromPoint(f *tree.Component, x float64) {
+	box := absoluteRect(i.focusNode(f))
+	rel := x - box.X - 16
+	if rel < 0 {
+		rel = 0
 	}
+	s := f.Text.Get()
+	// shortcut: caret placement assumes 0.55*fontSize per character instead of
+	// shaped advances. Upgrade when text selection lands.
+	per := l_estimateCharWidth(f)
+	idx := int(rel / per)
 	if idx > len(s) {
 		idx = len(s)
 	}
-	ti.SetCaret(idx)
+	for idx > 0 && idx < len(s) && s[idx]&0xC0 == 0x80 {
+		idx--
+	}
+	f.Caret = idx
+	f.Base().MarkDirty(tree.DirtyPaint)
 }
 
-func absoluteX(n tree.Node) float64 {
-	x := 0.0
-	for n != nil {
-		x += n.Base().Bounds().X
-		n = n.Base().Parent()
+func l_estimateCharWidth(f *tree.Component) float64 {
+	// BodyLarge is 16sp.
+	return 16 * 0.55
+}
+
+// focusNode returns the tree node wrapping a component.
+func (i *interactor) focusNode(f *tree.Component) tree.Node {
+	for _, n := range i.tree.All() {
+		if comp(n) == f {
+			return n
+		}
 	}
-	return x
+	return nil
+}
+
+// absoluteRect returns a node's rectangle in window coordinates.
+func absoluteRect(n tree.Node) tree.Rect {
+	if n == nil {
+		return tree.Rect{}
+	}
+	b := n.Base().Bounds()
+	x, y := b.X, b.Y
+	for p := n.Base().Parent(); p != nil; p = p.Base().Parent() {
+		pb := p.Base().Bounds()
+		x += pb.X
+		y += pb.Y
+	}
+	return tree.Rect{X: x, Y: y, W: b.W, H: b.H}
 }
 
 func intersectRect(a, b tree.Rect) tree.Rect {
@@ -325,6 +564,9 @@ func intersectRect(a, b tree.Rect) tree.Rect {
 func prevRune(s string, i int) int {
 	if i <= 0 {
 		return 0
+	}
+	if i > len(s) {
+		i = len(s)
 	}
 	for j := i - 1; j > 0 && s[j]&0xC0 == 0x80; j-- {
 		i = j

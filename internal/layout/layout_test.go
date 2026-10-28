@@ -227,9 +227,9 @@ func TestAutoSizeUsesMeasurer(t *testing.T) {
 			Text { id: a text: "hello" fontSize: 10 }
 		}
 	}`)
-	// FakeMeasurer: width = len*fontSize*0.5 = 25, height = 12.
+	// FakeMeasurer: width = len*fontSize*0.55 = 27.5, height = 12.
 	New(nil).Layout(tr.Root, 300, 200)
-	want(t, bounds(t, tr, "a"), 0, 0, 25, 12)
+	want(t, bounds(t, tr, "a"), 0, 0, 27.5, 12)
 }
 
 func TestZeroVisibleChildren(t *testing.T) {
@@ -251,7 +251,7 @@ func TestGoldenTreeLayout(t *testing.T) {
 			padding: 12
 			spacing: 8
 			Text   { id: title text: "Counter" fontSize: 24 }
-			Button { id: inc   text: "Increase" }
+			Button { id: inc   label: "Increase" }
 			Row    { id: toolbar spacing: 6 align: center
 				Text { id: left  width: 30 height: 10 }
 				Text { id: right width: 30 height: 10 }
@@ -274,9 +274,9 @@ func TestGoldenTreeLayout(t *testing.T) {
 			w[s.ID] = s.R
 		}
 	}
-	want(t, w["title"], 12, 12, 84, 28.8)
-	want(t, w["inc"], 12, 48.8, 88, 31.2)
-	want(t, w["toolbar"], 12, 88, 456, 10)
+	want(t, w["title"], 12, 12, 92.4, 28.8)
+	want(t, w["inc"], 12, 48.8, 109.6, 40)
+	want(t, w["toolbar"], 12, 96.8, 456, 10)
 	want(t, w["left"], 0, 0, 30, 10)
 	want(t, w["right"], 36, 0, 30, 10)
 }

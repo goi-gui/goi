@@ -22,6 +22,7 @@ type Atlas struct {
 
 // GlyphKey identifies one rasterized glyph.
 type GlyphKey struct {
+	Font uint8
 	Size int // size in 1/4 pixel
 	GID  uint16
 }
@@ -45,8 +46,8 @@ func NewAtlas(w, h int) *Atlas {
 // Slot returns the atlas location for a glyph, rasterizing it on first use.
 // The bool is false when the glyph cannot be rasterized (space, or the atlas is
 // full).
-func (a *Atlas) Slot(face *Face, gid uint16, size int) (GlyphSlot, bool) {
-	key := GlyphKey{Size: size, GID: gid}
+func (a *Atlas) Slot(face *Face, gid uint16) (GlyphSlot, bool) {
+	key := GlyphKey{Font: face.Tag(), Size: int(face.Size() * 4), GID: gid}
 	if s, ok := a.entries[key]; ok {
 		return s, s.Rect.Dx() > 0
 	}

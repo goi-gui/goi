@@ -1,11 +1,15 @@
 // Package paint turns a laid-out tree into a flat display list. It never
 // touches the GPU, so its output can be compared in tests.
+//
+// Material 3 visuals live in m3.go: every component is drawn here, so there is
+// one place that decides what a Button or a Slider looks like.
 package paint
 
 import (
 	"fmt"
 	"strings"
 
+	"github.com/ksckaan1/goui/internal/m3"
 	"github.com/ksckaan1/goui/internal/tree"
 )
 
@@ -14,25 +18,56 @@ type Kind uint8
 
 // Operation kinds.
 const (
-	// Fill is a rectangle, optionally rounded, with an optional border.
+	// Fill is a solid shape: rectangle, circle or arc.
 	Fill Kind = iota
+	// Shadow is a soft drop shadow behind a rounded rectangle.
+	Shadow
 	// Text is a run of glyphs.
 	Text
 )
 
+// Shape is the geometry a Fill draws.
+type Shape uint8
+
+// Shapes.
+const (
+	RoundedRect Shape = iota
+	Circle
+	Arc
+)
+
+// Align is the horizontal alignment of a text or icon run inside its box.
+type Align uint8
+
+// Alignments.
+const (
+	AlignStart Align = iota
+	AlignCenter
+	AlignEnd
+)
+
 // Op is one drawing operation in window coordinates (logical pixels).
 type Op struct {
-	Kind Kind
+	Kind  Kind
+	Shape Shape
 
-	// Rect is x, y, w, h.
+	// Rect is x, y, w, h. For Circle and Arc the circle is inscribed in it.
 	Rect [4]float32
 	// Radius is the per-corner radius: top-left, top-right, bottom-right,
-	// bottom-left.
+	// bottom-left. ShapeFull is resolved by the painter before it gets here.
 	Radius [4]float32
 	Color  uint32 // 0xRRGGBBAA
 
 	BorderColor uint32
 	BorderWidth float32
+
+	// Blur is the shadow falloff in logical pixels.
+	Blur float32
+
+	// Arc fields, in radians, 0 at 12 o'clock and growing clockwise.
+	StartAngle float32
+	EndAngle   float32
+	Thickness  float32
 
 	// Clip is the intersection of every ancestor's content box, as x, y, w, h.
 	// Ops outside it are still emitted; the renderer discards those fragments.
@@ -41,25 +76,22 @@ type Op struct {
 	// Text fields.
 	Text     string
 	FontSize float32
+	Weight   float32
+	Icon     bool
 	Align    Align
 	TextX    float32 // left edge of the alignment box
 	TextY    float32 // baseline
+	BoxW     float32 // alignment box width
 }
-
-// Align is the horizontal alignment of a text run inside its box.
-type Align uint8
-
-// Text alignments.
-const (
-	AlignStart Align = iota
-	AlignCenter
-	AlignEnd
-)
 
 // List is a display list. Reusing the same List across frames keeps the
 // allocation count flat.
 type List struct {
-	Ops []Op
+	Ops   []Op
+	Theme *m3.Theme
+	// Measure returns the advance width of a string. The UI sets it to the real
+	// shaper; when nil a rough estimate is used, which keeps tests font-free.
+	Measure func(s string, size float64, weight int) float64
 }
 
 // Reset empties the list but keeps its capacity.
@@ -67,6 +99,9 @@ func (l *List) Reset() { l.Ops = l.Ops[:0] }
 
 // Build fills l from tr. size is the client area in logical pixels.
 func (l *List) Build(tr *tree.Tree, w, h float64) {
+	if l.Theme == nil {
+		l.Theme = m3.Light()
+	}
 	l.Reset()
 	clip := tree.Rect{W: w, H: h}
 	l.walk(tr.Root.Base(), 0, 0, clip)
@@ -82,34 +117,14 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 	y += br.Y
 	r := tree.Rect{X: x, Y: y, W: br.W, H: br.H}
 
-	radius := float32(b.Radius())
-	if c := b.Background(); c != 0 || b.BorderWidth() > 0 {
-		l.Ops = append(l.Ops, Op{
-			Kind:        Fill,
-			Rect:        [4]float32{float32(r.X), float32(r.Y), float32(r.W), float32(r.H)},
-			Radius:      [4]float32{radius, radius, radius, radius},
-			Color:       c,
-			BorderColor: b.BorderColor(),
-			BorderWidth: float32(b.BorderWidth()),
-			Clip:        clipArr(clip),
-		})
+	if c, ok := b.Node().(componentNode); ok {
+		l.paintComponent(c.M3(), r, clip)
+	} else if b.Background() != 0 || b.BorderWidth() > 0 {
+		l.fillRect(r, b.Background(), b.Radius(), b.BorderColor(), b.BorderWidth(), clip)
 	}
 
-	switch n := b.Node().(type) {
-	case *tree.Text:
-		l.text(n, r, clip)
-	case *tree.Button:
-		l.textRun(n.Text.Get(), n.FontSize.Get(), n.Color.Get(), r, b.Padding(), true, clip)
-	case *tree.TextInput:
-		s := n.Text.Get()
-		color := n.Color.Get()
-		if s == "" {
-			// Placeholder: dim the same color instead of introducing a second
-			// color property for v1.
-			s = n.Placeholder.Get()
-			color = (color & 0xFFFFFF00) | 0x80
-		}
-		l.textRun(s, n.FontSize.Get(), color, r, b.Padding(), false, clip)
+	if t, ok := b.Node().(*tree.Text); ok {
+		l.paintText(t, r, clip)
 	}
 
 	// Children clip to this node's box so nothing spills outside its parent.
@@ -126,79 +141,96 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 		inner.H = 0
 	}
 	childClip := intersect(clip, inner)
-	for _, c := range b.Kids() {
-		l.walk(c, x, y, childClip)
+	oy := 0.0
+	if c, ok := b.Node().(componentNode); ok && scrollsVertically(c.M3()) {
+		oy = -c.M3().ScrollY
+	}
+	for _, k := range b.Kids() {
+		kb := k.Bounds()
+		kb.Y += oy
+		l.walkOffset(k, x, y, kb, childClip)
 	}
 }
 
-func (l *List) text(n *tree.Text, r tree.Rect, clip tree.Rect) {
-	align := AlignStart
-	switch n.Align.Get() {
-	case "center":
-		align = AlignCenter
-	case "end":
-		align = AlignEnd
-	}
-	fs := n.FontSize.Get()
-	// A text box taller than one line centers the line, which is what an
-	// explicit height or a stretched parent looks like.
-	baseline := r.Y + fs*0.8
-	if lineH := fs * 1.2; r.H > lineH {
-		baseline = r.Y + (r.H-lineH)/2 + fs*0.95
-	}
-	l.Ops = append(l.Ops, Op{
-		Kind:     Text,
-		Rect:     [4]float32{float32(r.X), float32(r.Y), float32(r.W), float32(r.H)},
-		Color:    n.Color.Get(),
-		Clip:     clipArr(clip),
-		Text:     n.Text.Get(),
-		FontSize: float32(fs),
-		Align:    align,
-		TextX:    float32(r.X),
-		TextY:    float32(baseline),
-	})
-}
-
-// textRun emits a label centered in r when centered, else left-aligned.
-func (l *List) textRun(s string, fontSize float64, color uint32, r tree.Rect, pad float64, centered bool, clip tree.Rect) {
-	if s == "" {
+// walkOffset is walk with an explicit bounds override, used for scrolled lists.
+func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip tree.Rect) {
+	if !b.Visible() {
 		return
 	}
-	align := AlignStart
-	x := r.X + pad + 6
-	if centered {
-		align = AlignCenter
-		x = r.X
+	x += bounds.X
+	y += bounds.Y
+	r := tree.Rect{X: x, Y: y, W: bounds.W, H: bounds.H}
+
+	if c, ok := b.Node().(componentNode); ok {
+		l.paintComponent(c.M3(), r, clip)
+	} else if b.Background() != 0 || b.BorderWidth() > 0 {
+		l.fillRect(r, b.Background(), b.Radius(), b.BorderColor(), b.BorderWidth(), clip)
 	}
+	if t, ok := b.Node().(*tree.Text); ok {
+		l.paintText(t, r, clip)
+	}
+
+	inner := tree.Rect{
+		X: r.X + b.Padding() + b.BorderWidth(),
+		Y: r.Y + b.Padding() + b.BorderWidth(),
+		W: r.W - 2*(b.Padding()+b.BorderWidth()),
+		H: r.H - 2*(b.Padding()+b.BorderWidth()),
+	}
+	if inner.W < 0 {
+		inner.W = 0
+	}
+	if inner.H < 0 {
+		inner.H = 0
+	}
+	childClip := intersect(clip, inner)
+	oy := 0.0
+	if c, ok := b.Node().(componentNode); ok && scrollsVertically(c.M3()) {
+		oy = -c.M3().ScrollY
+	}
+	for _, k := range b.Kids() {
+		kb := k.Bounds()
+		kb.Y += oy
+		l.walkOffset(k, x, y, kb, childClip)
+	}
+}
+
+// componentNode is implemented by every Material 3 component (they all embed
+// tree.Component). It keeps paint free of a 36-way type assertion.
+type componentNode interface {
+	tree.Node
+	M3() *tree.Component
+}
+
+// scrollsVertically reports containers whose children move with ScrollY.
+func scrollsVertically(c *tree.Component) bool {
+	switch c.Node().Kind() {
+	case "List", "Menu", "NavigationDrawer", "NavigationBar", "NavigationRail", "Dialog", "DatePicker":
+		return true
+	}
+	return false
+}
+
+// fillRect appends a rounded rectangle with an optional border.
+func (l *List) fillRect(r tree.Rect, color uint32, radius float64, borderColor uint32, borderWidth float64, clip tree.Rect) {
+	if color == 0 && (borderColor == 0 || borderWidth <= 0) {
+		return
+	}
+	rad := float32(radius)
 	l.Ops = append(l.Ops, Op{
-		Kind:     Text,
-		Rect:     [4]float32{float32(r.X), float32(r.Y), float32(r.W), float32(r.H)},
-		Color:    color,
-		Clip:     clipArr(clip),
-		Text:     s,
-		FontSize: float32(fontSize),
-		Align:    align,
-		TextX:    float32(x),
-		TextY:    float32(r.Y + (r.H+fontSize*0.7)/2),
+		Kind:        Fill,
+		Shape:       RoundedRect,
+		Rect:        rectArr(r),
+		Radius:      [4]float32{rad, rad, rad, rad},
+		Color:       color,
+		BorderColor: borderColor,
+		BorderWidth: float32(borderWidth),
+		Clip:        clipArr(clip),
 	})
 }
 
-// Dump renders the list as text, for golden tests.
-func (l *List) Dump() string {
-	var b strings.Builder
-	for _, op := range l.Ops {
-		switch op.Kind {
-		case Fill:
-			fmt.Fprintf(&b, "fill %g,%g %gx%g radius=%g color=#%08x border=#%08x/%g clip=%g,%g %gx%g\n",
-				op.Rect[0], op.Rect[1], op.Rect[2], op.Rect[3], op.Radius[0], op.Color, op.BorderColor, op.BorderWidth,
-				op.Clip[0], op.Clip[1], op.Clip[2], op.Clip[3])
-		case Text:
-			fmt.Fprintf(&b, "text %q at %g,%g size=%g align=%d color=#%08x clip=%g,%g %gx%g\n",
-				op.Text, op.TextX, op.TextY, op.FontSize, op.Align, op.Color,
-				op.Clip[0], op.Clip[1], op.Clip[2], op.Clip[3])
-		}
-	}
-	return b.String()
+// clipArr and rectArr are tiny converters used everywhere below.
+func rectArr(r tree.Rect) [4]float32 {
+	return [4]float32{float32(r.X), float32(r.Y), float32(r.W), float32(r.H)}
 }
 
 func clipArr(r tree.Rect) [4]float32 {
@@ -231,4 +263,39 @@ func minf(a, b float64) float64 {
 		return a
 	}
 	return b
+}
+
+// Dump renders the list as text, for golden tests.
+func (l *List) Dump() string {
+	var b strings.Builder
+	for _, op := range l.Ops {
+		switch op.Kind {
+		case Fill:
+			name := "fill"
+			if op.Shape == Circle {
+				name = "circle"
+			} else if op.Shape == Arc {
+				name = "arc"
+			}
+			fmt.Fprintf(&b, "%s %g,%g %gx%g r=%g/%g/%g/%g color=#%08x border=#%08x/%g",
+				name, op.Rect[0], op.Rect[1], op.Rect[2], op.Rect[3],
+				op.Radius[0], op.Radius[1], op.Radius[2], op.Radius[3],
+				op.Color, op.BorderColor, op.BorderWidth)
+			if op.Shape == Arc {
+				fmt.Fprintf(&b, " arc=%g..%g t=%g", op.StartAngle, op.EndAngle, op.Thickness)
+			}
+		case Shadow:
+			fmt.Fprintf(&b, "shadow %g,%g %gx%g r=%g blur=%g color=#%08x",
+				op.Rect[0], op.Rect[1], op.Rect[2], op.Rect[3], op.Radius[0], op.Blur, op.Color)
+		case Text:
+			kind := "text"
+			if op.Icon {
+				kind = "icon"
+			}
+			fmt.Fprintf(&b, "%s %q at %g,%g size=%g w=%g align=%d color=#%08x",
+				kind, op.Text, op.TextX, op.TextY, op.FontSize, op.Weight, op.Align, op.Color)
+		}
+		fmt.Fprintf(&b, " clip=%g,%g %gx%g\n", op.Clip[0], op.Clip[1], op.Clip[2], op.Clip[3])
+	}
+	return b.String()
 }

@@ -3,46 +3,42 @@ Window {
 	id: main
 	title: "Counter"
 	width: 480
-	height: 320
-	background: #1b1d22
+	height: 360
+	background: #FEF7FF
 
 	Column {
 		padding: 24
-		spacing: 12
+		spacing: 16
 		align: center
 
 		Text {
 			id: label
 			text: "0"
-			fontSize: 48
-			color: #ffffff
+			role: displayLarge
+			color: #6750A4
 		}
 
-		Button {
-			id: inc
-			text: "Increase"
-			background: #3b82f6
-			color: #ffffff
-			radius: 8
+		Row {
+			spacing: 8
+			align: center
+			Button {
+				id: inc
+				label: "Increase"
+				icon: add
+			}
+			Button {
+				id: reset
+				label: "Reset"
+				variant: tonal
+			}
 		}
 
-		Button {
-			id: reset
-			text: "Reset"
-			background: #2a2d34
-			color: #d0d4dc
-			radius: 8
-		}
-
-		TextInput {
+		TextField {
 			id: name
-			placeholder: "Your name"
-			width: 240
-			height: 36
-			background: #2a2d34
-			color: #ffffff
-			padding: 8
-			radius: 6
+			label: "Your name"
+			placeholder: "Type here"
+			variant: outlined
+			width: 260
 		}
 	}
 }

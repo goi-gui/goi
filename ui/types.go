@@ -20,6 +20,10 @@ import (
 	"github.com/ksckaan1/goui/internal/tree"
 )
 
+// Component is the shared Material 3 component state (label, icon, variant,
+// checked, value and the events).
+type Component = tree.Component
+
 // Prop is a typed property cell. Set is a no-op when the value is unchanged.
 type Prop[T comparable] = tree.Prop[T]
 
@@ -50,13 +54,54 @@ type (
 	// WindowNode is the root node of a tree; ui.Window is the handle you get in
 	// Bind and is not itself a node.
 	WindowNode = tree.Window
-	Column     = tree.Column
-	Row        = tree.Row
-	Stack      = tree.Stack
-	Rectangle  = tree.Rectangle
-	Text       = tree.Text
-	Button     = tree.Button
-	TextInput  = tree.TextInput
+	// Layout primitives.
+	Column    = tree.Column
+	Row       = tree.Row
+	Stack     = tree.Stack
+	Rectangle = tree.Rectangle
+	Text      = tree.Text
+
+	// Material 3 components.
+	Button           = tree.Button
+	IconButton       = tree.IconButton
+	FAB              = tree.FAB
+	FABMenu          = tree.FABMenu
+	ButtonGroup      = tree.ButtonGroup
+	SplitButton      = tree.SplitButton
+	SegmentedButton  = tree.SegmentedButton
+	Chip             = tree.Chip
+	Badge            = tree.Badge
+	Checkbox         = tree.Checkbox
+	RadioButton      = tree.RadioButton
+	Switch           = tree.Switch
+	Slider           = tree.Slider
+	TextField        = tree.TextField
+	SearchBar        = tree.SearchBar
+	Tooltip          = tree.Tooltip
+	Card             = tree.Card
+	Dialog           = tree.Dialog
+	BottomSheet      = tree.BottomSheet
+	SideSheet        = tree.SideSheet
+	Divider          = tree.Divider
+	List             = tree.List
+	ListItem         = tree.ListItem
+	Menu             = tree.Menu
+	MenuItem         = tree.MenuItem
+	Snackbar         = tree.Snackbar
+	TopAppBar        = tree.TopAppBar
+	NavigationBar    = tree.NavigationBar
+	NavigationRail   = tree.NavigationRail
+	NavigationDrawer = tree.NavigationDrawer
+	NavigationItem   = tree.NavigationItem
+	Tabs             = tree.Tabs
+	Tab              = tree.Tab
+	LinearProgress   = tree.LinearProgress
+	CircularProgress = tree.CircularProgress
+	LoadingIndicator = tree.LoadingIndicator
+	DatePicker       = tree.DatePicker
+	TimePicker       = tree.TimePicker
+	Carousel         = tree.Carousel
+	Toolbar          = tree.Toolbar
 )
 
 // Event types.

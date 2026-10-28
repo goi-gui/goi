@@ -34,13 +34,18 @@ func commonProps(b *NodeBase) []NamedProp {
 type Window struct {
 	NodeBase
 	Title Prop[string]
+	// Theme is "light" or "dark"; the UI picks the matching M3 scheme.
+	Theme Prop[string]
 }
 
 // Kind implements Node.
 func (w *Window) Kind() string { return "Window" }
 
 func (w *Window) namedProps() []NamedProp {
-	return append(commonProps(&w.NodeBase), StringProp(&w.NodeBase, "title", &w.Title))
+	return append(commonProps(&w.NodeBase),
+		StringProp(&w.NodeBase, "title", &w.Title),
+		EnumProp(&w.NodeBase, "theme", DirtyPaint, &w.Theme, "light", "dark"),
+	)
 }
 
 // Container holds the properties shared by Column, Row and Stack. It is never
@@ -87,7 +92,8 @@ func (r *Rectangle) Kind() string { return "Rectangle" }
 
 func (r *Rectangle) namedProps() []NamedProp { return commonProps(&r.NodeBase) }
 
-// Text draws a single run of text.
+// Text draws a single run of text. FontSize 0 means "use the M3 role in Role";
+// Role is one of the type-scale names (bodyMedium is the default).
 type Text struct {
 	NodeBase
 	Text     Prop[string]
@@ -95,6 +101,8 @@ type Text struct {
 	Color    Prop[uint32]
 	Align    Prop[string]
 	Wrap     Prop[bool]
+	Role     Prop[string]
+	Weight   Prop[float64]
 }
 
 // Kind implements Node.
@@ -107,85 +115,12 @@ func (t *Text) namedProps() []NamedProp {
 		ColorProp(&t.NodeBase, "color", DirtyPaint, &t.Color),
 		EnumProp(&t.NodeBase, "align", DirtyLayout, &t.Align, "start", "center", "end"),
 		BoolProp(&t.NodeBase, "wrap", DirtyLayout, &t.Wrap),
+		EnumProp(&t.NodeBase, "role", DirtyLayout, &t.Role,
+			"displayLarge", "displayMedium", "displaySmall",
+			"headlineLarge", "headlineMedium", "headlineSmall",
+			"titleLarge", "titleMedium", "titleSmall",
+			"bodyLarge", "bodyMedium", "bodySmall",
+			"labelLarge", "labelMedium", "labelSmall"),
+		NumberProp(&t.NodeBase, "weight", DirtyLayout, &t.Weight),
 	)
-}
-
-// Button is a clickable label.
-type Button struct {
-	NodeBase
-	Text            Prop[string]
-	FontSize        Prop[float64]
-	Color           Prop[uint32]
-	HoverBackground Prop[uint32]
-
-	Click Event[ClickEvent]
-
-	hover bool
-}
-
-// Kind implements Node.
-func (b *Button) Kind() string { return "Button" }
-
-func (b *Button) namedProps() []NamedProp {
-	return append(commonProps(&b.NodeBase),
-		StringProp(&b.NodeBase, "text", &b.Text),
-		NumberProp(&b.NodeBase, "fontSize", DirtyLayout, &b.FontSize),
-		ColorProp(&b.NodeBase, "color", DirtyPaint, &b.Color),
-		ColorProp(&b.NodeBase, "hoverBackground", DirtyPaint, &b.HoverBackground),
-	)
-}
-
-// SetHover updates the hover state, repainting only on a change.
-func (b *Button) SetHover(v bool) {
-	if b.hover == v {
-		return
-	}
-	b.hover = v
-	b.MarkDirty(DirtyPaint)
-}
-
-// Hover reports whether the pointer is over the button.
-func (b *Button) Hover() bool { return b.hover }
-
-// TextInput is an editable single-line field.
-type TextInput struct {
-	NodeBase
-	Text        Prop[string]
-	Placeholder Prop[string]
-	FontSize    Prop[float64]
-	Color       Prop[uint32]
-
-	Change Event[string]
-	Submit Event[string]
-
-	caret int
-}
-
-// Kind implements Node.
-func (t *TextInput) Kind() string { return "TextInput" }
-
-func (t *TextInput) namedProps() []NamedProp {
-	return append(commonProps(&t.NodeBase),
-		StringProp(&t.NodeBase, "text", &t.Text),
-		StringProp(&t.NodeBase, "placeholder", &t.Placeholder),
-		NumberProp(&t.NodeBase, "fontSize", DirtyLayout, &t.FontSize),
-		ColorProp(&t.NodeBase, "color", DirtyPaint, &t.Color),
-	)
-}
-
-// Caret returns the byte offset of the insertion point.
-func (t *TextInput) Caret() int { return t.caret }
-
-// SetCaret moves the insertion point, clamped to the text length.
-func (t *TextInput) SetCaret(i int) {
-	if i < 0 {
-		i = 0
-	}
-	if n := len(t.Text.Get()); i > n {
-		i = n
-	}
-	if t.caret != i {
-		t.caret = i
-		t.MarkDirty(DirtyPaint)
-	}
 }

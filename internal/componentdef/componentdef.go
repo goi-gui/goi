@@ -1,0 +1,175 @@
+// Package componentdef is the single list of Material 3 component kinds and
+// the properties each one accepts. tree builds its property tables from it and
+// schema validates against it, so the two cannot drift apart.
+package componentdef
+
+// Kind is one component element name.
+type Kind struct {
+	Name string
+	// Container marks components that take child nodes.
+	Container bool
+}
+
+// Kinds lists every Material 3 component, in the order they appear in docs.
+var Kinds = []Kind{
+	{"Button", false},
+	{"IconButton", false},
+	{"FAB", false},
+	{"FABMenu", true},
+	{"ButtonGroup", true},
+	{"SplitButton", false},
+	{"SegmentedButton", false},
+	{"Chip", false},
+	{"Badge", false},
+	{"Checkbox", false},
+	{"RadioButton", false},
+	{"Switch", false},
+	{"Slider", false},
+	{"TextField", false},
+	{"SearchBar", false},
+	{"Tooltip", false},
+	{"Card", true},
+	{"Dialog", true},
+	{"BottomSheet", true},
+	{"SideSheet", true},
+	{"Divider", false},
+	{"List", true},
+	{"ListItem", false},
+	{"Menu", true},
+	{"MenuItem", false},
+	{"Snackbar", false},
+	{"TopAppBar", false},
+	{"NavigationBar", true},
+	{"NavigationRail", true},
+	{"NavigationDrawer", true},
+	{"NavigationItem", false},
+	{"Tabs", true},
+	{"Tab", false},
+	{"LinearProgress", false},
+	{"CircularProgress", false},
+	{"LoadingIndicator", false},
+	{"DatePicker", true},
+	{"TimePicker", true},
+	{"Carousel", true},
+	{"Toolbar", true},
+}
+
+var byName = func() map[string]Kind {
+	m := make(map[string]Kind, len(Kinds))
+	for _, k := range Kinds {
+		m[k.Name] = k
+	}
+	return m
+}()
+
+// Lookup returns the kind definition.
+func Lookup(name string) (Kind, bool) {
+	k, ok := byName[name]
+	return k, ok
+}
+
+// props is the property list per kind, beyond the common box properties.
+var props = map[string][]string{
+	"Button":           {"label", "icon", "variant", "size", "disabled"},
+	"IconButton":       {"icon", "variant", "size", "disabled", "selected"},
+	"FAB":              {"label", "icon", "variant", "size", "disabled", "expanded"},
+	"FABMenu":          {"icon", "variant", "size", "disabled", "expanded"},
+	"ButtonGroup":      {"variant", "size", "disabled"},
+	"SplitButton":      {"label", "icon", "variant", "size", "disabled", "expanded"},
+	"SegmentedButton":  {"label", "icon", "variant", "size", "disabled", "selected"},
+	"Chip":             {"label", "icon", "trailingIcon", "variant", "size", "disabled", "selected", "checked"},
+	"Badge":            {"label", "variant", "size"},
+	"Checkbox":         {"label", "variant", "disabled", "checked"},
+	"RadioButton":      {"label", "variant", "disabled", "checked"},
+	"Switch":           {"label", "variant", "disabled", "checked"},
+	"Slider":           {"variant", "disabled", "value", "min", "max", "step"},
+	"TextField":        {"label", "text", "placeholder", "supporting", "icon", "trailingIcon", "variant", "disabled"},
+	"SearchBar":        {"label", "text", "placeholder", "icon", "trailingIcon", "variant", "disabled"},
+	"Tooltip":          {"label", "variant"},
+	"Card":             {"label", "supporting", "icon", "variant", "disabled"},
+	"Dialog":           {"label", "supporting", "icon", "variant"},
+	"BottomSheet":      {"label", "supporting", "variant"},
+	"SideSheet":        {"label", "supporting", "variant"},
+	"Divider":          {"variant"},
+	"List":             {"variant"},
+	"ListItem":         {"label", "supporting", "icon", "trailingIcon", "variant", "disabled", "selected"},
+	"Menu":             {"variant"},
+	"MenuItem":         {"label", "icon", "trailingIcon", "variant", "disabled", "selected"},
+	"Snackbar":         {"label", "variant"},
+	"TopAppBar":        {"label", "variant", "icon", "trailingIcon"},
+	"NavigationBar":    {"variant"},
+	"NavigationRail":   {"variant"},
+	"NavigationDrawer": {"label", "variant"},
+	"NavigationItem":   {"label", "icon", "variant", "disabled", "selected"},
+	"Tabs":             {"variant"},
+	"Tab":              {"label", "icon", "variant", "disabled", "selected"},
+	"LinearProgress":   {"variant", "value", "min", "max"},
+	"CircularProgress": {"variant", "value", "min", "max", "size"},
+	"LoadingIndicator": {"variant", "size"},
+	"DatePicker":       {"label", "variant", "size"},
+	"TimePicker":       {"label", "variant", "size"},
+	"Carousel":         {"variant"},
+	"Toolbar":          {"variant", "size"},
+}
+
+// Flow lists containers that accept the row/column layout properties.
+func Flow(kind string) bool {
+	switch kind {
+	case "ButtonGroup", "Toolbar", "Carousel", "FABMenu", "Tabs",
+		"NavigationBar", "NavigationRail", "NavigationDrawer", "List", "Menu",
+		"Card", "Dialog", "BottomSheet", "SideSheet", "DatePicker", "TimePicker":
+		return true
+	}
+	return false
+}
+
+// Props returns the component-specific property names for a kind.
+func Props(kind string) []string {
+	base := props[kind]
+	if !Flow(kind) {
+		return base
+	}
+	out := make([]string, 0, len(base)+2)
+	out = append(out, base...)
+	return append(out, "spacing", "align")
+}
+
+// PropType is the literal type a component property needs.
+type PropType int
+
+// Property types.
+const (
+	String PropType = iota
+	Enum
+	Bool
+	Number
+)
+
+// TypeOf returns the literal type of a component property.
+func TypeOf(name string) PropType {
+	switch name {
+	case "disabled", "checked", "selected", "expanded":
+		return Bool
+	case "value", "min", "max", "step":
+		return Number
+	case "variant", "size", "align":
+		return Enum
+	}
+	return String
+}
+
+// EnumValues returns the accepted identifiers for an enum property. It is a
+// union: a variant that does not apply to a component is simply unused.
+func EnumValues(name string) []string {
+	if name == "size" {
+		return []string{"xs", "sm", "md", "lg", "xl", "small", "large", "extended", "primary", "secondary"}
+	}
+	if name == "align" {
+		return []string{"start", "center", "end", "stretch"}
+	}
+	return []string{
+		"filled", "tonal", "elevated", "outlined", "text", "standard",
+		"primary", "secondary", "tertiary", "small", "large", "extended",
+		"assist", "filter", "input", "suggestion", "horizontal", "vertical",
+	}
+}

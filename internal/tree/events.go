@@ -51,11 +51,20 @@ type FocusEvent struct {
 	Focused bool
 }
 
-// OnClick subscribes to the button's click event.
-func (b *Button) OnClick(fn func(ClickEvent)) (off func()) { return b.Click.On(fn) }
+// OnClick subscribes to a click. Every component has it.
+func (c *Component) OnClick(fn func(ClickEvent)) (off func()) { return c.Click.On(fn) }
 
-// OnChange subscribes to text edits.
-func (t *TextInput) OnChange(fn func(string)) (off func()) { return t.Change.On(fn) }
+// OnToggle subscribes to checked changes (checkbox, switch, chip, radio).
+func (c *Component) OnToggle(fn func(bool)) (off func()) { return c.Toggle.On(fn) }
 
-// OnSubmit subscribes to Enter presses.
-func (t *TextInput) OnSubmit(fn func(string)) (off func()) { return t.Submit.On(fn) }
+// OnChangeValue subscribes to numeric changes (slider, progress).
+func (c *Component) OnChangeValue(fn func(float64)) (off func()) { return c.Change.On(fn) }
+
+// OnEdit subscribes to text edits (text field, search bar).
+func (c *Component) OnEdit(fn func(string)) (off func()) { return c.Edit.On(fn) }
+
+// OnSubmit subscribes to Enter presses in a text field.
+func (c *Component) OnSubmit(fn func(string)) (off func()) { return c.Submit.On(fn) }
+
+// OnSelect subscribes to index selection (tabs, navigation).
+func (c *Component) OnSelect(fn func(int)) (off func()) { return c.Select.On(fn) }

@@ -1,0 +1,175 @@
+// Every Material 3 Expressive component, laid out for visual reference.
+Window {
+	id: main
+	title: "Material 3 components"
+	theme: light
+	background: #FEF7FF
+
+	Column {
+		spacing: 0
+
+		TopAppBar {
+			label: "Material 3 components"
+			icon: "menu"
+			trailingIcon: "more_vert"
+		}
+
+		Row {
+			spacing: 0
+			flex: 1
+			padding: 16
+
+			// ============================== buttons
+			Column {
+				spacing: 14
+				flex: 1
+				align: start
+
+				Text { text: "Buttons" role: "titleMedium" color: #49454F }
+				Row {
+					spacing: 8
+					align: center
+					Button { label: "Filled" }
+					Button { label: "Tonal" variant: tonal }
+					Button { label: "Outlined" variant: outlined }
+					Button { label: "Text" variant: text }
+				}
+				Row {
+					spacing: 8
+					align: center
+					Button { label: "Elevated" variant: elevated }
+					Button { label: "With icon" icon: add }
+					Button { label: "Disabled" disabled: true }
+				}
+
+				Text { text: "Icon buttons" role: "titleMedium" color: #49454F }
+				Row {
+					spacing: 8
+					align: center
+					IconButton { icon: favorite }
+					IconButton { icon: favorite variant: filled }
+					IconButton { icon: favorite variant: tonal }
+					IconButton { icon: favorite variant: outlined }
+				}
+
+				Text { text: "FAB" role: "titleMedium" color: #49454F }
+				Row {
+					spacing: 12
+					align: center
+					FAB { icon: edit size: sm }
+					FAB { icon: add }
+					FAB { label: "Compose" icon: edit variant: extended }
+				}
+
+				Text { text: "Split and segmented" role: "titleMedium" color: #49454F }
+				SplitButton { label: "Split" icon: add width: 180 }
+				Row {
+					spacing: 0
+					align: center
+					SegmentedButton { label: "Day" width: 80 }
+					SegmentedButton { label: "Week" width: 80 selected: true }
+					SegmentedButton { label: "Month" width: 90 }
+				}
+
+				Text { text: "Chips" role: "titleMedium" color: #49454F }
+				Row {
+					spacing: 8
+					align: center
+					Chip { label: "Assist" icon: event }
+					Chip { label: "Filter" variant: filter selected: true }
+					Chip { label: "Suggestion" variant: suggestion }
+				}
+
+				Text { text: "Badges" role: "titleMedium" color: #49454F }
+				Row {
+					spacing: 12
+					align: center
+					Badge { }
+					Badge { label: "12" }
+					Badge { label: "99+" }
+				}
+			}
+
+			// ============================== inputs
+			Column {
+				spacing: 14
+				flex: 1
+				align: start
+				padding: 16
+
+				Text { text: "Selection" role: "titleMedium" color: #49454F }
+				Checkbox { id: check label: "Checkbox" checked: true width: 180 }
+				RadioButton { label: "Radio button" checked: true width: 180 }
+				Switch { id: switchOn label: "Switch" checked: true width: 180 }
+
+				Text { text: "Slider" role: "titleMedium" color: #49454F }
+				Slider { id: slider value: 0.4 min: 0 max: 1 width: 260 }
+
+				Text { text: "Text fields" role: "titleMedium" color: #49454F }
+				TextField { id: field label: "Label" placeholder: "Filled text field" variant: filled width: 260 }
+				TextField { label: "Label" placeholder: "Outlined field" variant: outlined width: 260 }
+				TextField { label: "Email" text: "user@example.com" icon: mail variant: filled width: 260 }
+
+				Text { text: "Search" role: "titleMedium" color: #49454F }
+				SearchBar { placeholder: "Search components" width: 300 }
+			}
+
+			// ============================== surfaces
+			Column {
+				spacing: 14
+				flex: 1
+				align: start
+				padding: 16
+
+				Text { text: "Cards" role: "titleMedium" color: #49454F }
+				Card { label: "Elevated" supporting: "Surface container low" width: 260 height: 76 }
+				Card { label: "Filled" supporting: "Highest container" variant: filled width: 260 height: 76 }
+				Card { label: "Outlined" supporting: "1dp outline" variant: outlined width: 260 height: 76 }
+
+				Text { text: "List" role: "titleMedium" color: #49454F }
+				List {
+					width: 280
+					ListItem { label: "List item" icon: person trailingIcon: chevron_right }
+					ListItem { label: "Two lines" supporting: "Supporting text" icon: photo }
+					Divider { }
+					ListItem { label: "Selected" icon: star selected: true }
+				}
+
+				Text { text: "Tabs" role: "titleMedium" color: #49454F }
+				Tabs {
+					width: 280
+					Tab { label: "Overview" selected: true }
+					Tab { label: "Specs" }
+					Tab { label: "Details" }
+				}
+
+				Text { text: "Progress" role: "titleMedium" color: #49454F }
+				LinearProgress { value: 0.6 width: 260 }
+				Row {
+					spacing: 20
+					align: center
+					CircularProgress { value: 0.65 }
+					LoadingIndicator { }
+				}
+
+				Text { text: "Menu, snackbar, tooltip" role: "titleMedium" color: #49454F }
+				Menu {
+					width: 220
+					MenuItem { label: "Cut" icon: content_cut }
+					MenuItem { label: "Copy" icon: content_copy }
+					MenuItem { label: "Paste" icon: content_paste }
+				}
+				Snackbar { label: "Saved to your library" width: 280 }
+				Tooltip { label: "Tooltip text" width: 110 }
+			}
+		}
+
+		// ---- bottom navigation
+		NavigationBar {
+			NavigationItem { label: "Home" icon: home selected: true }
+			NavigationItem { label: "Search" icon: search }
+			NavigationItem { label: "Library" icon: library_music }
+			NavigationItem { label: "Profile" icon: person }
+		}
+	}
+}

@@ -24,30 +24,28 @@ const inputUI = `Window {
 	Column {
 		padding: 10
 		Text { id: label text: "0" }
-		Button { id: btn width: 100 height: 40 text: "Go" }
-		TextInput { id: field width: 200 height: 30 }
+		Button { id: btn width: 100 height: 40 label: "Go" }
+		TextField { id: field width: 200 height: 30 }
 	}
 }`
 
 func TestHitTestFindsDeepestNode(t *testing.T) {
 	_, win, in := inputFixture(t, inputUI, 480, 320)
 	btn := MustByID[*Button](win, "btn")
-	b := btn.Base().Bounds()
-	// The button starts after the column's 10px padding and the text line.
+	b := absoluteRect(btn)
 	hit := in.hit(b.X+5, b.Y+5)
 	if hit == nil {
 		t.Fatal("nothing hit")
 	}
-	// The hit may be the button or a descendant; walking up must find it.
-	if buttonAt(hit) != btn {
-		t.Fatalf("hit %s did not resolve to the button", hit.Kind())
+	if hit.Kind() != "Button" {
+		t.Fatalf("hit %s, want the button", hit.Kind())
 	}
 }
 
 func TestClickPressRelease(t *testing.T) {
 	_, win, in := inputFixture(t, inputUI, 480, 320)
 	btn := MustByID[*Button](win, "btn")
-	b := btn.Base().Bounds()
+	b := absoluteRect(btn)
 	cx, cy := b.X+b.W/2, b.Y+b.H/2
 
 	clicks := 0
@@ -63,7 +61,7 @@ func TestClickPressRelease(t *testing.T) {
 func TestClickNeedsSameNode(t *testing.T) {
 	_, win, in := inputFixture(t, inputUI, 480, 320)
 	btn := MustByID[*Button](win, "btn")
-	b := btn.Base().Bounds()
+	b := absoluteRect(btn)
 	clicks := 0
 	btn.OnClick(func(ClickEvent) { clicks++ })
 
@@ -77,25 +75,25 @@ func TestClickNeedsSameNode(t *testing.T) {
 func TestHoverToggles(t *testing.T) {
 	_, win, in := inputFixture(t, inputUI, 480, 320)
 	btn := MustByID[*Button](win, "btn")
-	b := btn.Base().Bounds()
+	b := absoluteRect(btn)
 
 	in.MouseMove(b.X+5, b.Y+5)
-	if !btn.Hover() {
+	if !btn.Hover {
 		t.Fatal("button did not become hovered")
 	}
 	in.MouseMove(1, 300)
-	if btn.Hover() {
+	if btn.Hover {
 		t.Fatal("button stayed hovered")
 	}
 }
 
 func TestTextInputTyping(t *testing.T) {
 	_, win, in := inputFixture(t, inputUI, 480, 320)
-	ti := MustByID[*TextInput](win, "field")
-	b := ti.Base().Bounds()
+	ti := MustByID[*TextField](win, "field")
+	b := absoluteRect(ti)
 
 	var changes []string
-	ti.OnChange(func(s string) { changes = append(changes, s) })
+	ti.OnEdit(func(s string) { changes = append(changes, s) })
 
 	in.MouseDown(b.X+10, b.Y+10, 0) // focus it
 	in.MouseUp(b.X+10, b.Y+10, 0)
@@ -105,7 +103,7 @@ func TestTextInputTyping(t *testing.T) {
 	if got := ti.Text.Get(); got != "Kaan" {
 		t.Fatalf("text = %q", got)
 	}
-	if got := ti.Caret(); got != 4 {
+	if got := ti.Caret; got != 4 {
 		t.Fatalf("caret = %d", got)
 	}
 	in.key(backspace, noMods)
@@ -119,33 +117,33 @@ func TestTextInputTyping(t *testing.T) {
 
 func TestTextInputCursorKeys(t *testing.T) {
 	_, win, in := inputFixture(t, inputUI, 480, 320)
-	ti := MustByID[*TextInput](win, "field")
-	b := ti.Base().Bounds()
+	ti := MustByID[*TextField](win, "field")
+	b := absoluteRect(ti)
 	in.MouseDown(b.X+10, b.Y+10, 0)
 
 	in.Char('ç') // two bytes: caret arithmetic must stay on rune boundaries
 	in.Char('a')
-	if got := ti.Caret(); got != 3 {
+	if got := ti.Caret; got != 3 {
 		t.Fatalf("caret after typing = %d, want 3 bytes", got)
 	}
 	in.key(left, noMods)
-	if got := ti.Caret(); got != 2 {
+	if got := ti.Caret; got != 2 {
 		t.Fatalf("caret after left = %d, want 2 (before 'a')", got)
 	}
 	in.key(home, noMods)
-	if got := ti.Caret(); got != 0 {
+	if got := ti.Caret; got != 0 {
 		t.Fatalf("home caret = %d", got)
 	}
 	in.key(end, noMods)
-	if got := ti.Caret(); got != 3 {
+	if got := ti.Caret; got != 3 {
 		t.Fatalf("end caret = %d", got)
 	}
 }
 
 func TestSubmitOnEnter(t *testing.T) {
 	_, win, in := inputFixture(t, inputUI, 480, 320)
-	ti := MustByID[*TextInput](win, "field")
-	b := ti.Base().Bounds()
+	ti := MustByID[*TextField](win, "field")
+	b := absoluteRect(ti)
 	in.MouseDown(b.X+10, b.Y+10, 0)
 	in.Char('x')
 	var submitted string
@@ -158,10 +156,10 @@ func TestSubmitOnEnter(t *testing.T) {
 
 func TestClickOutsideClearsFocus(t *testing.T) {
 	_, win, in := inputFixture(t, inputUI, 480, 320)
-	ti := MustByID[*TextInput](win, "field")
-	b := ti.Base().Bounds()
+	ti := MustByID[*TextField](win, "field")
+	b := absoluteRect(ti)
 	in.MouseDown(b.X+10, b.Y+10, 0)
-	if in.focus != ti {
+	if in.focus != ti.M3() {
 		t.Fatal("input did not take focus")
 	}
 	in.MouseDown(470, 310, 0)

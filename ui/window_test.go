@@ -26,8 +26,8 @@ const counterUI = `Window {
 		padding: 16
 		spacing: 8
 		Text   { id: label text: "0" fontSize: 32 color: #222222 }
-		Button { id: inc   text: "Increase" background: #3b82f6 color: #ffffff }
-		TextInput { id: name placeholder: "Your name" width: 240 }
+		Button { id: inc   label: "Increase" }
+		TextField { id: name placeholder: "Your name" width: 240 }
 	}
 }`
 
@@ -51,7 +51,7 @@ func TestBuildAndLookup(t *testing.T) {
 	}
 
 	_ = MustByID[*Button](w, "inc")
-	_ = MustByID[*TextInput](w, "name")
+	_ = MustByID[*TextField](w, "name")
 }
 
 func TestLookupErrors(t *testing.T) {

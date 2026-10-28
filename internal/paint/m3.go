@@ -1,0 +1,1334 @@
+package paint
+
+import (
+	"math"
+
+	"github.com/ksckaan1/goui/internal/m3"
+	"github.com/ksckaan1/goui/internal/tree"
+)
+
+// This file draws Material 3 components. Every number comes from the M3 specs
+// (dp for sizes, colors from the theme), so the whole app follows one system.
+
+// style resolves a type-scale role name to a text style.
+func (l *List) style(role string) m3.TextStyle {
+	t := l.Theme.Type
+	switch role {
+	case "displayLarge":
+		return t.DisplayLarge
+	case "displayMedium":
+		return t.DisplayMedium
+	case "displaySmall":
+		return t.DisplaySmall
+	case "headlineLarge":
+		return t.HeadlineLarge
+	case "headlineMedium":
+		return t.HeadlineMedium
+	case "headlineSmall":
+		return t.HeadlineSmall
+	case "titleLarge":
+		return t.TitleLarge
+	case "titleMedium":
+		return t.TitleMedium
+	case "titleSmall":
+		return t.TitleSmall
+	case "bodyLarge":
+		return t.BodyLarge
+	case "bodySmall":
+		return t.BodySmall
+	case "labelLarge":
+		return t.LabelLarge
+	case "labelMedium":
+		return t.LabelMedium
+	case "labelSmall":
+		return t.LabelSmall
+	default:
+		return t.BodyMedium
+	}
+}
+
+// weightOf maps a type-scale weight to the shaper's weight constant.
+func weightOf(w int) float32 {
+	switch {
+	case w >= 700:
+		return 700
+	case w >= 500:
+		return 500
+	default:
+		return 400
+	}
+}
+
+// withAlpha returns c with its alpha multiplied by a.
+func withAlpha(c uint32, a float64) uint32 {
+	if a <= 0 {
+		return 0
+	}
+	if a > 1 {
+		a = 1
+	}
+	alpha := float64(c&0xFF) * a
+	return c&0xFFFFFF00 | uint32(alpha+0.5)
+}
+
+// blend mixes two opaque colors, for state layers that should not reveal what
+// is underneath.
+func blend(under, over uint32, a float64) uint32 {
+	mix := func(shift uint) uint32 {
+		u := float64((under >> shift) & 0xFF)
+		o := float64((over >> shift) & 0xFF)
+		return uint32(u + (o-u)*a + 0.5)
+	}
+	return mix(24)<<24 | mix(16)<<16 | mix(8)<<8 | 0xFF
+}
+
+// textIn appends a text op centered vertically in box.
+func (l *List) textIn(s string, st m3.TextStyle, color uint32, box tree.Rect, align Align, clip tree.Rect) {
+	if s == "" {
+		return
+	}
+	baseline := box.Y + (box.H-st.LineHeight)/2 + st.Size*0.8
+	l.Ops = append(l.Ops, Op{
+		Kind:     Text,
+		Rect:     rectArr(box),
+		Color:    color,
+		Clip:     clipArr(clip),
+		Text:     s,
+		FontSize: float32(st.Size),
+		Weight:   weightOf(st.Weight),
+		Align:    align,
+		TextX:    float32(box.X),
+		TextY:    float32(baseline),
+		BoxW:     float32(box.W),
+	})
+}
+
+// iconIn appends an icon op centered at cx, cy.
+func (l *List) iconIn(name string, size float64, color uint32, cx, cy float64, clip tree.Rect) {
+	if name == "" {
+		return
+	}
+	box := tree.Rect{X: cx - size/2, Y: cy - size/2, W: size, H: size}
+	l.Ops = append(l.Ops, Op{
+		Kind:     Text,
+		Rect:     rectArr(box),
+		Color:    color,
+		Clip:     clipArr(clip),
+		Text:     name,
+		FontSize: float32(size),
+		Weight:   400,
+		Icon:     true,
+		Align:    AlignCenter,
+		TextX:    float32(box.X),
+		TextY:    float32(cy + size*0.36),
+		BoxW:     float32(size),
+	})
+}
+
+// shadow appends an elevation shadow behind a rounded rect.
+func (l *List) shadow(r tree.Rect, radius float64, dp int, clip tree.Rect) {
+	if dp <= 0 {
+		return
+	}
+	blur := float64(dp) * 2.0
+	off := float64(dp) * 0.5
+	sr := tree.Rect{X: r.X - blur, Y: r.Y - blur + off, W: r.W + 2*blur, H: r.H + 2*blur}
+	l.Ops = append(l.Ops, Op{
+		Kind:   Shadow,
+		Rect:   rectArr(sr),
+		Radius: [4]float32{float32(radius + blur), float32(radius + blur), float32(radius + blur), float32(radius + blur)},
+		Blur:   float32(blur),
+		Color:  withAlpha(l.Theme.Colors.Shadow, 0.22),
+		Clip:   clipArr(clip),
+	})
+}
+
+// stateLayer overlays the M3 interaction tint on a shape.
+func (l *List) stateLayer(c *tree.Component, r tree.Rect, radius float64, color uint32, clip tree.Rect) {
+	if c.Disabled.Get() {
+		return
+	}
+	a := 0.0
+	if c.Pressed {
+		a = m3.StatePressed
+	} else if c.Hover {
+		a = m3.StateHover
+	} else if c.Focused {
+		a = m3.StateFocus
+	}
+	if a <= 0 {
+		return
+	}
+	rad := float32(radius)
+	l.Ops = append(l.Ops, Op{
+		Kind:   Fill,
+		Shape:  RoundedRect,
+		Rect:   rectArr(r),
+		Radius: [4]float32{rad, rad, rad, rad},
+		Color:  withAlpha(color, a),
+		Clip:   clipArr(clip),
+	})
+}
+
+// radiusFor resolves a shape scale value; ShapeFull becomes half the short side.
+func radiusFor(v float64, r tree.Rect) float64 {
+	if v == m3.ShapeFull || v < 0 {
+		return minf(r.W, r.H) / 2
+	}
+	return v
+}
+
+// variant returns the component variant, falling back to def.
+func variant(c *tree.Component, def string) string {
+	if v := c.Variant.Get(); v != "" {
+		return v
+	}
+	return def
+}
+
+// disabledAlpha applies the M3 disabled treatment to a foreground color.
+func disabledAlpha(c *tree.Component, color uint32) uint32 {
+	if c.Disabled.Get() {
+		return withAlpha(color, m3.DisabledOpacity)
+	}
+	return color
+}
+
+// paintComponent dispatches to the per-component painter.
+func (l *List) paintComponent(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	switch c.Node().Kind() {
+	case "Button":
+		l.paintButton(c, r, clip)
+	case "IconButton":
+		l.paintIconButton(c, r, clip)
+	case "FAB":
+		l.paintFAB(c, r, clip)
+	case "FABMenu":
+		l.paintFABMenu(c, r, clip)
+	case "ButtonGroup":
+		l.paintButtonGroup(c, r, clip)
+	case "SplitButton":
+		l.paintSplitButton(c, r, clip)
+	case "SegmentedButton":
+		l.paintSegmentedButton(c, r, clip)
+	case "Chip":
+		l.paintChip(c, r, clip)
+	case "Badge":
+		l.paintBadge(c, r, clip)
+	case "Checkbox":
+		l.paintCheckbox(c, r, clip)
+	case "RadioButton":
+		l.paintRadio(c, r, clip)
+	case "Switch":
+		l.paintSwitch(c, r, clip)
+	case "Slider":
+		l.paintSlider(c, r, clip)
+	case "TextField":
+		l.paintTextField(c, r, clip)
+	case "SearchBar":
+		l.paintSearchBar(c, r, clip)
+	case "Tooltip":
+		l.paintTooltip(c, r, clip)
+	case "Card":
+		l.paintCard(c, r, clip)
+	case "Dialog":
+		l.paintDialog(c, r, clip)
+	case "BottomSheet":
+		l.paintBottomSheet(c, r, clip)
+	case "SideSheet":
+		l.paintSideSheet(c, r, clip)
+	case "Divider":
+		l.paintDivider(c, r, clip)
+	case "List":
+		l.paintList(c, r, clip)
+	case "ListItem":
+		l.paintListItem(c, r, clip)
+	case "Menu":
+		l.paintMenu(c, r, clip)
+	case "MenuItem":
+		l.paintMenuItem(c, r, clip)
+	case "Snackbar":
+		l.paintSnackbar(c, r, clip)
+	case "TopAppBar":
+		l.paintTopAppBar(c, r, clip)
+	case "NavigationBar":
+		l.paintNavigationBar(c, r, clip)
+	case "NavigationRail":
+		l.paintNavigationRail(c, r, clip)
+	case "NavigationDrawer":
+		l.paintNavigationDrawer(c, r, clip)
+	case "NavigationItem":
+		l.paintNavigationItem(c, r, clip)
+	case "Tabs":
+		l.paintTabs(c, r, clip)
+	case "Tab":
+		l.paintTab(c, r, clip)
+	case "LinearProgress":
+		l.paintLinearProgress(c, r, clip)
+	case "CircularProgress":
+		l.paintCircularProgress(c, r, clip)
+	case "LoadingIndicator":
+		l.paintLoadingIndicator(c, r, clip)
+	case "DatePicker":
+		l.paintDatePicker(c, r, clip)
+	case "TimePicker":
+		l.paintTimePicker(c, r, clip)
+	case "Carousel":
+		l.paintCarousel(c, r, clip)
+	case "Toolbar":
+		l.paintToolbar(c, r, clip)
+	}
+}
+
+// ---------------------------------------------------------------- buttons
+
+// buttonColors returns container, content, border and elevation for a variant.
+func (l *List) buttonColors(c *tree.Component) (bg, fg, border uint32, elev int, bw float64) {
+	col := l.Theme.Colors
+	switch variant(c, "filled") {
+	case "tonal":
+		return col.SecondaryContainer, col.OnSecondaryContainer, 0, 0, 0
+	case "elevated":
+		return col.SurfaceContainerLow, col.Primary, 0, 1, 0
+	case "outlined":
+		return 0, col.Primary, col.Outline, 0, 1
+	case "text":
+		return 0, col.Primary, 0, 0, 0
+	default: // filled
+		return col.Primary, col.OnPrimary, 0, 0, 0
+	}
+}
+
+func (l *List) paintButton(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	bg, fg, border, elev, bw := l.buttonColors(c)
+	radius := radiusFor(m3.ShapeFull, r)
+	if themeRadius := r.H / 2; themeRadius > 0 {
+		radius = themeRadius
+	}
+	if c.Disabled.Get() {
+		bg = withAlpha(bg, m3.DisabledContainerOpacity)
+		fg = withAlpha(fg, m3.DisabledOpacity)
+	}
+	l.shadow(r, radius, elev, clip)
+	l.fillRect(r, bg, radius, border, bw, clip)
+	l.stateLayer(c, r, radius, fg, clip)
+
+	labelW := r.W
+	if c.Icon.Get() != "" {
+		labelW -= 26
+	}
+	box := tree.Rect{X: r.X, Y: r.Y, W: labelW, H: r.H}
+	if c.Icon.Get() != "" {
+		// Icon then label, as one centred pair.
+		labelWidth := textWidth(l, c.Label.Get(), l.style("labelLarge")) + 8 + 18
+		start := r.X + (r.W-labelWidth)/2
+		l.iconIn(c.Icon.Get(), 18, disabledAlpha(c, fg), start+9, r.Y+r.H/2, clip)
+		l.textIn(c.Label.Get(), l.style("labelLarge"), disabledAlpha(c, fg),
+			tree.Rect{X: start + 18 + 8, Y: r.Y, W: labelWidth - 26, H: r.H}, AlignStart, clip)
+		return
+	}
+	l.textIn(c.Label.Get(), l.style("labelLarge"), disabledAlpha(c, fg), box, AlignCenter, clip)
+}
+
+func (l *List) paintIconButton(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	radius := radiusFor(m3.ShapeFull, r)
+	icon := disabledAlpha(c, 0)
+	switch variant(c, "standard") {
+	case "filled":
+		bg := col.Primary
+		if c.Selected.Get() {
+			bg = col.Primary
+		}
+		if c.Disabled.Get() {
+			bg = withAlpha(bg, m3.DisabledContainerOpacity)
+		}
+		l.fillRect(r, bg, radius, 0, 0, clip)
+		icon = disabledAlpha(c, col.OnPrimary)
+	case "tonal":
+		bg := col.SecondaryContainer
+		if c.Selected.Get() {
+			bg = col.SecondaryContainer
+		}
+		if c.Disabled.Get() {
+			bg = withAlpha(bg, m3.DisabledContainerOpacity)
+		}
+		l.fillRect(r, bg, radius, 0, 0, clip)
+		icon = disabledAlpha(c, col.OnSecondaryContainer)
+	case "outlined":
+		l.fillRect(r, 0, radius, col.Outline, 1, clip)
+		icon = disabledAlpha(c, col.OnSurfaceVariant)
+	default:
+		if c.Selected.Get() {
+			l.fillRect(r, col.SecondaryContainer, radius, 0, 0, clip)
+			icon = disabledAlpha(c, col.OnSecondaryContainer)
+		} else {
+			icon = disabledAlpha(c, col.OnSurfaceVariant)
+		}
+	}
+	l.stateLayer(c, r, radius, icon, clip)
+	l.iconIn(c.Icon.Get(), 24, icon, r.X+r.W/2, r.Y+r.H/2, clip)
+}
+
+func (l *List) paintFAB(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	size := variant(c, "md")
+	radius := m3.ShapeLarge
+	elev := m3.Elevation3
+	iconSize := 24.0
+	switch size {
+	case "sm", "small":
+		radius = m3.ShapeMedium
+		iconSize = 24
+		elev = m3.Elevation3
+	case "lg", "large":
+		radius = m3.ShapeExtraLarge
+		iconSize = 36
+		elev = m3.Elevation3
+	}
+	bg := col.PrimaryContainer
+	fg := col.OnPrimaryContainer
+	if variantColor := variant(c, ""); variantColor == "secondary" {
+		bg, fg = col.SecondaryContainer, col.OnSecondaryContainer
+	} else if variantColor == "tertiary" {
+		bg, fg = col.TertiaryContainer, col.OnTertiaryContainer
+	}
+	if c.Disabled.Get() {
+		bg = withAlpha(bg, m3.DisabledContainerOpacity)
+		fg = withAlpha(fg, m3.DisabledOpacity)
+	}
+	l.shadow(r, radius, elev, clip)
+	l.fillRect(r, bg, radius, 0, 0, clip)
+	l.stateLayer(c, r, radius, fg, clip)
+
+	if c.Label.Get() != "" {
+		// Extended FAB: icon + label.
+		l.iconIn(c.Icon.Get(), 24, fg, r.X+24, r.Y+r.H/2, clip)
+		l.textIn(c.Label.Get(), l.style("labelLarge"), fg,
+			tree.Rect{X: r.X + 24 + 12, Y: r.Y, W: r.W - 60, H: r.H}, AlignStart, clip)
+		return
+	}
+	l.iconIn(c.Icon.Get(), iconSize, fg, r.X+r.W/2, r.Y+r.H/2, clip)
+}
+
+func (l *List) paintFABMenu(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	// The menu items are children above the FAB; the FAB sits at the bottom.
+	col := l.Theme.Colors
+	radius := m3.ShapeLarge
+	l.fillRect(r, col.PrimaryContainer, radius, 0, 0, clip)
+	l.iconIn(c.Icon.Get(), 24, col.OnPrimaryContainer, r.X+r.W/2, r.Y+r.H/2, clip)
+}
+
+func (l *List) paintButtonGroup(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	// Children are the buttons; the group only provides spacing and clipping.
+	_ = c
+	_ = r
+	_ = clip
+}
+
+func (l *List) paintSplitButton(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	bg, fg, border, elev, bw := l.buttonColors(c)
+	radius := r.H / 2
+	l.shadow(r, radius, elev, clip)
+	l.fillRect(r, bg, radius, border, bw, clip)
+	l.stateLayer(c, r, radius, fg, clip)
+	// Divisor between the two halves.
+	dividerX := r.Right() - r.H
+	l.Ops = append(l.Ops, Op{
+		Kind: Fill, Shape: RoundedRect,
+		Rect:  [4]float32{float32(dividerX), float32(r.Y + 10), 1, float32(r.H - 20)},
+		Color: withAlpha(fg, 0.3),
+		Clip:  clipArr(clip),
+	})
+	labelBox := tree.Rect{X: r.X + 24, Y: r.Y, W: r.W - r.H - 32, H: r.H}
+	if c.Icon.Get() != "" {
+		l.iconIn(c.Icon.Get(), 18, fg, r.X+24, r.Y+r.H/2, clip)
+		labelBox.X += 26
+		labelBox.W -= 26
+	}
+	l.textIn(c.Label.Get(), l.style("labelLarge"), fg, labelBox, AlignStart, clip)
+	l.iconIn("arrow_drop_down", 24, fg, dividerX+r.H/2, r.Y+r.H/2, clip)
+}
+
+func (l *List) paintSegmentedButton(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	radius := 0.0
+	if c.Selected.Get() {
+		// Selected segment: secondaryContainer.
+	}
+	bg := uint32(0)
+	fg := disabledAlpha(c, col.OnSurface)
+	if c.Selected.Get() {
+		bg = col.SecondaryContainer
+		fg = disabledAlpha(c, col.OnSecondaryContainer)
+	}
+	// The group rounds only its outer ends: first child left, last child right.
+	left, right := 0.0, 0.0
+	if p := c.Base().Parent(); p != nil {
+		kids := p.Base().Kids()
+		if len(kids) > 0 {
+			if kids[0] == c.Base() {
+				left = r.H / 2
+			}
+			if kids[len(kids)-1] == c.Base() {
+				right = r.H / 2
+			}
+		}
+	}
+	l.Ops = append(l.Ops, Op{
+		Kind: Fill, Shape: RoundedRect, Rect: rectArr(r),
+		Radius:      [4]float32{float32(left), float32(right), float32(right), float32(left)},
+		Color:       bg,
+		BorderColor: col.Outline, BorderWidth: 1,
+		Clip: clipArr(clip),
+	})
+	l.stateLayer(c, r, 0, fg, clip)
+
+	labelW := 0.0
+	if c.Label.Get() != "" {
+		labelW = textWidth(l, c.Label.Get(), l.style("labelLarge"))
+	}
+	iconW := 0.0
+	if c.Selected.Get() {
+		iconW = 26
+	} else if c.Icon.Get() != "" {
+		iconW = 26
+	}
+	start := r.X + (r.W-labelW-iconW)/2
+	if iconW > 0 {
+		name := c.Icon.Get()
+		if c.Selected.Get() && name == "" {
+			name = "check"
+		}
+		l.iconIn(name, 18, fg, start+9, r.Y+r.H/2, clip)
+	}
+	if labelW > 0 {
+		l.textIn(c.Label.Get(), l.style("labelLarge"), fg,
+			tree.Rect{X: start + iconW, Y: r.Y, W: labelW + 4, H: r.H}, AlignStart, clip)
+	}
+	_ = radius
+}
+
+func (l *List) paintChip(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	radius := radiusFor(m3.ShapeSmall, r)
+	fg := col.OnSurfaceVariant
+	bg := uint32(0)
+	border := col.OutlineVariant
+	bw := 1.0
+	switch variant(c, "assist") {
+	case "filter":
+		if c.Selected.Get() {
+			bg, fg, border, bw = col.SecondaryContainer, col.OnSecondaryContainer, 0, 0
+		}
+	case "input", "suggestion":
+		if c.Selected.Get() {
+			bg, fg, border, bw = col.SecondaryContainer, col.OnSecondaryContainer, 0, 0
+		}
+	}
+	if c.Disabled.Get() {
+		fg = withAlpha(fg, m3.DisabledOpacity)
+		border = withAlpha(border, m3.DisabledContainerOpacity)
+	}
+	l.fillRect(r, bg, radius, border, bw, clip)
+	l.stateLayer(c, r, radius, fg, clip)
+
+	lead := c.Icon.Get()
+	if c.Selected.Get() && lead == "" {
+		lead = "check"
+	}
+	x := r.X + 8
+	if lead != "" {
+		l.iconIn(lead, 18, fg, x+9, r.Y+r.H/2, clip)
+		x += 18 + 8
+	} else {
+		x = r.X + 16
+	}
+	endPad := 16.0
+	if c.Trailing.Get() != "" {
+		endPad = 8
+	}
+	l.textIn(c.Label.Get(), l.style("labelLarge"), fg,
+		tree.Rect{X: x, Y: r.Y, W: r.Right() - x - endPad, H: r.H}, AlignStart, clip)
+	if c.Trailing.Get() != "" {
+		l.iconIn(c.Trailing.Get(), 18, fg, r.Right()-17, r.Y+r.H/2, clip)
+	}
+}
+
+func (l *List) paintBadge(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	if c.Label.Get() == "" {
+		// Small dot.
+		l.Ops = append(l.Ops, Op{
+			Kind: Fill, Shape: Circle, Rect: rectArr(r),
+			Color: col.Error, Clip: clipArr(clip),
+		})
+		return
+	}
+	l.fillRect(r, col.Error, radiusFor(m3.ShapeFull, r), 0, 0, clip)
+	l.textIn(c.Label.Get(), l.style("labelSmall"), col.OnError, r, AlignCenter, clip)
+}
+
+// ---------------------------------------------------------------- selection
+
+func (l *List) paintCheckbox(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	box := minf(r.H, 18)
+	if box <= 0 {
+		box = 18
+	}
+	// The box hugs the left edge; the label follows immediately.
+	br := tree.Rect{X: r.X, Y: r.Y + (r.H-box)/2, W: box, H: box}
+	if c.Checked.Get() {
+		bg := col.Primary
+		mark := col.OnPrimary
+		if c.Disabled.Get() {
+			bg = withAlpha(bg, m3.DisabledContainerOpacity)
+			mark = withAlpha(mark, m3.DisabledOpacity)
+		}
+		l.fillRect(br, bg, 2, 0, 0, clip)
+		l.iconIn("check", box, mark, br.X+box/2, br.Y+box/2, clip)
+	} else {
+		border := col.OnSurfaceVariant
+		if c.Disabled.Get() {
+			border = withAlpha(border, m3.DisabledOpacity)
+		}
+		l.fillRect(br, 0, 2, border, 2, clip)
+	}
+	if c.Label.Get() != "" {
+		l.textIn(c.Label.Get(), l.style("bodyLarge"), disabledAlpha(c, col.OnSurface),
+			tree.Rect{X: br.Right() + 12, Y: r.Y, W: r.Right() - br.Right() - 12, H: r.H}, AlignStart, clip)
+	}
+}
+
+func (l *List) paintRadio(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	size := minf(r.H, 20)
+	if size <= 0 {
+		size = 20
+	}
+	br := tree.Rect{X: r.X, Y: r.Y + (r.H-size)/2, W: size, H: size}
+	cx, cy := br.X+size/2, br.Y+size/2
+	if c.Checked.Get() {
+		l.Ops = append(l.Ops, Op{Kind: Fill, Shape: Circle, Rect: rectArr(br), Color: col.Primary, Clip: clipArr(clip)})
+		dot := size * 0.5
+		l.Ops = append(l.Ops, Op{Kind: Fill, Shape: Circle,
+			Rect:  [4]float32{float32(cx - dot/2), float32(cy - dot/2), float32(dot), float32(dot)},
+			Color: col.OnPrimary, Clip: clipArr(clip)})
+	} else {
+		l.fillRect(br, 0, size/2, col.OnSurfaceVariant, 2, clip)
+	}
+	if c.Label.Get() != "" {
+		l.textIn(c.Label.Get(), l.style("bodyLarge"), disabledAlpha(c, col.OnSurface),
+			tree.Rect{X: br.Right() + 12, Y: r.Y, W: r.Right() - br.Right() - 12, H: r.H}, AlignStart, clip)
+	}
+}
+
+func (l *List) paintSwitch(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	// Track is 52x32, the whole row may be taller.
+	trackW, trackH := 52.0, 32.0
+	tr := tree.Rect{X: r.X, Y: r.Y + (r.H-trackH)/2, W: trackW, H: trackH}
+	on := c.Checked.Get()
+
+	track := col.SurfaceContainerHighest
+	thumb := col.Outline
+	if on {
+		track = col.Primary
+		thumb = col.OnPrimary
+	}
+	if c.Disabled.Get() {
+		track = withAlpha(track, m3.DisabledContainerOpacity)
+		thumb = withAlpha(thumb, m3.DisabledOpacity)
+	}
+	l.fillRect(tr, track, trackH/2, 0, 0, clip)
+	if !on && !c.Disabled.Get() {
+		l.fillRect(tr, 0, trackH/2, col.Outline, 2, clip)
+	}
+
+	thumbD := 16.0
+	cx := tr.X + 8 + thumbD/2
+	if on {
+		thumbD = 24
+		cx = tr.X + trackW - 8 - thumbD/2
+	}
+	l.stateLayer(c, tr, trackH/2, thumb, clip)
+	l.Ops = append(l.Ops, Op{Kind: Fill, Shape: Circle,
+		Rect:  [4]float32{float32(cx - thumbD/2), float32(tr.Y + (trackH-thumbD)/2), float32(thumbD), float32(thumbD)},
+		Color: thumb, Clip: clipArr(clip)})
+
+	if c.Label.Get() != "" {
+		l.textIn(c.Label.Get(), l.style("bodyLarge"), disabledAlpha(c, col.OnSurface),
+			tree.Rect{X: tr.Right() + 12, Y: r.Y, W: r.Right() - tr.Right() - 12, H: r.H}, AlignStart, clip)
+	}
+}
+
+func (l *List) paintSlider(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	cy := r.Y + r.H/2
+	inset := 10.0
+	track := tree.Rect{X: r.X + inset, Y: cy - 2, W: r.W - 2*inset, H: 4}
+	v := c.Value.Get()
+	lo, hi := c.Min.Get(), c.Max.Get()
+	frac := 0.0
+	if hi > lo {
+		frac = (v - lo) / (hi - lo)
+	}
+	frac = clamp01(frac)
+
+	active := col.Primary
+	inactive := col.SecondaryContainer
+	handle := col.Primary
+	if c.Disabled.Get() {
+		active = withAlpha(active, m3.DisabledOpacity)
+		inactive = withAlpha(inactive, m3.DisabledContainerOpacity)
+		handle = withAlpha(handle, m3.DisabledOpacity)
+	}
+	l.fillRect(track, inactive, 2, 0, 0, clip)
+	activeW := track.W * frac
+	l.fillRect(tree.Rect{X: track.X, Y: track.Y, W: activeW, H: track.H}, active, 2, 0, 0, clip)
+
+	// M3 expressive handle: a 4x44 rounded bar.
+	hx := track.X + activeW
+	l.Ops = append(l.Ops, Op{
+		Kind: Fill, Shape: RoundedRect,
+		Rect:   [4]float32{float32(hx - 2), float32(cy - 22), 4, 44},
+		Radius: [4]float32{2, 2, 2, 2},
+		Color:  handle,
+		Clip:   clipArr(clip),
+	})
+	// Focus halo.
+	if c.Focused || c.Hover {
+		l.Ops = append(l.Ops, Op{
+			Kind: Fill, Shape: Circle,
+			Rect:  [4]float32{float32(hx - 10), float32(cy - 10), 20, 20},
+			Color: withAlpha(handle, m3.StateHover),
+			Clip:  clipArr(clip),
+		})
+	}
+}
+
+func clamp01(v float64) float64 {
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
+}
+
+// ---------------------------------------------------------------- text input
+
+func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	filled := variant(c, "filled") == "filled"
+	fg := disabledAlpha(c, col.OnSurface)
+	hint := disabledAlpha(c, col.OnSurfaceVariant)
+	container := col.SurfaceContainerHighest
+	border := col.Outline
+	bw := 1.0
+	if c.Disabled.Get() {
+		container = withAlpha(container, m3.DisabledContainerOpacity)
+		border = withAlpha(border, m3.DisabledContainerOpacity)
+	}
+
+	radius := m3.ShapeExtraSmall
+	if filled {
+		l.fillRect(r, container, radius, 0, 0, clip)
+		// Active indicator along the bottom.
+		ind := col.OnSurfaceVariant
+		th := 1.0
+		if c.Focused {
+			ind, th = col.Primary, 2.0
+		}
+		l.Ops = append(l.Ops, Op{
+			Kind: Fill, Shape: RoundedRect,
+			Rect:  [4]float32{float32(r.X), float32(r.Bottom() - th), float32(r.W), float32(th)},
+			Color: ind, Clip: clipArr(clip),
+		})
+	} else {
+		if c.Focused {
+			border, bw = col.Primary, 2
+		}
+		l.fillRect(r, 0, radius, border, bw, clip)
+	}
+
+	// Floating label: sits above the value once the field has content or focus.
+	hasValue := c.Text.Get() != "" || c.Focused
+	lx := r.X + 16
+	textW := r.W - 32
+	if c.Icon.Get() != "" {
+		lx += 40 // make room for the leading icon
+		textW -= 40
+	}
+	if c.Trailing.Get() != "" {
+		textW -= 40
+	}
+	labelStyle := l.style("bodyLarge")
+	smallStyle := l.style("bodySmall")
+	if hasValue {
+		// Label shrinks to the top 16dp band, value occupies the rest.
+		l.textIn(c.Label.Get(), smallStyle, hint,
+			tree.Rect{X: lx, Y: r.Y + 8, W: textW, H: 16}, AlignStart, clip)
+		l.textIn(c.Text.Get(), labelStyle, fg,
+			tree.Rect{X: lx, Y: r.Y + 22, W: textW, H: 26}, AlignStart, clip)
+	} else {
+		label := c.Label.Get()
+		if label == "" {
+			label = c.Placeholder.Get()
+		}
+		l.textIn(label, labelStyle, hint, tree.Rect{X: lx, Y: r.Y, W: textW, H: r.H}, AlignStart, clip)
+	}
+
+	if c.Icon.Get() != "" {
+		l.iconIn(c.Icon.Get(), 24, hint, r.X+28, r.Y+r.H/2, clip)
+	}
+	if c.Trailing.Get() != "" {
+		l.iconIn(c.Trailing.Get(), 24, hint, r.Right()-28, r.Y+r.H/2, clip)
+	}
+
+	// Caret.
+	if c.Focused {
+		caretX := lx
+		if n := minInt(c.Caret, len(c.Text.Get())); n > 0 {
+			caretX += textWidth(l, c.Text.Get()[:n], labelStyle)
+		}
+		caretTop := r.Y + 26
+		l.Ops = append(l.Ops, Op{
+			Kind: Fill, Shape: RoundedRect,
+			Rect:  [4]float32{float32(caretX), float32(caretTop), 2, 20},
+			Color: col.Primary, Clip: clipArr(clip),
+		})
+	}
+	if c.Supporting.Get() != "" {
+		l.textIn(c.Supporting.Get(), l.style("bodySmall"), hint,
+			tree.Rect{X: r.X + 16, Y: r.Bottom() + 4, W: r.W, H: 16}, AlignStart, clip)
+	}
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func (l *List) paintSearchBar(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	radius := radiusFor(m3.ShapeFull, r)
+	l.shadow(r, radius, m3.Elevation3, clip)
+	l.fillRect(r, col.SurfaceContainerHigh, radius, 0, 0, clip)
+	fg := disabledAlpha(c, col.OnSurface)
+	hint := col.OnSurfaceVariant
+	l.iconIn("search", 24, hint, r.X+28, r.Y+r.H/2, clip)
+	text := c.Text.Get()
+	if text == "" {
+		text = c.Placeholder.Get()
+		if text == "" {
+			text = c.Label.Get()
+		}
+		l.textIn(text, l.style("bodyLarge"), hint,
+			tree.Rect{X: r.X + 52, Y: r.Y, W: r.W - 104, H: r.H}, AlignStart, clip)
+	} else {
+		l.textIn(text, l.style("bodyLarge"), fg,
+			tree.Rect{X: r.X + 52, Y: r.Y, W: r.W - 104, H: r.H}, AlignStart, clip)
+	}
+	if c.Trailing.Get() != "" {
+		l.iconIn(c.Trailing.Get(), 24, hint, r.Right()-28, r.Y+r.H/2, clip)
+	}
+}
+
+func (l *List) paintTooltip(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	l.fillRect(r, col.InverseSurface, radiusFor(m3.ShapeExtraSmall, r), 0, 0, clip)
+	l.textIn(c.Label.Get(), l.style("bodySmall"), col.InverseOnSurface, r, AlignCenter, clip)
+}
+
+// ---------------------------------------------------------------- containment
+
+func (l *List) paintCard(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	radius := m3.ShapeMedium
+	switch variant(c, "elevated") {
+	case "filled":
+		l.fillRect(r, col.SurfaceContainerHighest, radius, 0, 0, clip)
+	case "outlined":
+		l.fillRect(r, col.Surface, radius, col.OutlineVariant, 1, clip)
+	default: // elevated
+		l.shadow(r, radius, m3.Elevation1, clip)
+		l.fillRect(r, col.SurfaceContainerLow, radius, 0, 0, clip)
+	}
+	if c.Label.Get() != "" {
+		box := tree.Rect{X: r.X + 16, Y: r.Y + 16, W: r.W - 32, H: 24}
+		l.textIn(c.Label.Get(), l.style("titleMedium"), col.OnSurface, box, AlignStart, clip)
+	}
+	if c.Supporting.Get() != "" {
+		l.textIn(c.Supporting.Get(), l.style("bodyMedium"), col.OnSurfaceVariant,
+			tree.Rect{X: r.X + 16, Y: r.Y + 40, W: r.W - 32, H: 20}, AlignStart, clip)
+	}
+}
+
+func (l *List) paintDialog(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	radius := m3.ShapeExtraLarge
+	l.shadow(r, radius, m3.Elevation3, clip)
+	l.fillRect(r, col.SurfaceContainerHigh, radius, 0, 0, clip)
+	if c.Icon.Get() != "" {
+		l.iconIn(c.Icon.Get(), 24, col.Secondary, r.X+r.W/2, r.Y+40, clip)
+	}
+	y := r.Y + 24.0
+	if c.Icon.Get() != "" {
+		y = r.Y + 64
+	}
+	if c.Label.Get() != "" {
+		l.textIn(c.Label.Get(), l.style("headlineSmall"), col.OnSurface,
+			tree.Rect{X: r.X + 24, Y: y, W: r.W - 48, H: 32}, AlignCenter, clip)
+		y += 40
+	}
+	if c.Supporting.Get() != "" {
+		l.textIn(c.Supporting.Get(), l.style("bodyMedium"), col.OnSurfaceVariant,
+			tree.Rect{X: r.X + 24, Y: y, W: r.W - 48, H: 20}, AlignStart, clip)
+	}
+}
+
+func (l *List) paintBottomSheet(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	// Only the top corners are rounded.
+	rad := [4]float32{m3.ShapeExtraLarge, m3.ShapeExtraLarge, 0, 0}
+	l.Ops = append(l.Ops, Op{
+		Kind: Fill, Shape: RoundedRect, Rect: rectArr(r), Radius: rad,
+		Color: col.SurfaceContainerLow, Clip: clipArr(clip),
+	})
+	// Drag handle.
+	l.Ops = append(l.Ops, Op{
+		Kind: Fill, Shape: RoundedRect,
+		Rect:   [4]float32{float32(r.X + r.W/2 - 16), float32(r.Y + 22), 32, 4},
+		Radius: [4]float32{2, 2, 2, 2},
+		Color:  col.OnSurfaceVariant, Clip: clipArr(clip),
+	})
+	if c.Label.Get() != "" {
+		l.textIn(c.Label.Get(), l.style("titleLarge"), col.OnSurface,
+			tree.Rect{X: r.X + 24, Y: r.Y + 40, W: r.W - 48, H: 28}, AlignStart, clip)
+	}
+}
+
+func (l *List) paintSideSheet(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	rad := [4]float32{0, m3.ShapeLarge, m3.ShapeLarge, 0}
+	l.Ops = append(l.Ops, Op{
+		Kind: Fill, Shape: RoundedRect, Rect: rectArr(r), Radius: rad,
+		Color: col.SurfaceContainerLow, Clip: clipArr(clip),
+	})
+	if c.Label.Get() != "" {
+		l.textIn(c.Label.Get(), l.style("titleLarge"), col.OnSurface,
+			tree.Rect{X: r.X + 16, Y: r.Y + 16, W: r.W - 32, H: 28}, AlignStart, clip)
+	}
+}
+
+func (l *List) paintDivider(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	h := r.H
+	if h <= 0 {
+		h = 1
+	}
+	l.fillRect(tree.Rect{X: r.X, Y: r.Y + (r.H-h)/2, W: r.W, H: h}, col.OutlineVariant, 0, 0, 0, clip)
+}
+
+func (l *List) paintList(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	// List items paint themselves; the list only clips.
+	_ = c
+	_ = r
+	_ = clip
+}
+
+func (l *List) paintListItem(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	if c.Selected.Get() {
+		l.fillRect(r, col.SecondaryContainer, 0, 0, 0, clip)
+	}
+	l.stateLayer(c, r, 0, col.OnSurface, clip)
+
+	x := r.X + 16
+	if c.Icon.Get() != "" {
+		l.iconIn(c.Icon.Get(), 24, col.OnSurfaceVariant, x+12, r.Y+r.H/2, clip)
+		x += 40
+	}
+	textW := r.Right() - x - 16
+	if c.Trailing.Get() != "" {
+		textW -= 40
+		l.iconIn(c.Trailing.Get(), 24, col.OnSurfaceVariant, r.Right()-28, r.Y+r.H/2, clip)
+	}
+	fg := disabledAlpha(c, col.OnSurface)
+	if c.Supporting.Get() != "" {
+		l.textIn(c.Label.Get(), l.style("bodyLarge"), fg,
+			tree.Rect{X: x, Y: r.Y + 8, W: textW, H: 24}, AlignStart, clip)
+		l.textIn(c.Supporting.Get(), l.style("bodyMedium"), col.OnSurfaceVariant,
+			tree.Rect{X: x, Y: r.Y + 30, W: textW, H: 20}, AlignStart, clip)
+		return
+	}
+	l.textIn(c.Label.Get(), l.style("bodyLarge"), fg,
+		tree.Rect{X: x, Y: r.Y, W: textW, H: r.H}, AlignStart, clip)
+}
+
+func (l *List) paintMenu(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	l.shadow(r, m3.ShapeExtraSmall, m3.Elevation2, clip)
+	l.fillRect(r, col.SurfaceContainer, m3.ShapeExtraSmall, 0, 0, clip)
+}
+
+func (l *List) paintMenuItem(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	if c.Selected.Get() {
+		l.fillRect(r, col.SurfaceContainerHighest, 0, 0, 0, clip)
+	}
+	l.stateLayer(c, r, 0, col.OnSurface, clip)
+	x := r.X + 12
+	if c.Icon.Get() != "" {
+		l.iconIn(c.Icon.Get(), 24, col.OnSurfaceVariant, x+12, r.Y+r.H/2, clip)
+		x += 36
+	}
+	textW := r.Right() - x - 12
+	if c.Trailing.Get() != "" {
+		textW -= 36
+		l.iconIn(c.Trailing.Get(), 24, col.OnSurfaceVariant, r.Right()-24, r.Y+r.H/2, clip)
+	}
+	l.textIn(c.Label.Get(), l.style("labelLarge"), disabledAlpha(c, col.OnSurface),
+		tree.Rect{X: x, Y: r.Y, W: textW, H: r.H}, AlignStart, clip)
+}
+
+func (l *List) paintSnackbar(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	l.shadow(r, m3.ShapeExtraSmall, m3.Elevation3, clip)
+	l.fillRect(r, col.InverseSurface, m3.ShapeExtraSmall, 0, 0, clip)
+	l.textIn(c.Label.Get(), l.style("bodyMedium"), col.InverseOnSurface,
+		tree.Rect{X: r.X + 16, Y: r.Y, W: r.W - 32, H: r.H}, AlignStart, clip)
+}
+
+// ---------------------------------------------------------------- navigation
+
+func (l *List) paintTopAppBar(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	l.fillRect(r, col.Surface, 0, 0, 0, clip)
+	if c.Icon.Get() != "" {
+		l.iconIn(c.Icon.Get(), 24, col.OnSurface, r.X+28, r.Y+r.H/2, clip)
+	} else {
+		l.iconIn("menu", 24, col.OnSurface, r.X+28, r.Y+r.H/2, clip)
+	}
+	l.textIn(c.Label.Get(), l.style("titleLarge"), col.OnSurface,
+		tree.Rect{X: r.X + 56, Y: r.Y, W: r.W - 120, H: r.H}, AlignStart, clip)
+	if c.Trailing.Get() != "" {
+		l.iconIn(c.Trailing.Get(), 24, col.OnSurface, r.Right()-28, r.Y+r.H/2, clip)
+	}
+}
+
+// destination items are children; the bar paints the container and the
+// active indicator behind the selected child.
+func (l *List) paintNavigationBar(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	l.fillRect(r, col.SurfaceContainer, 0, 0, 0, clip)
+	for i, k := range c.Base().Kids() {
+		kb := k.Bounds()
+		cx := r.X + kb.X + kb.W/2
+		indicator := tree.Rect{X: cx - 32, Y: r.Y + 12, W: 64, H: 32}
+		if i == c.SelectedIndex {
+			l.fillRect(indicator, col.SecondaryContainer, 16, 0, 0, clip)
+		}
+	}
+}
+
+func (l *List) paintNavigationRail(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	l.fillRect(r, col.Surface, 0, 0, 0, clip)
+	for i, k := range c.Base().Kids() {
+		kb := k.Bounds()
+		cx := r.X + kb.X + kb.W/2
+		indicator := tree.Rect{X: cx - 28, Y: r.Y + kb.Y + 4, W: 56, H: 32}
+		if i == c.SelectedIndex {
+			l.fillRect(indicator, col.SecondaryContainer, 16, 0, 0, clip)
+		}
+	}
+}
+
+func (l *List) paintNavigationDrawer(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	rad := [4]float32{0, m3.ShapeLarge, m3.ShapeLarge, 0}
+	l.Ops = append(l.Ops, Op{
+		Kind: Fill, Shape: RoundedRect, Rect: rectArr(r), Radius: rad,
+		Color: col.SurfaceContainerLow, Clip: clipArr(clip),
+	})
+	if c.Label.Get() != "" {
+		l.textIn(c.Label.Get(), l.style("titleSmall"), col.OnSurfaceVariant,
+			tree.Rect{X: r.X + 28, Y: r.Y + 16, W: r.W - 56, H: 20}, AlignStart, clip)
+	}
+	kids := c.Base().Kids()
+	if c.SelectedIndex >= 0 && c.SelectedIndex < len(kids) {
+		kb := kids[c.SelectedIndex].Bounds()
+		l.fillRect(tree.Rect{X: r.X + kb.X, Y: r.Y + kb.Y, W: kb.W, H: kb.H}, col.SecondaryContainer, 28, 0, 0, clip)
+	}
+}
+
+func (l *List) paintNavigationItem(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	fg := col.OnSurfaceVariant
+	if c.Selected.Get() {
+		fg = col.OnSecondaryContainer
+	}
+	iconY := r.Y + 24
+	labelY := r.Y + 44
+	if r.W > 120 {
+		// Drawer items put the icon and label side by side.
+		l.iconIn(c.Icon.Get(), 24, fg, r.X+24, r.Y+r.H/2, clip)
+		l.textIn(c.Label.Get(), l.style("labelMedium"), fg,
+			tree.Rect{X: r.X + 52, Y: r.Y, W: r.W - 60, H: r.H}, AlignStart, clip)
+		return
+	}
+	l.iconIn(c.Icon.Get(), 24, fg, r.X+r.W/2, iconY, clip)
+	l.textIn(c.Label.Get(), l.style("labelMedium"), fg,
+		tree.Rect{X: r.X, Y: labelY - 10, W: r.W, H: 16}, AlignCenter, clip)
+}
+
+func (l *List) paintTabs(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	l.fillRect(r, col.Surface, 0, 0, 0, clip)
+	// Divider under the row.
+	l.Ops = append(l.Ops, Op{
+		Kind: Fill, Shape: RoundedRect,
+		Rect:  [4]float32{float32(r.X), float32(r.Bottom() - 1), float32(r.W), 1},
+		Color: col.SurfaceVariant, Clip: clipArr(clip),
+	})
+	for i, k := range c.Base().Kids() {
+		if i != c.SelectedIndex || i >= len(c.Base().Kids()) {
+			continue
+		}
+		kb := k.Bounds()
+		indicator := tree.Rect{X: r.X + kb.X + 8, Y: r.Bottom() - 3, W: kb.W - 16, H: 3}
+		l.Ops = append(l.Ops, Op{
+			Kind: Fill, Shape: RoundedRect, Rect: rectArr(indicator),
+			Radius: [4]float32{3, 3, 0, 0}, Color: col.Primary, Clip: clipArr(clip),
+		})
+	}
+}
+
+func (l *List) paintTab(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	fg := col.OnSurfaceVariant
+	if c.Selected.Get() {
+		fg = col.Primary
+	}
+	l.stateLayer(c, r, 0, fg, clip)
+	box := tree.Rect{X: r.X, Y: r.Y, W: r.W, H: r.H}
+	if c.Icon.Get() != "" {
+		l.iconIn(c.Icon.Get(), 24, fg, r.X+r.W/2, r.Y+r.H/2-10, clip)
+		l.textIn(c.Label.Get(), l.style("titleSmall"), fg,
+			tree.Rect{X: r.X, Y: r.Y + 20, W: r.W, H: r.H - 20}, AlignCenter, clip)
+		return
+	}
+	l.textIn(c.Label.Get(), l.style("titleSmall"), fg, box, AlignCenter, clip)
+}
+
+// ---------------------------------------------------------------- progress
+
+func (l *List) paintLinearProgress(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	h := 4.0
+	if r.H > 0 && r.H < 12 {
+		h = r.H
+	}
+	tr := tree.Rect{X: r.X, Y: r.Y + (r.H-h)/2, W: r.W, H: h}
+	l.fillRect(tr, col.SecondaryContainer, h/2, 0, 0, clip)
+	lo, hi := c.Min.Get(), c.Max.Get()
+	frac := 0.0
+	if hi > lo {
+		frac = (c.Value.Get() - lo) / (hi - lo)
+	}
+	frac = clamp01(frac)
+	w := tr.W * frac
+	l.fillRect(tree.Rect{X: tr.X, Y: tr.Y, W: w, H: tr.H}, col.Primary, h/2, 0, 0, clip)
+}
+
+func (l *List) paintCircularProgress(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	size := minf(r.W, r.H)
+	cx, cy := r.X+r.W/2, r.Y+r.H/2
+	thickness := 4.0
+	rr := size/2 - thickness/2
+	track := tree.Rect{X: cx - rr, Y: cy - rr, W: rr * 2, H: rr * 2}
+	l.Ops = append(l.Ops, Op{
+		Kind: Fill, Shape: Arc, Rect: rectArr(track),
+		Color: col.SecondaryContainer, Thickness: float32(thickness),
+		StartAngle: 0, EndAngle: 2 * 3.14159265,
+		Clip: clipArr(clip),
+	})
+	lo, hi := c.Min.Get(), c.Max.Get()
+	frac := 0.0
+	if hi > lo {
+		frac = (c.Value.Get() - lo) / (hi - lo)
+	}
+	frac = clamp01(frac)
+	if frac > 0 {
+		l.Ops = append(l.Ops, Op{
+			Kind: Fill, Shape: Arc, Rect: rectArr(track),
+			Color: col.Primary, Thickness: float32(thickness),
+			StartAngle: 0, EndAngle: float32(frac * 2 * 3.14159265),
+			Clip: clipArr(clip),
+		})
+	}
+}
+
+func (l *List) paintLoadingIndicator(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	size := minf(r.W, r.H)
+	cx, cy := r.X+r.W/2, r.Y+r.H/2
+	// Expressive loading indicator: a thick rounded arc that keeps a gap.
+	rr := size/2 - 4
+	track := tree.Rect{X: cx - rr, Y: cy - rr, W: rr * 2, H: rr * 2}
+	l.Ops = append(l.Ops, Op{
+		Kind: Fill, Shape: Arc, Rect: rectArr(track),
+		Color: col.Primary, Thickness: float32(size * 0.16),
+		StartAngle: 0.6, EndAngle: 5.2,
+		Clip: clipArr(clip),
+	})
+}
+
+// ---------------------------------------------------------------- pickers
+
+func (l *List) paintDatePicker(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	l.shadow(r, m3.ShapeExtraLarge, m3.Elevation3, clip)
+	l.fillRect(r, col.SurfaceContainerHigh, m3.ShapeExtraLarge, 0, 0, clip)
+	l.textIn(c.Label.Get(), l.style("labelMedium"), col.OnSurfaceVariant,
+		tree.Rect{X: r.X + 24, Y: r.Y + 16, W: r.W - 48, H: 16}, AlignStart, clip)
+
+	// A 7x5 month grid, with today's cell as a filled circle.
+	gridY := r.Y + 56
+	cellW := (r.W - 48) / 7
+	cellH := 40.0
+	first := 3 // Sunday-first month starting on Wednesday
+	for i := 0; i < 31; i++ {
+		col0 := (i + first) % 7
+		row := (i + first) / 7
+		if row > 5 {
+			break
+		}
+		cx := r.X + 24 + float64(col0)*cellW + cellW/2
+		cy := gridY + float64(row)*cellH + cellH/2
+		if i+1 == 12 {
+			l.Ops = append(l.Ops, Op{Kind: Fill, Shape: Circle,
+				Rect:  [4]float32{float32(cx - 16), float32(cy - 16), 32, 32},
+				Color: col.Primary, Clip: clipArr(clip)})
+		}
+		style := l.style("bodyMedium")
+		fg := col.OnSurface
+		if i+1 == 12 {
+			fg = col.OnPrimary
+		}
+		l.Ops = append(l.Ops, Op{
+			Kind: Text, Rect: [4]float32{float32(cx - 16), float32(cy - 10), 32, 20},
+			Color: fg, Clip: clipArr(clip), Text: itoa(i + 1),
+			FontSize: float32(style.Size), Weight: weightOf(style.Weight),
+			Align: AlignCenter, TextX: float32(cx - 16), TextY: float32(cy + 5), BoxW: 32,
+		})
+	}
+}
+
+func itoa(v int) string {
+	if v == 0 {
+		return "0"
+	}
+	var b [4]byte
+	i := len(b)
+	for v > 0 {
+		i--
+		b[i] = byte('0' + v%10)
+		v /= 10
+	}
+	return string(b[i:])
+}
+
+func (l *List) paintTimePicker(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	l.shadow(r, m3.ShapeExtraLarge, m3.Elevation3, clip)
+	l.fillRect(r, col.SurfaceContainerHigh, m3.ShapeExtraLarge, 0, 0, clip)
+	l.textIn("Select time", l.style("labelMedium"), col.OnSurfaceVariant,
+		tree.Rect{X: r.X + 24, Y: r.Y + 16, W: r.W - 48, H: 16}, AlignStart, clip)
+
+	// Dial: a large circle with 12 hour labels.
+	dial := minf(r.W-96, r.H-120)
+	cx, cy := r.X+r.W/2, r.Y+100+dial/2
+	ring := tree.Rect{X: cx - dial/2, Y: cy - dial/2, W: dial, H: dial}
+	l.Ops = append(l.Ops, Op{Kind: Fill, Shape: Circle, Rect: rectArr(ring),
+		Color: col.SurfaceContainerHighest, Clip: clipArr(clip)})
+	for i := 0; i < 12; i++ {
+		ang := float64(i) * math.Pi / 6
+		hx := cx + (dial/2-28)*math.Sin(ang)
+		hy := cy - (dial/2-28)*math.Cos(ang)
+		l.Ops = append(l.Ops, Op{
+			Kind: Text, Rect: [4]float32{float32(hx - 14), float32(hy - 10), 28, 20},
+			Color: col.OnSurface, Clip: clipArr(clip), Text: itoa((i+11)%12 + 1),
+			FontSize: 14, Weight: 400, Align: AlignCenter,
+			TextX: float32(hx - 14), TextY: float32(hy + 5), BoxW: 28,
+		})
+	}
+	// Selected hour: 10 o'clock.
+	ang := 10 * math.Pi / 6
+	hx := cx + (dial/2-28)*math.Sin(ang)
+	hy := cy - (dial/2-28)*math.Cos(ang)
+	l.Ops = append(l.Ops, Op{Kind: Fill, Shape: Circle,
+		Rect:  [4]float32{float32(hx - 16), float32(hy - 16), 32, 32},
+		Color: col.Primary, Clip: clipArr(clip)})
+	l.textIn(c.Label.Get(), l.style("displayLarge"), col.OnSurface,
+		tree.Rect{X: r.X, Y: r.Bottom() - 72, W: r.W, H: 56}, AlignCenter, clip)
+}
+
+// ---------------------------------------------------------------- misc
+
+func (l *List) paintCarousel(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	// Items are children, offset horizontally by ScrollX; the list clips.
+	_ = c
+	_ = r
+	_ = clip
+}
+
+func (l *List) paintToolbar(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	l.shadow(r, radiusFor(m3.ShapeFull, r), m3.Elevation2, clip)
+	l.fillRect(r, col.SurfaceContainer, radiusFor(m3.ShapeFull, r), 0, 0, clip)
+}
+
+// ---------------------------------------------------------------- text
+
+// paintText draws a free-standing Text node using an M3 type role.
+func (l *List) paintText(t *tree.Text, r tree.Rect, clip tree.Rect) {
+	st := l.style(t.Role.Get())
+	if v := t.FontSize.Get(); v > 0 {
+		st.Size = v
+		st.LineHeight = v * 1.2
+	}
+	if v := t.Weight.Get(); v > 0 {
+		st.Weight = int(v)
+	}
+	color := t.Color.Get()
+	if color == 0 {
+		color = l.Theme.Colors.OnSurface
+	}
+	align := AlignStart
+	switch t.Align.Get() {
+	case "center":
+		align = AlignCenter
+	case "end":
+		align = AlignEnd
+	}
+	l.textIn(t.Text.Get(), st, color, r, align, clip)
+}
+
+// textWidth measures a run, falling back to an estimate when no measurer is set.
+func textWidth(l *List, s string, st m3.TextStyle) float64 {
+	if s == "" {
+		return 0
+	}
+	if l.Measure != nil {
+		return l.Measure(s, st.Size, st.Weight)
+	}
+	return float64(len([]rune(s))) * st.Size * 0.55
+}

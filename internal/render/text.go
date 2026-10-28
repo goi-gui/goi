@@ -12,6 +12,7 @@ import (
 	"github.com/ksckaan1/goui/internal/text"
 )
 
+// Text and icons share one pipeline: both are quads sampling the glyph atlas.
 const textWGSL = `
 struct GlyphInstance {
 	rect: vec4f,  // x, y, w, h in logical pixels
@@ -64,7 +65,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 }
 `
 
-// glyphInstance is one textured quad. 48 bytes.
+// glyphInstance is one textured quad. 64 bytes.
 type glyphInstance struct {
 	Rect  [4]float32
 	UV    [4]float32
@@ -94,7 +95,7 @@ func (g *GPU) initText(lib *text.Library) error {
 		return nil // no font: text is skipped, the app still runs
 	}
 	atlas := lib.Atlas()
-	t := &textRenderer{atlasW: atlas.W, atlasH: atlas.H, atlasDirty: true, capacity: 1024}
+	t := &textRenderer{atlasW: atlas.W, atlasH: atlas.H, atlasDirty: true, capacity: 4096}
 
 	tex, err := g.device.CreateTexture(&wgpu.TextureDescriptor{
 		Label:         "glyph-atlas",
@@ -156,7 +157,7 @@ func (g *GPU) initText(lib *text.Library) error {
 	if err != nil {
 		return fmt.Errorf("glyph buffer: %w", err)
 	}
-
+	t.gpu = g
 	if err := t.rebuildBindGroup(g, layout); err != nil {
 		return err
 	}
@@ -203,7 +204,6 @@ func (g *GPU) initText(lib *text.Library) error {
 	if err != nil {
 		return fmt.Errorf("text pipeline: %w", err)
 	}
-	t.gpu = g
 	g.text = t
 	g.textLib = lib
 	return nil
@@ -230,34 +230,40 @@ func (t *textRenderer) rebuildBindGroup(g *GPU, layout *wgpu.BindGroupLayout) er
 	return nil
 }
 
-// addOp converts one text op into glyph instances, rasterizing into the atlas
-// on first use.
+// addOp converts one text or icon op into glyph instances, rasterizing into the
+// atlas on first use.
 func (t *textRenderer) addOp(op paint.Op) {
-	g := t.gpu
 	if op.Text == "" {
 		return
 	}
+	g := t.gpu
 	lib := g.textLib
-	face := lib.Face(float64(op.FontSize))
+
+	var face *text.Face
+	if op.Icon {
+		face = lib.IconFace(float64(op.FontSize))
+	} else {
+		face = lib.Face(float64(op.FontSize), text.Weight(op.Weight))
+	}
 	if face == nil {
 		return
 	}
 	out := face.Shape(op.Text)
 	penX := float64(op.TextX)
-	// Alignment is applied by shifting the whole run once its width is known.
 	runW := float64(out.Advance) / 64
+	boxW := float64(op.BoxW)
 	switch op.Align {
 	case paint.AlignCenter:
-		penX += (float64(op.Rect[2]) - runW) / 2
+		penX += (boxW - runW) / 2
 	case paint.AlignEnd:
-		penX += float64(op.Rect[2]) - runW
+		penX += boxW - runW
 	}
 	penY := float64(op.TextY)
 	col := rgba(op.Color)
-	clip := clipRect(op.Clip)
+	clip := clipVec(op.Clip)
 
 	for _, gl := range out.Glyphs {
-		slot, ok := lib.Atlas().Slot(face, uint16(gl.GlyphID), int(op.FontSize*4))
+		slot, ok := lib.Atlas().Slot(face, uint16(gl.GlyphID))
 		if ok {
 			x := penX + float64(slot.Offset.X)
 			y := penY + float64(slot.Offset.Y)
@@ -300,10 +306,12 @@ func (t *textRenderer) grow(g *GPU, n int) {
 		return
 	}
 	old := t.storage
+	oldCap := t.capacity
 	t.storage = buf
 	t.capacity = capacity
 	if err := t.rebuildBindGroup(g, g.textLayout); err != nil {
 		t.storage = old
+		t.capacity = oldCap
 		buf.Release()
 		return
 	}
@@ -344,4 +352,8 @@ func (t *textRenderer) release() {
 	if t.texture != nil {
 		t.texture.Release()
 	}
+}
+
+func glyphsToBytes(glyphs []glyphInstance) []byte {
+	return unsafe.Slice((*byte)(unsafe.Pointer(&glyphs[0])), len(glyphs)*int(unsafe.Sizeof(glyphInstance{})))
 }

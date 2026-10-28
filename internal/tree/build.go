@@ -183,7 +183,11 @@ func newNode(name string) Node {
 	}
 	switch name {
 	case "Window":
-		return &Window{NodeBase: b(), Title: newProp(nil, "title", DirtyPaint, "")}
+		return &Window{
+			NodeBase: b(),
+			Title:    newProp(nil, "title", DirtyPaint, ""),
+			Theme:    newProp(nil, "theme", DirtyPaint, "light"),
+		}
 	case "Column", "Row", "Stack":
 		c := Container{
 			NodeBase: b(),
@@ -208,23 +212,101 @@ func newNode(name string) Node {
 			Color:    newProp(nil, "color", DirtyPaint, uint32(0x000000FF)),
 			Align:    newProp(nil, "align", DirtyLayout, "start"),
 			Wrap:     newProp(nil, "wrap", DirtyLayout, false),
+			Role:     newProp(nil, "role", DirtyLayout, "bodyMedium"),
+			Weight:   newProp(nil, "weight", DirtyLayout, 0.0),
 		}
+	}
+	if c := newM3Component(name); c != nil {
+		return c
+	}
+	return nil
+}
+
+// newM3Component constructs any Material 3 component by element name.
+func newM3Component(name string) Node {
+	switch name {
 	case "Button":
-		return &Button{
-			NodeBase:        b(),
-			Text:            newProp(nil, "text", DirtyLayout, ""),
-			FontSize:        newProp(nil, "fontSize", DirtyLayout, 16.0),
-			Color:           newProp(nil, "color", DirtyPaint, uint32(0xFFFFFFFF)),
-			HoverBackground: newProp(nil, "hoverBackground", DirtyPaint, uint32(0)),
-		}
-	case "TextInput":
-		return &TextInput{
-			NodeBase:    b(),
-			Text:        newProp(nil, "text", DirtyLayout, ""),
-			Placeholder: newProp(nil, "placeholder", DirtyLayout, ""),
-			FontSize:    newProp(nil, "fontSize", DirtyLayout, 16.0),
-			Color:       newProp(nil, "color", DirtyPaint, uint32(0x000000FF)),
-		}
+		return &Button{Component: newComponent()}
+	case "IconButton":
+		return &IconButton{Component: newComponent()}
+	case "FAB":
+		return &FAB{Component: newComponent()}
+	case "FABMenu":
+		return &FABMenu{Component: newComponent()}
+	case "ButtonGroup":
+		return &ButtonGroup{Component: newComponent()}
+	case "SplitButton":
+		return &SplitButton{Component: newComponent()}
+	case "SegmentedButton":
+		return &SegmentedButton{Component: newComponent()}
+	case "Chip":
+		return &Chip{Component: newComponent()}
+	case "Badge":
+		return &Badge{Component: newComponent()}
+	case "Checkbox":
+		return &Checkbox{Component: newComponent()}
+	case "RadioButton":
+		return &RadioButton{Component: newComponent()}
+	case "Switch":
+		return &Switch{Component: newComponent()}
+	case "Slider":
+		return &Slider{Component: newComponent()}
+	case "TextField":
+		ti := &TextField{Component: newComponent()}
+		ti.Max.Set(1)
+		return ti
+	case "SearchBar":
+		return &SearchBar{Component: newComponent()}
+	case "Tooltip":
+		return &Tooltip{Component: newComponent()}
+	case "Card":
+		return &Card{Component: newComponent()}
+	case "Dialog":
+		return &Dialog{Component: newComponent()}
+	case "BottomSheet":
+		return &BottomSheet{Component: newComponent()}
+	case "SideSheet":
+		return &SideSheet{Component: newComponent()}
+	case "Divider":
+		return &Divider{Component: newComponent()}
+	case "List":
+		return &List{Component: newComponent()}
+	case "ListItem":
+		return &ListItem{Component: newComponent()}
+	case "Menu":
+		return &Menu{Component: newComponent()}
+	case "MenuItem":
+		return &MenuItem{Component: newComponent()}
+	case "Snackbar":
+		return &Snackbar{Component: newComponent()}
+	case "TopAppBar":
+		return &TopAppBar{Component: newComponent()}
+	case "NavigationBar":
+		return &NavigationBar{Component: newComponent()}
+	case "NavigationRail":
+		return &NavigationRail{Component: newComponent()}
+	case "NavigationDrawer":
+		return &NavigationDrawer{Component: newComponent()}
+	case "NavigationItem":
+		return &NavigationItem{Component: newComponent()}
+	case "Tabs":
+		return &Tabs{Component: newComponent()}
+	case "Tab":
+		return &Tab{Component: newComponent()}
+	case "LinearProgress":
+		return &LinearProgress{Component: newComponent()}
+	case "CircularProgress":
+		return &CircularProgress{Component: newComponent()}
+	case "LoadingIndicator":
+		return &LoadingIndicator{Component: newComponent()}
+	case "DatePicker":
+		return &DatePicker{Component: newComponent()}
+	case "TimePicker":
+		return &TimePicker{Component: newComponent()}
+	case "Carousel":
+		return &Carousel{Component: newComponent()}
+	case "Toolbar":
+		return &Toolbar{Component: newComponent()}
 	}
 	return nil
 }

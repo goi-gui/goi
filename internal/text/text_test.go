@@ -13,7 +13,7 @@ func TestDefaultFontLoads(t *testing.T) {
 
 func TestMeasureTrailingTurkish(t *testing.T) {
 	l := NewLibrary()
-	f := l.Face(32)
+	f := l.Face(32, WeightRegular)
 	if f == nil {
 		t.Fatal("no face")
 	}
@@ -29,7 +29,7 @@ func TestMeasureTrailingTurkish(t *testing.T) {
 
 func TestMeasureGrowsWithText(t *testing.T) {
 	l := NewLibrary()
-	f := l.Face(16)
+	f := l.Face(16, WeightRegular)
 	short, _ := f.Measure("a", -1)
 	long, _ := f.Measure("aaaa", -1)
 	if long <= short {
@@ -39,7 +39,7 @@ func TestMeasureGrowsWithText(t *testing.T) {
 
 func TestMeasureEmpty(t *testing.T) {
 	l := NewLibrary()
-	f := l.Face(16)
+	f := l.Face(16, WeightRegular)
 	w, _ := f.Measure("", -1)
 	if w != 0 {
 		t.Fatalf("empty width = %v", w)
@@ -48,7 +48,7 @@ func TestMeasureEmpty(t *testing.T) {
 
 func TestWrapClampsWidth(t *testing.T) {
 	l := NewLibrary()
-	f := l.Face(16)
+	f := l.Face(16, WeightRegular)
 	w, h := f.Measure("the quick brown fox jumps over the lazy dog", 100)
 	if w > 100.01 {
 		t.Fatalf("wrapped width = %v", w)
@@ -60,7 +60,7 @@ func TestWrapClampsWidth(t *testing.T) {
 
 func TestRasterGlyphHasInk(t *testing.T) {
 	l := NewLibrary()
-	f := l.Face(24)
+	f := l.Face(24, WeightRegular)
 	out := f.Shape("A")
 	if len(out.Glyphs) == 0 {
 		t.Fatal("no glyphs")
@@ -89,12 +89,12 @@ func TestRasterGlyphHasInk(t *testing.T) {
 
 func TestAtlasCachesAndPacks(t *testing.T) {
 	l := NewLibrary()
-	f := l.Face(20)
+	f := l.Face(20, WeightRegular)
 	a := l.Atlas()
 	out := f.Shape("Hello")
 	seen := 0
 	for _, g := range out.Glyphs {
-		slot, ok := a.Slot(f, uint16(g.GlyphID), 80)
+		slot, ok := a.Slot(f, uint16(g.GlyphID))
 		if !ok {
 			continue
 		}
@@ -103,7 +103,7 @@ func TestAtlasCachesAndPacks(t *testing.T) {
 			t.Fatal("empty slot")
 		}
 		// Second call must return the same slot without touching the atlas.
-		again, ok2 := a.Slot(f, uint16(g.GlyphID), 80)
+		again, ok2 := a.Slot(f, uint16(g.GlyphID))
 		if !ok2 || again.Rect != slot.Rect {
 			t.Fatal("atlas did not cache the glyph")
 		}
@@ -118,7 +118,7 @@ func TestAtlasCachesAndPacks(t *testing.T) {
 
 func TestAtlasFullIsGraceful(t *testing.T) {
 	l := NewLibrary()
-	f := l.Face(40)
+	f := l.Face(40, WeightRegular)
 	small := NewAtlas(16, 16)
 	slots := 0
 	for _, r := range "ABCDEFGHIJKLMNOPQRSTUVWXYZ" {
@@ -126,7 +126,7 @@ func TestAtlasFullIsGraceful(t *testing.T) {
 		if len(out.Glyphs) == 0 {
 			continue
 		}
-		if _, ok := small.Slot(f, uint16(out.Glyphs[0].GlyphID), 160); ok {
+		if _, ok := small.Slot(f, uint16(out.Glyphs[0].GlyphID)); ok {
 			slots++
 		}
 	}

@@ -16,7 +16,7 @@ func TestCounterSurvivesReload(t *testing.T) {
 	src := `Window {
 		Column {
 			Text { id: label text: "0" }
-			Button { id: inc width: 100 height: 40 text: "+" }
+			Button { id: inc width: 100 height: 40 label: "+" }
 		}
 	}`
 	a, win := reloadApp(t, src)
@@ -38,7 +38,7 @@ func TestCounterSurvivesReload(t *testing.T) {
 	}
 
 	click := func() {
-		b := MustByID[*Button](win, "inc").Base().Bounds()
+		b := absoluteRect(MustByID[*Button](win, "inc"))
 		in.MouseDown(b.X+5, b.Y+5, 0)
 		in.MouseUp(b.X+5, b.Y+5, 0)
 	}
@@ -55,7 +55,7 @@ func TestCounterSurvivesReload(t *testing.T) {
 		Column {
 			spacing: 4
 			Text { id: label text: "0" }
-			Button { id: inc width: 100 height: 40 text: "+" }
+			Button { id: inc width: 100 height: 40 label: "+" }
 		}
 	}`))
 	if !diag.Empty() {

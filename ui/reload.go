@@ -66,8 +66,8 @@ func (a *App) applyReload(f *syntax.File) error {
 		d.input.focus = nil
 		if focusID != "" {
 			if n, ok := tr.ByID(focusID); ok {
-				if ti, ok := n.(*tree.TextInput); ok {
-					d.input.focus = ti
+				if k := n.Kind(); k == "TextField" || k == "SearchBar" {
+					d.input.focus = comp(n)
 				}
 			}
 		}
@@ -112,14 +112,16 @@ func carryOver(old, fresh *tree.Tree) {
 			db.CopyProp(name, sb)
 		}
 
-		// TextInput contents and caret are user state, not Go state: keep them
+		// Text field contents and caret are user state, not Go state: keep them
 		// whenever the file did not change the literal.
-		if ti, ok := n.(*tree.TextInput); ok {
-			oldTI := src.(*tree.TextInput)
-			if !tree.LiteralChanged(ti.Base(), "text", oldTI.Base()) {
-				ti.Base().CopyProp("text", oldTI.Base())
+		if k := n.Kind(); k == "TextField" || k == "SearchBar" {
+			ti, oldTI := comp(n), comp(src)
+			if ti != nil && oldTI != nil {
+				if !tree.LiteralChanged(n.Base(), "text", src.Base()) {
+					ti.Text = oldTI.Text
+				}
+				ti.Caret = oldTI.Caret
 			}
-			ti.SetCaret(oldTI.Caret())
 		}
 	}
 }

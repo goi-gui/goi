@@ -11,8 +11,8 @@ in a small QML-like file; Go finds elements by id and attaches behaviour.
 //         padding: 24
 //         spacing: 12
 //         align: center
-//         Text   { id: label text: "0" fontSize: 48 color: #ffffff }
-//         Button { id: inc   text: "Increase" background: #3b82f6 radius: 8 }
+//         Text   { id: label text: "0" role: displayLarge }
+//         Button { id: inc   label: "Increase" icon: add }
 //     }
 // }
 ```
@@ -53,6 +53,7 @@ Wayland is the default build; use `-tags x11` for X11.
 
 ```sh
 make counter   # counter with hot reload
+make gallery   # every Material 3 component on one page
 make hello     # rounded corners, borders, text
 ```
 
@@ -61,9 +62,14 @@ make hello     # rounded corners, borders, text
 - `.ui` files: literals only, no scripting. Elements, properties, ids, with
   diagnostics that point at `file:line:col`.
 - Typed Go API: `Prop[T]` cells, `Event[E]`, `ByID[T]`.
+- Material 3 components as core elements: buttons, FABs, chips, selection
+  controls, sliders, text fields, cards, dialogs, sheets, lists, menus,
+  app bars, navigation, tabs, progress, pickers, carousel and toolbar. They ship
+  with the light and dark baseline schemes, Roboto and Material Symbols.
 - Layout: Column, Row, Stack, flex grow, padding, margin, min/max width.
-- Rendering: instanced SDF rounded rects with borders and anti-aliasing, text
-  through HarfBuzz-quality shaping and a grayscale atlas, HiDPI aware.
+- Rendering: instanced SDF rounded rects, circles, arcs and shadows with borders
+  and anti-aliasing, text through HarfBuzz-quality shaping and a grayscale
+  atlas, HiDPI aware.
 - Input: clicks, hover, keyboard focus, text editing, Tab order groundwork.
 - Hot reload: edit the file, the window updates; broken files keep the last good
   tree and print diagnostics.
@@ -73,9 +79,9 @@ and [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ## Not in v1
 
-Expressions or bindings in `.ui`, animations, theming, accessibility tree,
-multiple windows, drag and drop, custom components in `.ui`, and the Checkbox,
-Scroll and Image widgets.
+Expressions or bindings in `.ui`, animations, dynamic color and custom themes,
+accessibility tree, multiple windows, drag and drop, custom components in `.ui`,
+text selection/clipboard/IME, and the Scroll and Image widgets.
 
 ## Tests
 

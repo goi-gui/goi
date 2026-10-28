@@ -79,18 +79,17 @@ func TestBorderAndRadius(t *testing.T) {
 
 func TestGoldenDisplayList(t *testing.T) {
 	l := list(t, `Window {
-		id: main
-		background: #101010
-		Column {
-			padding: 8
-			Text { id: label text: "0" fontSize: 20 color: #eeeeee }
-			Button { id: inc text: "Go" background: #3b82f6 color: #ffffff radius: 6 }
-		}
-	}`, 200, 120)
-	const want = `fill 0,0 200x120 radius=0 color=#101010ff border=#00000000/0 clip=0,0 200x120
-text "0" at 8,24 size=20 align=0 color=#eeeeeeff clip=8,8 184x104
-fill 8,32 40x31.2 radius=6 color=#3b82f6ff border=#00000000/0 clip=8,8 184x104
-text "Go" at 8,53.2 size=16 align=1 color=#ffffffff clip=8,8 184x104
+	id: main
+	background: #101010
+	Column {
+		padding: 8
+		Text { id: label text: "0" fontSize: 20 color: #eeeeee }
+		Rectangle { id: box width: 40 height: 32 background: #3b82f6 radius: 6 }
+	}
+}`, 200, 120)
+	const want = `fill 0,0 200x120 r=0/0/0/0 color=#101010ff border=#00000000/0 clip=0,0 200x120
+text "0" at 8,24 size=20 w=400 align=0 color=#eeeeeeff clip=8,8 184x104
+fill 8,32 40x32 r=6/6/6/6 color=#3b82f6ff border=#00000000/0 clip=8,8 184x104
 `
 	if got := l.Dump(); got != want {
 		t.Fatalf("display list mismatch\n--- got ---\n%s\n--- want ---\n%s", got, want)

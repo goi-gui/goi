@@ -68,19 +68,19 @@ func TestReloadFileLiteralWins(t *testing.T) {
 }
 
 func TestReloadKeepsTextInputContents(t *testing.T) {
-	a, w := reloadApp(t, `Window { TextInput { id: name placeholder: "x" } }`)
-	ti := MustByID[*TextInput](w, "name")
+	a, w := reloadApp(t, `Window { TextField { id: name placeholder: "x" } }`)
+	ti := MustByID[*TextField](w, "name")
 	ti.Text.Set("Kaan") // as the input layer would
-	ti.SetCaret(2)
+	ti.Caret = 2
 
-	if err := applyReloadSource(t, a, `Window { TextInput { id: name placeholder: "type here" } }`); err != nil {
+	if err := applyReloadSource(t, a, `Window { TextField { id: name placeholder: "type here" } }`); err != nil {
 		t.Fatal(err)
 	}
-	ti = MustByID[*TextInput](w, "name")
+	ti = MustByID[*TextField](w, "name")
 	if got := ti.Text.Get(); got != "Kaan" {
 		t.Fatalf("input contents lost: %q", got)
 	}
-	if got := ti.Caret(); got != 2 {
+	if got := ti.Caret; got != 2 {
 		t.Fatalf("caret lost: %d", got)
 	}
 	if got := ti.Placeholder.Get(); got != "type here" {
@@ -91,7 +91,7 @@ func TestReloadKeepsTextInputContents(t *testing.T) {
 func TestReloadRerunsBind(t *testing.T) {
 	a, w := reloadApp(t, `Window {
 		Text { id: label text: "0" }
-		Button { id: inc text: "+" }
+		Button { id: inc label: "+" }
 	}`)
 	binds := 0
 	if err := w.Bind(func(w *Window) error {
@@ -106,7 +106,7 @@ func TestReloadRerunsBind(t *testing.T) {
 
 	if err := applyReloadSource(t, a, `Window {
 		Text { id: label text: "0" }
-		Button { id: inc text: "+" }
+		Button { id: inc label: "+" }
 	}`); err != nil {
 		t.Fatal(err)
 	}

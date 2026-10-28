@@ -17,16 +17,15 @@ import (
 	"github.com/go-text/typesetting/font"
 	"github.com/go-text/typesetting/language"
 	"github.com/go-text/typesetting/shaping"
-	"golang.org/x/image/font/gofont/goregular"
 	"golang.org/x/image/math/fixed"
 )
 
 // Face is a font at one pixel size, ready to shape and rasterize.
 type Face struct {
 	font *font.Face
+	tag  uint8 // font identity, so atlas keys never collide across fonts
 	size float64
 	upem float32
-
 	// shaper is per-Face so the harfbuzz buffer is reused; shaping is not
 	// goroutine-safe, and all text work happens on the UI goroutine.
 	shaper shaping.HarfbuzzShaper
@@ -34,41 +33,57 @@ type Face struct {
 
 // Library holds the registered fonts and the glyph atlas. Create one per app.
 type Library struct {
-	mu     sync.Mutex
-	fonts  []*font.Face
-	faces  map[faceKey]*Face
-	atlas  *Atlas
-	loaded bool
+	mu    sync.Mutex
+	fonts map[Weight]*font.Face
+	icon  *font.Face
+	faces map[faceKey]*Face
+	atlas *Atlas
 }
 
 type faceKey struct {
-	font int
-	size int // size in 1/4 pixels, so 12.5 and 12.75 do not collide
+	weight Weight
+	size   int // 1/4 pixels, so 12.5 and 12.75 do not collide
+	icon   bool
 }
 
-// NewLibrary returns a library with the embedded default font registered.
+// NewLibrary returns a library with Roboto and Material Symbols loaded.
 func NewLibrary() *Library {
-	l := &Library{faces: map[faceKey]*Face{}, atlas: NewAtlas(1024, 1024)}
-	if f, err := font.ParseTTF(bytes.NewReader(goregular.TTF)); err == nil {
-		l.fonts = append(l.fonts, f)
-		l.loaded = true
+	l := &Library{
+		fonts: map[Weight]*font.Face{},
+		faces: map[faceKey]*Face{},
+		atlas: NewAtlas(2048, 2048),
+	}
+	load := func(w Weight, data []byte) {
+		if len(data) == 0 {
+			return
+		}
+		if f, err := font.ParseTTF(bytes.NewReader(data)); err == nil {
+			l.fonts[w] = f
+		}
+	}
+	load(WeightRegular, robotoRegular)
+	load(WeightMedium, robotoMedium)
+	load(WeightBold, robotoBold)
+	if f, err := font.ParseTTF(bytes.NewReader(materialSymbols)); err == nil {
+		l.icon = f
 	}
 	return l
 }
 
-// HasFont reports whether the default font parsed.
-func (l *Library) HasFont() bool { return l.loaded }
+// HasFont reports whether Roboto parsed.
+func (l *Library) HasFont() bool { return l.fonts[WeightRegular] != nil }
 
-// RegisterFont adds a font for fallback use. It is appended, so the default
-// font keeps priority for glyphs it has.
-func (l *Library) RegisterFont(ttf []byte) error {
-	f, err := font.ParseTTF(bytes.NewReader(ttf))
+// HasIcons reports whether Material Symbols parsed.
+func (l *Library) HasIcons() bool { return l.icon != nil }
+
+// RegisterFont adds a font at a weight, replacing the embedded one.
+func (l *Library) RegisterFont(weight Weight, data []byte) error {
+	f, err := font.ParseTTF(bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("text: parse font: %w", err)
 	}
 	l.mu.Lock()
-	l.fonts = append(l.fonts, f)
-	l.loaded = true
+	l.fonts[weight] = f
 	l.mu.Unlock()
 	return nil
 }
@@ -76,37 +91,69 @@ func (l *Library) RegisterFont(ttf []byte) error {
 // Atlas returns the glyph atlas, for the renderer to upload.
 func (l *Library) Atlas() *Atlas { return l.atlas }
 
-// Face returns the face for a size, parsing once per size.
-func (l *Library) Face(size float64) *Face {
+// Face returns the face for a size and weight, creating it once.
+func (l *Library) Face(size float64, weight Weight) *Face {
+	return l.face(size, weight, false)
+}
+
+// IconFace returns the face for Material Symbols at a size.
+func (l *Library) IconFace(size float64) *Face {
+	return l.face(size, WeightRegular, true)
+}
+
+func (l *Library) face(size float64, weight Weight, icon bool) *Face {
 	if size <= 0 {
 		size = 16
 	}
-	if !l.loaded {
-		return nil
-	}
-	key := faceKey{font: 0, size: int(size * 4)}
 	l.mu.Lock()
 	defer l.mu.Unlock()
+
+	var src *font.Face
+	var tag uint8
+	if icon {
+		src = l.icon
+		tag = 3
+	} else {
+		src = l.fonts[weight]
+		tag = 0
+		switch weight {
+		case WeightMedium:
+			tag = 1
+		case WeightBold:
+			tag = 2
+		}
+		if src == nil {
+			src = l.fonts[WeightRegular]
+			tag = 0
+		}
+	}
+	if src == nil {
+		return nil
+	}
+	key := faceKey{weight: weight, size: int(size * 4), icon: icon}
 	if f, ok := l.faces[key]; ok {
 		return f
 	}
-	f := &Face{
-		font: l.fonts[0],
-		size: size,
-		upem: float32(l.fonts[0].Upem()),
-	}
+	f := &Face{font: src, tag: tag, size: size, upem: float32(src.Upem())}
 	l.faces[key] = f
 	return f
 }
 
+// Tag returns the font identity used in atlas keys.
+func (f *Face) Tag() uint8 { return f.tag }
+
+// Size returns the pixel size of the face.
+func (f *Face) Size() float64 { return f.size }
+
 // Shape returns the laid-out glyphs for one line of text.
 func (f *Face) Shape(s string) shaping.Output {
+	runes := []rune(s)
 	in := shaping.Input{
-		Text:      []rune(s),
+		Text:      runes,
 		RunStart:  0,
-		RunEnd:    len([]rune(s)),
+		RunEnd:    len(runes),
 		Direction: di.DirectionLTR,
-		Face:      f.fontFace(),
+		Face:      f.font,
 		Size:      fixed.Int26_6(f.size * 64),
 		Script:    language.Latin,
 		Language:  language.NewLanguage("en"),
@@ -114,13 +161,8 @@ func (f *Face) Shape(s string) shaping.Output {
 	return f.shaper.Shape(in)
 }
 
-// fontFace returns the shaping face for the current size.
-func (f *Face) fontFace() *font.Face {
-	return f.font
-}
-
 // Measure returns the size of s at this face's size, wrapping at maxWidth when
-// it is positive. The height is one line unless wrapping adds more.
+// it is positive.
 func (f *Face) Measure(s string, maxWidth float64) (w, h float64) {
 	if s == "" {
 		return 0, f.LineHeight()
@@ -132,8 +174,7 @@ func (f *Face) Measure(s string, maxWidth float64) (w, h float64) {
 	}
 	// shortcut: line count is total advance divided by the wrap width, which is
 	// right for Latin prose and wrong when one word is wider than the column.
-	// Upgrade to real line breaking (go-text/typesetting/segmenter) when Text
-	// gains multi-line rendering.
+	// Upgrade to real line breaking when Text gains multi-line rendering.
 	lines := int(adv/maxWidth) + 1
 	return maxWidth, float64(lines) * f.LineHeight()
 }
@@ -144,8 +185,14 @@ func (f *Face) LineHeight() float64 { return f.size * 1.2 }
 // Ascent returns the distance from the baseline to the top of the line.
 func (f *Face) Ascent() float64 { return f.size * 0.95 }
 
-// Raster returns the cached coverage bitmap for one glyph at this size, plus
-// its integer placement relative to the pen.
+// GlyphID returns the nominal glyph for a rune.
+func (f *Face) GlyphID(r rune) (uint16, bool) {
+	g, ok := f.font.NominalGlyph(r)
+	return uint16(g), ok
+}
+
+// Raster returns the coverage bitmap for one glyph at this size, plus its
+// placement relative to the pen.
 func (f *Face) Raster(gid uint16) (image.Gray, image.Point, bool) {
 	if f == nil {
 		return image.Gray{}, image.Point{}, false

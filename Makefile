@@ -7,6 +7,9 @@ spike:
 counter:
 	go run -ldflags=-linkmode=internal ./examples/counter
 
+gallery:
+	go run -ldflags=-linkmode=internal ./examples/gallery
+
 hello:
 	go run -ldflags=-linkmode=internal ./examples/hello
 
@@ -19,4 +22,4 @@ vet:
 bench:
 	go test -run XXX -bench . -benchmem ./internal/layout/ ./internal/syntax/ ./internal/paint/
 
-.PHONY: build spike counter hello test vet bench
+.PHONY: build spike counter gallery hello test vet bench

@@ -19,8 +19,8 @@ Window {
         spacing: 8
         align: center
 
-        Text   { id: label text: "0" fontSize: 32 color: #ffffff }
-        Button { id: inc   text: "Increase" background: #3b82f6 color: #ffffff }
+        Text   { id: label text: "0" role: displayLarge }
+        Button { id: inc   label: "Increase" icon: add }
     }
 }
 ```
@@ -53,14 +53,38 @@ by `:` and a child element when it is followed by `{`, so `name: value` and
 
 | Element | Children | Properties beyond the common set |
 |---|---|---|
-| `Window` | yes | `title` |
+| `Window` | yes | `title`, `theme` (`light`, `dark`) |
 | `Column` | yes | `spacing`, `align` |
 | `Row` | yes | `spacing`, `align` |
 | `Stack` | yes | `align` |
 | `Rectangle` | no | — |
-| `Text` | no | `text`, `fontSize`, `color`, `align`, `wrap` |
-| `Button` | no | `text`, `fontSize`, `color`, `hoverBackground` |
-| `TextInput` | no | `text`, `placeholder`, `fontSize`, `color` |
+| `Text` | no | `text`, `fontSize`, `weight`, `color`, `align`, `wrap`, `role` |
+
+`role` selects a Material 3 type-scale role (`displayLarge` … `labelSmall`) and
+sets size, line height and weight together; `fontSize` and `weight` override it.
+
+Everything else is a Material 3 component. They are ordinary elements, not a
+separate package. Containers take children; the rest are leaves:
+
+`Button`, `IconButton`, `FAB`, `FABMenu`, `ButtonGroup`, `SplitButton`,
+`SegmentedButton`, `Chip`, `Badge`, `Checkbox`, `RadioButton`, `Switch`,
+`Slider`, `TextField`, `SearchBar`, `Tooltip`, `Card`, `Dialog`, `BottomSheet`,
+`SideSheet`, `Divider`, `List`, `ListItem`, `Menu`, `MenuItem`, `Snackbar`,
+`TopAppBar`, `NavigationBar`, `NavigationRail`, `NavigationDrawer`,
+`NavigationItem`, `Tabs`, `Tab`, `LinearProgress`, `CircularProgress`,
+`LoadingIndicator`, `DatePicker`, `TimePicker`, `Carousel`, `Toolbar`.
+
+They share one vocabulary: `label`, `supporting`, `text`, `placeholder`, `icon`,
+`trailingIcon` (icon names are Material Symbols ligatures such as `home`),
+`variant`, `size`, `disabled`, `checked`, `selected`, `expanded`, `value`,
+`min`, `max`, `step`. Each kind accepts only the subset that makes sense for it;
+`internal/componentdef` is the single table that the schema and the node tree
+both read, so an element can never validate without existing.
+
+Containers that lay children out (`ButtonGroup`, `Toolbar`, `Carousel`, `Tabs`,
+`NavigationBar`, `NavigationRail`, `NavigationDrawer`, `List`, `Menu`, `Card`,
+`Dialog`, `BottomSheet`, `SideSheet`, `DatePicker`, `TimePicker`) also accept
+`spacing` and `align`.
 
 Common to every element: `id`, `width`, `height`, `minWidth`, `maxWidth`,
 `margin`, `padding`, `background`, `borderColor`, `borderWidth`, `radius`,
@@ -84,5 +108,6 @@ removes the element from layout and from hit-testing entirely.
 ## What is not in v1
 
 No expressions, no bindings, no loops, no conditionals, no scripting, and no
-event declarations — behaviour lives in Go. No animations, theming, custom
-components or imports (planned for v2).
+event declarations — behaviour lives in Go. No animations, custom components or
+imports (planned for v2). Theming is limited to the built-in light and dark
+Material 3 schemes; dynamic color and custom palettes are not exposed yet.

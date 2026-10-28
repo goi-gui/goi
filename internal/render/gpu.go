@@ -14,13 +14,22 @@ import (
 	_ "github.com/gogpu/wgpu/hal/allbackends"
 )
 
+// One pipeline draws every solid shape. The fragment shader branches on the
+// shape kind, which keeps a whole window at one draw call.
+//
+//	kind 0: rounded rect (per-corner radius, optional border)
+//	kind 1: filled circle
+//	kind 2: ring or arc (thickness in misc, sweep in params.zw)
+//	kind 3: drop shadow (rounded rect with a soft falloff)
 const shaderWGSL = `
 struct Instance {
 	rect: vec4f,    // x, y, w, h in logical pixels
 	radius: vec4f,  // tl, tr, br, bl
 	color: vec4f,
 	border: vec4f,  // rgb + width
-	clip: vec4f,    // x0, y0, x1, y1 in logical pixels
+	clip: vec4f,    // x0, y0, x1, y1
+	params: vec4f,  // kind, blur, startAngle, endAngle
+	misc: vec4f,    // thickness, unused...
 }
 
 struct Viewport {
@@ -39,6 +48,8 @@ struct VSOut {
 	@location(4) border: vec4f,
 	@location(5) clip: vec4f,
 	@location(6) pos2: vec2f,
+	@location(7) params: vec4f,
+	@location(8) misc: vec4f,
 }
 
 @vertex
@@ -59,6 +70,8 @@ fn vs_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
 	out.border = inst.border;
 	out.clip = inst.clip;
 	out.pos2 = p;
+	out.params = inst.params;
+	out.misc = inst.misc;
 	return out;
 }
 
@@ -73,41 +86,100 @@ fn corner_radius(r: vec4f, p: vec2f, s: vec2f) -> f32 {
 	return r.x;
 }
 
+// Signed distance to a rounded rectangle centred on s/2.
+fn sd_round_rect(p: vec2f, s: vec2f, r: f32) -> f32 {
+	let h = s * 0.5;
+	let q = abs(p - h) - (h - vec2f(r));
+	return length(max(q, vec2f(0.0))) + min(max(q.x, q.y), 0.0) - r;
+}
+
+const PI = 3.14159265359;
+
 @fragment
 fn fs_main(in: VSOut) -> @location(0) vec4f {
-	// Hard clip against the node's content box, matching a scissor rectangle.
+	// Hard clip against the node's content box.
 	if (in.pos2.x < in.clip.x || in.pos2.y < in.clip.y ||
 	    in.pos2.x > in.clip.z || in.pos2.y > in.clip.w) { discard; }
 
-	let r = corner_radius(in.radius, in.local, in.size);
-	let h = in.size * 0.5;
-	let q = abs(in.local - h) - (h - vec2f(r));
-	let d = length(max(q, vec2f(0.0))) + min(max(q.x, q.y), 0.0) - r;
-
-	// AA width in logical pixels, widened so it stays one device pixel.
 	let aa = 0.5 / max(viewport.size.z, 1.0);
-	let coverage = 1.0 - smoothstep(-aa, aa, d);
-	if (coverage <= 0.0) { discard; }
+	let kind = in.params.x;
+
+	if (kind > 2.5) {
+		// Drop shadow: the quad is the shape grown by the blur radius, so the
+		// SDF is evaluated against the original shape and fades to zero at the
+		// quad edge. The shape itself is drawn on top of the solid middle.
+		let blur = max(in.params.y, 0.001);
+		let innerSize = in.size - vec2f(2.0 * blur);
+		let p = in.local - vec2f(blur);
+		let r = max(corner_radius(in.radius, in.local, in.size) - blur, 0.0);
+		let d = sd_round_rect(p, innerSize, r);
+		let cov = 1.0 - smoothstep(-blur * 0.25, blur, d);
+		if (cov <= 0.0) { discard; }
+		return vec4f(in.color.rgb, in.color.a * cov);
+	}
+
+	if (kind > 0.5) {
+		// Filled circle and ring/arc, both inscribed in the box.
+		let c = in.size * 0.5;
+		let r = min(in.size.x, in.size.y) * 0.5;
+		var d = length(in.local - c) - r;
+		if (kind > 1.5) {
+			// A ring: keep only the band of the given thickness.
+			let thick = max(in.misc.x, 0.5);
+			d = abs(length(in.local - c) - (r - thick * 0.5)) - thick * 0.5;
+		}
+		let cov = 1.0 - smoothstep(-aa, aa, d);
+		if (cov <= 0.0) { discard; }
+
+		// Sweep mask, measured from 12 o'clock clockwise. A filled circle has no
+		// sweep, so only rings and arcs pay for it.
+		let v = in.local - c;
+		var ang = atan2(v.x, -v.y);
+		if (ang < 0.0) { ang = ang + 2.0 * PI; }
+		let start = in.params.z;
+		let end = in.params.w;
+		if (kind > 1.5 && end - start < 2.0 * PI - 0.01) {
+			var a0 = start;
+			var a1 = end;
+			if (a1 < a0) { a1 = a1 + 2.0 * PI; }
+			var a = ang;
+			if (a < a0) { a = a + 2.0 * PI; }
+			if (a > a0 + 0.001 && a < a1) {
+				// inside the sweep
+			} else {
+				discard;
+			}
+		}
+		return vec4f(in.color.rgb, in.color.a * cov);
+	}
+
+	// Rounded rectangle with an optional border.
+	let r = corner_radius(in.radius, in.local, in.size);
+	let d = sd_round_rect(in.local, in.size, r);
+	let cov = 1.0 - smoothstep(-aa, aa, d);
+	if (cov <= 0.0) { discard; }
 
 	let bw = in.border.w;
 	if (bw > 0.0) {
 		let inner = 1.0 - smoothstep(-aa, aa, d + bw);
-		let edge = max(coverage - inner, 0.0);
+		let edge = max(cov - inner, 0.0);
 		let rgb = in.color.rgb * inner + in.border.rgb * edge;
 		let a = in.color.a * inner + in.border.a * edge;
-		return vec4f(rgb, a * coverage);
+		return vec4f(rgb, a * cov);
 	}
-	return vec4f(in.color.rgb, coverage * in.color.a);
+	return vec4f(in.color.rgb, cov * in.color.a);
 }
 `
 
-// gpuInstance is the per-rect vertex data. 64 bytes, matching the WGSL struct.
+// gpuInstance is the per-shape vertex data. 112 bytes, matching the WGSL struct.
 type gpuInstance struct {
 	Rect   [4]float32
 	Radius [4]float32
 	Color  [4]float32
 	Border [4]float32
 	Clip   [4]float32
+	Params [4]float32 // kind, blur, startAngle, endAngle
+	Misc   [4]float32 // thickness, ...
 }
 
 // GPU is the WebGPU renderer.
@@ -214,7 +286,7 @@ func pickFormat(formats []gputypes.TextureFormat) gputypes.TextureFormat {
 }
 
 func (g *GPU) initPipeline() error {
-	shader, err := g.device.CreateShaderModule(&wgpu.ShaderModuleDescriptor{Label: "sdf", WGSL: shaderWGSL})
+	shader, err := g.device.CreateShaderModule(&wgpu.ShaderModuleDescriptor{Label: "shapes", WGSL: shaderWGSL})
 	if err != nil {
 		return fmt.Errorf("shader: %w", err)
 	}
@@ -238,7 +310,7 @@ func (g *GPU) initPipeline() error {
 	}
 
 	layout, err := g.device.CreateBindGroupLayout(&wgpu.BindGroupLayoutDescriptor{
-		Label: "sdf-layout",
+		Label: "shapes-layout",
 		Entries: []gputypes.BindGroupLayoutEntry{
 			{Binding: 0, Visibility: gputypes.ShaderStageVertex | gputypes.ShaderStageFragment,
 				Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeUniform}},
@@ -252,7 +324,7 @@ func (g *GPU) initPipeline() error {
 	defer layout.Release()
 
 	g.bindG, err = g.device.CreateBindGroup(&wgpu.BindGroupDescriptor{
-		Label:  "sdf-bindings",
+		Label:  "shapes-bindings",
 		Layout: layout,
 		Entries: []wgpu.BindGroupEntry{
 			{Binding: 0, Buffer: g.uniform, Size: 16},
@@ -264,7 +336,7 @@ func (g *GPU) initPipeline() error {
 	}
 
 	pl, err := g.device.CreatePipelineLayout(&wgpu.PipelineLayoutDescriptor{
-		Label:            "sdf-pipeline-layout",
+		Label:            "shapes-pipeline-layout",
 		BindGroupLayouts: []*wgpu.BindGroupLayout{layout},
 	})
 	if err != nil {
@@ -282,9 +354,11 @@ func (g *GPU) initPipeline() error {
 		{Format: gputypes.VertexFormatFloat32x4, Offset: 32, ShaderLocation: 2},
 		{Format: gputypes.VertexFormatFloat32x4, Offset: 48, ShaderLocation: 3},
 		{Format: gputypes.VertexFormatFloat32x4, Offset: 64, ShaderLocation: 4},
+		{Format: gputypes.VertexFormatFloat32x4, Offset: 80, ShaderLocation: 5},
+		{Format: gputypes.VertexFormatFloat32x4, Offset: 96, ShaderLocation: 6},
 	}
 	g.pipeline, err = g.device.CreateRenderPipeline(&wgpu.RenderPipelineDescriptor{
-		Label:  "sdf",
+		Label:  "shapes",
 		Layout: pl,
 		Vertex: wgpu.VertexState{
 			Module:     shader,
@@ -309,18 +383,15 @@ func (g *GPU) initPipeline() error {
 	return nil
 }
 
+func (g *GPU) storageSize(n int) uint64 {
+	return uint64(n) * uint64(unsafe.Sizeof(gpuInstance{}))
+}
+
 // TextLibrary exposes the font library so layout can measure real text.
 func (g *GPU) TextLibrary() any { return g.textLib }
 
 // Text returns the font library typed, for the platform layer.
 func (g *GPU) Text() *text.Library { return g.textLib }
-
-// Format returns the surface format in use, for diagnostics.
-func (g *GPU) Format() uint32 { return uint32(g.format) }
-
-func (g *GPU) storageSize(n int) uint64 {
-	return uint64(n) * uint64(unsafe.Sizeof(gpuInstance{}))
-}
 
 // Resize reconfigures the swapchain for a new framebuffer size.
 func (g *GPU) Resize(width, height int, scale float32) error {
@@ -341,9 +412,7 @@ func (g *GPU) Resize(width, height int, scale float32) error {
 	})
 }
 
-// Render converts the display list to instances, uploads them and draws. The
-// clip rectangle travels with each instance and is applied in the fragment
-// shader, so the whole frame is one draw call per pipeline.
+// Render converts the display list to instances, uploads them and draws.
 func (g *GPU) Render(list *paint.List, width, height int) error {
 	if g.closed || width <= 0 || height <= 0 {
 		return nil
@@ -361,17 +430,22 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 	for _, op := range list.Ops {
 		switch op.Kind {
 		case paint.Fill:
-			border := rgba(op.BorderColor)
-			border[3] = op.BorderWidth
-			if op.BorderColor == 0 || op.BorderWidth <= 0 {
-				border[3] = 0
-			}
 			g.instances = append(g.instances, gpuInstance{
 				Rect:   op.Rect,
 				Radius: op.Radius,
 				Color:  rgba(op.Color),
-				Border: border,
-				Clip:   clipRect(op.Clip),
+				Border: borderVec(op.BorderColor, op.BorderWidth),
+				Clip:   clipVec(op.Clip),
+				Params: [4]float32{shapeKind(op.Shape), 0, op.StartAngle, op.EndAngle},
+				Misc:   [4]float32{op.Thickness, 0, 0, 0},
+			})
+		case paint.Shadow:
+			g.instances = append(g.instances, gpuInstance{
+				Rect:   op.Rect,
+				Radius: op.Radius,
+				Color:  rgba(op.Color),
+				Clip:   clipVec(op.Clip),
+				Params: [4]float32{3, op.Blur, 0, 0},
 			})
 		case paint.Text:
 			if g.text != nil {
@@ -460,11 +534,6 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 	return nil
 }
 
-// clipRect converts a display-list clip to x0, y0, x1, y1.
-func clipRect(c [4]float32) [4]float32 {
-	return [4]float32{c[0], c[1], c[0] + c[2], c[1] + c[3]}
-}
-
 // grow reallocates the instance buffer and its bind group.
 func (g *GPU) grow(n int) error {
 	capacity := g.capacity * 2
@@ -480,7 +549,7 @@ func (g *GPU) grow(n int) error {
 		return err
 	}
 	layout, err := g.device.CreateBindGroupLayout(&wgpu.BindGroupLayoutDescriptor{
-		Label: "sdf-layout",
+		Label: "shapes-layout",
 		Entries: []gputypes.BindGroupLayoutEntry{
 			{Binding: 0, Visibility: gputypes.ShaderStageVertex | gputypes.ShaderStageFragment,
 				Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeUniform}},
@@ -548,6 +617,28 @@ func (g *GPU) Release() {
 	}
 }
 
+// shapeKind maps a paint shape to the shader's kind: 0 rect, 1 circle/arc,
+// 2 shadow. Arc and Circle share the ring code.
+func shapeKind(s paint.Shape) float32 {
+	switch s {
+	case paint.Circle:
+		return 1
+	case paint.Arc:
+		return 2
+	}
+	return 0
+}
+
+// borderVec packs a border color and width; a zero width disables the border.
+func borderVec(c uint32, w float32) [4]float32 {
+	if c == 0 || w <= 0 {
+		return [4]float32{0, 0, 0, 0}
+	}
+	v := rgba(c)
+	v[3] = w
+	return v
+}
+
 func rgba(c uint32) [4]float32 {
 	const s = 1.0 / 255.0
 	return [4]float32{
@@ -556,6 +647,11 @@ func rgba(c uint32) [4]float32 {
 		float32((c>>8)&0xFF) * s,
 		float32(c&0xFF) * s,
 	}
+}
+
+// clipVec converts a display-list clip to x0, y0, x1, y1.
+func clipVec(c [4]float32) [4]float32 {
+	return [4]float32{c[0], c[1], c[0] + c[2], c[1] + c[3]}
 }
 
 func floatsToBytes(f []float32) []byte {
@@ -571,8 +667,4 @@ func maxf(a, b float32) float32 {
 		return a
 	}
 	return b
-}
-
-func glyphsToBytes(glyphs []glyphInstance) []byte {
-	return unsafe.Slice((*byte)(unsafe.Pointer(&glyphs[0])), len(glyphs)*int(unsafe.Sizeof(glyphInstance{})))
 }
