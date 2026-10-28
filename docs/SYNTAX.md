@@ -135,7 +135,10 @@ Common to every element: `id`, `width`, `height`, `minWidth`, `maxWidth`,
 values and overrides the parent's `align` for one child.
 
 `width` and `height` default to `-1`, meaning automatic. `visible: false`
-removes the element from layout and from hit-testing entirely.
+removes the element from layout, painting and hit-testing entirely; it works on
+every element, Material components included, and accepts a breakpoint map like
+any other property (`visible: { base: true, md: false }`). From Go,
+`SetVisible(false)` on any node does the same at runtime.
 
 ## Expressions and percentages
 

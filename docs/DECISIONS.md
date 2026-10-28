@@ -321,6 +321,11 @@ batch. This is what the display list will feed.
   parent. Expressions and responsive maps share one write path: the selected
   value is stored and applied only when it changes, so a breakpoint can switch
   between a number and an expression without leaving both active.
+- **Visibility is a common property, not a per-component flag.** `visible` is a
+  `Prop[bool]` on `NodeBase`, so every element and Material component accepts
+  `visible: false` and breakpoint maps, and Go can call `SetVisible` on any node.
+  Layout, paint, hit-testing and scroll extent read the same cell, so a hidden
+  component is fully absent rather than merely painted transparent.
 - **Only surfaces clip their children, not layout flow.** `NodeBase.ClipsChildren`
   is true for scroll viewports, `Window`, `Stack` and painted components; `Column`,
   `Row`, `Toolbar` and `ButtonGroup` let content spill. Clipping every node to its

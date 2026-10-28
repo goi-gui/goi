@@ -150,6 +150,62 @@ func TestExpressionValues(t *testing.T) {
 	}
 }
 
+func TestVisibleOnComponents(t *testing.T) {
+	_, diag := validate(t, `Window {
+		Column {
+			Button { label: "hidden" visible: false }
+			Card { label: "responsive" visible: { base: true, md: false } }
+			IconButton { icon: home visible: true }
+		}
+	}`)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+}
+
+// TestEveryPropertyAcceptsPlainAndResponsive pins the rule that a property
+// which takes a breakpoint map always takes its plain literal too.
+func TestEveryPropertyAcceptsPlainAndResponsive(t *testing.T) {
+	for _, name := range ElementNames() {
+		def, _ := Lookup(name)
+		for _, pd := range def.Attrs {
+			if pd.Type == TypeID {
+				continue
+			}
+			val := plainValue(pd)
+			v := &validator{
+				ids:   map[*syntax.Element]string{},
+				elems: map[string]*syntax.Element{},
+				seen:  map[string]syntax.Pos{},
+			}
+			e := &syntax.Element{Name: name}
+			v.checkLiteral(e, &pd, val)
+			v.checkMap(e, &pd, &syntax.Map{Entries: []syntax.MapEntry{{Key: "md", Value: val}}})
+			if !v.diag.Empty() {
+				t.Errorf("%s.%s rejects a plain or responsive value: %v", name, pd.Name, v.diag)
+			}
+		}
+	}
+}
+
+func plainValue(pd Prop) syntax.Value {
+	switch pd.Type {
+	case TypeString:
+		return &syntax.String{Val: "x"}
+	case TypeNumber:
+		return &syntax.Number{Val: 1}
+	case TypeBool:
+		return &syntax.Bool{Val: true}
+	case TypeColor:
+		return &syntax.Color{RGBA: 0x112233FF}
+	case TypeEnum:
+		if len(pd.Enum) > 0 {
+			return &syntax.Ident{Val: pd.Enum[0]}
+		}
+	}
+	return &syntax.Ident{Val: "start"}
+}
+
 func TestAllDiagnosticsReported(t *testing.T) {
 	src := `Window {
 		width: "a"

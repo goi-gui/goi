@@ -41,6 +41,58 @@ func abs(v float64) float64 {
 	return v
 }
 
+func TestComponentVisible(t *testing.T) {
+	tr := build(t, `Window {
+		Column {
+			Button { id: b label: "hidden" visible: false }
+			Text { id: t text: "shown" }
+		}
+	}`)
+	e := New(nil)
+	e.Layout(tr.Root, 400, 300)
+	b, _ := tr.ByID("b")
+	if b.Base().Visible() {
+		t.Fatal("button should be hidden")
+	}
+	if got := bounds(t, tr, "t").Y; got != 0 {
+		t.Fatalf("visible text y = %v, want 0", got)
+	}
+
+	b.Base().SetVisible(true)
+	if _, dirty := b.Base().Dirty(); !dirty {
+		t.Fatal("SetVisible should mark the tree dirty")
+	}
+	e.Layout(tr.Root, 400, 300)
+	if !b.Base().Visible() {
+		t.Fatal("button should be visible")
+	}
+	if got := bounds(t, tr, "t").Y; got != 40 {
+		t.Fatalf("text y = %v, want 40 below the button", got)
+	}
+}
+
+func TestResponsiveVisibleOnComponent(t *testing.T) {
+	tr := build(t, `Window {
+		Column {
+			Button { id: b label: "md" visible: { base: true, md: false } }
+		}
+	}`)
+	e := New(nil)
+	b, _ := tr.ByID("b")
+
+	tr.ApplyBreakpoints(500)
+	e.Layout(tr.Root, 400, 300)
+	if !b.Base().Visible() {
+		t.Fatal("button should be visible below md")
+	}
+
+	tr.ApplyBreakpoints(800)
+	e.Layout(tr.Root, 400, 300)
+	if b.Base().Visible() {
+		t.Fatal("button should be hidden from md up")
+	}
+}
+
 func TestPercentAndReferenceWidth(t *testing.T) {
 	tr := build(t, `Window {
 		Column {

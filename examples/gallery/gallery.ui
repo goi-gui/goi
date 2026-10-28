@@ -141,6 +141,11 @@ Window {
 					Rectangle { width: demoBase.width / 2 height: 10 background: #4F378B radius: 5 }
 					Rectangle { width: 50% height: 10 background: #D0BCFF radius: 5 }
 				}
+				Text {
+					text: "Visible only from md (768px) up"
+					role: "bodyMedium"
+					visible: { base: false, md: true }
+				}
 			}
 
 			// ============================== inputs

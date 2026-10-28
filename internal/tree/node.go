@@ -111,6 +111,10 @@ func (b *NodeBase) SetBounds(r Rect) { b.bounds = r }
 // Visible reports whether the node takes part in layout and hit-testing.
 func (b *NodeBase) Visible() bool { return b.visible.Get() }
 
+// SetVisible shows or hides the node. A hidden node and its children are
+// skipped by layout, paint and hit-testing.
+func (b *NodeBase) SetVisible(v bool) { b.visible.Set(v) }
+
 // Margin returns the outer spacing.
 func (b *NodeBase) Margin() float64 { return b.margin.Get() }
 

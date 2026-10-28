@@ -74,6 +74,8 @@ make scroll    # scrolling page, horizontal strip, ripple
   Tailwind's `sm`/`md`/`lg`/`xl` min-width breakpoints applied on resize.
 - Value expressions: `width: side.width / 2` follows another element's
   property, and `width: 50%` is half of the parent's content box.
+- Visibility on every element, components included: `visible: false` (also
+  responsive) or `SetVisible` from Go removes it from layout, paint and input.
 - Rendering: instanced SDF rounded rects, circles, arcs and shadows with borders
   and anti-aliasing, text through HarfBuzz-quality shaping and a grayscale
   atlas, HiDPI aware.
