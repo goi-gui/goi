@@ -82,12 +82,20 @@ func blend(under, over uint32, a float64) uint32 {
 	return mix(24)<<24 | mix(16)<<16 | mix(8)<<8 | 0xFF
 }
 
+// Baseline offsets from the vertical centre of a line, in em. Centering a line
+// box means putting its baseline at centre + (ascent - descent) / 2. The values
+// are Roboto's and Material Symbols' hhea metrics.
+const (
+	textBaseline = 0.342 // (0.9277 - 0.2441) / 2
+	iconBaseline = 0.5   // (1.1 - 0.1) / 2
+)
+
 // textIn appends a text op centered vertically in box.
 func (l *List) textIn(s string, st m3.TextStyle, color uint32, box tree.Rect, align Align, clip tree.Rect) {
 	if s == "" {
 		return
 	}
-	baseline := box.Y + (box.H-st.LineHeight)/2 + st.Size*0.8
+	baseline := box.Y + box.H/2 + st.Size*textBaseline
 	l.Ops = append(l.Ops, Op{
 		Kind:     Text,
 		Rect:     rectArr(box),
@@ -120,7 +128,7 @@ func (l *List) iconIn(name string, size float64, color uint32, cx, cy float64, c
 		Icon:     true,
 		Align:    AlignCenter,
 		TextX:    float32(box.X),
-		TextY:    float32(cy + size*0.36),
+		TextY:    float32(cy + size*iconBaseline),
 		BoxW:     float32(size),
 	})
 }
@@ -961,10 +969,12 @@ func (l *List) paintListItem(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	}
 	fg := disabledAlpha(c, col.OnSurface)
 	if c.Supporting.Get() != "" {
+		// Two line boxes centred as one block.
+		top := r.Y + (r.H-44)/2
 		l.textIn(c.Label.Get(), l.style("bodyLarge"), fg,
-			tree.Rect{X: x, Y: r.Y + 8, W: textW, H: 24}, AlignStart, clip)
+			tree.Rect{X: x, Y: top, W: textW, H: 24}, AlignStart, clip)
 		l.textIn(c.Supporting.Get(), l.style("bodyMedium"), col.OnSurfaceVariant,
-			tree.Rect{X: x, Y: r.Y + 30, W: textW, H: 20}, AlignStart, clip)
+			tree.Rect{X: x, Y: top + 24, W: textW, H: 20}, AlignStart, clip)
 		return
 	}
 	l.textIn(c.Label.Get(), l.style("bodyLarge"), fg,
@@ -1074,18 +1084,27 @@ func (l *List) paintNavigationItem(c *tree.Component, r tree.Rect, clip tree.Rec
 	if c.Selected.Get() {
 		fg = col.OnSecondaryContainer
 	}
-	iconY := r.Y + 24
-	labelY := r.Y + 44
-	if r.W > 120 {
-		// Drawer items put the icon and label side by side.
+	// The parent decides the arrangement, not the item width: a destination in a
+	// wide navigation bar is still stacked.
+	parent := ""
+	if p := c.Base().Parent(); p != nil {
+		parent = p.Kind()
+	}
+	if parent == "NavigationDrawer" {
 		l.iconIn(c.Icon.Get(), 24, fg, r.X+24, r.Y+r.H/2, clip)
 		l.textIn(c.Label.Get(), l.style("labelMedium"), fg,
 			tree.Rect{X: r.X + 52, Y: r.Y, W: r.W - 60, H: r.H}, AlignStart, clip)
 		return
 	}
+	// Icon sits in the 32dp indicator; the label follows underneath. The
+	// indicator is at 12dp in a bar and 4dp in a rail.
+	iconY, labelY := r.Y+28, r.Y+48
+	if parent == "NavigationRail" {
+		iconY, labelY = r.Y+20, r.Y+40
+	}
 	l.iconIn(c.Icon.Get(), 24, fg, r.X+r.W/2, iconY, clip)
 	l.textIn(c.Label.Get(), l.style("labelMedium"), fg,
-		tree.Rect{X: r.X, Y: labelY - 10, W: r.W, H: 16}, AlignCenter, clip)
+		tree.Rect{X: r.X, Y: labelY, W: r.W, H: 16}, AlignCenter, clip)
 }
 
 func (l *List) paintTabs(c *tree.Component, r tree.Rect, clip tree.Rect) {
@@ -1227,7 +1246,8 @@ func (l *List) paintDatePicker(c *tree.Component, r tree.Rect, clip tree.Rect) {
 			Kind: Text, Rect: [4]float32{float32(cx - 16), float32(cy - 10), 32, 20},
 			Color: fg, Clip: clipArr(clip), Text: itoa(i + 1),
 			FontSize: float32(style.Size), Weight: weightOf(style.Weight),
-			Align: AlignCenter, TextX: float32(cx - 16), TextY: float32(cy + 5), BoxW: 32,
+			Align: AlignCenter, TextX: float32(cx - 16),
+			TextY: float32(cy + style.Size*textBaseline), BoxW: 32,
 		})
 	}
 }
@@ -1267,7 +1287,7 @@ func (l *List) paintTimePicker(c *tree.Component, r tree.Rect, clip tree.Rect) {
 			Kind: Text, Rect: [4]float32{float32(hx - 14), float32(hy - 10), 28, 20},
 			Color: col.OnSurface, Clip: clipArr(clip), Text: itoa((i+11)%12 + 1),
 			FontSize: 14, Weight: 400, Align: AlignCenter,
-			TextX: float32(hx - 14), TextY: float32(hy + 5), BoxW: 28,
+			TextX: float32(hx - 14), TextY: float32(hy + 14*textBaseline), BoxW: 28,
 		})
 	}
 	// Selected hour: 10 o'clock.

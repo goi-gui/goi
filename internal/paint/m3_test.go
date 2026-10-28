@@ -94,3 +94,26 @@ func TestDisabledDimmsEveryPaint(t *testing.T) {
 		t.Fatalf("disabled fill alpha = %d, want low", a)
 	}
 }
+
+// TestNavigationItemStacksInWideBar guards the arrangement rule: a wide
+// destination in a navigation bar still puts the label under the icon.
+func TestNavigationItemStacksInWideBar(t *testing.T) {
+	l := m3list(t, `Window { NavigationBar { NavigationItem { label: "Home" icon: home } } }`)
+	var icon, label Op
+	for _, op := range l.Ops {
+		if op.Kind != Text {
+			continue
+		}
+		if op.Icon {
+			icon = op
+		} else {
+			label = op
+		}
+	}
+	if icon.Text == "" || label.Text == "" {
+		t.Fatalf("missing ops:\n%s", l.Dump())
+	}
+	if icon.Rect[1] >= label.Rect[1] {
+		t.Fatalf("icon y=%v, label y=%v: want icon above label", icon.Rect[1], label.Rect[1])
+	}
+}

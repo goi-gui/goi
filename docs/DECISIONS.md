@@ -203,6 +203,16 @@ batch. This is what the display list will feed.
 - **Text gets an M3 role.** `Text.role` selects a type-scale step; `fontSize` and
   `weight` still override it, so existing files keep working. Buttons and other
   components measure their labels with the same style they paint.
+- **Vertical centering uses font metrics, not a guessed baseline.** A line box is
+  centred when its baseline sits at `box centre + (ascent - descent) / 2`; for
+  the bundled fonts that is 0.342em for Roboto and 0.5em for Material Symbols.
+  Every label and icon goes through `textIn`/`iconIn`, so the same rule applies
+  to buttons, fields, list items, tabs and pickers. Icons are glyphs of an icon
+  font, so their ink lands in the same centred line box as text.
+- **A navigation destination's arrangement comes from its parent kind, not its
+  width.** Bar and rail items stack the icon over the label; drawer items put
+  them in a row. Width was a proxy that broke as soon as a bar was wide enough
+  for its equal-width items to look like a drawer.
 - **Interaction stays in the input layer.** Hover/pressed/focused are plain
   fields on `Component`; painters draw the state layer (8/10/10% of the
   foreground), and `disabled` applies M3's 38%/12% treatment. Ripples and
