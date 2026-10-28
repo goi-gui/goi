@@ -1,0 +1,68 @@
+// Nested boxes: radius, border, padding and alignment.
+Window {
+	id: main
+	title: "goui hello"
+	width: 640
+	height: 400
+	background: #1b1d22
+
+	Column {
+		padding: 24
+		spacing: 16
+
+		Text {
+			text: "Rounded corners, borders, real text"
+			fontSize: 20
+			color: #e6e9ef
+		}
+
+		Row {
+			spacing: 16
+			height: 120
+
+			Rectangle {
+				width: 160
+				height: 120
+				radius: 18
+				background: #3b82f6
+				borderColor: #ffffff
+				borderWidth: 3
+			}
+
+			Rectangle {
+				width: 160
+				height: 120
+				radius: 60
+				background: #22c55e
+			}
+
+			Column {
+				width: 160
+				height: 120
+				radius: 8
+				background: #1b1d22
+				borderColor: #a78bfa
+				borderWidth: 2
+				padding: 16
+				spacing: 6
+
+				Text { text: "Bordered" fontSize: 16 color: #a78bfa }
+				Text { text: "and padded" fontSize: 14 color: #7c8496 }
+			}
+		}
+
+		Stack {
+			height: 120
+			align: center
+
+			Rectangle { width: 320 height: 120 radius: 12 background: #2a2d34 }
+			Text {
+				text: "centered in a stack"
+				fontSize: 18
+				color: #d0d4dc
+				align: center
+				height: 120
+			}
+		}
+	}
+}

@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"os"
 	"sync/atomic"
 
 	"github.com/ksckaan1/goui/internal/layout"
@@ -11,9 +10,6 @@ import (
 	"github.com/ksckaan1/goui/internal/render"
 	"github.com/ksckaan1/goui/internal/tree"
 )
-
-var debugFrames = os.Getenv("GOUI_DEBUG") != ""
-var debugContinuous = os.Getenv("GOUI_CONTINUOUS") != ""
 
 // gpuDriver is the GLFW + WebGPU event loop. It runs on the main goroutine.
 type gpuDriver struct {
@@ -84,7 +80,7 @@ func (d *gpuDriver) run(frame func()) error {
 		frame()
 		// Only block when there is nothing left to draw: that is what keeps an
 		// idle app at ~0% CPU.
-		if !d.app.needsFrame && !debugContinuous {
+		if !d.app.needsFrame {
 			platform.WaitEvents()
 		}
 	}
@@ -136,7 +132,7 @@ func (a *App) frame() {
 		a.win.height = d.pendingH
 	}
 
-	if !a.needsFrame && !debugContinuous {
+	if !a.needsFrame {
 		return
 	}
 	a.needsFrame = false
@@ -151,9 +147,6 @@ func (a *App) frame() {
 	d.list.Build(a.win.tree, float64(d.pendingW)/float64(maxScale(d.pendingScale)), float64(d.pendingH)/float64(maxScale(d.pendingScale)))
 	if err := d.gpu.Render(&d.list, d.pendingW, d.pendingH); err != nil {
 		a.reportError(err)
-	}
-	if debugFrames {
-		println("frame:", d.pendingW, d.pendingH, d.pendingScale, "ops:", len(d.list.Ops))
 	}
 	clearAll(root.Base())
 }

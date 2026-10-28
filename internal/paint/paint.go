@@ -139,16 +139,23 @@ func (l *List) text(n *tree.Text, r tree.Rect, clip tree.Rect) {
 	case "end":
 		align = AlignEnd
 	}
+	fs := n.FontSize.Get()
+	// A text box taller than one line centers the line, which is what an
+	// explicit height or a stretched parent looks like.
+	baseline := r.Y + fs*0.8
+	if lineH := fs * 1.2; r.H > lineH {
+		baseline = r.Y + (r.H-lineH)/2 + fs*0.95
+	}
 	l.Ops = append(l.Ops, Op{
 		Kind:     Text,
 		Rect:     [4]float32{float32(r.X), float32(r.Y), float32(r.W), float32(r.H)},
 		Color:    n.Color.Get(),
 		Clip:     clipArr(clip),
 		Text:     n.Text.Get(),
-		FontSize: float32(n.FontSize.Get()),
+		FontSize: float32(fs),
 		Align:    align,
 		TextX:    float32(r.X),
-		TextY:    float32(r.Y + n.FontSize.Get()*0.8),
+		TextY:    float32(baseline),
 	})
 }
 

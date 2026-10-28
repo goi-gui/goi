@@ -4,7 +4,6 @@ package render
 
 import (
 	"fmt"
-	"os"
 	"unsafe"
 
 	"github.com/gogpu/gputypes"
@@ -92,8 +91,6 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 	return vec4f(in.color.rgb, coverage * in.color.a);
 }
 `
-
-var debugRender = os.Getenv("GOUI_DEBUG") != ""
 
 // gpuInstance is the per-rect vertex data. 64 bytes, matching the WGSL struct.
 type gpuInstance struct {
@@ -445,9 +442,6 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 	}
 	if err := g.surface.Present(tex); err != nil {
 		return fmt.Errorf("present: %w", err)
-	}
-	if debugRender {
-		println("render ok", width, height, g.format, len(g.instances))
 	}
 	return nil
 }
