@@ -4,6 +4,7 @@ import (
 	"math"
 
 	"github.com/ksckaan1/goui/internal/m3"
+	"github.com/ksckaan1/goui/internal/text"
 	"github.com/ksckaan1/goui/internal/tree"
 )
 
@@ -11,53 +12,11 @@ import (
 // (dp for sizes, colors from the theme), so the whole app follows one system.
 
 // style resolves a type-scale role name to a text style.
-func (l *List) style(role string) m3.TextStyle {
-	t := l.Theme.Type
-	switch role {
-	case "displayLarge":
-		return t.DisplayLarge
-	case "displayMedium":
-		return t.DisplayMedium
-	case "displaySmall":
-		return t.DisplaySmall
-	case "headlineLarge":
-		return t.HeadlineLarge
-	case "headlineMedium":
-		return t.HeadlineMedium
-	case "headlineSmall":
-		return t.HeadlineSmall
-	case "titleLarge":
-		return t.TitleLarge
-	case "titleMedium":
-		return t.TitleMedium
-	case "titleSmall":
-		return t.TitleSmall
-	case "bodyLarge":
-		return t.BodyLarge
-	case "bodySmall":
-		return t.BodySmall
-	case "labelLarge":
-		return t.LabelLarge
-	case "labelMedium":
-		return t.LabelMedium
-	case "labelSmall":
-		return t.LabelSmall
-	default:
-		return t.BodyMedium
-	}
-}
+func (l *List) style(role string) m3.TextStyle { return m3.RoleStyle(role) }
 
-// weightOf maps a type-scale weight to the shaper's weight constant.
-func weightOf(w int) float32 {
-	switch {
-	case w >= 700:
-		return 700
-	case w >= 500:
-		return 500
-	default:
-		return 400
-	}
-}
+// weightOf maps a declared weight to the face the library actually has, so a
+// weight of 600 draws with bold exactly as layout measured it.
+func weightOf(w int) float32 { return float32(text.NearestWeight(text.Weight(w))) }
 
 // withAlpha returns c with its alpha multiplied by a.
 func withAlpha(c uint32, a float64) uint32 {
@@ -1620,7 +1579,22 @@ func (l *List) paintText(t *tree.Text, r tree.Rect, clip tree.Rect) {
 	case "end":
 		align = AlignEnd
 	}
-	l.textIn(t.Text.Get(), st, color, r, align, clip)
+	if !t.Wrap.Get() {
+		l.textIn(t.Text.Get(), st, color, r, align, clip)
+		return
+	}
+	// Wrapped text is one op per line, laid out with the same greedy break the
+	// layout pass used, so the reserved height and the drawn lines agree.
+	lines := text.WrapLines(t.Text.Get(), r.W, func(run string) float64 {
+		return textWidth(l, run, st)
+	})
+	lh := st.LineHeight
+	if lh <= 0 {
+		lh = st.Size * 1.2
+	}
+	for i, line := range lines {
+		l.textIn(line, st, color, tree.Rect{X: r.X, Y: r.Y + float64(i)*lh, W: r.W, H: lh}, align, clip)
+	}
 }
 
 // textWidth measures a run, falling back to an estimate when no measurer is set.

@@ -399,6 +399,17 @@ batch. This is what the display list will feed.
   interface pointers are resolved with `dlsym` at runtime, because Go's internal
   linker cannot resolve those data relocations and this project needs internal
   linking for WebGPU. Other platforms get a no-op.
+- **Text wrap is greedy word breaking, shared by layout and paint.** `wrap: true`
+  breaks the value at spaces against the element's width (or the parent's when
+  no width is declared), and a single word wider than the column is broken
+  between runes. `text.WrapLines` is the one implementation: layout asks it for
+  the line count to reserve height, paint asks it for the lines to draw, so the
+  block never clips its own last line. Runs of spaces collapse to one, which is
+  right for UI copy and not for preformatted text.
+- **Weights snap to a loaded face.** The library carries Roboto 300, 400, 500,
+  700 and 900; `text.NearestWeight` picks the closest for any declared value, and
+  both the measurer and the painter call it, so a `weight: 600` measures and
+  draws with bold instead of measuring regular and drawing bold.
 - **What is intentionally shallow for now:** DatePicker and TimePicker render a
   month grid and a clock dial but do not edit a date; FABMenu renders the FAB and
   leaves its expanded item list to app content; Slider drags but has no keyboard

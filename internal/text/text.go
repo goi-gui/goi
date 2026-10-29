@@ -61,9 +61,11 @@ func NewLibrary() *Library {
 			l.fonts[w] = f
 		}
 	}
+	load(WeightLight, robotoLight)
 	load(WeightRegular, robotoRegular)
 	load(WeightMedium, robotoMedium)
 	load(WeightBold, robotoBold)
+	load(WeightBlack, robotoBlack)
 	if f, err := font.ParseTTF(bytes.NewReader(materialSymbols)); err == nil {
 		l.icon = f
 	}
@@ -105,6 +107,9 @@ func (l *Library) face(size float64, weight Weight, icon bool) *Face {
 	if size <= 0 {
 		size = 16
 	}
+	if !icon {
+		weight = NearestWeight(weight)
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -117,10 +122,14 @@ func (l *Library) face(size float64, weight Weight, icon bool) *Face {
 		src = l.fonts[weight]
 		tag = 0
 		switch weight {
+		case WeightLight:
+			tag = 4
 		case WeightMedium:
 			tag = 1
 		case WeightBold:
 			tag = 2
+		case WeightBlack:
+			tag = 5
 		}
 		if src == nil {
 			src = l.fonts[WeightRegular]
@@ -162,21 +171,26 @@ func (f *Face) Shape(s string) shaping.Output {
 }
 
 // Measure returns the size of s at this face's size, wrapping at maxWidth when
-// it is positive.
+// it is positive. The wrapped size is the widest line and the stack of line
+// boxes, so it matches what paint draws for the same text.
 func (f *Face) Measure(s string, maxWidth float64) (w, h float64) {
 	if s == "" {
 		return 0, f.LineHeight()
 	}
-	out := f.Shape(s)
-	adv := float64(out.Advance) / 64
-	if maxWidth <= 0 || adv <= maxWidth {
-		return adv, f.LineHeight()
+	advance := func(run string) float64 {
+		return float64(f.Shape(run).Advance) / 64
 	}
-	// shortcut: line count is total advance divided by the wrap width, which is
-	// right for Latin prose and wrong when one word is wider than the column.
-	// Upgrade to real line breaking when Text gains multi-line rendering.
-	lines := int(adv/maxWidth) + 1
-	return maxWidth, float64(lines) * f.LineHeight()
+	if maxWidth <= 0 {
+		return advance(s), f.LineHeight()
+	}
+	lines := WrapLines(s, maxWidth, advance)
+	widest := 0.0
+	for _, line := range lines {
+		if a := advance(line); a > widest {
+			widest = a
+		}
+	}
+	return widest, float64(len(lines)) * f.LineHeight()
 }
 
 // LineHeight returns the distance between baselines.

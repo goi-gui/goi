@@ -56,6 +56,7 @@ make counter   # counter with hot reload
 make gallery   # every Material 3 component on one page
 make hello     # rounded corners, borders, text
 make scroll    # scrolling page, horizontal strip, ripple
+make typography # type scale, five weights, wrapping
 ```
 
 ## What it does
@@ -72,6 +73,9 @@ make scroll    # scrolling page, horizontal strip, ripple
   container (Row sideways, the rest down).
 - Responsive values per property: `padding: { base: 8, md: 16 }`, with
   Tailwind's `sm`/`md`/`lg`/`xl` min-width breakpoints applied on resize.
+- Text: the M3 type scale (`role`), explicit `fontSize` and `weight` (300/400/
+  500/700/900 Roboto; other numbers snap to the nearest), and `wrap: true` for
+  real word wrapping that reserves the height of every line.
 - Value expressions: `width: side.width / 2` follows another element's
   property, and `width: 50%` is half of the parent's content box.
 - Visibility on every element, components included: `visible: false` (also

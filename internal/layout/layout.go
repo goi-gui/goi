@@ -9,6 +9,7 @@ package layout
 
 import (
 	"github.com/ksckaan1/goui/internal/m3"
+	"github.com/ksckaan1/goui/internal/text"
 	"github.com/ksckaan1/goui/internal/tree"
 )
 
@@ -614,7 +615,7 @@ func (e *Engine) natural(k *tree.NodeBase, availW, availH float64) (float64, flo
 	}
 	switch n := k.Node().(type) {
 	case *tree.Text:
-		return e.textSize(n.Text.Get(), n)
+		return e.textSize(n.Text.Get(), n, availW)
 	}
 	if k.Node().Kind() == "Window" {
 		return availW, availH
@@ -689,19 +690,41 @@ func containerSpacing(k *tree.NodeBase) float64 {
 	return containerOf(k).Spacing.Get()
 }
 
-// textSize measures a Text node, honouring fontSize, role and wrap.
-func (e *Engine) textSize(s string, t *tree.Text) (float64, float64) {
+// textSize measures a Text node, honouring fontSize, role and wrap. availW is
+// the space the parent offers, which is the wrap column when the node declares
+// no width of its own.
+func (e *Engine) textSize(s string, t *tree.Text, availW float64) (float64, float64) {
 	size := t.FontSize.Get()
 	weight := int(t.Weight.Get())
+	lineHeight := 0.0
 	if size <= 0 {
 		// Role-based size: the metrics helper knows the type scale.
-		role := t.Role.Get()
-		size, weight = roleSize(role, weight)
+		st := m3.RoleStyle(t.Role.Get())
+		size, lineHeight = st.Size, st.LineHeight
+		if weight <= 0 {
+			weight = st.Weight
+		}
 	}
-	if t.Wrap.Get() {
-		return e.Measurer.Measure(s, size, -1)
+	if lineHeight <= 0 {
+		lineHeight = size * 1.2
 	}
-	return e.Measurer.MeasureWeight(s, size, weight)
+	if !t.Wrap.Get() {
+		return e.Measurer.MeasureWeight(s, size, weight)
+	}
+	limit := availW
+	if v := t.Width(); v >= 0 {
+		limit = v
+	}
+	if limit <= 0 {
+		return e.Measurer.MeasureWeight(s, size, weight)
+	}
+	// Layout and paint must break in the same places or the reserved height is
+	// wrong, so both use the shared greedy wrap with the same advances.
+	lines := text.WrapLines(s, limit, func(run string) float64 {
+		w, _ := e.Measurer.MeasureWeight(run, size, weight)
+		return w
+	})
+	return limit, float64(len(lines)) * lineHeight
 }
 
 func (e *Engine) measure(s string, size float64, weight int) (float64, float64) {
@@ -924,47 +947,4 @@ func minf(a, b float64) float64 {
 		return a
 	}
 	return b
-}
-
-// roleSize returns the pixel size and weight of an M3 type role.
-func roleSize(role string, weight int) (float64, int) {
-	t := m3.Light().Type
-	var st m3.TextStyle
-	switch role {
-	case "displayLarge":
-		st = t.DisplayLarge
-	case "displayMedium":
-		st = t.DisplayMedium
-	case "displaySmall":
-		st = t.DisplaySmall
-	case "headlineLarge":
-		st = t.HeadlineLarge
-	case "headlineMedium":
-		st = t.HeadlineMedium
-	case "headlineSmall":
-		st = t.HeadlineSmall
-	case "titleLarge":
-		st = t.TitleLarge
-	case "titleMedium":
-		st = t.TitleMedium
-	case "titleSmall":
-		st = t.TitleSmall
-	case "bodyLarge":
-		st = t.BodyLarge
-	case "bodySmall":
-		st = t.BodySmall
-	case "labelLarge":
-		st = t.LabelLarge
-	case "labelMedium":
-		st = t.LabelMedium
-	case "labelSmall":
-		st = t.LabelSmall
-	default:
-		st = t.BodyMedium
-	}
-	w := st.Weight
-	if weight > 0 {
-		w = weight
-	}
-	return st.Size, w
 }

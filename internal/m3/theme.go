@@ -147,6 +147,43 @@ func defaultType() TypeScale {
 	}
 }
 
+// RoleStyle resolves an M3 type-scale role name for text. Unknown names fall
+// back to bodyMedium, which is the default role of a Text element.
+func RoleStyle(role string) TextStyle {
+	t := Light().Type
+	switch role {
+	case "displayLarge":
+		return t.DisplayLarge
+	case "displayMedium":
+		return t.DisplayMedium
+	case "displaySmall":
+		return t.DisplaySmall
+	case "headlineLarge":
+		return t.HeadlineLarge
+	case "headlineMedium":
+		return t.HeadlineMedium
+	case "headlineSmall":
+		return t.HeadlineSmall
+	case "titleLarge":
+		return t.TitleLarge
+	case "titleMedium":
+		return t.TitleMedium
+	case "titleSmall":
+		return t.TitleSmall
+	case "bodyLarge":
+		return t.BodyLarge
+	case "bodySmall":
+		return t.BodySmall
+	case "labelLarge":
+		return t.LabelLarge
+	case "labelMedium":
+		return t.LabelMedium
+	case "labelSmall":
+		return t.LabelSmall
+	}
+	return t.BodyMedium
+}
+
 // Shape is the corner radius scale, in logical pixels. Full means "half the
 // shortest side", which components clamp themselves.
 type ShapeScale struct{}

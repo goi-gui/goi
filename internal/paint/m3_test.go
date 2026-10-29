@@ -263,6 +263,106 @@ func TestPreeditIsDrawnUnderlined(t *testing.T) {
 	}
 }
 
+// TestWrappedTextDrawsOneOpPerLine checks wrap:true breaks the value into lines
+// that stack by the role's line height.
+func TestWrappedTextDrawsOneOpPerLine(t *testing.T) {
+	l := m3list(t, `Window {
+		Column {
+			Text {
+				width: 200
+				wrap: true
+				text: "Narrow column, wrapping on. Long paragraphs break at word boundaries and the element reports the height of every line it needs."
+			}
+		}
+	}`)
+	var ys []float32
+	for _, op := range l.Ops {
+		if op.Kind == Text {
+			ys = append(ys, op.TextY)
+		}
+	}
+	if len(ys) < 3 {
+		t.Fatalf("lines = %d, want the paragraph broken up:\n%s", len(ys), l.Dump())
+	}
+	// bodyMedium has a 20dp line box, so baselines are 20dp apart.
+	for i := 1; i < len(ys); i++ {
+		if d := ys[i] - ys[i-1]; d < 19.9 || d > 20.1 {
+			t.Fatalf("baseline gap %v, want 20", d)
+		}
+	}
+}
+
+// TestWrappedTextReservesItsHeight checks layout and paint agree: the element is
+// as tall as the number of lines paint emits.
+func TestWrappedTextReservesItsHeight(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window {
+		Column {
+			Text {
+				id: para
+				width: 200
+				wrap: true
+				text: "Narrow column, wrapping on. Long paragraphs break at word boundaries and the element reports the height of every line it needs."
+			}
+		}
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 400, 400)
+	n, _ := tr.ByID("para")
+	box := n.Base().Bounds()
+
+	l := &List{}
+	l.Build(tr, 400, 400)
+	lines := 0
+	for _, op := range l.Ops {
+		if op.Kind == Text {
+			lines++
+		}
+	}
+	if want := float64(lines) * 20; box.H != want {
+		t.Fatalf("reserved height = %v for %d lines, want %v", box.H, lines, want)
+	}
+}
+
+// TestWrapFalseStaysOnOneLine is the contrast case: without wrap the value is a
+// single run that the parent clips.
+func TestWrapFalseStaysOnOneLine(t *testing.T) {
+	l := m3list(t, `Window {
+		Column {
+			Text { width: 120 text: "this line is far wider than the column" }
+		}
+	}`)
+	lines := 0
+	for _, op := range l.Ops {
+		if op.Kind == Text {
+			lines++
+		}
+	}
+	if lines != 1 {
+		t.Fatalf("lines = %d, want 1", lines)
+	}
+}
+
+// TestDeclaredWeightSnapsToALoadedFace guards the loaded Roboto weights: a value
+// between them draws with the nearest, so layout and paint use the same face.
+func TestDeclaredWeightSnapsToALoadedFace(t *testing.T) {
+	l := m3list(t, `Window {
+		Column {
+			Text { width: 300 fontSize: 20 weight: 600 text: "semibold snaps to bold" }
+		}
+	}`)
+	for _, op := range l.Ops {
+		if op.Kind == Text {
+			if op.Weight != 700 {
+				t.Fatalf("weight = %v, want 700 (nearest loaded face)", op.Weight)
+			}
+			return
+		}
+	}
+	t.Fatalf("no text op:\n%s", l.Dump())
+}
+
 // TestTextFieldScrollsInsteadOfOverflowing checks a focused field keeps the
 // caret in view by scrolling the value, and clips glyphs to the text box.
 func TestTextFieldScrollsInsteadOfOverflowing(t *testing.T) {
