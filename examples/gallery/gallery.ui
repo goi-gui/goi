@@ -1,4 +1,11 @@
-// Every Material 3 Expressive component, laid out for visual reference.
+// The Material 3 component gallery, split into one page per category.
+//
+// Navigation follows the M3 window size classes: a bottom navigation bar in the
+// compact layout, a navigation rail from 640dp up. The app-bar menu opens a
+// modal drawer that lists the same categories, so the pattern works even when a
+// bar or rail is off screen.
+//
+// Every page is an independent scrolling column; Go shows one at a time.
 Window {
 	id: main
 	title: "Material 3 components"
@@ -6,243 +13,452 @@ Window {
 	background: #FEF7FF
 
 	Stack {
-		Column {
+		Row {
 			spacing: 0
 
-			TopAppBar {
-				id: appbar
-				label: "Material 3 components"
-				icon: "menu"
-				trailingIcon: "more_vert"
+			// ---- medium and expanded: rail
+			NavigationRail {
+				id: rail
+				visible: { base: false, sm: true }
+				NavigationItem { label: "Buttons" icon: smart_button selected: true }
+				NavigationItem { label: "Inputs" icon: tune }
+				NavigationItem { label: "Surfaces" icon: layers }
+				NavigationItem { label: "Feedback" icon: notifications }
+				NavigationItem { label: "Layout" icon: dashboard }
 			}
 
-			Row {
+			Column {
 				spacing: 0
 				flex: 1
-				padding: 16
 
-				// ============================== buttons
-				Column {
-					spacing: 14
+				TopAppBar {
+					id: appbar
+					label: "Buttons"
+					icon: "menu"
+					trailingIcon: "more_vert"
+				}
+
+				// ---- one page at a time
+				Stack {
 					flex: 1
-					align: start
-					padding: 16
-					scroll: true
 
-					Text { text: "Buttons" role: "titleMedium" }
-					Row {
-						spacing: 8
-						align: center
-						Button { label: "Filled" }
-						Button { label: "Tonal" variant: tonal }
-						Button { label: "Outlined" variant: outlined }
-						Button { label: "Text" variant: text }
-					}
-					Row {
-						spacing: 8
-						align: center
-						Button { label: "Elevated" variant: elevated }
-						Button { label: "With icon" icon: add }
-						Button { label: "Disabled" disabled: true }
-					}
-
-					Text { text: "Icon buttons" role: "titleMedium" }
-					Row {
-						spacing: 8
-						align: center
-						IconButton { icon: favorite }
-						IconButton { icon: favorite variant: filled }
-						IconButton { icon: favorite variant: tonal }
-						IconButton { icon: favorite variant: outlined }
-					}
-
-					Text { text: "FAB" role: "titleMedium" }
-					Row {
-						spacing: 12
-						align: center
-						FAB { icon: edit size: sm }
-						FAB { icon: add }
-						FAB { label: "Compose" icon: edit variant: extended }
-					}
-
-					Text { text: "Split and segmented" role: "titleMedium" }
-					SplitButton { label: "Split" icon: add width: 180 }
-					Row {
-						spacing: 0
-						align: center
-						SegmentedButton { label: "Day" width: 80 variant: single }
-						SegmentedButton { label: "Week" width: 80 variant: single selected: true }
-						SegmentedButton { label: "Month" width: 90 variant: single }
-					}
-					Row {
-						spacing: 0
-						align: center
-						SegmentedButton { label: "Bold" width: 76 }
-						SegmentedButton { label: "Italic" width: 76 selected: true }
-						SegmentedButton { label: "Underline" width: 96 }
-					}
-
-					Text { text: "Chips" role: "titleMedium" }
-					Row {
-						spacing: 8
-						align: center
-						Chip { label: "Assist" icon: event }
-						Chip { label: "Filter" variant: filter selected: true }
-						Chip { label: "Suggestion" variant: suggestion }
-					}
-
-					Text { text: "Badges" role: "titleMedium" }
-					Row {
-						spacing: 12
-						align: center
-						Badge { }
-						Badge { label: "12" }
-						Badge { label: "99+" }
-					}
-
-					Text { text: "Grid and wrap" role: "titleMedium" }
-					Grid {
-						columns: { base: 1, md: 2 }
-						spacing: 8
-						Card { label: "Grid" supporting: "Cell one" height: 72 variant: filled }
-						Card { label: "Grid" supporting: "Cell two" height: 72 }
-						Card { label: "Grid" supporting: "Cell three" height: 72 variant: outlined }
-					}
-					Wrap {
-						spacing: 8
-						Chip { label: "Wrap" icon: event }
-						Chip { label: "Second" }
-						Chip { label: "Third" }
-						Chip { label: "Fourth" }
-					}
-
-					Text { text: "Stack and positioned" role: "titleMedium" }
-					Stack {
-						width: 380
-						height: 200
-						background: #E8DEF8
-						radius: 16
-						Positioned {
-							left: 16
-							top: 16
-							Card { label: "left: 16" supporting: "top: 16" width: 190 height: 84 variant: filled }
-						}
-						Positioned {
-							right: 16
-							bottom: 16
-							Chip { label: "right: 16, bottom: 16" icon: star }
-						}
-						Positioned {
-							left: 16
-							right: 16
-							bottom: 64
-							height: 4
-							background: #6750A4
-							radius: 2
-						}
-					}
-
-					Text { text: "Expressions" role: "titleMedium" }
+					// ============================================== buttons
 					Column {
-						width: 320
-						spacing: 6
-						Rectangle { id: demoBase width: 240 height: 10 background: #6750A4 radius: 5 }
-						Rectangle { width: demoBase.width / 2 height: 10 background: #4F378B radius: 5 }
-						Rectangle { width: 50% height: 10 background: #D0BCFF radius: 5 }
+						id: pageButtons
+						scroll: true
+						spacing: 24
+						padding: { base: 16, md: 24, lg: 32, xl: 64 }
+						align: start
+
+						Column {
+							spacing: 10
+							Text { text: "Buttons" role: "titleMedium" }
+							Wrap {
+								spacing: 8
+								Button { label: "Filled" }
+								Button { label: "Tonal" variant: tonal }
+								Button { label: "Outlined" variant: outlined }
+								Button { label: "Text" variant: text }
+								Button { label: "Elevated" variant: elevated }
+								Button { label: "With icon" icon: add }
+								Button { label: "Disabled" disabled: true }
+							}
+						}
+
+						Column {
+							spacing: 10
+							Text { text: "Icon buttons" role: "titleMedium" }
+							Wrap {
+								spacing: 8
+								IconButton { icon: favorite }
+								IconButton { icon: favorite variant: filled }
+								IconButton { icon: favorite variant: tonal }
+								IconButton { icon: favorite variant: outlined }
+							}
+						}
+
+						Column {
+							spacing: 10
+							Text { text: "FAB" role: "titleMedium" }
+							Wrap {
+								spacing: 16
+								FAB { icon: edit size: sm }
+								FAB { icon: add }
+								FAB { label: "Compose" icon: edit variant: extended }
+							}
+						}
+
+						Column {
+							spacing: 10
+							Text { text: "Split button" role: "titleMedium" }
+							SplitButton { label: "Split" icon: add width: 200 }
+						}
+
+						Column {
+							spacing: 10
+							Text { text: "Segmented button: radio" role: "titleMedium" }
+							Row {
+								spacing: 0
+								SegmentedButton { label: "Day" width: 84 variant: single }
+								SegmentedButton { label: "Week" width: 84 variant: single selected: true }
+								SegmentedButton { label: "Month" width: 96 variant: single }
+							}
+							Text {
+								text: "variant: single keeps exactly one selected."
+								role: "bodySmall"
+							}
+						}
+
+						Column {
+							spacing: 10
+							Text { text: "Segmented button: checkbox" role: "titleMedium" }
+							Row {
+								spacing: 0
+								SegmentedButton { label: "Bold" width: 84 }
+								SegmentedButton { label: "Italic" width: 84 selected: true }
+								SegmentedButton { label: "Underline" width: 108 }
+							}
+							Text {
+								text: "The default toggles each segment on its own; clicking a selected one clears it."
+								role: "bodySmall"
+							}
+						}
 					}
-					Text {
-						text: "Visible only from md (768px) up"
-						role: "bodyMedium"
-						visible: { base: false, md: true }
+
+					// =============================================== inputs
+					Column {
+						id: pageInputs
+						visible: false
+						scroll: true
+						spacing: 24
+						padding: { base: 16, md: 24, lg: 32, xl: 64 }
+						align: start
+
+						Column {
+							spacing: 10
+							Text { text: "Selection" role: "titleMedium" }
+							Checkbox { id: check label: "Checkbox" checked: true width: 220 }
+							RadioButton { label: "Radio button" checked: true width: 220 }
+							Switch { id: switchOn label: "Switch" checked: true width: 220 }
+						}
+
+						Column {
+							spacing: 10
+							Text { text: "Slider" role: "titleMedium" }
+							Slider { id: slider value: 0.4 min: 0 max: 1 width: { base: 280, md: 360 } }
+							Text { text: "Drag the handle, or use the arrow keys." role: "bodySmall" }
+						}
+
+						Column {
+							spacing: 10
+							Text { text: "Chips" role: "titleMedium" }
+							Wrap {
+								spacing: 8
+								Chip { label: "Assist" icon: event }
+								Chip { label: "Filter" variant: filter selected: true }
+								Chip { label: "Input" variant: input }
+								Chip { label: "Suggestion" variant: suggestion }
+							}
+						}
+
+						Column {
+							spacing: 10
+							Text { text: "Text fields" role: "titleMedium" }
+							TextField {
+								id: field
+								label: "Label"
+								placeholder: "Filled text field"
+								variant: filled
+								width: { base: 280, md: 360 }
+							}
+							TextField {
+								label: "Label"
+								placeholder: "Outlined field"
+								variant: outlined
+								width: { base: 280, md: 360 }
+							}
+							TextField {
+								label: "Email"
+								text: "user@example.com"
+								icon: mail
+								variant: filled
+								width: { base: 280, md: 360 }
+							}
+							TextField {
+								label: "Supporting text"
+								placeholder: "With a helper line"
+								supporting: "Shown under the field"
+								variant: outlined
+								width: { base: 280, md: 360 }
+							}
+						}
+
+						Column {
+							spacing: 10
+							Text { text: "Search bar" role: "titleMedium" }
+							SearchBar { placeholder: "Search components" width: { base: 280, md: 400 } }
+							Text { text: "Click it and type: the value scrolls and selects." role: "bodySmall" }
+						}
+					}
+
+					// ============================================= surfaces
+					Column {
+						id: pageSurfaces
+						visible: false
+						scroll: true
+						spacing: 24
+						padding: { base: 16, md: 24, lg: 32, xl: 64 }
+						align: start
+
+						Column {
+							spacing: 12
+							Text { text: "Cards" role: "titleMedium" }
+							Grid {
+								columns: { base: 1, md: 2, lg: 3 }
+								spacing: 12
+								Card {
+									label: "Elevated"
+									supporting: "Surface container low"
+									height: 96
+								}
+								Card {
+									label: "Filled"
+									supporting: "Highest container"
+									variant: filled
+									height: 96
+								}
+								Card {
+									label: "Outlined"
+									supporting: "1dp outline"
+									variant: outlined
+									height: 96
+								}
+							}
+						}
+
+						Column {
+							spacing: 10
+							Text { text: "List" role: "titleMedium" }
+							List {
+								width: { base: 100%, md: 420 }
+								ListItem { label: "List item" icon: person trailingIcon: chevron_right }
+								ListItem { label: "Two lines" supporting: "Supporting text" icon: photo }
+								Divider { }
+								ListItem { label: "Selected" icon: star selected: true }
+							}
+						}
+
+						Column {
+							spacing: 10
+							Text { text: "Tabs" role: "titleMedium" }
+							Tabs {
+								width: { base: 100%, md: 420 }
+								Tab { label: "Overview" selected: true }
+								Tab { label: "Specs" }
+								Tab { label: "Details" }
+							}
+						}
+
+						Column {
+							spacing: 10
+							Text { text: "Menu" role: "titleMedium" }
+							Menu {
+								width: 260
+								MenuItem { label: "Cut" icon: content_cut }
+								MenuItem { label: "Copy" icon: content_copy }
+								MenuItem { label: "Paste" icon: content_paste }
+								Divider { }
+								MenuItem { label: "More…" icon: more_horiz }
+							}
+						}
+					}
+
+					// ============================================= feedback
+					Column {
+						id: pageFeedback
+						visible: false
+						scroll: true
+						spacing: 24
+						padding: { base: 16, md: 24, lg: 32, xl: 64 }
+						align: start
+
+						Column {
+							spacing: 10
+							Text { text: "Progress" role: "titleMedium" }
+							LinearProgress { value: 0.6 width: { base: 280, md: 420 } }
+							Row {
+								spacing: 24
+								align: center
+								CircularProgress { value: 0.65 }
+								LoadingIndicator { }
+							}
+						}
+
+						Column {
+							spacing: 10
+							Text { text: "Badges" role: "titleMedium" }
+							Wrap {
+								spacing: 16
+								Badge { }
+								Badge { label: "12" }
+								Badge { label: "99+" }
+							}
+						}
+
+						Column {
+							spacing: 10
+							Text { text: "Dialog and sheets" role: "titleMedium" }
+							Wrap {
+								spacing: 16
+								Dialog {
+									label: "Reset settings?"
+									supporting: "This cannot be undone."
+									width: 280
+									height: 168
+								}
+								Column {
+									spacing: 12
+									BottomSheet { label: "Bottom sheet" width: 280 height: 132 }
+									SideSheet { label: "Side sheet" width: 280 height: 132 }
+								}
+							}
+						}
+
+						Column {
+							spacing: 10
+							Text { text: "Snackbar and tooltip" role: "titleMedium" }
+							Snackbar { label: "Saved to your library" width: { base: 280, md: 420 } }
+							Tooltip { label: "Tooltip text" width: 120 }
+						}
+					}
+
+					// =============================================== layout
+					Column {
+						id: pageLayout
+						visible: false
+						scroll: true
+						spacing: 24
+						padding: { base: 16, md: 24, lg: 32, xl: 64 }
+						align: start
+
+						Column {
+							spacing: 12
+							Text { text: "Grid" role: "titleMedium" }
+							Grid {
+								columns: { base: 1, sm: 2, lg: 3 }
+								spacing: 12
+								Card { label: "One" supporting: "base: 1 column" height: 88 variant: filled }
+								Card { label: "Two" supporting: "sm: 2 columns" height: 88 }
+								Card { label: "Three" supporting: "lg: 3 columns" height: 88 variant: outlined }
+							}
+						}
+
+						Column {
+							spacing: 10
+							Text { text: "Wrap" role: "titleMedium" }
+							Wrap {
+								spacing: 8
+								Chip { label: "Wrap" icon: event }
+								Chip { label: "Second" }
+								Chip { label: "Third" }
+								Chip { label: "Fourth" }
+								Chip { label: "Fifth" }
+								Chip { label: "Sixth" }
+							}
+						}
+
+						Column {
+							spacing: 10
+							Text { text: "Stack and positioned" role: "titleMedium" }
+							Stack {
+								width: { base: 280, md: 420 }
+								height: 200
+								background: #E8DEF8
+								radius: 16
+								Positioned {
+									left: 16
+									top: 16
+									Card { label: "left: 16" supporting: "top: 16" width: 190 height: 84 variant: filled }
+								}
+								Positioned {
+									right: 16
+									bottom: 16
+									Chip { label: "bottom right" icon: star }
+								}
+								Positioned {
+									left: 16
+									right: 16
+									bottom: 64
+									height: 4
+									background: #6750A4
+									radius: 2
+								}
+							}
+						}
+
+						Column {
+							spacing: 10
+							Text { text: "Expressions" role: "titleMedium" }
+							Column {
+								width: 320
+								spacing: 8
+								Rectangle { id: demoBase width: 240 height: 10 background: #6750A4 radius: 5 }
+								Rectangle { width: demoBase.width / 2 height: 10 background: #4F378B radius: 5 }
+								Rectangle { width: 50% height: 10 background: #D0BCFF radius: 5 }
+							}
+							Text {
+								text: "A reference, a division and a percentage of the parent."
+								role: "bodySmall"
+								wrap: true
+							}
+						}
+
+						Column {
+							spacing: 10
+							Text { text: "Visibility" role: "titleMedium" }
+							Text {
+								text: "This line appears from sm (640dp) up."
+								role: "bodyMedium"
+								visible: { base: false, sm: true }
+							}
+							Text {
+								text: "This one only below sm, and the layout closes the gap."
+								role: "bodyMedium"
+								visible: { base: true, sm: false }
+							}
+						}
+
+						Column {
+							spacing: 8
+							Text { text: "Type" role: "titleMedium" }
+							Text { text: "Headline medium" role: "headlineMedium" }
+							Text { text: "Title large, weight 900" role: "titleLarge" weight: 900 }
+							Text { text: "Body large at 300" role: "bodyLarge" weight: 300 }
+							Text {
+								text: "Body medium wraps when the column runs out, and the block reserves one line box for every line it draws. Resize the window to watch it reflow."
+								role: "bodyMedium"
+								wrap: true
+								width: { base: 280, md: 420, lg: 560 }
+							}
+						}
 					}
 				}
 
-				// ============================== inputs
-				Column {
-					spacing: 14
-					flex: 1
-					align: start
-					padding: 16
-					scroll: true
-
-					Text { text: "Selection" role: "titleMedium" }
-					Checkbox { id: check label: "Checkbox" checked: true width: 180 }
-					RadioButton { label: "Radio button" checked: true width: 180 }
-					Switch { id: switchOn label: "Switch" checked: true width: 180 }
-
-					Text { text: "Slider" role: "titleMedium" }
-					Slider { id: slider value: 0.4 min: 0 max: 1 width: 260 }
-
-					Text { text: "Text fields" role: "titleMedium" }
-					TextField { id: field label: "Label" placeholder: "Filled text field" variant: filled width: 260 }
-					TextField { label: "Label" placeholder: "Outlined field" variant: outlined width: 260 }
-					TextField { label: "Email" text: "user@example.com" icon: mail variant: filled width: 260 }
-
-					Text { text: "Search" role: "titleMedium" }
-					SearchBar { placeholder: "Search components" width: 300 }
+				// ---- compact: bottom bar
+				NavigationBar {
+					id: navbar
+					visible: { base: true, sm: false }
+					NavigationItem { label: "Buttons" icon: smart_button selected: true }
+					NavigationItem { label: "Inputs" icon: tune }
+					NavigationItem { label: "Surfaces" icon: layers }
+					NavigationItem { label: "Feedback" icon: notifications }
+					NavigationItem { label: "Layout" icon: dashboard }
 				}
-
-				// ============================== surfaces
-				Column {
-					spacing: 14
-					flex: 1
-					align: start
-					padding: 16
-					scroll: true
-
-					Text { text: "Cards" role: "titleMedium" }
-					Card { label: "Elevated" supporting: "Surface container low" width: 260 height: 76 }
-					Card { label: "Filled" supporting: "Highest container" variant: filled width: 260 height: 76 }
-					Card { label: "Outlined" supporting: "1dp outline" variant: outlined width: 260 height: 76 }
-
-					Text { text: "List" role: "titleMedium" }
-					List {
-						width: 280
-						ListItem { label: "List item" icon: person trailingIcon: chevron_right }
-						ListItem { label: "Two lines" supporting: "Supporting text" icon: photo }
-						Divider { }
-						ListItem { label: "Selected" icon: star selected: true }
-					}
-
-					Text { text: "Tabs" role: "titleMedium" }
-					Tabs {
-						width: 280
-						Tab { label: "Overview" selected: true }
-						Tab { label: "Specs" }
-						Tab { label: "Details" }
-					}
-
-					Text { text: "Progress" role: "titleMedium" }
-					LinearProgress { value: 0.6 width: 260 }
-					Row {
-						spacing: 20
-						align: center
-						CircularProgress { value: 0.65 }
-						LoadingIndicator { }
-					}
-
-					Text { text: "Menu, snackbar, tooltip" role: "titleMedium" }
-					Menu {
-						width: 220
-						MenuItem { label: "Cut" icon: content_cut }
-						MenuItem { label: "Copy" icon: content_copy }
-						MenuItem { label: "Paste" icon: content_paste }
-					}
-					Snackbar { label: "Saved to your library" width: 280 }
-					Tooltip { label: "Tooltip text" width: 110 }
-				}
-			}
-
-			// ---- bottom navigation
-			NavigationBar {
-				NavigationItem { label: "Home" icon: home selected: true }
-				NavigationItem { label: "Search" icon: search }
-				NavigationItem { label: "Library" icon: library_music }
-				NavigationItem { label: "Profile" icon: person }
 			}
 		}
 
-		// ---- modal navigation drawer, opened from the app bar menu icon
+		// ---- modal drawer: the same categories, for when a bar or rail is out of
+		// reach, plus the overlay pattern itself.
 		Rectangle { id: scrim background: #00000052 visible: false }
 		Positioned {
 			id: drawerFrame
@@ -252,13 +468,12 @@ Window {
 			width: 320
 			visible: false
 			NavigationDrawer {
-				label: "Mail"
-				NavigationItem { id: navInbox label: "Inbox" icon: inbox selected: true }
-				NavigationItem { id: navStarred label: "Starred" icon: star }
-				NavigationItem { id: navSent label: "Sent" icon: send }
-				NavigationItem { id: navTrash label: "Trash" icon: delete }
-				Divider { }
-				NavigationItem { id: navSettings label: "Settings" icon: settings }
+				label: "Categories"
+				NavigationItem { id: drawerButtons label: "Buttons" icon: smart_button selected: true }
+				NavigationItem { id: drawerInputs label: "Inputs" icon: tune }
+				NavigationItem { id: drawerSurfaces label: "Surfaces" icon: layers }
+				NavigationItem { id: drawerFeedback label: "Feedback" icon: notifications }
+				NavigationItem { id: drawerLayout label: "Layout" icon: dashboard }
 			}
 		}
 	}

@@ -93,7 +93,7 @@ Wayland is the default build; use `-tags x11` for X11.
 
 ```sh
 make counter   # counter with hot reload
-make gallery   # every Material 3 component on one page
+make gallery   # every Material 3 component, one category page at a time
 make hello     # rounded corners, borders, text
 make scroll    # scrolling page, horizontal strip, ripple
 make typography # type scale, five weights, wrapping

@@ -445,6 +445,19 @@ batch. This is what the display list will feed.
   files, so any `.ui` write in any directory the design used reloads the whole
   tree; the import graph is recomputed, and the watch set is rebuilt in case a
   reload added a directory.
+- **Navigation destinations are a radio group keyed by their own `selected`.**
+  `NavigationItem` is now interactive: a click selects it, clears the contiguous
+  run of destinations and emits the container's `Select` with the index. Clicking
+  the active destination does nothing, so a page cannot reload itself. The
+  navigation bar and rail draw their indicator from the destination's flag rather
+  than a shared index, so a rail, a bar and a drawer showing the same selection
+  stay in sync no matter which one the user touched.
+- **The gallery is one design, one page at a time.** Each category is its own
+  scrolling column; Go flips `visible` and rewrites the app-bar label. The
+  navigation surface follows the M3 size classes: a bottom bar below `sm`, a rail
+  from `sm` up, and the app-bar menu opens a modal drawer with the same
+  categories. The drawer's hit area is measured from the app bar, not the window,
+  because the rail moves the bar's left edge.
 - **What is intentionally shallow for now:** DatePicker and TimePicker render a
   month grid and a clock dial but do not edit a date; FABMenu renders the FAB and
   leaves its expanded item list to app content; Slider drags but has no keyboard

@@ -309,6 +309,46 @@ func TestIMEDeleteSurrounding(t *testing.T) {
 	}
 }
 
+// TestNavigationItemSelectionMovesTheIndicator checks that clicking a
+// destination selects it, clears its siblings and reports the index to the
+// container, which is what a page switcher binds to.
+func TestNavigationItemSelectionMovesTheIndicator(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		Column {
+			NavigationRail {
+				id: rail
+				NavigationItem { id: one label: "One" icon: home selected: true }
+				NavigationItem { id: two label: "Two" icon: star }
+			}
+		}
+	}`, 480, 320)
+	rail := MustByID[*NavigationRail](win, "rail")
+	one, two := MustByID[*NavigationItem](win, "one"), MustByID[*NavigationItem](win, "two")
+
+	var selected []int
+	rail.OnSelect(func(i int) { selected = append(selected, i) })
+
+	click := func(c *NavigationItem) {
+		b := absoluteRect(c)
+		in.MouseDown(b.X+b.W/2, b.Y+b.H/2, 0, false)
+		in.MouseUp(b.X+b.W/2, b.Y+b.H/2, 0)
+	}
+
+	click(two)
+	if !two.Selected.Get() || one.Selected.Get() {
+		t.Fatalf("after click: one=%v two=%v, want only two", one.Selected.Get(), two.Selected.Get())
+	}
+	if len(selected) != 1 || selected[0] != 1 {
+		t.Fatalf("select events = %v, want [1]", selected)
+	}
+
+	// Clicking the active destination is a no-op: a page must not reload itself.
+	click(two)
+	if len(selected) != 1 {
+		t.Fatalf("select events = %v after clicking the active item", selected)
+	}
+}
+
 func TestTextInputWordEditing(t *testing.T) {
 	_, win, in := inputFixture(t, inputUI, 480, 320)
 	ti := MustByID[*TextField](win, "field")

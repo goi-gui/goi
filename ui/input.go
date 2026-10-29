@@ -80,7 +80,7 @@ func interactive(n tree.Node) bool {
 	switch n.Kind() {
 	case "Button", "IconButton", "FAB", "FABMenu", "SplitButton", "SegmentedButton",
 		"Chip", "Checkbox", "RadioButton", "Switch", "Slider", "TextField",
-		"SearchBar", "ListItem", "MenuItem", "Tab", "Card":
+		"SearchBar", "ListItem", "MenuItem", "Tab", "Card", "NavigationItem":
 		return true
 	}
 	return false
@@ -272,9 +272,47 @@ func (i *interactor) activate(n tree.Node, c *tree.Component, x, y float64) {
 		}
 	case "SegmentedButton":
 		i.activateSegment(n, c)
+	case "NavigationItem":
+		i.activateDestination(n, c)
 	}
 	c.Click.Emit(tree.ClickEvent{X: x, Y: y})
 	i.markDirty()
+}
+
+// activateDestination selects a navigation destination. Navigation is a radio
+// group: picking one clears the others in the contiguous run, and the container
+// reports the index so an app can swap pages. Clicking the active destination
+// does nothing, which keeps a page from reloading itself.
+func (i *interactor) activateDestination(n tree.Node, c *tree.Component) {
+	if c.Selected.Get() {
+		return
+	}
+	run := segmentRun(n, "NavigationItem")
+	for _, sib := range run {
+		if oc := comp(sib); oc != nil && oc != c && oc.Selected.Get() {
+			oc.Selected.Set(false)
+			oc.Base().MarkDirty(tree.DirtyPaint)
+			oc.Toggle.Emit(false)
+		}
+	}
+	c.Selected.Set(true)
+	c.Toggle.Emit(true)
+
+	p := n.Base().Parent()
+	if p == nil || comp(p) == nil {
+		return
+	}
+	pc := comp(p)
+	for idx, kid := range p.Base().Kids() {
+		if kid.Base() != n.Base() {
+			continue
+		}
+		if pc.SelectedIndex != idx {
+			pc.SelectedIndex = idx
+			pc.Base().MarkDirty(tree.DirtyPaint)
+		}
+		pc.Select.Emit(idx)
+	}
 }
 
 // activateSegment applies the group's mode to the contiguous run of segments
@@ -290,7 +328,7 @@ func (i *interactor) activateSegment(n tree.Node, c *tree.Component) {
 		c.Toggle.Emit(false)
 	} else {
 		if single {
-			for _, sib := range segmentRun(n) {
+			for _, sib := range segmentRun(n, "SegmentedButton") {
 				if oc := comp(sib); oc != nil && oc != c && oc.Selected.Get() {
 					oc.Selected.Set(false)
 					oc.Toggle.Emit(false)
@@ -312,9 +350,9 @@ func (i *interactor) activateSegment(n tree.Node, c *tree.Component) {
 	}
 }
 
-// segmentRun returns the contiguous SegmentedButton siblings around n. A
-// non-segment sibling, such as a label, ends the run and starts a new group.
-func segmentRun(n tree.Node) []tree.Node {
+// segmentRun returns the contiguous siblings of the given kind around n. A
+// sibling of another kind, such as a label, ends the run and starts a new group.
+func segmentRun(n tree.Node, kind string) []tree.Node {
 	p := n.Base().Parent()
 	if p == nil {
 		return []tree.Node{n}
@@ -331,10 +369,10 @@ func segmentRun(n tree.Node) []tree.Node {
 		return []tree.Node{n}
 	}
 	start, end := idx, idx
-	for start > 0 && kids[start-1].Node().Kind() == "SegmentedButton" {
+	for start > 0 && kids[start-1].Node().Kind() == kind {
 		start--
 	}
-	for end < len(kids)-1 && kids[end+1].Node().Kind() == "SegmentedButton" {
+	for end < len(kids)-1 && kids[end+1].Node().Kind() == kind {
 		end++
 	}
 	run := make([]tree.Node, 0, end-start+1)

@@ -1263,26 +1263,30 @@ func (l *List) paintTopAppBar(c *tree.Component, r tree.Rect, clip tree.Rect) {
 func (l *List) paintNavigationBar(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
 	l.fillRect(r, col.SurfaceContainer, 0, 0, 0, clip)
-	for i, k := range c.Base().Kids() {
+	// The indicator follows the destination's own selected flag, so a nav bar, a
+	// rail and a drawer all read the same state.
+	for _, k := range c.Base().Kids() {
+		kc := m3Of(k)
+		if kc == nil || !kc.Selected.Get() {
+			continue
+		}
 		kb := k.Bounds()
 		cx := r.X + kb.X + kb.W/2
-		indicator := tree.Rect{X: cx - 32, Y: r.Y + 12, W: 64, H: 32}
-		if i == c.SelectedIndex {
-			l.fillRect(indicator, col.SecondaryContainer, 16, 0, 0, clip)
-		}
+		l.fillRect(tree.Rect{X: cx - 32, Y: r.Y + 12, W: 64, H: 32}, col.SecondaryContainer, 16, 0, 0, clip)
 	}
 }
 
 func (l *List) paintNavigationRail(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
 	l.fillRect(r, col.Surface, 0, 0, 0, clip)
-	for i, k := range c.Base().Kids() {
+	for _, k := range c.Base().Kids() {
+		kc := m3Of(k)
+		if kc == nil || !kc.Selected.Get() {
+			continue
+		}
 		kb := k.Bounds()
 		cx := r.X + kb.X + kb.W/2
-		indicator := tree.Rect{X: cx - 28, Y: r.Y + kb.Y + 4, W: 56, H: 32}
-		if i == c.SelectedIndex {
-			l.fillRect(indicator, col.SecondaryContainer, 16, 0, 0, clip)
-		}
+		l.fillRect(tree.Rect{X: cx - 28, Y: r.Y + kb.Y + 4, W: 56, H: 32}, col.SecondaryContainer, 16, 0, 0, clip)
 	}
 }
 
