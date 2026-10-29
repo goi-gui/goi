@@ -98,6 +98,7 @@ make hello     # rounded corners, borders, text
 make scroll    # scrolling page, horizontal strip, ripple
 make typography # type scale, five weights, wrapping
 make composition # one design split across Main.ui, Sidebar.ui and StatCard.ui
+go run ./cmd/uicheck -layout examples/*/*.ui  # syntax plus a headless layout check
 ```
 
 ## What it does

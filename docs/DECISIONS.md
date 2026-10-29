@@ -517,6 +517,13 @@ batch. This is what the display list will feed.
   `Descendant` but are not registered, so copies cannot collide. `Remove` is the
   inverse. Expressions inside a template that reference a sibling by id still
   point at the template's node, which is the documented limit.
+- **A reload re-runs Bind, it does not restore app state.** Node state the
+  framework owns (text, caret, Go-set properties including the root's theme) is
+  carried over by id, and copies made with `Instantiate` are remade when Bind
+  runs again; anything else an app holds lives in a closure outside Bind and is
+  re-applied there. There is deliberately no second mechanism: a generic state
+  snapshot would have to know which properties an app considers state, and Bind
+  already runs at exactly the right moment.
 - **Motion is a tween list, not a property system.** `App.Tween`/`App.Animate`
   run an eased function on the UI goroutine; they tick before the frame check and
   keep the loop awake only while running. A full animation DSL was not needed:
