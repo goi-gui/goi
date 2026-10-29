@@ -8,16 +8,18 @@ Window {
 	background: #FEF7FF
 
 	Column {
-		id: page
 		spacing: 0
-		scroll: true
 
+		// The bar stays put; the content below it scrolls.
 		TopAppBar {
 			label: "Typography"
 			icon: "text_fields"
 		}
 
 		Column {
+			id: page
+			flex: 1
+			scroll: true
 			spacing: 24
 			padding: 24
 
