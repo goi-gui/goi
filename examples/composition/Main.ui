@@ -1,0 +1,64 @@
+// Composition: one design split across files.
+//
+// Main.ui is the entry point; it imports two fragments and instantiates them
+// with params. Run with:
+//
+//	go run -ldflags=-linkmode=internal ./examples/composition
+import "./Sidebar.ui" as Sidebar
+import "./StatCard.ui" as StatCard
+
+Window {
+	id: main
+	title: "Composition"
+	theme: light
+	background: #FEF7FF
+
+	Row {
+		spacing: 0
+
+		Sidebar {
+			title: "Mail"
+			subtitle: "12 unread"
+			active: "inbox"
+		}
+
+		Column {
+			flex: 1
+			padding: 24
+			spacing: 24
+
+			TopAppBar {
+				label: "Composition"
+				icon: "dashboard"
+			}
+
+			Text { text: "Fragments" role: "titleMedium" }
+			Text {
+				text: "Sidebar.ui and StatCard.ui are separate files. Main.ui imports them, passes params, and overrides ordinary properties such as width."
+				wrap: true
+				width: 520
+			}
+
+			// The same fragment twice, with different params.
+			Row {
+				spacing: 16
+				StatCard { label: "Inbox" value: "12" tone: #6750A4 }
+				StatCard { label: "Starred" value: "3" tone: #7D5260 }
+				StatCard { label: "Drafts" value: "1" tone: #00658F }
+			}
+
+			Text { text: "Overrides" role: "titleMedium" }
+			Row {
+				spacing: 16
+				// A param is a value; width is the fragment root's own property.
+				StatCard { label: "Override" value: "300" width: 300 }
+			}
+			Text {
+				text: "The card above passes width: 300, which replaces the fragment's own width instead of duplicating it."
+				role: "bodySmall"
+				wrap: true
+				width: 520
+			}
+		}
+	}
+}

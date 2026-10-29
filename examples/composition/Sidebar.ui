@@ -1,0 +1,36 @@
+// Sidebar: a navigation panel. The three params let each instance say what it
+// shows; everything else (width, visible, ...) is an ordinary property the
+// instance can override.
+param title: "Mail"
+param subtitle: ""
+param active: "inbox"
+
+Column {
+	width: 280
+	padding: 12
+	spacing: 6
+	background: #F3EDF7
+
+	Text {
+		text: $title
+		role: "titleLarge"
+	}
+
+	Text {
+		text: $subtitle
+		role: "bodySmall"
+		color: #49454F
+	}
+
+	Rectangle { height: 8 background: #00000000 }
+
+	NavigationItem { label: "Inbox" icon: inbox selected: true }
+	NavigationItem { label: "Starred" icon: star }
+	NavigationItem { label: "Sent" icon: send }
+	NavigationItem { label: "Trash" icon: delete }
+
+	Divider { }
+
+	Text { text: "Active: " role: "labelSmall" color: #49454F }
+	Text { text: $active role: "labelMedium" }
+}

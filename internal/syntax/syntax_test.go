@@ -245,6 +245,78 @@ func TestSuggest(t *testing.T) {
 	}
 }
 
+func TestParsePreamble(t *testing.T) {
+	f, diag := Parse([]byte(`import "./Sidebar.ui" as Sidebar
+import "parts/Card.ui" as Card
+param title: "Mail"
+param accent: #123456
+
+Column { Text { text: $title } }`))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	if len(f.Imports) != 2 {
+		t.Fatalf("imports = %d, want 2", len(f.Imports))
+	}
+	if f.Imports[0].Path != "./Sidebar.ui" || f.Imports[0].Alias != "Sidebar" {
+		t.Fatalf("first import = %+v", f.Imports[0])
+	}
+	if len(f.Params) != 2 {
+		t.Fatalf("params = %d, want 2", len(f.Params))
+	}
+	if f.Params[0].Name != "title" {
+		t.Fatalf("first param = %+v", f.Params[0])
+	}
+	if s, ok := f.Params[0].Default.(*String); !ok || s.Val != "Mail" {
+		t.Fatalf("param default = %#v", f.Params[0].Default)
+	}
+	// A fragment's root need not be a Window.
+	if f.Root.Name != "Column" {
+		t.Fatalf("root = %s", f.Root.Name)
+	}
+	// $title survives parsing; asset expansion is what replaces it.
+	ref, ok := f.Root.Children()[0].Prop("text").Value.(*ParamRef)
+	if !ok || ref.Name != "title" {
+		t.Fatalf("value = %#v, want a ParamRef", f.Root.Children()[0].Prop("text").Value)
+	}
+}
+
+func TestParsePreambleErrors(t *testing.T) {
+	cases := []struct{ name, src, want string }{
+		{"missing as", `import "./a.ui"
+Window { }`, `expected "as"`},
+		{"missing alias", `import "./a.ui" as
+Window { }`, "expected an alias"},
+		{"missing param name", "param : 1\nWindow { }", "expected a param name"},
+		{"missing colon", "param x 1\nWindow { }\n", "expected ':'"},
+		{"dollar without name", "Window { Text { text: $ } }", "expected a param name"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, diag := Parse([]byte(tc.src))
+			if diag.Empty() {
+				t.Fatalf("expected a diagnostic")
+			}
+			if !strings.Contains(diag[0].Message, tc.want) {
+				t.Fatalf("message = %q, want %q", diag[0].Message, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseDumpKeepsPreamble(t *testing.T) {
+	f, diag := Parse([]byte(`import "./S.ui" as S
+param n: 4
+Column { }`))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	got := Dump(f)
+	if !strings.Contains(got, `import "./S.ui" as S`) || !strings.Contains(got, "param n = 4") {
+		t.Fatalf("dump:\n%s", got)
+	}
+}
+
 func FuzzParse(f *testing.F) {
 	f.Add([]byte(validUI))
 	f.Add([]byte("A { s: \"\\u00e7\" }"))

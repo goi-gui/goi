@@ -12,6 +12,9 @@ type Diagnostic struct {
 	End     Pos
 	Message string
 	Hint    string // optional "did you mean" suggestion
+	// Src names the file the position points into. Empty means "the file being
+	// formatted", which keeps single-file callers unchanged.
+	Src string
 }
 
 // Diagnostics is a list of problems, in source order.
@@ -24,12 +27,28 @@ func (ds Diagnostics) Error() string { return ds.Format("", nil) }
 // Format renders the diagnostics, using name as the file name when non-empty
 // and src (if provided) to add a snippet line.
 func (ds Diagnostics) Format(name string, src []byte) string {
+	return ds.FormatFiles(name, src, nil)
+}
+
+// FormatFiles renders diagnostics that may come from several files. defName is
+// the fallback name for a diagnostic with no Src, defSrc its contents, and files
+// holds every other source by name. A diagnostic whose file is unknown renders
+// without a location rather than pointing at the wrong file.
+func (ds Diagnostics) FormatFiles(defName string, defSrc []byte, files map[string][]byte) string {
 	var b strings.Builder
-	lines := lineStarts(src)
 	for i, d := range ds {
 		if i > 0 {
 			b.WriteByte('\n')
 		}
+		name, src := defName, defSrc
+		if d.Src != "" {
+			if s, ok := files[d.Src]; ok {
+				name, src = d.Src, s
+			} else if d.Src != defName {
+				name, src = d.Src, nil
+			}
+		}
+		lines := lineStarts(src)
 		if name != "" {
 			line, col := lines.locate(d.Pos)
 			fmt.Fprintf(&b, "%s:%d:%d: %s", name, line, col, d.Message)

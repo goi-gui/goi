@@ -152,17 +152,18 @@ func TestReloadReportsDiagnosticsWithoutReplacingTree(t *testing.T) {
 
 func TestWatcherTriggersReload(t *testing.T) {
 	a, w := reloadApp(t, `Window { Text { id: label text: "0" } }`)
-	path := t.TempDir() + "/app.ui"
-	if err := writeFile(path, `Window { Text { id: label text: "0" } }`); err != nil {
+	dir := t.TempDir()
+	if err := writeFile(dir+"/app.ui", `Window { Text { id: label text: "0" } }`); err != nil {
 		t.Fatal(err)
 	}
-	a.path = path
+	a.assets = DirFS(dir)
+	a.path = "app.ui"
 	if err := a.enableWatcher(); err != nil {
 		t.Fatal(err)
 	}
 	defer a.watcher.Close()
 
-	if err := writeFile(path, `Window { Text { id: label text: "reloaded" } }`); err != nil {
+	if err := writeFile(dir+"/app.ui", `Window { Text { id: label text: "reloaded" } }`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -180,16 +181,18 @@ func TestWatcherTriggersReload(t *testing.T) {
 
 func TestReloadDiagnosticsAreFormatted(t *testing.T) {
 	a, _ := reloadApp(t, `Window { }`)
-	src := []byte("Window {\n  nope: 1\n}\n")
-	a.path = "test.ui"
-	a.reloadSrc(src) // parses, validates on this goroutine, posts the result
-	var reported error
-	a.OnError = func(err error) { reported = err }
-	a.drainPosted()
-	if reported == nil {
-		t.Fatal("expected a reported diagnostic")
+	dir := t.TempDir()
+	if err := writeFile(dir+"/test.ui", "Window {\n  nope: 1\n}\n"); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(reported.Error(), "test.ui:2:3") {
-		t.Fatalf("diagnostic lacks a position: %s", reported.Error())
+	a.assets = DirFS(dir)
+	a.path = "test.ui"
+
+	err := a.reloadNow()
+	if err == nil {
+		t.Fatal("expected a diagnostic")
+	}
+	if !strings.Contains(err.Error(), "test.ui:2:3") {
+		t.Fatalf("diagnostic lacks a position: %s", err.Error())
 	}
 }

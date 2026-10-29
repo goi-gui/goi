@@ -19,19 +19,31 @@ type Result struct {
 
 // Validate checks the AST against the schema, reporting every problem rather
 // than stopping at the first. The AST itself is never modified.
+//
+// Any element may be the root: a fragment is a piece of a design, not a window.
+// Use ValidateEntry for the file a program loads.
 func Validate(f *syntax.File) (*Result, syntax.Diagnostics) {
+	return validateFile(f, false)
+}
+
+// validateFile is the shared body. entry adds the rules that only hold for the file
+// a program opens: a Window root, and no unbound `$param`.
+func validateFile(f *syntax.File, entry bool) (*Result, syntax.Diagnostics) {
 	if f == nil || f.Root == nil {
 		return nil, syntax.Diagnostics{{Message: "the file has no root element"}}
 	}
 	v := &validator{
-		ids:   map[*syntax.Element]string{},
-		elems: map[string]*syntax.Element{},
-		seen:  map[string]syntax.Pos{},
+		ids:    map[*syntax.Element]string{},
+		elems:  map[string]*syntax.Element{},
+		seen:   map[string]syntax.Pos{},
+		entry:  entry,
+		params: make(map[string]syntax.Value, len(f.Params)),
+	}
+	for _, pr := range f.Params {
+		v.params[pr.Name] = pr.Default
 	}
 	if _, ok := Lookup(f.Root.Name); !ok {
 		v.elementUnknown(f.Root)
-	} else if f.Root.Name != "Window" {
-		v.add(f.Root.NameAt, f.Root.Close, "the root element must be Window", syntax.Suggest(f.Root.Name, RootNames()))
 	}
 	v.walk(f.Root, "")
 	if v.diag.Empty() {
@@ -43,15 +55,48 @@ func Validate(f *syntax.File) (*Result, syntax.Diagnostics) {
 	return &Result{IDs: v.ids}, nil
 }
 
+// ValidateEntry is Validate plus the rule that an entry point must be a Window,
+// because that is what a program opens.
+func ValidateEntry(f *syntax.File) (*Result, syntax.Diagnostics) {
+	res, diag := validateFile(f, true)
+	if f == nil || f.Root == nil || !diag.Empty() {
+		return res, diag
+	}
+	if f.Root.Name != "Window" {
+		return res, syntax.Diagnostics{{
+			Pos:     f.Root.NameAt,
+			End:     f.Root.Close,
+			Src:     f.Root.Src,
+			Message: fmt.Sprintf("the root element must be Window, not %s", f.Root.Name),
+			Hint:    syntax.Suggest(f.Root.Name, RootNames()),
+		}}
+	}
+	return res, nil
+}
+
 type validator struct {
 	ids   map[*syntax.Element]string
 	elems map[string]*syntax.Element
 	seen  map[string]syntax.Pos
 	diag  syntax.Diagnostics
+	// src is the file the element being validated came from, so a diagnostic
+	// lands in the right file after imports are expanded.
+	src string
+	// entry reports unbound `$param` refs, which are legal in a fragment.
+	entry bool
+	// params holds the declared defaults of a fragment, so a `$param` value can
+	// be checked against the property it feeds.
+	params map[string]syntax.Value
 }
 
 func (v *validator) add(at, end syntax.Pos, msg, hint string) {
-	v.diag = append(v.diag, syntax.Diagnostic{Pos: at, End: end, Message: msg, Hint: hint})
+	v.diag = append(v.diag, syntax.Diagnostic{Pos: at, End: end, Message: msg, Hint: hint, Src: v.src})
+}
+
+// addIn is add for a position that belongs to a specific file, which is the case
+// when an instance overrides a fragment property.
+func (v *validator) addIn(src string, at, end syntax.Pos, msg, hint string) {
+	v.diag = append(v.diag, syntax.Diagnostic{Pos: at, End: end, Message: msg, Hint: hint, Src: src})
 }
 
 func (v *validator) elementUnknown(e *syntax.Element) {
@@ -61,6 +106,7 @@ func (v *validator) elementUnknown(e *syntax.Element) {
 // walk validates one element and recurses into its children. parent is the
 // enclosing element name, "" for the root.
 func (v *validator) walk(e *syntax.Element, parent string) {
+	v.src = e.Src
 	def, ok := Lookup(e.Name)
 	if !ok {
 		v.elementUnknown(e)
@@ -72,6 +118,11 @@ func (v *validator) walk(e *syntax.Element, parent string) {
 
 	seen := map[string]syntax.Pos{}
 	for _, p := range e.Props() {
+		// A property may come from the file that instantiates this fragment, so
+		// the position belongs to that file, not to the element's own.
+		if p.Src != "" {
+			v.src = p.Src
+		}
 		at := p.NameAt
 		if _, dup := seen[p.Name]; dup {
 			v.add(at, at+syntax.Pos(len(p.Name)), fmt.Sprintf("duplicate property %q", p.Name), "")
@@ -86,6 +137,7 @@ func (v *validator) walk(e *syntax.Element, parent string) {
 			continue
 		}
 		v.checkValue(e, p, pd)
+		v.src = e.Src
 	}
 
 	if len(e.Children()) > 0 && !def.Children {
@@ -110,11 +162,49 @@ func propNames(def *Element) []string {
 // the responsive form: one ordinary literal per breakpoint.
 func (v *validator) checkValue(e *syntax.Element, p *syntax.Property, pd *Prop) {
 	val := p.Value
+	// Expansion replaces every `$param` before validation. One that is still here
+	// was written in the fragment itself, so it is checked against the param's
+	// declared default: the default decides the type the instance must pass.
+	if ref, ok := val.(*syntax.ParamRef); ok {
+		v.checkParamValue(e, pd, ref)
+		return
+	}
 	if m, ok := val.(*syntax.Map); ok {
 		v.checkMap(e, pd, m)
 		return
 	}
 	v.checkLiteral(e, pd, val)
+}
+
+// checkParamValue validates a `$param` in a fragment against the property it
+// feeds, using the param's default as the type witness. Anything the type check
+// reports is re-pointed at the reference and prefixed with the param name, so the
+// message says which value is wrong.
+func (v *validator) checkParamValue(e *syntax.Element, pd *Prop, ref *syntax.ParamRef) {
+	if v.entry {
+		v.add(ref.At, ref.At+syntax.Pos(len(ref.Name)+1),
+			fmt.Sprintf("$%s has no value: a param is only filled in when the file is imported", ref.Name), "")
+		return
+	}
+	def, ok := v.params[ref.Name]
+	if !ok {
+		v.add(ref.At, ref.At+syntax.Pos(len(ref.Name)+1),
+			fmt.Sprintf("%s has no param %q", e.Src, ref.Name), "")
+		return
+	}
+	if pd.Type == TypeID {
+		v.add(ref.At, ref.At+syntax.Pos(len(ref.Name)+1),
+			fmt.Sprintf("%s.%s cannot come from a param: an id names a node once", e.Name, pd.Name), "")
+		return
+	}
+	before := len(v.diag)
+	v.checkLiteral(e, pd, def)
+	for i := before; i < len(v.diag); i++ {
+		v.diag[i].Pos = ref.At
+		v.diag[i].End = ref.At + syntax.Pos(len(ref.Name)+1)
+		v.diag[i].Src = v.src
+		v.diag[i].Message = fmt.Sprintf("param %q: %s", ref.Name, v.diag[i].Message)
+	}
 }
 
 // checkMap verifies a responsive value. id is not responsive (it names a node
@@ -356,6 +446,8 @@ func kindName(val syntax.Value) string {
 		return "a reference"
 	case syntax.BinaryKind:
 		return "an expression"
+	case syntax.ParamRefKind:
+		return "a param reference"
 	}
 	return "an unknown value"
 }

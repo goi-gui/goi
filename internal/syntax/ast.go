@@ -12,9 +12,36 @@ type Pos int
 // Pos returns the position as a Pos.
 func (p Pos) Pos() Pos { return p }
 
-// File is a parsed .ui file. Exactly one root element.
+// File is a parsed .ui file. Exactly one root element, after an optional
+// preamble of `import` and `param` lines.
 type File struct {
-	Root *Element
+	// Src is the path the file was read from, for diagnostics. Empty for a file
+	// parsed from memory.
+	Src string
+	// Imports lists the fragments this file pulls in, in source order.
+	Imports []Import
+	// Params declares the values a fragment expects. A file with params is a
+	// fragment: its root may be any element, not just Window.
+	Params []Param
+	Root   *Element
+}
+
+// Import is `import "./Sidebar.ui" as Sidebar`.
+type Import struct {
+	Path  string // as written, relative to the importing file
+	Alias string // the element name that instantiates the fragment
+	At    Pos
+	// AliasAt is the position of the alias, for diagnostics.
+	AliasAt Pos
+}
+
+// Param is `param title: "Mail"`. The default is required, so an instance never
+// has to handle a missing value.
+type Param struct {
+	Name   string
+	NameAt Pos
+	// Default is used when the instance does not pass the param.
+	Default Value
 }
 
 // Element is `Name { members... }`.
@@ -23,6 +50,9 @@ type Element struct {
 	NameAt Pos
 	Open   Pos // position of '{'
 	Close  Pos // position of '}'
+	// Src names the file this element came from. Pos values on this element are
+	// offsets into that file, not into the file being built.
+	Src string
 	// Members preserves source order so instantiation and error messages are
 	// predictable. Use Props/Children to read them by kind.
 	Members []Member
@@ -72,6 +102,9 @@ type Property struct {
 	Name   string
 	NameAt Pos
 	Value  Value
+	// Src names the file this property was written in. It differs from the
+	// element's Src when an instance overrides a fragment property.
+	Src string
 }
 
 // ValueKind identifies the type of a literal.
@@ -88,6 +121,7 @@ const (
 	PercentKind
 	RefKind
 	BinaryKind
+	ParamRefKind
 )
 
 // Value is a property literal. The concrete type is one of *String,
@@ -155,6 +189,13 @@ type Ref struct {
 	Prop string
 }
 
+// ParamRef is `$name`, the value an instance passed for a fragment param. It is
+// replaced while the fragment is expanded, so nothing downstream sees it.
+type ParamRef struct {
+	At   Pos
+	Name string
+}
+
 // Binary is an arithmetic expression: Left Op Right, with Op one of
 // "+", "-", "*", "/".
 type Binary struct {
@@ -166,24 +207,26 @@ type Binary struct {
 
 // Kind implementations.
 
-func (s *String) Kind() ValueKind  { return StringKind }
-func (n *Number) Kind() ValueKind  { return NumberKind }
-func (b *Bool) Kind() ValueKind    { return BoolKind }
-func (c *Color) Kind() ValueKind   { return ColorKind }
-func (i *Ident) Kind() ValueKind   { return IdentKind }
-func (m *Map) Kind() ValueKind     { return MapKind }
-func (p *Percent) Kind() ValueKind { return PercentKind }
-func (r *Ref) Kind() ValueKind     { return RefKind }
-func (b *Binary) Kind() ValueKind  { return BinaryKind }
+func (s *String) Kind() ValueKind   { return StringKind }
+func (n *Number) Kind() ValueKind   { return NumberKind }
+func (b *Bool) Kind() ValueKind     { return BoolKind }
+func (c *Color) Kind() ValueKind    { return ColorKind }
+func (i *Ident) Kind() ValueKind    { return IdentKind }
+func (m *Map) Kind() ValueKind      { return MapKind }
+func (p *Percent) Kind() ValueKind  { return PercentKind }
+func (r *Ref) Kind() ValueKind      { return RefKind }
+func (b *Binary) Kind() ValueKind   { return BinaryKind }
+func (p *ParamRef) Kind() ValueKind { return ParamRefKind }
 
 // Pos implementations.
 
-func (s *String) Pos() Pos  { return s.At }
-func (n *Number) Pos() Pos  { return n.At }
-func (b *Bool) Pos() Pos    { return b.At }
-func (c *Color) Pos() Pos   { return c.At }
-func (i *Ident) Pos() Pos   { return i.At }
-func (m *Map) Pos() Pos     { return m.At }
-func (p *Percent) Pos() Pos { return p.At }
-func (r *Ref) Pos() Pos     { return r.At }
-func (b *Binary) Pos() Pos  { return b.At }
+func (s *String) Pos() Pos   { return s.At }
+func (n *Number) Pos() Pos   { return n.At }
+func (b *Bool) Pos() Pos     { return b.At }
+func (c *Color) Pos() Pos    { return c.At }
+func (i *Ident) Pos() Pos    { return i.At }
+func (m *Map) Pos() Pos      { return m.At }
+func (p *Percent) Pos() Pos  { return p.At }
+func (r *Ref) Pos() Pos      { return r.At }
+func (b *Binary) Pos() Pos   { return b.At }
+func (p *ParamRef) Pos() Pos { return p.At }

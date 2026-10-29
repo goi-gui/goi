@@ -24,7 +24,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	win, err := app.LoadWindow("examples/counter/counter.ui", ui.WithHotReload(true))
+	win, err := app.LoadWindowFile("examples/counter/counter.ui", ui.WithHotReload(true))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

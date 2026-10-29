@@ -1,0 +1,373 @@
+// Package asset loads .ui files from an fs.FS, resolving imports into one tree.
+//
+// A file may pull in fragments:
+//
+//	import "./Sidebar.ui" as Sidebar
+//
+//	Window { Row { Sidebar { title: "Mail" } } }
+//
+// A fragment declares the values it expects and marks where they go:
+//
+//	param title: ""
+//	Column { Text { text: $title } }
+//
+// Expansion happens before validation, so the schema, validator and tree builder
+// see one ordinary tree and need no notion of fragments.
+package asset
+
+import (
+	"errors"
+	"fmt"
+	"io/fs"
+	"path"
+	"strings"
+
+	"github.com/ksckaan1/goui/internal/syntax"
+)
+
+// Bundle is one loaded entry point together with every file it pulled in.
+type Bundle struct {
+	// File is the expanded tree: one root element, no imports left.
+	File *syntax.File
+	// Sources holds the text of every file that took part, keyed by path, so
+	// diagnostics can show the right snippet.
+	Sources map[string][]byte
+	// Files lists the paths that were read, entry point first.
+	Files []string
+}
+
+// Load reads name from fsys and expands its imports. Name is slash-separated
+// and relative to the FS root, as fs.FS requires.
+func Load(fsys fs.FS, name string) (*Bundle, syntax.Diagnostics) {
+	l := &loader{fsys: fsys, sources: map[string][]byte{}, files: map[string]*syntax.File{}}
+	// The bundle is returned even on failure: its Sources let the caller show a
+	// snippet for each diagnostic.
+	b := &Bundle{Sources: l.sources}
+	entry := clean(name)
+	root, diag := l.parse(entry, nil)
+	if !diag.Empty() {
+		b.Files = l.order
+		return b, diag
+	}
+	b.Files = l.order
+	expanded, diag := l.instantiateFile(root, entry, nil)
+	if !diag.Empty() {
+		return b, diag
+	}
+	b.File = expanded
+	return b, nil
+}
+
+type loader struct {
+	fsys    fs.FS
+	sources map[string][]byte
+	// files holds every parsed file, keyed by its path from the FS root.
+	files map[string]*syntax.File
+	order []string
+}
+
+// parse reads and parses one file, recursing into its imports so a broken
+// fragment is reported before anything is expanded.
+func (l *loader) parse(name string, stack []string) (*syntax.File, syntax.Diagnostics) {
+	for _, s := range stack {
+		if s == name {
+			return nil, syntax.Diagnostics{{
+				Message: fmt.Sprintf("import cycle: %s", strings.Join(append(stack, name), " -> ")),
+			}}
+		}
+	}
+	if f, ok := l.files[name]; ok {
+		return f, nil
+	}
+	src, err := fs.ReadFile(l.fsys, name)
+	if err != nil {
+		return nil, syntax.Diagnostics{{Message: describe(name, err)}}
+	}
+	l.sources[name] = src
+	f, diag := syntax.ParseNamed(src, name)
+	if !diag.Empty() {
+		return nil, diag
+	}
+
+	chain := append(stack, name)
+	taken := map[string]syntax.Pos{}
+	for _, imp := range f.Imports {
+		if _, dup := taken[imp.Alias]; dup {
+			return nil, syntax.Diagnostics{{
+				Pos:     imp.AliasAt,
+				End:     imp.AliasAt + syntax.Pos(len(imp.Alias)),
+				Src:     name,
+				Message: fmt.Sprintf("duplicate import alias %q", imp.Alias),
+			}}
+		}
+		taken[imp.Alias] = imp.AliasAt
+		target, ok := resolve(name, imp.Path)
+		if !ok {
+			return nil, syntax.Diagnostics{{
+				Pos:     imp.At,
+				End:     imp.At + syntax.Pos(len("import")),
+				Src:     name,
+				Message: fmt.Sprintf("cannot import %q: it points outside the asset root", imp.Path),
+			}}
+		}
+		if _, diag := l.parse(target, chain); !diag.Empty() {
+			return nil, relabel(diag, imp, name)
+		}
+	}
+	l.files[name] = f
+	l.order = append(l.order, name)
+	return f, nil
+}
+
+// relabel points an error that has no position of its own at the import that
+// pulled the broken file in.
+func relabel(diag syntax.Diagnostics, imp syntax.Import, from string) syntax.Diagnostics {
+	for i := range diag {
+		if diag[i].Src != "" {
+			continue
+		}
+		diag[i].Src = from
+		diag[i].Pos = imp.At
+		diag[i].End = imp.At + syntax.Pos(len("import"))
+	}
+	return diag
+}
+
+// describe turns an fs error into a message that names the file.
+// describe turns an fs error into a message. It carries no source file: the
+// caller points the diagnostic at the import that requested the file.
+func describe(name string, err error) string {
+	if errors.Is(err, fs.ErrNotExist) {
+		return fmt.Sprintf("%s: file not found", name)
+	}
+	return fmt.Sprintf("%s: %v", name, err)
+}
+
+// resolve turns an import path into a slash path from the FS root, refusing
+// anything that escapes it.
+func resolve(from, target string) (string, bool) {
+	if strings.HasPrefix(target, "/") {
+		return "", false
+	}
+	joined := path.Clean(path.Join(path.Dir(from), target))
+	if joined == ".." || strings.HasPrefix(joined, "../") || path.IsAbs(joined) {
+		return "", false
+	}
+	return joined, true
+}
+
+func clean(name string) string {
+	return strings.TrimPrefix(path.Clean("/"+name), "/")
+}
+
+// aliases returns the fragment paths a file imports, keyed by alias.
+func (l *loader) aliases(f *syntax.File) map[string]string {
+	out := make(map[string]string, len(f.Imports))
+	for _, imp := range f.Imports {
+		if target, ok := resolve(f.Src, imp.Path); ok {
+			out[imp.Alias] = target
+		}
+	}
+	return out
+}
+
+// instantiateFile expands a whole file's tree.
+func (l *loader) instantiateFile(f *syntax.File, name string, stack []string) (*syntax.File, syntax.Diagnostics) {
+	root, diag := l.expand(f.Root, l.aliases(f), stack)
+	if !diag.Empty() {
+		return nil, diag
+	}
+	// Params are kept so callers can tell a fragment from an entry point; the
+	// imports are consumed and deliberately dropped.
+	return &syntax.File{Src: name, Params: f.Params, Root: root}, nil
+}
+
+// expand walks one element tree, replacing fragment instances with their
+// content. aliases belongs to the file el came from.
+func (l *loader) expand(el *syntax.Element, aliases map[string]string, stack []string) (*syntax.Element, syntax.Diagnostics) {
+	out := copyElement(el)
+	kids := make([]syntax.Member, 0, len(out.Members))
+	for _, m := range out.Members {
+		child, ok := m.(*syntax.Element)
+		if !ok {
+			kids = append(kids, m)
+			continue
+		}
+		target, isFragment := aliases[child.Name]
+		if !isFragment {
+			expanded, diag := l.expand(child, aliases, stack)
+			if !diag.Empty() {
+				return nil, diag
+			}
+			kids = append(kids, expanded)
+			continue
+		}
+		instance, diag := l.instance(target, child, stack)
+		if !diag.Empty() {
+			return nil, diag
+		}
+		kids = append(kids, instance)
+	}
+	out.Members = kids
+	return out, nil
+}
+
+// instance replaces one fragment instance with the fragment's root element,
+// substituting params and applying the instance's own properties.
+func (l *loader) instance(target string, call *syntax.Element, stack []string) (*syntax.Element, syntax.Diagnostics) {
+	for _, s := range stack {
+		if s == target {
+			return nil, syntax.Diagnostics{{
+				Pos:     call.NameAt,
+				End:     call.NameAt + syntax.Pos(len(call.Name)),
+				Src:     call.Src,
+				Message: fmt.Sprintf("import cycle: %s", strings.Join(append(stack, target), " -> ")),
+			}}
+		}
+	}
+	f, ok := l.files[target]
+	if !ok {
+		return nil, syntax.Diagnostics{{
+			Pos:     call.NameAt,
+			End:     call.NameAt + syntax.Pos(len(call.Name)),
+			Src:     call.Src,
+			Message: fmt.Sprintf("unknown fragment %q", call.Name),
+		}}
+	}
+
+	// Params start at their defaults and take whatever the instance passed.
+	params := make(map[string]syntax.Value, len(f.Params))
+	declared := make(map[string]bool, len(f.Params))
+	for _, pr := range f.Params {
+		params[pr.Name] = pr.Default
+		declared[pr.Name] = true
+	}
+	var overrides []*syntax.Property
+	for _, p := range call.Props() {
+		if declared[p.Name] {
+			params[p.Name] = p.Value
+			continue
+		}
+		overrides = append(overrides, p)
+	}
+
+	body := copyElement(f.Root)
+	if diag := substitute(body, params, target); !diag.Empty() {
+		return nil, diag
+	}
+	applyOverrides(body, overrides)
+
+	expanded, diag := l.expand(body, l.aliases(f), append(stack, target))
+	if !diag.Empty() {
+		return nil, diag
+	}
+	return expanded, nil
+}
+
+// substitute replaces `$name` values in place and reports a param the fragment
+// never declared.
+func substitute(el *syntax.Element, params map[string]syntax.Value, from string) syntax.Diagnostics {
+	var diag syntax.Diagnostics
+	var walk func(*syntax.Element)
+	walk = func(e *syntax.Element) {
+		for _, m := range e.Members {
+			switch v := m.(type) {
+			case *syntax.Property:
+				v.Value, diag = substValue(v.Value, params, v.Src, from, diag)
+			case *syntax.Element:
+				walk(v)
+			}
+		}
+	}
+	walk(el)
+	return diag
+}
+
+// substValue returns a value with every param reference replaced.
+func substValue(v syntax.Value, params map[string]syntax.Value, src, from string, diag syntax.Diagnostics) (syntax.Value, syntax.Diagnostics) {
+	switch x := v.(type) {
+	case *syntax.ParamRef:
+		got, ok := params[x.Name]
+		if !ok {
+			diag = append(diag, syntax.Diagnostic{
+				Pos:     x.At,
+				End:     x.At + syntax.Pos(len(x.Name)+1),
+				Src:     src,
+				Message: fmt.Sprintf("%s has no param %q", from, x.Name),
+			})
+			return x, diag
+		}
+		return got, diag
+	case *syntax.Map:
+		out := &syntax.Map{At: x.At, Entries: make([]syntax.MapEntry, len(x.Entries))}
+		for i, entry := range x.Entries {
+			entry.Value, diag = substValue(entry.Value, params, src, from, diag)
+			out.Entries[i] = entry
+		}
+		return out, diag
+	case *syntax.Binary:
+		left, diag := substValue(x.Left, params, src, from, diag)
+		right, diag := substValue(x.Right, params, src, from, diag)
+		return &syntax.Binary{At: x.At, Op: x.Op, Left: left, Right: right}, diag
+	}
+	return v, diag
+}
+
+// applyOverrides writes the instance's properties onto the fragment root,
+// replacing a property the fragment already set instead of duplicating it.
+func applyOverrides(el *syntax.Element, props []*syntax.Property) {
+	for _, p := range props {
+		replaced := false
+		for i, m := range el.Members {
+			existing, ok := m.(*syntax.Property)
+			if !ok || existing.Name != p.Name {
+				continue
+			}
+			el.Members[i] = p
+			replaced = true
+		}
+		if !replaced {
+			el.Members = append(el.Members, p)
+		}
+	}
+}
+
+// copyElement deep-copies an element tree, so two instances of one fragment do
+// not share AST pointers.
+func copyElement(el *syntax.Element) *syntax.Element {
+	out := &syntax.Element{
+		Name:    el.Name,
+		NameAt:  el.NameAt,
+		Open:    el.Open,
+		Close:   el.Close,
+		Src:     el.Src,
+		Members: make([]syntax.Member, 0, len(el.Members)),
+	}
+	for _, m := range el.Members {
+		switch v := m.(type) {
+		case *syntax.Property:
+			out.Members = append(out.Members, &syntax.Property{
+				Name: v.Name, NameAt: v.NameAt, Value: copyValue(v.Value), Src: v.Src,
+			})
+		case *syntax.Element:
+			out.Members = append(out.Members, copyElement(v))
+		}
+	}
+	return out
+}
+
+// copyValue clones the composite values; the leaves are immutable.
+func copyValue(v syntax.Value) syntax.Value {
+	switch x := v.(type) {
+	case *syntax.Map:
+		out := &syntax.Map{At: x.At, Entries: make([]syntax.MapEntry, len(x.Entries))}
+		for i, entry := range x.Entries {
+			entry.Value = copyValue(entry.Value)
+			out.Entries[i] = entry
+		}
+		return out
+	case *syntax.Binary:
+		return &syntax.Binary{At: x.At, Op: x.Op, Left: copyValue(x.Left), Right: copyValue(x.Right)}
+	}
+	return v
+}

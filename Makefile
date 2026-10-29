@@ -19,6 +19,9 @@ scroll:
 typography:
 	go run -ldflags=-linkmode=internal ./examples/typography
 
+composition:
+	go run -ldflags=-linkmode=internal ./examples/composition
+
 test:
 	go test -race ./...
 
@@ -28,4 +31,4 @@ vet:
 bench:
 	go test -run XXX -bench . -benchmem ./internal/layout/ ./internal/syntax/ ./internal/paint/
 
-.PHONY: build spike counter gallery hello scroll typography test vet bench
+.PHONY: build spike counter gallery hello scroll typography composition test vet bench

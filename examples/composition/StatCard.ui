@@ -1,0 +1,16 @@
+// StatCard: one number with a caption. A fragment can be instantiated any
+// number of times, and each instance passes its own params.
+param label: "Label"
+param value: "0"
+param tone: #6750A4
+
+Card {
+	variant: filled
+	width: 180
+	height: 96
+	Column {
+		spacing: 4
+		Text { text: $label role: "labelMedium" color: #49454F }
+		Text { text: $value role: "headlineMedium" color: $tone }
+	}
+}

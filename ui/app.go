@@ -2,7 +2,8 @@ package ui
 
 import (
 	"fmt"
-	"os"
+	"io/fs"
+	"path/filepath"
 	"sync"
 
 	"github.com/ksckaan1/goui/internal/hotreload"
@@ -33,6 +34,7 @@ type App struct {
 	wake   func() // pushes the platform loop out of WaitEvents
 
 	win        *Window
+	assets     fs.FS
 	path       string
 	opts       Options
 	driver     driver
@@ -70,20 +72,25 @@ func NewApp() (*App, error) {
 // newHeadlessApp creates an app without a window, for tests.
 func newHeadlessApp() *App { return &App{} }
 
-// LoadWindow parses the .ui file at path, builds the tree and gives the app its
-// window. Call Bind afterwards.
-func (a *App) LoadWindow(path string, opts ...Option) (*Window, error) {
+// LoadWindow loads a design from an asset container: fsys is where the .ui files
+// live (an embed.FS in production, ui.DirFS in development) and path is the
+// entry file inside it, slash-separated.
+//
+// A file may import fragments, so the design is usually a directory rather than
+// one file. Call Bind afterwards.
+func (a *App) LoadWindow(fsys fs.FS, path string, opts ...Option) (*Window, error) {
 	o := Options{Width: 480, Height: 320}
 	for _, fn := range opts {
 		fn(&o)
 	}
-	src, err := os.ReadFile(path)
+	name := cleanName(path)
+	b, err := loadBundle(fsys, name)
 	if err != nil {
 		return nil, err
 	}
-	tr, diag := tree.BuildSource(src, &tree.Hooks{Marked: a.markDirty})
-	if !diag.Empty() {
-		return nil, fmt.Errorf("%s", diag.Format(path, src))
+	tr, err := tree.Build(b.File, &tree.Hooks{Marked: a.markDirty})
+	if err != nil {
+		return nil, fmt.Errorf("goui: %s: %w", name, err)
 	}
 
 	w := &Window{tree: tr, app: a, title: tr.Root.Title.Get()}
@@ -98,7 +105,7 @@ func (a *App) LoadWindow(path string, opts ...Option) (*Window, error) {
 			w.height = int(f)
 		}
 	}
-	a.win, a.path, a.opts = w, path, o
+	a.win, a.assets, a.path, a.opts = w, fsys, name, o
 	if err := a.initWindow(w); err != nil {
 		return nil, err
 	}
@@ -108,6 +115,14 @@ func (a *App) LoadWindow(path string, opts ...Option) (*Window, error) {
 		}
 	}
 	return w, nil
+}
+
+// LoadWindowFile is LoadWindow for a single file on disk. The file's directory
+// becomes the asset container, so imports resolve next to it. Hot reload watches
+// that directory.
+func (a *App) LoadWindowFile(file string, opts ...Option) (*Window, error) {
+	dir := filepath.Dir(file)
+	return a.LoadWindow(DirFS(dir), filepath.Base(file), opts...)
 }
 
 // Bind registers the handler-attachment function and runs it immediately.

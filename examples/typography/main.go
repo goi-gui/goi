@@ -16,7 +16,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	if _, err := app.LoadWindow("examples/typography/typography.ui", ui.WithHotReload(true), ui.WithSize(900, 780)); err != nil {
+	if _, err := app.LoadWindowFile("examples/typography/typography.ui", ui.WithHotReload(true), ui.WithSize(900, 780)); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

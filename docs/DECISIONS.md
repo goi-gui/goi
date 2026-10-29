@@ -418,6 +418,33 @@ batch. This is what the display list will feed.
   nonzero; counters still carve because they are wound the opposite way. Two
   tests cover it: an artificial overlap must be solid, and a rasterized "t" must
   have no transparent pixel enclosed by ink.
+- **A design is a set of files loaded from an `io/fs.FS`.** `App.LoadWindow(fsys,
+  path)` replaces the old path-only loader: `ui.DirFS` gives hot-reloadable files,
+  an `embed.FS` gives a single executable. Expansion happens in `internal/asset`
+  *before* the schema, validator and tree builder run, so none of them knows what
+  a fragment is — they see one ordinary tree.
+- **Imports are structural, params are values.** `import "./x.ui" as X` replaces
+  `X { ... }` with the fragment's root element, so the fragment owns its layout and
+  the instance places it like any child. A param always has a default, so an
+  instance never has to pass one; `$name` is replaced before validation. A value
+  the instance passes for a param is checked against the property that consumes
+  it, using the default as the type witness, so `color: $tone` fails on the param
+  line rather than producing a broken node.
+- **An instance property is a param or an override.** Params win by name; every
+  other property is written onto the fragment root, replacing its own value
+  instead of duplicating it, which is what makes `Sidebar { width: 300 }` work.
+- **Fragments may share nothing.** Two instances of one fragment get separate AST
+  copies, so ids collide exactly as they would if the markup were written twice,
+  and the error names the duplicate. Namespacing by instance id was considered and
+  left out: it needs every `ByID` to learn a new path syntax.
+- **Only an entry point must be a Window.** `schema.Validate` accepts any root;
+  `ValidateEntry` adds the Window rule and rejects unbound `$param` (nothing can
+  fill it in the file a program opens). A file with params is a fragment, which is
+  how `uicheck` reports it.
+- **Hot reload watches directories, not the entry file.** A design is several
+  files, so any `.ui` write in any directory the design used reloads the whole
+  tree; the import graph is recomputed, and the watch set is rebuilt in case a
+  reload added a directory.
 - **What is intentionally shallow for now:** DatePicker and TimePicker render a
   month grid and a clock dial but do not edit a date; FABMenu renders the FAB and
   leaves its expanded item list to app content; Slider drags but has no keyboard

@@ -8,6 +8,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/ksckaan1/goui/ui"
 )
@@ -22,7 +23,7 @@ func main() {
 	if len(os.Args) > 1 {
 		path = os.Args[1]
 	}
-	win, err := app.LoadWindow(path, ui.WithHotReload(true), ui.WithSize(1100, 900))
+	win, err := app.LoadWindow(ui.DirFS(filepath.Dir(path)), filepath.Base(path), ui.WithHotReload(true), ui.WithSize(1100, 900))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

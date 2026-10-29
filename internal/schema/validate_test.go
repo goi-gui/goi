@@ -55,6 +55,37 @@ func TestQuotedColor(t *testing.T) {
 	}
 }
 
+// TestFragmentRootCanBeAnyElement is the composition rule: a fragment is a piece
+// of a design, so its root is whatever element it draws. Only an entry point must
+// be a Window.
+func TestFragmentRootCanBeAnyElement(t *testing.T) {
+	f, diag := syntax.Parse([]byte(`param title: ""
+Column {
+	Text { text: $title }
+}`))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	// A `$param` is legal in a fragment: the default is the type witness.
+	if _, diag := Validate(f); !diag.Empty() {
+		t.Fatalf("fragment param rejected: %v", diag)
+	}
+	if _, diag := ValidateEntry(f); diag.Empty() {
+		t.Fatal("an entry point cannot have unbound params")
+	}
+
+	f, diag = syntax.Parse([]byte(`Column { Text { text: "x" } }`))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	if _, diag := Validate(f); !diag.Empty() {
+		t.Fatalf("fragment root rejected: %v", diag)
+	}
+	if _, diag := ValidateEntry(f); diag.Empty() {
+		t.Fatal("an entry point must be a Window")
+	}
+}
+
 func TestDiagnosticCases(t *testing.T) {
 	cases := []struct {
 		name string
@@ -70,7 +101,7 @@ func TestDiagnosticCases(t *testing.T) {
 		{"duplicate id", `Window { Text { id: a } Text { id: a } }`, "duplicate id", ""},
 		{"bad id", `Window { Text { id: A } }`, "invalid id", ""},
 		{"duplicate prop", `Window { width: 1 width: 2 }`, "duplicate property", ""},
-		{"root not window", `Column { }`, "must be Window", ""},
+
 		{"leaf with child", `Window { Rectangle { Text { } } }`, "cannot contain", ""},
 		{"bad color literal", `Window { background: #12345 }`, "color must be", ""},
 		{"bad enum type", `Window { Column { align: 3 } }`, "expects an identifier", ""},
@@ -96,7 +127,7 @@ func TestDiagnosticCases(t *testing.T) {
 				}
 				return
 			}
-			_, diag = Validate(f)
+			_, diag = ValidateEntry(f)
 			if diag.Empty() {
 				t.Fatalf("expected a diagnostic")
 			}

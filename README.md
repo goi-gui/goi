@@ -19,7 +19,7 @@ in a small QML-like file; Go finds elements by id and attaches behaviour.
 
 ```go
 app, _ := ui.NewApp()
-win, _ := app.LoadWindow("app.ui", ui.WithHotReload(true))
+win, _ := app.LoadWindowFile("app.ui", ui.WithHotReload(true))
 
 count := 0 // outside Bind: survives hot reload
 win.Bind(func(w *ui.Window) error {
@@ -32,6 +32,46 @@ win.Bind(func(w *ui.Window) error {
 })
 app.Run()
 ```
+
+## One design, several files
+
+A `.ui` file can import fragments and pass them values, so a page does not have
+to be one long file:
+
+```go
+// Main.ui
+// import "./Sidebar.ui" as Sidebar
+//
+// Window {
+//     Row {
+//         Sidebar { title: "Mail" width: 300 }
+//     }
+// }
+```
+
+```go
+// Sidebar.ui
+// param title: ""
+// Column {
+//     Text { text: $title role: "titleLarge" }
+// }
+```
+
+Designs load from an **asset container**, an `io/fs.FS` plus a path inside it:
+
+```go
+// Development: real files, hot reload watches every file the design reads.
+win, _ := app.LoadWindow(ui.DirFS("ui"), "Main.ui", ui.WithHotReload(true))
+
+// Production: one executable, no files on disk.
+//go:embed ui
+var assets embed.FS
+win, _ := app.LoadWindow(assets, "ui/Main.ui")
+```
+
+`ui.DirFS` is `os.DirFS` that remembers its directory, which is what hot reload
+needs; a plain `os.DirFS` or an `embed.FS` works for loading but cannot be
+watched. `ui.LoadWindowFile(path)` is the single-file shortcut.
 
 ## Requirements
 
@@ -57,12 +97,15 @@ make gallery   # every Material 3 component on one page
 make hello     # rounded corners, borders, text
 make scroll    # scrolling page, horizontal strip, ripple
 make typography # type scale, five weights, wrapping
+make composition # one design split across Main.ui, Sidebar.ui and StatCard.ui
 ```
 
 ## What it does
 
 - `.ui` files: literals only, no scripting. Elements, properties, ids, with
   diagnostics that point at `file:line:col`.
+- Composable designs: `import "./Sidebar.ui" as Sidebar` plus `param`/`$param`,
+  loaded from an `io/fs.FS` so `embed.FS` and `os.DirFS` both work.
 - Typed Go API: `Prop[T]` cells, `Event[E]`, `ByID[T]`.
 - Material 3 components as core elements: buttons, FABs, chips, selection
   controls, sliders, text fields, cards, dialogs, sheets, lists, menus,

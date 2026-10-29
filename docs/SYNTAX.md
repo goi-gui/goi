@@ -1,7 +1,8 @@
 # .ui syntax (v1)
 
-A `.ui` file describes one window. Go code attaches behaviour; the file holds no
-logic.
+A `.ui` file describes a design. Go code attaches behaviour; the file holds no
+logic. A design may be one file or several: a file can import fragments and pass
+them values.
 
 ```
 // line comment
@@ -25,14 +26,61 @@ Window {
 }
 ```
 
+## Splitting a design across files
+
+A file may start with `import` and `param` lines, before its root element:
+
+```
+// Sidebar.ui
+param title: "Mail"
+param subtitle: ""
+
+Column {
+    width: 280
+    Text { text: $title role: "titleLarge" }
+    Text { text: $subtitle role: "bodySmall" }
+}
+```
+
+```
+// Main.ui
+import "./Sidebar.ui" as Sidebar
+
+Window {
+    Column {
+        Sidebar {
+            title: "Inbox"
+            width: 300
+        }
+    }
+}
+```
+
+- The import path is relative to the **importing file** and must stay inside the
+  asset container. Fragments may import fragments; a cycle is an error.
+- `Sidebar { }` is replaced by the fragment's root element, so the fragment
+  decides its own layout and the instance places it like any other child.
+- `param` always has a default, so an instance never has to think about a value
+  it does not care about. `$name` in the fragment is replaced by whatever the
+  instance passed, or by the default.
+- An instance property whose name is a param sets that param. Any other property
+  is applied to the fragment root, replacing the fragment's own value of the same
+  name. So `Sidebar { width: 300 }` overrides the fragment's width.
+- A fragment's root may be any element; only the file a program loads must be a
+  `Window`. A file that declares params is reported as a fragment by `uicheck`.
+- `$name` is only valid inside a file that declares that param. In the entry file
+  nothing can fill it in, so it is an error.
+
 ## Grammar
 
 ```
-File      = Element EOF
+File      = { Import | Param } Element EOF
+Import    = "import" String "as" Ident
+Param     = "param" Ident ":" Value [";"]
 Element   = Ident "{" { Member } "}"
 Member    = Property | Element
 Property  = Ident ":" Value [";"]
-Value     = String | Number | Bool | Color | Ident | Map | Expression
+Value     = String | Number | Bool | Color | Ident | Map | Expression | "$" Ident
 Map       = "{" [ MapEntry { "," MapEntry } [","] ] "}"
 MapEntry  = Ident ":" Value
 Expression = Term { ("+" | "-") Term }

@@ -29,6 +29,7 @@ const (
 	tokPercent
 	tokLParen
 	tokRParen
+	tokDollar
 	tokError
 )
 
@@ -108,6 +109,9 @@ func (l *lexer) run() ([]token, Diagnostics) {
 		case c == ')':
 			l.off++
 			l.emit(token{kind: tokRParen, pos: Pos(start), end: Pos(l.off)})
+		case c == '$':
+			l.off++
+			l.emit(token{kind: tokDollar, pos: Pos(start), end: Pos(l.off)})
 		case c == '"':
 			l.lexString(start)
 		case c == '#':

@@ -13,6 +13,35 @@ func Parse(src []byte) (*File, Diagnostics) {
 	return f, p.diag
 }
 
+// ParseNamed is Parse with a source path, so diagnostics and imports can name
+// the file they came from.
+func ParseNamed(src []byte, name string) (*File, Diagnostics) {
+	f, diag := Parse(src)
+	if f != nil {
+		f.Src = name
+		markSrc(f.Root, name)
+	}
+	return f, diag
+}
+
+// markSrc records the source file on every element, so a diagnostic can point
+// at the right file after imports are expanded.
+func markSrc(e *Element, src string) {
+	if e == nil {
+		return
+	}
+	e.Src = src
+	for i := range e.Members {
+		if p, ok := e.Members[i].(*Property); ok {
+			p.Src = src
+			continue
+		}
+		if c, ok := e.Members[i].(*Element); ok {
+			markSrc(c, src)
+		}
+	}
+}
+
 type parser struct {
 	toks []token
 	i    int
@@ -65,12 +94,49 @@ func (p *parser) sync() {
 }
 
 func (p *parser) parseFile() *File {
-	// Tolerate leading junk but keep the diagnostics.
+	f := &File{}
+	// The preamble: `import ... as ...` and `param name: default` may appear in
+	// any order before the root element.
+	for {
+		t := p.peek()
+		if t.kind != tokIdent {
+			break
+		}
+		switch {
+		case t.text == "import":
+			// Report a malformed import here rather than treating it as an
+			// element named "import".
+			imp, ok := p.parseImport()
+			if ok {
+				f.Imports = append(f.Imports, imp)
+			}
+		case t.text == "param":
+			pr, ok := p.parseParam()
+			if ok {
+				f.Params = append(f.Params, pr)
+			}
+		default:
+			// An element that happens to start the file.
+			root := p.parseElement()
+			if root == nil {
+				return nil
+			}
+			f.Root = root
+			p.parseTrailer()
+			return f
+		}
+	}
 	root := p.parseElement()
 	if root == nil {
 		return nil
 	}
-	// Anything after the root element is an error, one per element.
+	f.Root = root
+	p.parseTrailer()
+	return f
+}
+
+// parseTrailer rejects content after the root element, one diagnostic each.
+func (p *parser) parseTrailer() {
 	for p.peek().kind != tokEOF {
 		t := p.peek()
 		if t.kind == tokRBrace {
@@ -83,7 +149,72 @@ func (p *parser) parseFile() *File {
 			p.next()
 		}
 	}
-	return &File{Root: root}
+}
+
+// parseImport reads `import "path" as Alias`.
+func (p *parser) parseImport() (Import, bool) {
+	kw := p.next() // import
+	imp := Import{At: kw.pos}
+	t := p.peek()
+	if t.kind != tokString {
+		p.errorf(t, "expected a quoted path after import")
+		p.sync()
+		return imp, false
+	}
+	imp.Path = p.next().text
+	as := p.peek()
+	if as.kind != tokIdent || as.text != "as" {
+		p.errorf(as, `expected "as" after the import path`)
+		p.sync()
+		return imp, false
+	}
+	p.next()
+	alias := p.peek()
+	if alias.kind != tokIdent {
+		p.errorf(alias, "expected an alias after \"as\"")
+		p.sync()
+		return imp, false
+	}
+	p.next()
+	// Newlines are not tokens, so `import "x" as` followed by the root element
+	// would silently take the element name as the alias. An alias is always
+	// followed by another preamble line or the root, never by '{'.
+	if p.peek().kind == tokLBrace {
+		p.errorf(alias, "expected an alias after \"as\"")
+		return imp, false
+	}
+	imp.Alias, imp.AliasAt = alias.text, alias.pos
+	return imp, true
+}
+
+// parseParam reads `param name: default`.
+func (p *parser) parseParam() (Param, bool) {
+	kw := p.next() // param
+	pr := Param{NameAt: kw.pos}
+	name := p.peek()
+	if name.kind != tokIdent {
+		p.errorf(name, "expected a param name")
+		p.sync()
+		return pr, false
+	}
+	p.next()
+	pr.Name, pr.NameAt = name.text, name.pos
+	if p.peek().kind != tokColon {
+		p.errorf(p.peek(), "expected ':' after the param name")
+		p.sync()
+		return pr, false
+	}
+	p.next()
+	v, ok := p.parseValue()
+	if !ok {
+		p.sync()
+		return pr, false
+	}
+	pr.Default = v
+	if p.peek().kind == tokSemicolon {
+		p.next()
+	}
+	return pr, true
 }
 
 func (p *parser) parseElement() *Element {
@@ -197,6 +328,15 @@ func (p *parser) parseValue() (Value, bool) {
 		return &Ident{At: t.pos, Val: t.text}, true
 	case tokLBrace:
 		return p.parseMap()
+	case tokDollar:
+		at := p.next().pos
+		name := p.peek()
+		if name.kind != tokIdent {
+			p.errorf(name, "expected a param name after '$'")
+			return nil, false
+		}
+		p.next()
+		return &ParamRef{At: at, Name: name.text}, true
 	case tokError:
 		// The lexer already reported this; stay quiet so the file does not
 		// produce two diagnostics for one typo.

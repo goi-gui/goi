@@ -13,6 +13,12 @@ func Dump(f *File) string {
 		return "<nil>\n"
 	}
 	var b strings.Builder
+	for _, imp := range f.Imports {
+		fmt.Fprintf(&b, "import %q as %s\n", imp.Path, imp.Alias)
+	}
+	for _, pr := range f.Params {
+		fmt.Fprintf(&b, "param %s = %s\n", pr.Name, dumpValue(pr.Default))
+	}
 	dumpElement(&b, f.Root, 0)
 	return b.String()
 }
@@ -48,6 +54,8 @@ func dumpValue(v Value) string {
 		return v.ID + "." + v.Prop
 	case *Binary:
 		return "(" + dumpValue(v.Left) + " " + v.Op + " " + dumpValue(v.Right) + ")"
+	case *ParamRef:
+		return "$" + v.Name
 	case *Map:
 		parts := make([]string, len(v.Entries))
 		for i, e := range v.Entries {
