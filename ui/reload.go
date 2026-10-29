@@ -108,10 +108,15 @@ func (a *App) swapTree(tr *tree.Tree) {
 func carryOver(old, fresh *tree.Tree) {
 	for _, n := range fresh.All() {
 		id := n.Base().ID()
-		if id == "" {
-			continue
-		}
 		src, ok := old.ByID(id)
+		if id == "" {
+			// The root has no id, but it is where the theme lives: a Go-set
+			// theme has to survive a reload like any other Go value.
+			if n.Base().Parent() != nil {
+				continue
+			}
+			src, ok = old.Root, true
+		}
 		if !ok || src.Kind() != n.Kind() {
 			continue
 		}

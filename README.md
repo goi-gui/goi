@@ -119,16 +119,28 @@ make composition # one design split across Main.ui, Sidebar.ui and StatCard.ui
 - Text: the M3 type scale (`role`), explicit `fontSize` and `weight` (300/400/
   500/700/900 Roboto; other numbers snap to the nearest), and `wrap: true` for
   real word wrapping that reserves the height of every line.
-- Value expressions: `width: side.width / 2` follows another element's
-  property, and `width: 50%` is half of the parent's content box.
+- Value expressions on every property type: `width: side.width / 2`,
+  `width: 50%` of the parent, comparisons and `&& || !`, and a conditional
+  (`trailingIcon: app.dark ? "light_mode" : "dark_mode"`). `app.theme`,
+  `app.dark` and `window.width`/`height` are readable from a design.
+- Colors by M3 role: `background: surfaceContainerHigh` follows the scheme,
+  while a hex literal stays a deliberate fixed color.
+- Images: `Image { src: "photo.png" fit: cover }` decodes PNG, JPEG or GIF once
+  and packs every bitmap into one GPU atlas.
+- Lists from Go: a hidden template in the `.ui` file plus `ui.Instantiate` makes
+  N rows without hand-building nodes; `ui.Remove` takes one away.
+- Motion: `app.Tween` and `app.Animate` ease a function or a `Prop` over time,
+  and the loop sleeps again when the last one finishes.
+- Scrolling containers draw the M3 thumb, so a long page shows where it is.
 - Visibility on every element, components included: `visible: false` (also
   responsive) or `SetVisible` from Go removes it from layout, paint and input.
 - Rendering: instanced SDF rounded rects, circles, arcs and shadows with borders
   and anti-aliasing, text through HarfBuzz-quality shaping and a grayscale
   atlas, HiDPI aware.
-- Input: clicks with Material ripples, hover, keyboard focus, text editing with
-  selection and clipboard shortcuts, wheel and drag scrolling, Tab order
-  groundwork. Any node can take a click (`OnClick`), not only a component, so a
+- Input: clicks with Material ripples, hover, text editing with selection and
+  clipboard shortcuts, wheel and drag scrolling. Tab and Shift+Tab walk the
+  visible controls, Enter and Space press the focused one, and focus draws the
+  M3 outline. Any node can take a click (`OnClick`), not only a component, so a
   scrim or a custom hit area needs no extra element type.
 - Overlays in order: shapes and glyphs share one instance buffer, so a drawer, a
   dialog or a snackbar paints over the page exactly as the tree orders it.
@@ -136,6 +148,8 @@ make composition # one design split across Main.ui, Sidebar.ui and StatCard.ui
   how a modal drawer closes on Escape.
 - Text editing: selection, clipboard, word and line keys, a value that scrolls
   to keep the caret in view, and IME composition drawn as underlined preedit.
+  Text is shaped in bidirectional runs, so Arabic and Hebrew join and read
+  right to left.
 - Hot reload: edit the file, the window updates; broken files keep the last good
   tree and print diagnostics.
 
@@ -145,9 +159,11 @@ and [docs/DECISIONS.md](docs/DECISIONS.md).
 ## Not in v1
 
 Bindings that push Go state back into `.ui` values (the file is evaluated, not
-observed), animations, dynamic color and custom themes, accessibility tree,
-multiple windows, drag and drop, custom components in `.ui`, and the Image
-widget. IME composition shows as underlined preedit on Wayland.
+observed), dynamic color and custom themes, an accessibility tree, multiple
+windows, drag and drop, custom components in `.ui`, scroll inertia, and caret
+mapping inside right-to-left text. IME composition shows as underlined preedit on
+Wayland. `go run ./cmd/uicheck -layout` lays a design out headlessly and reports
+nodes that cannot draw.
 
 ## Tests
 

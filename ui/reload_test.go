@@ -196,3 +196,22 @@ func TestReloadDiagnosticsAreFormatted(t *testing.T) {
 		t.Fatalf("diagnostic lacks a position: %s", err.Error())
 	}
 }
+
+// TestReloadKeepsTheme is the root case: the window has no id, so a Go-set theme
+// used to be reset to the file's literal on every hot reload.
+func TestReloadKeepsTheme(t *testing.T) {
+	a, w := reloadApp(t, `Window {
+		theme: light
+		Text { id: label text: "x" }
+	}`)
+	w.Root().Theme.Set("dark")
+	if err := applyReloadSource(t, a, `Window {
+		theme: light
+		Text { id: label text: "y" }
+	}`); err != nil {
+		t.Fatal(err)
+	}
+	if got := w.Root().Theme.Get(); got != "dark" {
+		t.Fatalf("theme after reload = %q, want dark", got)
+	}
+}
