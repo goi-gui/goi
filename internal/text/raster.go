@@ -115,10 +115,21 @@ func flatten(segs []font.Segment) ([][][2]float32, bool) {
 	return contours, len(contours) > 0
 }
 
-// scanline returns the x positions (font units) where the contours cross y,
-// sorted ascending. An even-odd rule then fills between consecutive pairs.
-func scanline(contours [][][2]float32, y float32) []float32 {
-	var xs []float32
+type crossing struct {
+	x   float32
+	dir int // +1 up, -1 down
+}
+
+// scanline returns the crossings at y, sorted ascending by x. fillRow then
+// applies the nonzero winding rule.
+//
+// TrueType outlines may overlap themselves: the stem and the crossbar of a "t"
+// are separate contours that cross, and the bowl of an "R" meets its stem. What
+// matters there is the winding direction, not the parity — an even-odd fill
+// treats the overlap as a hole and the glyph gets white gaps exactly where two
+// strokes meet.
+func scanline(contours [][][2]float32, y float32) []crossing {
+	var xs []crossing
 	for _, c := range contours {
 		n := len(c)
 		for i := 0; i < n; i++ {
@@ -131,37 +142,57 @@ func scanline(contours [][][2]float32, y float32) []float32 {
 				continue
 			}
 			t := (y - a[1]) / (b[1] - a[1])
-			xs = append(xs, a[0]+t*(b[0]-a[0]))
+			dir := 1
+			if a[1] > b[1] {
+				dir = -1
+			}
+			xs = append(xs, crossing{x: a[0] + t*(b[0]-a[0]), dir: dir})
 		}
 	}
 	for i := 1; i < len(xs); i++ {
-		for j := i; j > 0 && xs[j] < xs[j-1]; j-- {
+		for j := i; j > 0 && xs[j].x < xs[j-1].x; j-- {
 			xs[j], xs[j-1] = xs[j-1], xs[j]
 		}
 	}
 	return xs
 }
 
-// fillRow adds horizontal coverage between crossing pairs into acc, which is
-// indexed from the bitmap's left edge.
-func fillRow(crossings []float32, acc []float64, x0 int, scale float64) {
-	for i := 0; i+1 < len(crossings); i += 2 {
-		x1 := float64(crossings[i])*scale - float64(x0)
-		x2 := float64(crossings[i+1])*scale - float64(x0)
-		if x2 <= x1 {
+// fillRow adds horizontal coverage between the spans enclosed by the outline
+// into acc, which is indexed from the bitmap's left edge. A span is covered
+// wherever the winding number is nonzero, so overlapping contours fill instead
+// of cancelling out.
+func fillRow(crossings []crossing, acc []float64, x0 int, scale float64) {
+	winding := 0
+	start := 0.0
+	for _, c := range crossings {
+		prev := winding
+		winding += c.dir
+		switch {
+		case prev == 0 && winding != 0:
+			start = float64(c.x)
+		case prev != 0 && winding == 0:
+			fillSpan(start, float64(c.x), acc, x0, scale)
+		}
+	}
+}
+
+// fillSpan adds the coverage of one horizontal run to acc.
+func fillSpan(x1, x2 float64, acc []float64, x0 int, scale float64) {
+	x1 = x1*scale - float64(x0)
+	x2 = x2*scale - float64(x0)
+	if x2 <= x1 {
+		return
+	}
+	ix1 := int(math.Floor(x1))
+	ix2 := int(math.Ceil(x2))
+	for x := ix1; x < ix2; x++ {
+		if x < 0 || x >= len(acc) {
 			continue
 		}
-		ix1 := int(math.Floor(x1))
-		ix2 := int(math.Ceil(x2))
-		for x := ix1; x < ix2; x++ {
-			if x < 0 || x >= len(acc) {
-				continue
-			}
-			lo := math.Max(x1, float64(x))
-			hi := math.Min(x2, float64(x+1))
-			if hi > lo {
-				acc[x] += hi - lo
-			}
+		lo := math.Max(x1, float64(x))
+		hi := math.Min(x2, float64(x+1))
+		if hi > lo {
+			acc[x] += hi - lo
 		}
 	}
 }

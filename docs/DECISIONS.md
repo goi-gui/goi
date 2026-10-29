@@ -410,6 +410,14 @@ batch. This is what the display list will feed.
   700 and 900; `text.NearestWeight` picks the closest for any declared value, and
   both the measurer and the painter call it, so a `weight: 600` measures and
   draws with bold instead of measuring regular and drawing bold.
+- **Glyph fill is nonzero winding, not even-odd.** TrueType outlines overlap
+  themselves: the stem and crossbar of a "t" are separate contours that cross,
+  and a bowl meets its stem. An even-odd fill counts the overlap as a hole, so
+  every place two strokes meet showed a white gap. The rasterizer now tracks the
+  winding direction of each scanline crossing and fills where the winding is
+  nonzero; counters still carve because they are wound the opposite way. Two
+  tests cover it: an artificial overlap must be solid, and a rasterized "t" must
+  have no transparent pixel enclosed by ink.
 - **What is intentionally shallow for now:** DatePicker and TimePicker render a
   month grid and a clock dial but do not edit a date; FABMenu renders the FAB and
   leaves its expanded item list to app content; Slider drags but has no keyboard
