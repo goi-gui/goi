@@ -384,13 +384,29 @@ batch. This is what the display list will feed.
   by word; Ctrl+Backspace and Ctrl+Delete remove one word plus its separator
   per press, and Alt works as the second word-delete modifier. A live selection
   still wins over the modifier, so Ctrl+A then delete behaves like any editor.
+- **IME composition is a separate field, not part of the value.** `Component.Preedit`
+  and `PreeditCaret` hold text the input method has not committed; paint draws
+  it at the caret with an underline, the caret sits inside it, and the
+  caret-follow scroll counts its width. It only enters `Text` on commit, so a
+  cancelled composition leaves no trace and nothing downstream sees half-chosen
+  characters. `DeleteSurrounding` is implemented because an IME corrects text it
+  already committed.
+- **The IME connection is bound on GLFW's own Wayland display.** `zwp_text_input_v3`
+  is a second client on the display GLFW already owns, so there is no extra
+  connection or event loop. The caret rectangle is pushed on focus and after
+  every edit so the candidate window sits next to the text. `internal/platform/ti3.c`
+  is wayland-scanner output with one change: the core `wl_surface`/`wl_seat`
+  interface pointers are resolved with `dlsym` at runtime, because Go's internal
+  linker cannot resolve those data relocations and this project needs internal
+  linking for WebGPU. Other platforms get a no-op.
 - **What is intentionally shallow for now:** DatePicker and TimePicker render a
   month grid and a clock dial but do not edit a date; FABMenu renders the FAB and
   leaves its expanded item list to app content; Slider drags but has no keyboard
   handling. There is no scrollbar, no fling/inertia and no mouse-wheel axis
   other than the container's. These are visual and behavioural follow-ups, not
   missing elements.
-- **Not in v1 still:** IME composition preview; `Image`, scrollbars and full
-  accessibility. The previous phase notes that say "Checkbox deferred" are
-  superseded: Checkbox, RadioButton, Switch and the rest of the component set
-  now exist.
+- **Not in v1 still:** `Image`, scrollbars and full accessibility. IME
+  composition now shows as underlined preedit on Wayland; per-clause styling of
+  the composition (the protocol's cursor range) is drawn as one run. The previous
+  phase notes that say "Checkbox deferred" are superseded: Checkbox,
+  RadioButton, Switch and the rest of the component set now exist.

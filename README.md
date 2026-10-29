@@ -87,6 +87,8 @@ make scroll    # scrolling page, horizontal strip, ripple
   dialog or a snackbar paints over the page exactly as the tree orders it.
 - Window-level keys: `win.OnKey` sees every key press, focused or not, which is
   how a modal drawer closes on Escape.
+- Text editing: selection, clipboard, word and line keys, a value that scrolls
+  to keep the caret in view, and IME composition drawn as underlined preedit.
 - Hot reload: edit the file, the window updates; broken files keep the last good
   tree and print diagnostics.
 
@@ -97,8 +99,8 @@ and [docs/DECISIONS.md](docs/DECISIONS.md).
 
 Bindings that push Go state back into `.ui` values (the file is evaluated, not
 observed), animations, dynamic color and custom themes, accessibility tree,
-multiple windows, drag and drop, custom components in `.ui`, IME composition
-preview, and the Image widget.
+multiple windows, drag and drop, custom components in `.ui`, and the Image
+widget. IME composition shows as underlined preedit on Wayland.
 
 ## Tests
 
