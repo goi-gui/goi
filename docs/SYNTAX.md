@@ -101,6 +101,7 @@ by `:` and a child element when it is followed by `{`, so `name: value` and
 | `480`, `32.5`, `-1` | number | one numeric type everywhere (`float64`) |
 | `true`, `false` | bool | |
 | `#rgb`, `#rrggbb`, `#rrggbbaa` | color | alpha defaults to `ff`; `"#rrggbb"` quoted also works |
+| `surfaceContainerHigh` | color role | a theme name, so it follows light/dark; any role in the M3 scheme, typo hints included |
 | `{ base: 8, md: 16 }` | map | responsive value, one entry per breakpoint |
 
 ## Elements

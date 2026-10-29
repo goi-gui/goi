@@ -394,7 +394,7 @@ Window {
 									right: 16
 									bottom: 64
 									height: 4
-									background: #6750A4
+									background: primary
 									radius: 2
 								}
 							}
@@ -406,9 +406,10 @@ Window {
 							Column {
 								width: 320
 								spacing: 8
-								Rectangle { id: demoBase width: 240 height: 10 background: #6750A4 radius: 5 }
-								Rectangle { width: demoBase.width / 2 height: 10 background: #4F378B radius: 5 }
-								Rectangle { width: 50% height: 10 background: #D0BCFF radius: 5 }
+								// Named roles instead of hex: these follow the scheme.
+								Rectangle { id: demoBase width: 240 height: 10 background: primary radius: 5 }
+								Rectangle { width: demoBase.width / 2 height: 10 background: secondary radius: 5 }
+								Rectangle { width: 50% height: 10 background: tertiary radius: 5 }
 							}
 							Text {
 								text: "A reference, a division and a percentage of the parent."

@@ -465,6 +465,13 @@ batch. This is what the display list will feed.
   gallery dropped its hard-coded `#FEF7FF`: a fixed light literal cannot follow a
   dark scheme. Content colours follow the same rule, so the positioned example uses
   a `Card` as its plate instead of a lavender `Rectangle`.
+- **A design names colors by role, not by hex.** `background: surfaceContainerHigh`
+  stores the role name on the node and a resolver rewrites the cell from the
+  current scheme once per tick, so a role follows a theme switch with no per
+  component work and no stale paint. Hex still works and wins: a literal is a
+  deliberate fixed color, which is what a scrim wants. The role list lives in
+  `m3.Colors.Role`, a test reflects over `Colors` so a new field cannot be
+  forgotten, and the validator suggests the nearest role on a typo.
 - **Theme has two entry points and one owner.** The gallery exposes it as the
   app-bar trailing icon and as a `Switch` on the Layout page; both call one
   function that writes `Window.theme`, so they cannot disagree, and the state

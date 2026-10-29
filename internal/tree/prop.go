@@ -87,6 +87,9 @@ type NamedProp struct {
 	// CopyFrom copies the value of another node's property of the same name and
 	// type. Hot reload uses it to carry Go-set values across a reload.
 	CopyFrom func(NamedProp) bool
+	// SetColor writes a resolved 0xRRGGBBAA without going through a literal.
+	// Only color properties set it; the theme resolver uses it.
+	SetColor func(uint32)
 	// goSet reports whether Go changed this property.
 	goSet func() bool
 }
@@ -189,18 +192,26 @@ func ColorProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[uint32]) Named
 		SetLiteral: func(v syntax.Value) bool {
 			switch c := v.(type) {
 			case *syntax.Color:
+				b.clearColorRole(name)
 				p.val = c.RGBA
 			case *syntax.String:
 				rgba, ok := ParseHexColor(c.Val)
 				if !ok {
 					return false
 				}
+				b.clearColorRole(name)
 				p.val = rgba
+			case *syntax.Ident:
+				// A bare word is a theme role, resolved by ResolveColors.
+				if !b.setColorRole(name, c.Val) {
+					return false
+				}
 			default:
 				return false
 			}
 			return true
 		},
+		SetColor: func(rgba uint32) { p.val = rgba },
 		CopyFrom: func(src NamedProp) bool {
 			v, ok := src.Get().(uint32)
 			if !ok {

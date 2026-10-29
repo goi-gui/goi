@@ -13,8 +13,13 @@ type Tree struct {
 	ids  map[string]Node
 	// responsive lists the nodes that declared at least one breakpoint map.
 	responsive []*NodeBase
-	// numericNodes lists the nodes with at least one expression property.
+	// numerics lists the nodes with at least one expression property.
 	numericNodes []*NodeBase
+	// colorNodes lists the nodes with at least one role-valued color.
+	colorNodes []*NodeBase
+	// viewW and viewH are the last viewport in logical pixels, so an expression
+	// can read window.width and window.height.
+	viewW, viewH float64
 }
 
 // ByID returns the node with the given id.

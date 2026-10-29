@@ -181,6 +181,25 @@ func TestExpressionValues(t *testing.T) {
 	}
 }
 
+// TestColorRoles checks the role names a .ui file can use for a color, and that
+// a typo points at the nearest role instead of failing at paint time.
+func TestColorRoles(t *testing.T) {
+	_, diag := validate(t, `Window {
+		background: surface
+		Column {
+			Rectangle { id: a background: surfaceContainerHigh borderColor: outlineVariant }
+			Text { text: "hi" color: onSurfaceVariant }
+			Text { text: "typo" color: surfaceContanerHigh }
+		}
+	}`)
+	if len(diag) != 1 {
+		t.Fatalf("want one diagnostic, got %v", diag)
+	}
+	if diag[0].Hint == "" || !strings.Contains(diag[0].Hint, "surfaceContainerHigh") {
+		t.Fatalf("hint = %q, want the nearest role", diag[0].Hint)
+	}
+}
+
 func TestVisibleOnComponents(t *testing.T) {
 	_, diag := validate(t, `Window {
 		Column {

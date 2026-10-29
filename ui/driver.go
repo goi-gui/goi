@@ -159,7 +159,14 @@ func (a *App) frame() {
 
 	// Responsive properties follow the window width. Applying them marks the
 	// tree dirty when a value changes, so this runs before the frame check.
-	a.win.tree.ApplyBreakpoints(float64(d.pendingW) / float64(maxScale(d.pendingScale)))
+	logicalW := float64(d.pendingW) / float64(maxScale(d.pendingScale))
+	logicalH := float64(d.pendingH) / float64(maxScale(d.pendingScale))
+	a.win.tree.ApplyBreakpoints(logicalW)
+	// Role colors follow the scheme, so a theme change needs no per-component
+	// work and a role declared in .ui never goes stale.
+	if a.win.tree.ResolveColors(themeFor(a.win).Colors.Role) {
+		a.needsFrame = true
+	}
 
 	if !a.needsFrame {
 		return
