@@ -486,6 +486,87 @@ func (i *interactor) Char(r rune) {
 	i.insert(f, string(r))
 }
 
+// Preedit shows the IME composition in the focused field. It is not part of the
+// value until the input method commits it.
+func (i *interactor) Preedit(text string, caret int) {
+	f := i.focus
+	if f == nil || !isTextField(f) {
+		return
+	}
+	f.SetPreedit(text, caret)
+	f.Base().MarkDirty(tree.DirtyPaint)
+	i.markDirty()
+}
+
+// CommitText replaces the composition with finished text, over any selection.
+func (i *interactor) CommitText(text string) {
+	f := i.focus
+	if f == nil || !isTextField(f) {
+		return
+	}
+	f.ClearPreedit()
+	f.Base().MarkDirty(tree.DirtyPaint)
+	i.insert(f, text)
+	i.imeSync()
+}
+
+// DeleteSurrounding removes text around the caret on the input method's
+// request, which is how an IME corrects input it already committed.
+func (i *interactor) DeleteSurrounding(before, after int) {
+	f := i.focus
+	if f == nil || !isTextField(f) {
+		return
+	}
+	s := f.Text.Get()
+	c := f.Caret
+	a := clampRune(s, c-before)
+	b := clampRune(s, c+after)
+	i.deleteRange(f, a, b)
+	i.imeSync()
+}
+
+// minInt returns the smaller of two ints.
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// isTextField reports whether the component takes IME input.
+func isTextField(c *tree.Component) bool {
+	n := c.Base().Node()
+	return n != nil && (n.Kind() == "TextField" || n.Kind() == "SearchBar")
+}
+
+// imeSync tells the platform input method whether a field is focused and where
+// its caret is, so composition and the candidate window follow the text.
+func (i *interactor) imeSync() {
+	d, ok := i.app.driver.(*gpuDriver)
+	if !ok || d == nil || d.win == nil {
+		return
+	}
+	f := i.focus
+	if f == nil || !isTextField(f) {
+		d.win.SetTextInput(false, 0, 0, 0, 0)
+		return
+	}
+	n := i.focusNode(f)
+	if n == nil {
+		return
+	}
+	box := fieldTextBox(n)
+	// The caret sits after the value up to the caret, plus any composition
+	// text before its own caret.
+	value := f.Text.Get()
+	x := fieldTextStart(n) + i.textWidth(value[:minInt(f.Caret, len(value))])
+	if f.Preedit != "" {
+		x += i.textWidth(f.Preedit[:minInt(f.PreeditCaret, len(f.Preedit))])
+	}
+	y := box.Y + box.H/2 - 10
+	d.win.SetTextInput(true, x, y, 2, 20)
+}
+
 func (i *interactor) Focus(focused bool) {
 	if !focused {
 		i.setFocus(nil)
@@ -511,6 +592,9 @@ func (i *interactor) Resize(width, height int, scale float32) {
 func (i *interactor) Close() { i.app.Quit() }
 
 func (i *interactor) markDirty() {
+	// Every edit ends here, so this is the one place that keeps the input
+	// method's caret in step with the field. The platform layer drops repeats.
+	i.imeSync()
 	i.app.needsFrame = true
 	if i.app.driver != nil {
 		i.app.driver.wake()
@@ -635,6 +719,9 @@ func (i *interactor) setFocus(c *tree.Component) {
 		return
 	}
 	if i.focus != nil {
+		// Leaving a field ends its composition: the input method will not
+		// commit text for a field the user has left.
+		i.focus.ClearPreedit()
 		i.focus.Focused = false
 		i.focus.Base().MarkDirty(tree.DirtyPaint)
 	}
@@ -643,6 +730,7 @@ func (i *interactor) setFocus(c *tree.Component) {
 		c.Focused = true
 		c.Base().MarkDirty(tree.DirtyPaint)
 	}
+	i.imeSync()
 	i.markDirty()
 }
 

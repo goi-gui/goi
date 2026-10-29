@@ -237,6 +237,78 @@ func TestTextFieldDragAutoScroll(t *testing.T) {
 	}
 }
 
+// TestIMEPreeditAndCommit checks the composition lifecycle: preedit stays out of
+// the value, a commit replaces it, and leaving the field drops it.
+func TestIMEPreeditAndCommit(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		Column {
+			TextField { id: field width: 200 height: 56 }
+			TextField { id: other width: 200 height: 56 }
+		}
+	}`, 480, 320)
+	field := MustByID[*TextField](win, "field")
+	b := absoluteRect(field)
+	in.MouseDown(b.X+10, b.Y+10, 0, false) // focus it
+
+	in.Char('a')
+	in.Preedit("にほん", 9) // three runes, caret at the end
+	if got := field.Preedit; got != "にほん" {
+		t.Fatalf("preedit = %q", got)
+	}
+	if got := field.Text.Get(); got != "a" {
+		t.Fatalf("value = %q, composition must not touch it", got)
+	}
+
+	// A commit lands where the composition sat and clears it.
+	in.CommitText("日本")
+	if got := field.Text.Get(); got != "a日本" {
+		t.Fatalf("value after commit = %q", got)
+	}
+	if field.Preedit != "" {
+		t.Fatalf("preedit = %q after commit, want empty", field.Preedit)
+	}
+	if got := field.Caret; got != len("a日本") {
+		t.Fatalf("caret = %d, want %d", got, len("a日本"))
+	}
+
+	// Escape or a click elsewhere drops an unfinished composition.
+	in.Preedit("か", 3)
+	other := MustByID[*TextField](win, "other")
+	ob := absoluteRect(other)
+	in.MouseDown(ob.X+10, ob.Y+10, 0, false)
+	if field.Preedit != "" {
+		t.Fatalf("preedit = %q after leaving the field", field.Preedit)
+	}
+}
+
+// TestIMEDeleteSurrounding checks the correction path an IME uses after it has
+// already committed text.
+func TestIMEDeleteSurrounding(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		TextField { id: field width: 200 height: 56 }
+	}`, 480, 320)
+	field := MustByID[*TextField](win, "field")
+	b := absoluteRect(field)
+	in.MouseDown(b.X+10, b.Y+10, 0, false)
+	for _, r := range "hello world" {
+		in.Char(r)
+	}
+
+	in.DeleteSurrounding(5, 0) // drop "world"
+	if got := field.Text.Get(); got != "hello " {
+		t.Fatalf("after delete before = %q", got)
+	}
+	if got := field.Caret; got != len("hello ") {
+		t.Fatalf("caret = %d", got)
+	}
+
+	in.key(home, noMods)
+	in.DeleteSurrounding(0, len("hello "))
+	if got := field.Text.Get(); got != "" {
+		t.Fatalf("after delete after = %q", got)
+	}
+}
+
 func TestTextInputWordEditing(t *testing.T) {
 	_, win, in := inputFixture(t, inputUI, 480, 320)
 	ti := MustByID[*TextField](win, "field")

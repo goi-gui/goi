@@ -232,20 +232,53 @@ func (l *List) ripple(c *tree.Component, r tree.Rect, radius float64, color uint
 
 // textShift keeps the caret inside a text box: the value text is moved left by
 // this many pixels so the caret sits at most caretPad from the right edge, and
-// never before the left edge. An unfocused field shows the start of the text.
-func textShift(l *List, s string, caret int, width float64, st m3.TextStyle) float64 {
-	if width <= 0 || caret < 0 {
+// never before the left edge. caretX is the caret's distance from the text
+// start, IME composition included.
+func textShift(caretX, width float64) float64 {
+	if width <= 0 || caretX <= 0 {
 		return 0
-	}
-	if caret > len(s) {
-		caret = len(s)
 	}
 	const caretPad = 2.0 // the caret itself is 2dp wide
-	x := textWidth(l, s[:caret], st)
-	if x <= width-caretPad {
+	if caretX <= width-caretPad {
 		return 0
 	}
-	return x - (width - caretPad)
+	return caretX - (width - caretPad)
+}
+
+// fieldCaretX is where the caret sits inside a field's value, composition
+// included, in pixels from the start of the text.
+func fieldCaretX(l *List, c *tree.Component, st m3.TextStyle) float64 {
+	s := c.Text.Get()
+	n := minInt(c.Caret, len(s))
+	if n < 0 {
+		n = 0
+	}
+	x := textWidth(l, s[:n], st)
+	if p := c.Preedit; p != "" {
+		m := minInt(c.PreeditCaret, len(p))
+		if m < 0 {
+			m = 0
+		}
+		x += textWidth(l, p[:m], st)
+	}
+	return x
+}
+
+// preedit draws IME composition text at x, top y, with an underline under it.
+// underlineY is the baseline of that rule. Underlining the whole run is enough
+// to read as provisional; per-clause styling (the protocol's cursor range) is
+// not drawn yet.
+func (l *List) preedit(text string, x, y float64, st m3.TextStyle, color uint32, underlineY float64, clip tree.Rect) {
+	if text == "" {
+		return
+	}
+	w := textWidth(l, text, st)
+	l.textIn(text, st, color, tree.Rect{X: x, Y: y, W: w, H: 26}, AlignStart, clip)
+	l.Ops = append(l.Ops, Op{
+		Kind: Fill, Shape: RoundedRect,
+		Rect:  [4]float32{float32(x), float32(underlineY), float32(w), 1},
+		Color: color, Clip: clipArr(clip),
+	})
 }
 
 // radiusFor resolves a shape scale value; ShapeFull becomes half the short side.
@@ -917,7 +950,7 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	}
 
 	// Floating label: sits above the value once the field has content or focus.
-	hasValue := c.Text.Get() != "" || c.Focused
+	hasValue := c.Text.Get() != "" || c.Preedit != "" || c.Focused
 	lx := r.X + 16
 	textW := r.W - 32
 	if c.Icon.Get() != "" {
@@ -935,7 +968,7 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	// inside the text box.
 	c.TextScroll = 0
 	if c.Focused {
-		c.TextScroll = textShift(l, c.Text.Get(), c.Caret, textW, labelStyle)
+		c.TextScroll = textShift(fieldCaretX(l, c, labelStyle), textW)
 	}
 	shift := c.TextScroll
 	textClip := intersect(clip, tree.Rect{X: lx, Y: r.Y, W: textW, H: r.H})
@@ -962,6 +995,14 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 			tree.Rect{X: lx, Y: r.Y + 8, W: textW, H: 16}, AlignStart, clip)
 		l.textIn(c.Text.Get(), labelStyle, fg,
 			tree.Rect{X: lx - shift, Y: r.Y + 22, W: textW + shift, H: 26}, AlignStart, textClip)
+		// IME composition: inserted at the caret, underlined so it reads as
+		// provisional. The caret then sits inside it, not after it.
+		if c.Preedit != "" {
+			value := c.Text.Get()
+			n := minInt(c.Caret, len(value))
+			px := lx - shift + textWidth(l, value[:n], labelStyle)
+			l.preedit(c.Preedit, px, r.Y+22, labelStyle, fg, r.Y+44, textClip)
+		}
 	} else {
 		label := c.Label.Get()
 		if label == "" {
@@ -979,10 +1020,7 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 
 	// Caret.
 	if c.Focused {
-		caretX := lx - shift
-		if n := minInt(c.Caret, len(c.Text.Get())); n > 0 {
-			caretX += textWidth(l, c.Text.Get()[:n], labelStyle)
-		}
+		caretX := lx - shift + fieldCaretX(l, c, labelStyle)
 		caretTop := r.Y + 26
 		l.Ops = append(l.Ops, Op{
 			Kind: Fill, Shape: RoundedRect,
@@ -1017,7 +1055,7 @@ func (l *List) paintSearchBar(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	// under the trailing icon.
 	c.TextScroll = 0
 	if c.Focused {
-		c.TextScroll = textShift(l, c.Text.Get(), c.Caret, r.W-104, style)
+		c.TextScroll = textShift(fieldCaretX(l, c, style), r.W-104)
 	}
 	shift := c.TextScroll
 	// Glyphs stay inside the fixed text box; only the text itself moves, so a
@@ -1055,11 +1093,16 @@ func (l *List) paintSearchBar(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		l.textIn(text, style, fg,
 			tree.Rect{X: start, Y: r.Y, W: r.W - 104 + shift, H: r.H}, AlignStart, textClip)
 	}
+	if c.Preedit != "" && c.Focused {
+		value := c.Text.Get()
+		n := minInt(c.Caret, len(value))
+		px := start + textWidth(l, value[:n], style)
+		l.preedit(c.Preedit, px, line.Y, style, fg, line.Y+22, textClip)
+	}
 	// Caret, so typing into the bar is visible. Search has no label band, so the
 	// caret uses the full line height.
 	if c.Focused {
-		n := minInt(c.Caret, len(c.Text.Get()))
-		x := start + textWidth(l, c.Text.Get()[:n], style)
+		x := start + fieldCaretX(l, c, style)
 		l.Ops = append(l.Ops, Op{
 			Kind: Fill, Shape: RoundedRect,
 			Rect:  [4]float32{float32(x), float32(line.Y), 2, 20},

@@ -59,3 +59,19 @@ func snapIndex(s string, i int) int {
 	}
 	return i
 }
+
+// SetPreedit replaces the IME composition text and its caret. The caret is a
+// byte index snapped to a rune boundary; a negative value means the end.
+func (c *Component) SetPreedit(text string, caret int) {
+	if caret < 0 || caret > len(text) {
+		caret = len(text)
+	}
+	c.Preedit = text
+	c.PreeditCaret = snapIndex(text, caret)
+}
+
+// ClearPreedit drops the composition without touching the value.
+func (c *Component) ClearPreedit() {
+	c.Preedit = ""
+	c.PreeditCaret = 0
+}

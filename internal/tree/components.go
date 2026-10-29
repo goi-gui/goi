@@ -62,6 +62,12 @@ type Component struct {
 	RippleY  float64
 	// Caret for text fields.
 	Caret int
+	// Preedit is the IME composition that is not committed yet. It is drawn
+	// after the value but is not part of Text until the input method commits.
+	Preedit string
+	// PreeditCaret is the caret position inside Preedit, in bytes; -1 means the
+	// end (the usual case while composing).
+	PreeditCaret int
 	// TextScroll is how far the value text is shifted left so the caret stays
 	// in view. Paint computes it; input reads it to map clicks back to indices.
 	TextScroll float64

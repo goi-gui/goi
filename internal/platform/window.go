@@ -18,6 +18,14 @@ type Input interface {
 	Scroll(dx, dy float64)
 	Key(key Key, mods Mods)
 	Char(r rune)
+	// Preedit carries the not-yet-committed IME composition and the caret
+	// position inside it; an empty string ends the composition.
+	Preedit(text string, caret int)
+	// CommitText replaces any composition with finished text.
+	CommitText(text string)
+	// DeleteSurrounding removes text around the caret, as an IME asks when it
+	// corrects earlier input.
+	DeleteSurrounding(before, after int)
 	Focus(focused bool)
 	Resize(width, height int, scale float32)
 	Close()
@@ -63,6 +71,26 @@ type Window struct {
 	// cursor position, in logical pixels, kept here so press and release can
 	// report the same point.
 	cx, cy float64
+
+	// ime is the input-method connection, nil when the platform has none.
+	ime imeConn
+}
+
+// imeConn is a platform input-method connection. Wayland implements it with
+// text-input-v3; other platforms leave it nil.
+type imeConn interface {
+	setFocus(active bool, x, y, w, h int)
+	destroy()
+}
+
+// SetTextInput tells the input method whether a text field is focused and where
+// its caret is, so composed text and the candidate window land in the right
+// place. It is a no-op on platforms without IME support.
+func (p *Window) SetTextInput(active bool, x, y, w, h float64) {
+	if p.ime == nil {
+		return
+	}
+	p.ime.setFocus(active, int(x), int(y), int(w), int(h))
 }
 
 // New creates the window. Call ShimInit once on the main goroutine first.
@@ -201,7 +229,13 @@ func (p *Window) Visible() bool {
 func (p *Window) ShouldClose() bool { return p.win.ShouldClose() }
 
 // Destroy tears the window down.
-func (p *Window) Destroy() { p.win.Destroy() }
+func (p *Window) Destroy() {
+	if p.ime != nil {
+		p.ime.destroy()
+		p.ime = nil
+	}
+	p.win.Destroy()
+}
 
 // PollEvents processes pending input without blocking.
 func PollEvents() { glfw.PollEvents() }

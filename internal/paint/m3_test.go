@@ -229,6 +229,40 @@ func TestTextFieldSelectionIsHighlighted(t *testing.T) {
 	t.Fatalf("no selection band:\n%s", l.Dump())
 }
 
+// TestPreeditIsDrawnUnderlined checks IME composition is painted after the
+// value with an underline, so provisional text reads differently from committed
+// text.
+func TestPreeditIsDrawnUnderlined(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window {
+		TextField { id: field width: 240 height: 56 }
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 400, 400)
+	n, _ := tr.ByID("field")
+	c := n.(*tree.TextField).M3()
+	c.Text.Set("ab")
+	c.Caret = 2
+	c.Focused = true
+	c.SetPreedit("にほん", -1)
+
+	l := &List{}
+	l.Build(tr, 400, 400)
+	var text, rule bool
+	for _, op := range l.Ops {
+		if op.Kind == Text && op.Text == "にほん" {
+			text = true
+		}
+		if op.Kind == Fill && op.Rect[3] == 1 {
+			rule = true
+		}
+	}
+	if !text || !rule {
+		t.Fatalf("preedit text=%v underline=%v\n%s", text, rule, l.Dump())
+	}
+}
+
 // TestTextFieldScrollsInsteadOfOverflowing checks a focused field keeps the
 // caret in view by scrolling the value, and clips glyphs to the text box.
 func TestTextFieldScrollsInsteadOfOverflowing(t *testing.T) {

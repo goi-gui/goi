@@ -71,6 +71,8 @@ func (a *App) initWindow(w *Window) error {
 	d.lastTick = time.Now()
 	d.input = &interactor{app: a, tree: w.tree, measure: d.list.Measure}
 	pw.SetInput(d.input)
+	// IME composition needs the input sink above, so it is wired second.
+	pw.InitTextInput()
 	a.driver = d
 
 	fw, fh := pw.FramebufferSize()
