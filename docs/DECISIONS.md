@@ -374,10 +374,16 @@ batch. This is what the display list will feed.
   `fieldTextStart` subtracts the same shift, so a click maps to the character
   actually under the pointer. Unfocused fields show the start of the value.
   SearchBar uses the same rule with its own 52dp inset.
+- **Dragging a selection past the edge auto-scrolls.** While a text selection
+  drag is live, `tick` keeps moving the x used for caret mapping at 600dp/s
+  when the pointer is outside the field's text box, so text that started
+  off-screen can be selected without releasing. Only that mapping x moves, not
+  the pointer, so releasing still selects what it points at. The field's own
+  text box comes from `fieldTextBox`, shared with the caret mapping.
 - **Word editing follows the Linux convention.** Ctrl+Left/Right move the caret
   by word; Ctrl+Backspace and Ctrl+Delete remove one word plus its separator
-  per press. A live selection still wins over the modifier, so Ctrl+A then
-  delete behaves like any editor.
+  per press, and Alt works as the second word-delete modifier. A live selection
+  still wins over the modifier, so Ctrl+A then delete behaves like any editor.
 - **What is intentionally shallow for now:** DatePicker and TimePicker render a
   month grid and a clock dial but do not edit a date; FABMenu renders the FAB and
   leaves its expanded item list to app content; Slider drags but has no keyboard

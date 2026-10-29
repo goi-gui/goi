@@ -41,8 +41,12 @@ type interactor struct {
 	// textField is the field the pointer went down on, and selecting marks a
 	// drag that extends its selection. clickCount detects double and triple
 	// clicks by time and distance.
-	textField  *tree.Component
-	selecting  bool
+	textField *tree.Component
+	selecting bool
+	// dragX is the x used for caret mapping while dragging a selection. It
+	// keeps moving on its own when the pointer sits past the field edge, which
+	// is what scrolls a long value instead of stopping at the visible end.
+	dragX      float64
 	clickCount int
 	lastClick  time.Time
 	lastClickX float64
@@ -99,6 +103,7 @@ func clickable(n tree.Node) bool {
 func (i *interactor) MouseMove(x, y float64) {
 	i.cursorX, i.cursorY = x, y
 	if i.selecting && i.textField != nil {
+		i.dragX = x
 		i.caretFromPoint(i.textField, x, true)
 		return
 	}
@@ -159,6 +164,7 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 		if button == 0 {
 			i.textField = field
 			i.selecting = true
+			i.dragX = x
 			i.pressText(field, x, y, shift)
 		}
 		return
@@ -413,6 +419,8 @@ func (i *interactor) key(k tree.Key, mods tree.Mods) {
 		return
 	}
 	ctrl, shift := mods.Control(), mods.Shift
+	// Alt is the other common word-delete modifier on Linux (Emacs style).
+	word := ctrl || mods.Alt
 	switch k {
 	case tree.KeyA:
 		if ctrl {
@@ -435,7 +443,7 @@ func (i *interactor) key(k tree.Key, mods tree.Mods) {
 		}
 	case tree.KeyBackspace:
 		if !i.deleteSelection(f) {
-			if ctrl {
+			if word {
 				i.deleteRange(f, prevWord(f.Text.Get(), f.Caret), f.Caret)
 			} else {
 				i.deleteBefore(f)
@@ -443,7 +451,7 @@ func (i *interactor) key(k tree.Key, mods tree.Mods) {
 		}
 	case tree.KeyDelete:
 		if !i.deleteSelection(f) {
-			if ctrl {
+			if word {
 				i.deleteRange(f, f.Caret, nextWordEnd(f.Text.Get(), f.Caret))
 			} else {
 				i.deleteAfter(f)
@@ -779,20 +787,33 @@ func (i *interactor) indexAt(f *tree.Component, x float64) int {
 // horizontal scroll that keeps the caret in view. A search bar starts after its
 // own 52dp search icon instead.
 func fieldTextStart(n tree.Node) float64 {
-	box := absoluteRect(n)
 	c := comp(n)
 	if c == nil {
-		return box.X + 16
-	}
-	if n.Kind() == "SearchBar" {
-		return box.X + 52 - c.TextScroll
-	}
-	x := box.X + 16
-	if c.Icon.Get() != "" {
-		x += 40
+		return absoluteRect(n).X + 16
 	}
 	// The text may be scrolled left to keep the caret in view.
-	return x - c.TextScroll
+	return fieldTextBox(n).X - c.TextScroll
+}
+
+// fieldTextBox is the visible area the value text occupies, in window
+// coordinates. It matches the painter: 16dp inset plus room for icons, or the
+// 52dp search inset.
+func fieldTextBox(n tree.Node) tree.Rect {
+	box := absoluteRect(n)
+	if n.Kind() == "SearchBar" {
+		return tree.Rect{X: box.X + 52, Y: box.Y, W: box.W - 104, H: box.H}
+	}
+	x, w := box.X+16, box.W-32
+	if c := comp(n); c != nil {
+		if c.Icon.Get() != "" {
+			x += 40
+			w -= 40
+		}
+		if c.Trailing.Get() != "" {
+			w -= 40
+		}
+	}
+	return tree.Rect{X: x, Y: box.Y, W: w, H: box.H}
 }
 
 // textWidth is the advance width of field text, measured the same way the

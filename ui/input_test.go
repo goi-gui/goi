@@ -191,6 +191,52 @@ func TestTextFieldClickAfterScroll(t *testing.T) {
 	}
 }
 
+// TestTextFieldDragAutoScroll checks holding a selection drag past the right
+// edge keeps scrolling, so the pointer can reach text that started off-screen.
+func TestTextFieldDragAutoScroll(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		TextField { id: field width: 200 height: 56 }
+	}`, 480, 320)
+	field := MustByID[*TextField](win, "field")
+	long := "one two three four five six seven eight nine ten eleven twelve"
+	field.Text.Set(long)
+	b := absoluteRect(field)
+
+	in.MouseDown(b.X+10, b.Y+10, 0, false)
+	for _, r := range long {
+		in.Char(r)
+	}
+	rebuild := func() {
+		l := &paint.List{Measure: in.measure}
+		l.Build(win.Tree(), 480, 320)
+	}
+	rebuild()
+
+	// Start a selection near the left, then hold past the right edge.
+	in.MouseDown(b.X+20, b.Y+b.H/2, 0, false)
+	in.MouseMove(b.X+b.W+40, b.Y+b.H/2)
+	first := field.Caret
+	scroll := field.M3().TextScroll
+	for i := 0; i < 20; i++ {
+		if !in.tick(1.0 / 60) {
+			t.Fatal("tick stopped scrolling while the pointer was past the edge")
+		}
+		rebuild()
+	}
+	if field.M3().TextScroll <= scroll {
+		t.Fatalf("scroll = %v, want more than the first frame's %v", field.M3().TextScroll, scroll)
+	}
+	if field.Caret <= first {
+		t.Fatalf("caret = %d, want beyond the first frame's %d", field.Caret, first)
+	}
+
+	// Moving the pointer back inside stops the auto-scroll.
+	in.MouseMove(b.X+b.W/2, b.Y+b.H/2)
+	if in.tick(1.0 / 60) {
+		t.Fatal("auto-scroll kept running after the pointer returned inside")
+	}
+}
+
 func TestTextInputWordEditing(t *testing.T) {
 	_, win, in := inputFixture(t, inputUI, 480, 320)
 	ti := MustByID[*TextField](win, "field")
@@ -242,6 +288,20 @@ func TestTextInputWordEditing(t *testing.T) {
 	in.key(tree.KeyDelete, ctrl)
 	if got := ti.Text.Get(); got != "one" {
 		t.Fatalf("edge word deletes changed %q", got)
+	}
+
+	// Alt is the other word-delete modifier on Linux.
+	alt := tree.Mods{Alt: true}
+	reset()
+	typeWord("hello big world")
+	in.key(backspace, alt)
+	if got := ti.Text.Get(); got != "hello big " {
+		t.Fatalf("alt+backspace = %q", got)
+	}
+	in.key(home, noMods)
+	in.key(tree.KeyDelete, alt)
+	if got := ti.Text.Get(); got != "big " {
+		t.Fatalf("alt+delete = %q", got)
 	}
 }
 

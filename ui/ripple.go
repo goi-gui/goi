@@ -27,10 +27,13 @@ func (i *interactor) startRipple(n tree.Node, x, y float64) {
 }
 
 // tick advances every live ripple by dt seconds and reports whether another
-// frame is needed to finish them.
+// frame is needed to finish them. A selection drag that sits past the field
+// edge also keeps scrolling, so holding the pointer at the edge reveals the
+// rest of a long value.
 func (i *interactor) tick(dt float64) bool {
+	scrolling := i.autoScroll(dt)
 	if len(i.ripples) == 0 {
-		return false
+		return scrolling
 	}
 	live := i.ripples[:0]
 	for _, r := range i.ripples {
@@ -49,5 +52,34 @@ func (i *interactor) tick(dt float64) bool {
 		live = append(live, r)
 	}
 	i.ripples = live
-	return len(live) > 0
+	return len(live) > 0 || scrolling
+}
+
+// autoScrollPx is how fast a held drag scrolls a text field, in logical pixels
+// per second.
+const autoScrollPx = 600.0
+
+// autoScroll keeps a selection drag moving while the pointer is outside the
+// field's text box, and reports whether it moved the caret. Only the x used for
+// caret mapping moves, so releasing the pointer still selects what it points at.
+func (i *interactor) autoScroll(dt float64) bool {
+	if !i.selecting || i.textField == nil {
+		return false
+	}
+	n := i.focusNode(i.textField)
+	if n == nil {
+		return false
+	}
+	box := fieldTextBox(n)
+	step := autoScrollPx * dt
+	switch {
+	case i.dragX > box.Right():
+		i.dragX += step
+	case i.dragX < box.X:
+		i.dragX -= step
+	default:
+		return false
+	}
+	i.caretFromPoint(i.textField, i.dragX, true)
+	return true
 }
