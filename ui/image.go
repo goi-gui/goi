@@ -12,6 +12,10 @@ import (
 // loadImages decodes every Image element in a freshly built tree. Decoding is
 // cached by path, so a hot reload of a design with photos does not decode them
 // again, and a failed file is reported once instead of every frame.
+//
+// shortcut: src is read once, when the tree is built or reloaded. An expression
+// that changes src at runtime updates the string but not the bitmap; upgrade with
+// a per-frame check on Src when an app swaps images without a reload.
 func (a *App) loadImages(tr *tree.Tree) {
 	if tr == nil || a.assets == nil {
 		return
