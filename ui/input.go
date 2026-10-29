@@ -774,19 +774,25 @@ func (i *interactor) indexAt(f *tree.Component, x float64) int {
 	return best
 }
 
-// fieldTextStart is where the value text begins inside a field, matching the
-// painter: a 16dp inset plus room for a leading icon. A search bar starts after
-// its own 52dp search icon instead.
+// fieldTextStart is where the visible value text begins inside a field,
+// matching the painter: a 16dp inset plus room for a leading icon, minus the
+// horizontal scroll that keeps the caret in view. A search bar starts after its
+// own 52dp search icon instead.
 func fieldTextStart(n tree.Node) float64 {
 	box := absoluteRect(n)
+	c := comp(n)
+	if c == nil {
+		return box.X + 16
+	}
 	if n.Kind() == "SearchBar" {
-		return box.X + 52
+		return box.X + 52 - c.TextScroll
 	}
 	x := box.X + 16
-	if c := comp(n); c != nil && c.Icon.Get() != "" {
+	if c.Icon.Get() != "" {
 		x += 40
 	}
-	return x
+	// The text may be scrolled left to keep the caret in view.
+	return x - c.TextScroll
 }
 
 // textWidth is the advance width of field text, measured the same way the

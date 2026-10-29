@@ -368,6 +368,12 @@ batch. This is what the display list will feed.
   The mapping lives once in `fieldTextStart`, so pointer and paint cannot
   disagree. Search has no floating label band, so the caret is vertically
   centred instead of sitting in the value row of a TextField.
+- **Text fields scroll their value instead of overflowing.** `Component.TextScroll`
+  is the horizontal shift paint computes each frame so the caret stays inside
+  the text box; glyphs and the selection band are clipped to that box, and
+  `fieldTextStart` subtracts the same shift, so a click maps to the character
+  actually under the pointer. Unfocused fields show the start of the value.
+  SearchBar uses the same rule with its own 52dp inset.
 - **Word editing follows the Linux convention.** Ctrl+Left/Right move the caret
   by word; Ctrl+Backspace and Ctrl+Delete remove one word plus its separator
   per press. A live selection still wins over the modifier, so Ctrl+A then

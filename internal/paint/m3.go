@@ -230,6 +230,24 @@ func (l *List) ripple(c *tree.Component, r tree.Rect, radius float64, color uint
 	})
 }
 
+// textShift keeps the caret inside a text box: the value text is moved left by
+// this many pixels so the caret sits at most caretPad from the right edge, and
+// never before the left edge. An unfocused field shows the start of the text.
+func textShift(l *List, s string, caret int, width float64, st m3.TextStyle) float64 {
+	if width <= 0 || caret < 0 {
+		return 0
+	}
+	if caret > len(s) {
+		caret = len(s)
+	}
+	const caretPad = 2.0 // the caret itself is 2dp wide
+	x := textWidth(l, s[:caret], st)
+	if x <= width-caretPad {
+		return 0
+	}
+	return x - (width - caretPad)
+}
+
 // radiusFor resolves a shape scale value; ShapeFull becomes half the short side.
 func radiusFor(v float64, r tree.Rect) float64 {
 	if v == m3.ShapeFull || v < 0 {
@@ -912,18 +930,28 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	labelStyle := l.style("bodyLarge")
 	smallStyle := l.style("bodySmall")
 
+	// The value scrolls instead of running past the field edge: shift it left
+	// just enough for the caret to stay visible, and keep every value glyph
+	// inside the text box.
+	c.TextScroll = 0
+	if c.Focused {
+		c.TextScroll = textShift(l, c.Text.Get(), c.Caret, textW, labelStyle)
+	}
+	shift := c.TextScroll
+	textClip := intersect(clip, tree.Rect{X: lx, Y: r.Y, W: textW, H: r.H})
+
 	// Selection sits under the value, in the same box as the caret.
 	if c.Focused {
 		if a, b, ok := c.Selection(); ok {
 			s := c.Text.Get()
-			x0 := lx + textWidth(l, s[:a], labelStyle)
-			x1 := lx + textWidth(l, s[:b], labelStyle)
+			x0 := lx - shift + textWidth(l, s[:a], labelStyle)
+			x1 := lx - shift + textWidth(l, s[:b], labelStyle)
 			l.Ops = append(l.Ops, Op{
 				Kind: Fill, Shape: RoundedRect,
 				Rect:   [4]float32{float32(x0), float32(r.Y + 26), float32(x1 - x0), 20},
 				Radius: [4]float32{2, 2, 2, 2},
 				Color:  withAlpha(col.Primary, m3.SelectionOpacity),
-				Clip:   clipArr(clip),
+				Clip:   clipArr(textClip),
 			})
 		}
 	}
@@ -933,7 +961,7 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		l.textIn(c.Label.Get(), smallStyle, hint,
 			tree.Rect{X: lx, Y: r.Y + 8, W: textW, H: 16}, AlignStart, clip)
 		l.textIn(c.Text.Get(), labelStyle, fg,
-			tree.Rect{X: lx, Y: r.Y + 22, W: textW, H: 26}, AlignStart, clip)
+			tree.Rect{X: lx - shift, Y: r.Y + 22, W: textW + shift, H: 26}, AlignStart, textClip)
 	} else {
 		label := c.Label.Get()
 		if label == "" {
@@ -951,7 +979,7 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 
 	// Caret.
 	if c.Focused {
-		caretX := lx
+		caretX := lx - shift
 		if n := minInt(c.Caret, len(c.Text.Get())); n > 0 {
 			caretX += textWidth(l, c.Text.Get()[:n], labelStyle)
 		}
@@ -984,8 +1012,20 @@ func (l *List) paintSearchBar(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	hint := col.OnSurfaceVariant
 	l.iconIn("search", 24, hint, r.X+28, r.Y+r.H/2, clip)
 	start := r.X + 52
-	line := tree.Rect{X: start, Y: r.Y + r.H/2 - 10, W: r.W - 104, H: 20}
 	style := l.style("bodyLarge")
+	// Same caret-follow scroll as a text field, so a long query does not run
+	// under the trailing icon.
+	c.TextScroll = 0
+	if c.Focused {
+		c.TextScroll = textShift(l, c.Text.Get(), c.Caret, r.W-104, style)
+	}
+	shift := c.TextScroll
+	// Glyphs stay inside the fixed text box; only the text itself moves, so a
+	// long query slides under the leading icon instead of over it.
+	textBox := tree.Rect{X: r.X + 52, Y: r.Y, W: r.W - 104, H: r.H}
+	textClip := intersect(clip, textBox)
+	start -= shift
+	line := tree.Rect{X: start, Y: r.Y + r.H/2 - 10, W: r.W - 104 + shift, H: 20}
 
 	// Selection sits under the value, in the same line box as the caret.
 	if c.Focused {
@@ -998,7 +1038,7 @@ func (l *List) paintSearchBar(c *tree.Component, r tree.Rect, clip tree.Rect) {
 				Rect:   [4]float32{float32(x0), float32(line.Y), float32(x1 - x0), 20},
 				Radius: [4]float32{2, 2, 2, 2},
 				Color:  withAlpha(col.Primary, m3.SelectionOpacity),
-				Clip:   clipArr(clip),
+				Clip:   clipArr(textClip),
 			})
 		}
 	}
@@ -1010,9 +1050,10 @@ func (l *List) paintSearchBar(c *tree.Component, r tree.Rect, clip tree.Rect) {
 			text = c.Label.Get()
 		}
 		l.textIn(text, style, hint,
-			tree.Rect{X: start, Y: r.Y, W: r.W - 104, H: r.H}, AlignStart, clip)
+			tree.Rect{X: start, Y: r.Y, W: r.W - 104 + shift, H: r.H}, AlignStart, textClip)
 	} else {
-		l.textIn(text, style, fg, tree.Rect{X: start, Y: r.Y, W: r.W - 104, H: r.H}, AlignStart, clip)
+		l.textIn(text, style, fg,
+			tree.Rect{X: start, Y: r.Y, W: r.W - 104 + shift, H: r.H}, AlignStart, textClip)
 	}
 	// Caret, so typing into the bar is visible. Search has no label band, so the
 	// caret uses the full line height.

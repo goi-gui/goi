@@ -229,6 +229,55 @@ func TestTextFieldSelectionIsHighlighted(t *testing.T) {
 	t.Fatalf("no selection band:\n%s", l.Dump())
 }
 
+// TestTextFieldScrollsInsteadOfOverflowing checks a focused field keeps the
+// caret in view by scrolling the value, and clips glyphs to the text box.
+func TestTextFieldScrollsInsteadOfOverflowing(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window {
+		TextField { id: field label: "Name" width: 200 }
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 400, 400)
+	n, _ := tr.ByID("field")
+	c := n.(*tree.TextField).M3()
+	long := "a very long value that cannot fit inside one field"
+	c.Text.Set(long)
+	c.Caret = len(long)
+
+	// Unfocused: the start of the value is shown.
+	l := &List{}
+	l.Build(tr, 400, 400)
+	if c.TextScroll != 0 {
+		t.Fatalf("unfocused scroll = %v, want 0", c.TextScroll)
+	}
+
+	// Focused: the value scrolls left and glyphs are clipped to the text box.
+	c.Focused = true
+	l.Build(tr, 400, 400)
+	if c.TextScroll <= 0 {
+		t.Fatalf("focused scroll = %v, want the value moved left", c.TextScroll)
+	}
+	var value Op
+	found := false
+	for _, op := range l.Ops {
+		if op.Kind == Text && op.Text == long {
+			value, found = op, true
+		}
+	}
+	if !found {
+		t.Fatalf("no value op:\n%s", l.Dump())
+	}
+	if value.Clip == [4]float32{0, 0, 400, 400} {
+		t.Fatalf("value clip = %v, want the field's text box", value.Clip)
+	}
+	// The end of the value (where the caret sits) stays inside that box.
+	caretX := value.TextX + float32(textWidth(l, long, m3.Light().Type.BodyLarge))
+	if caretX > value.Clip[0]+value.Clip[2]+0.5 {
+		t.Fatalf("caret x = %v past the text box %v", caretX, value.Clip)
+	}
+}
+
 // TestSearchBarSelectionIsHighlighted mirrors the text field: a search bar is
 // editable, so a drag selection must paint the same band.
 func TestSearchBarSelectionIsHighlighted(t *testing.T) {

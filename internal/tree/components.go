@@ -62,6 +62,9 @@ type Component struct {
 	RippleY  float64
 	// Caret for text fields.
 	Caret int
+	// TextScroll is how far the value text is shifted left so the caret stays
+	// in view. Paint computes it; input reads it to map clicks back to indices.
+	TextScroll float64
 	// SelAnchor is the fixed end of a text selection; -1 means none.
 	SelAnchor int
 	// SelectedIndex for tab bars and navigation.

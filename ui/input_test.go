@@ -160,6 +160,37 @@ func TestSearchBarCaretAndSelection(t *testing.T) {
 	}
 }
 
+// TestTextFieldClickAfterScroll checks the click-to-index mapping follows the
+// scrolled text: a press near the right edge lands at the end of the value.
+func TestTextFieldClickAfterScroll(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		TextField { id: field width: 200 height: 56 }
+	}`, 480, 320)
+	field := MustByID[*TextField](win, "field")
+	long := "a very long value that cannot fit inside one field"
+	field.Text.Set(long)
+	b := absoluteRect(field)
+
+	in.MouseDown(b.X+10, b.Y+10, 0, false) // focus, caret at 0
+	for _, r := range long {
+		in.Char(r)
+	}
+	// Simulate the paint pass that keeps the caret in view.
+	field.M3().TextScroll = 0
+	l := &paint.List{Measure: in.measure}
+	l.Build(win.Tree(), 480, 320)
+
+	// A press at the right edge of the value area maps to the end of the text.
+	box := absoluteRect(field)
+	in.MouseDown(box.X+box.W-20, box.Y+box.H/2, 0, false)
+	if got := field.Caret; got < len(long)-2 {
+		t.Fatalf("caret = %d after clicking the visible end, want near %d", got, len(long))
+	}
+	if field.M3().TextScroll <= 0 {
+		t.Fatalf("scroll = %v, want the value shifted", field.M3().TextScroll)
+	}
+}
+
 func TestTextInputWordEditing(t *testing.T) {
 	_, win, in := inputFixture(t, inputUI, 480, 320)
 	ti := MustByID[*TextField](win, "field")
