@@ -229,6 +229,32 @@ func TestTextFieldSelectionIsHighlighted(t *testing.T) {
 	t.Fatalf("no selection band:\n%s", l.Dump())
 }
 
+// TestSearchBarSelectionIsHighlighted mirrors the text field: a search bar is
+// editable, so a drag selection must paint the same band.
+func TestSearchBarSelectionIsHighlighted(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window {
+		SearchBar { id: search text: "hello world" width: 300 }
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 400, 400)
+	n, _ := tr.ByID("search")
+	c := n.(*tree.SearchBar).M3()
+	c.Focused = true
+	c.SelAnchor, c.Caret = 0, 5
+
+	l := &List{}
+	l.Build(tr, 400, 400)
+	want := withAlpha(m3.Light().Colors.Primary, m3.SelectionOpacity)
+	for _, op := range l.Ops {
+		if op.Shape == RoundedRect && op.Color == want && op.Rect[2] > 0 {
+			return
+		}
+	}
+	t.Fatalf("no selection band:\n%s", l.Dump())
+}
+
 // TestSplitButtonPaintsTwoPills guards the Expressive shape: a leading pill and
 // a square menu pill with a 2dp gap, not one container with a divider.
 func TestSplitButtonPaintsTwoPills(t *testing.T) {

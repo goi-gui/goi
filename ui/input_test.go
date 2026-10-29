@@ -135,6 +135,31 @@ func TestSearchBarTyping(t *testing.T) {
 	}
 }
 
+// TestSearchBarCaretAndSelection checks the search bar maps pointer x to text
+// indices from its own 52dp text inset, and that dragging makes a selection.
+func TestSearchBarCaretAndSelection(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		SearchBar { id: search text: "hello world" width: 300 }
+	}`, 480, 320)
+	bar := MustByID[*SearchBar](win, "search")
+	b := absoluteRect(bar)
+	charW := 16 * 0.55
+
+	// A press starts the caret at the clicked character, not 36dp to the left.
+	in.MouseDown(b.X+52+charW*5, b.Y+b.H/2, 0, false)
+	if got := bar.Caret; got != 5 {
+		t.Fatalf("caret after click = %d, want 5", got)
+	}
+
+	// Drag back to the start selects "hello".
+	in.MouseMove(b.X+52, b.Y+b.H/2)
+	in.MouseUp(b.X+52, b.Y+b.H/2, 0)
+	a, z, ok := bar.Selection()
+	if !ok || a != 0 || z != 5 {
+		t.Fatalf("selection = %d..%d ok=%v, want 0..5", a, z, ok)
+	}
+}
+
 func TestSegmentedButtonModes(t *testing.T) {
 	_, win, in := inputFixture(t, `Window {
 		Column {

@@ -362,6 +362,12 @@ batch. This is what the display list will feed.
   `win.OnKey` closes the drawer on Escape even when nothing is focused.
   `NavigationDrawer` itself stays a painted panel: the framework does not own
   open/closed state.
+- **SearchBar edits like a TextField.** It shares the field hit-testing, focus,
+  caret mapping and selection, but starts its text 52dp in (after the search
+  icon) and paints the selection band on the same 20dp line box as the caret.
+  The mapping lives once in `fieldTextStart`, so pointer and paint cannot
+  disagree. Search has no floating label band, so the caret is vertically
+  centred instead of sitting in the value row of a TextField.
 - **What is intentionally shallow for now:** DatePicker and TimePicker render a
   month grid and a clock dial but do not edit a date; FABMenu renders the FAB and
   leaves its expanded item list to app content; Slider drags but has no keyboard

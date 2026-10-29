@@ -983,26 +983,45 @@ func (l *List) paintSearchBar(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	fg := disabledAlpha(c, col.OnSurface)
 	hint := col.OnSurfaceVariant
 	l.iconIn("search", 24, hint, r.X+28, r.Y+r.H/2, clip)
+	start := r.X + 52
+	line := tree.Rect{X: start, Y: r.Y + r.H/2 - 10, W: r.W - 104, H: 20}
+	style := l.style("bodyLarge")
+
+	// Selection sits under the value, in the same line box as the caret.
+	if c.Focused {
+		if a, b, ok := c.Selection(); ok {
+			s := c.Text.Get()
+			x0 := start + textWidth(l, s[:a], style)
+			x1 := start + textWidth(l, s[:b], style)
+			l.Ops = append(l.Ops, Op{
+				Kind: Fill, Shape: RoundedRect,
+				Rect:   [4]float32{float32(x0), float32(line.Y), float32(x1 - x0), 20},
+				Radius: [4]float32{2, 2, 2, 2},
+				Color:  withAlpha(col.Primary, m3.SelectionOpacity),
+				Clip:   clipArr(clip),
+			})
+		}
+	}
+
 	text := c.Text.Get()
 	if text == "" {
 		text = c.Placeholder.Get()
 		if text == "" {
 			text = c.Label.Get()
 		}
-		l.textIn(text, l.style("bodyLarge"), hint,
-			tree.Rect{X: r.X + 52, Y: r.Y, W: r.W - 104, H: r.H}, AlignStart, clip)
+		l.textIn(text, style, hint,
+			tree.Rect{X: start, Y: r.Y, W: r.W - 104, H: r.H}, AlignStart, clip)
 	} else {
-		l.textIn(text, l.style("bodyLarge"), fg,
-			tree.Rect{X: r.X + 52, Y: r.Y, W: r.W - 104, H: r.H}, AlignStart, clip)
+		l.textIn(text, style, fg, tree.Rect{X: start, Y: r.Y, W: r.W - 104, H: r.H}, AlignStart, clip)
 	}
 	// Caret, so typing into the bar is visible. Search has no label band, so the
 	// caret uses the full line height.
 	if c.Focused {
 		n := minInt(c.Caret, len(c.Text.Get()))
-		x := r.X + 52 + textWidth(l, c.Text.Get()[:n], l.style("bodyLarge"))
+		x := start + textWidth(l, c.Text.Get()[:n], style)
 		l.Ops = append(l.Ops, Op{
 			Kind: Fill, Shape: RoundedRect,
-			Rect:  [4]float32{float32(x), float32(r.Y + r.H/2 - 10), 2, 20},
+			Rect:  [4]float32{float32(x), float32(line.Y), 2, 20},
 			Color: col.Primary, Clip: clipArr(clip),
 		})
 	}
