@@ -145,6 +145,10 @@ var elements = func() []Element {
 			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
 		)},
 		{Name: "Rectangle", Children: false, Attrs: withCommon()},
+		{Name: "Image", Children: false, Attrs: withCommon(
+			Prop{Name: "src", Type: TypeString, Dirty: DirtyLayout, Default: ""},
+			Prop{Name: "fit", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"cover", "contain", "fill"}, Default: "cover"},
+		)},
 		{Name: "Text", Children: false, Attrs: withCommon(
 			Prop{Name: "text", Type: TypeString, Dirty: DirtyLayout, Default: ""},
 			Prop{Name: "fontSize", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},

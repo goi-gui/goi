@@ -1,5 +1,7 @@
 package tree
 
+import "github.com/ksckaan1/goui/internal/img"
+
 // Node is any element in the tree. The interface is intentionally narrow: all
 // state lives in NodeBase, and namedProps is the only per-type hook.
 type Node interface {
@@ -138,6 +140,29 @@ type Rectangle struct {
 func (r *Rectangle) Kind() string { return "Rectangle" }
 
 func (r *Rectangle) namedProps() []NamedProp { return commonProps(&r.NodeBase) }
+
+// Image draws a decoded bitmap. The ui layer fills Data from Src, because a node
+// has no way to read files; an empty Data draws the Background as a placeholder,
+// which keeps a missing file visible instead of blank.
+type Image struct {
+	NodeBase
+	Src  Prop[string]
+	Fit  Prop[string]
+	Data *img.Data
+	// LoadErr is the decode failure, if any. The ui layer reports it and the
+	// node keeps drawing its placeholder.
+	LoadErr error
+}
+
+// Kind implements Node.
+func (i *Image) Kind() string { return "Image" }
+
+func (i *Image) namedProps() []NamedProp {
+	return append(commonProps(&i.NodeBase),
+		StringProp(&i.NodeBase, "src", &i.Src),
+		EnumProp(&i.NodeBase, "fit", DirtyLayout, &i.Fit, "cover", "contain", "fill"),
+	)
+}
 
 // Text draws a single run of text. FontSize 0 means "use the M3 role in Role";
 // Role is one of the type-scale names (bodyMedium is the default).

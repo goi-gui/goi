@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ksckaan1/goui/internal/img"
 	"github.com/ksckaan1/goui/internal/m3"
 	"github.com/ksckaan1/goui/internal/tree"
 )
@@ -24,6 +25,8 @@ const (
 	Shadow
 	// Text is a run of glyphs.
 	Text
+	// Bitmap samples a decoded image.
+	Bitmap
 )
 
 // Shape is the geometry a Fill draws.
@@ -75,6 +78,11 @@ type Op struct {
 	// ClipRadius rounds the corners of Clip, so an op can stay inside a pill or
 	// a rounded card. 0 means a plain rectangle.
 	ClipRadius float32
+
+	// Bitmap fields. Src is the decoded image and UV is the crop inside it, in
+	// 0..1, so a cover or contain fit only changes the quad and the UVs.
+	Src *img.Data
+	UV  [4]float32
 
 	// Text fields.
 	Text     string
@@ -129,6 +137,9 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 	if t, ok := b.Node().(*tree.Text); ok {
 		l.paintText(t, r, clip)
 	}
+	if im, ok := b.Node().(*tree.Image); ok {
+		l.paintImage(im, r, clip)
+	}
 
 	inner := tree.Rect{
 		X: r.X + b.Padding() + b.BorderWidth(),
@@ -172,6 +183,9 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 	}
 	if t, ok := b.Node().(*tree.Text); ok {
 		l.paintText(t, r, clip)
+	}
+	if im, ok := b.Node().(*tree.Image); ok {
+		l.paintImage(im, r, clip)
 	}
 
 	inner := tree.Rect{
@@ -251,6 +265,50 @@ func (l *List) paintScrollbar(b *tree.NodeBase, r, inner tree.Rect, clip tree.Re
 			W: thumb, H: thickness,
 		}, col, thickness/2, 0, 0, clip)
 	}
+}
+
+// paintImage appends a bitmap op, cropping the source to the node's box with the
+// requested fit. A missing or undecoded image keeps the node's background, so a
+// bad path shows as a coloured placeholder rather than a hole.
+func (l *List) paintImage(n *tree.Image, r tree.Rect, clip tree.Rect) {
+	d := n.Data
+	if d == nil || d.W <= 0 || d.H <= 0 || r.W <= 0 || r.H <= 0 {
+		return
+	}
+	uv := [4]float32{0, 0, 1, 1}
+	quad := r
+	sw, sh := float64(d.W), float64(d.H)
+	switch n.Fit.Get() {
+	case "contain":
+		scale := r.W / sw
+		if r.H/sh < scale {
+			scale = r.H / sh
+		}
+		quad = tree.Rect{
+			X: r.X + (r.W-sw*scale)/2,
+			Y: r.Y + (r.H-sh*scale)/2,
+			W: sw * scale, H: sh * scale,
+		}
+	case "fill":
+		// The quad is the box; nothing is cropped.
+	default: // cover
+		scale := r.W / sw
+		if scale < r.H/sh {
+			scale = r.H / sh
+		}
+		visW, visH := r.W/scale, r.H/scale
+		uv = [4]float32{
+			float32((sw - visW) / 2 / sw), float32((sh - visH) / 2 / sh),
+			float32((sw + visW) / 2 / sw), float32((sh + visH) / 2 / sh),
+		}
+	}
+	// Clipping to the node's own box with its radius is what rounds the image;
+	// the shader already knows how to round a clip.
+	l.Ops = append(l.Ops, Op{
+		Kind: Bitmap, Rect: rectArr(quad), Clip: clipArr(intersect(clip, r)),
+		ClipRadius: float32(n.Base().Radius()),
+		Src:        d, UV: uv,
+	})
 }
 
 // componentNode is implemented by every Material 3 component (they all embed

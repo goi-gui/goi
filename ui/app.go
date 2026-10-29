@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/ksckaan1/goui/internal/hotreload"
+	"github.com/ksckaan1/goui/internal/img"
 	"github.com/ksckaan1/goui/internal/tree"
 )
 
@@ -45,6 +46,8 @@ type App struct {
 
 	// tweens are the running app animations, touched only on the UI goroutine.
 	tweens []*tween
+	// images caches decoded Image assets by path, so a reload is cheap.
+	images map[string]*img.Data
 
 	// OnError receives rendering errors (a lost surface, a validation failure).
 	// When nil they are printed and the app keeps running.
@@ -109,6 +112,8 @@ func (a *App) LoadWindow(fsys fs.FS, path string, opts ...Option) (*Window, erro
 		}
 	}
 	a.win, a.assets, a.path, a.opts = w, fsys, name, o
+	// Images resolve against the container above, so this runs after it is set.
+	a.loadImages(tr)
 	if err := a.initWindow(w); err != nil {
 		return nil, err
 	}

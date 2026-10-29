@@ -239,6 +239,42 @@ Window {
 
 						Column {
 							spacing: 10
+							Text { text: "Image" role: "titleMedium" }
+							Wrap {
+								spacing: 12
+								// cover crops to fill the box; contain letterboxes.
+								Image {
+									src: "sample.png"
+									width: 180
+									height: 120
+									radius: 12
+								}
+								Image {
+									src: "sample.png"
+									fit: contain
+									width: 180
+									height: 120
+									radius: 12
+									background: surfaceContainerHigh
+								}
+								Image {
+									src: "sample.png"
+									fit: fill
+									width: 180
+									height: 120
+									radius: 12
+								}
+							}
+							Text {
+								text: "PNG, JPEG and GIF, decoded once and packed into one GPU atlas. fit picks cover, contain or fill."
+								role: "bodySmall"
+								wrap: true
+								width: { base: 280, md: 420 }
+							}
+						}
+
+						Column {
+							spacing: 10
 							Text { text: "List" role: "titleMedium" }
 							List {
 								width: { base: 100%, md: 420 }

@@ -60,6 +60,7 @@ type (
 	Stack      = tree.Stack
 	Positioned = tree.Positioned
 	Rectangle  = tree.Rectangle
+	Image      = tree.Image
 	Text       = tree.Text
 
 	// Material 3 components.

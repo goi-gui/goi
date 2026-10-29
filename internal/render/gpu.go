@@ -42,6 +42,8 @@ struct Viewport {
 @group(0) @binding(1) var<storage, read> instances: array<Instance>;
 @group(0) @binding(2) var atlas: texture_2d<f32>;
 @group(0) @binding(3) var samp: sampler;
+@group(0) @binding(4) var images: texture_2d<f32>;
+@group(0) @binding(5) var imgSamp: sampler;
 
 struct VSOut {
 	@builtin(position) pos: vec4f,
@@ -118,6 +120,18 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 
 	let aa = 0.5 / max(viewport.size.z, 1.0);
 	let kind = in.params.x;
+
+	if (kind > 4.5) {
+		// Bitmap: the image atlas holds straight RGBA. params.y is the corner
+		// radius, so a rounded Image is cropped rather than drawn as a box.
+		let r = clamp(in.params.y, 0.0, min(in.size.x, in.size.y) * 0.5);
+		let d = sd_round_rect(in.local, in.size, r);
+		let cov = 1.0 - smoothstep(-aa, aa, d);
+		if (cov <= 0.0) { discard; }
+		let c = textureSample(images, imgSamp, in.uv);
+		if (c.a <= 0.0) { discard; }
+		return vec4f(c.rgb, c.a * cov);
+	}
 
 	if (kind > 3.5) {
 		// Glyph: the atlas holds one coverage value per texel.
@@ -226,7 +240,9 @@ type GPU struct {
 	width, height int
 	scale         float32
 	capacity      int
-	instances     []gpuInstance
+	// images is the bitmap atlas; it exists even without a font.
+	images    *imageRenderer
+	instances []gpuInstance
 
 	text       *textRenderer
 	textLib    *text.Library
@@ -295,6 +311,10 @@ func NewGPU(display, window uintptr, kind TargetKind) (*GPU, error) {
 		g.Release()
 		return nil, err
 	}
+	if err := g.initImages(); err != nil {
+		g.Release()
+		return nil, err
+	}
 	if err := g.initPipeline(); err != nil {
 		g.Release()
 		return nil, err
@@ -355,6 +375,8 @@ func (g *GPU) initPipeline() error {
 			{Binding: 1, Buffer: g.storage, Size: g.storageSize(g.capacity)},
 			{Binding: 2, TextureView: g.text.view},
 			{Binding: 3, Sampler: g.text.sampler},
+			{Binding: 4, TextureView: g.images.view},
+			{Binding: 5, Sampler: g.images.sampler},
 		},
 	})
 	if err != nil {
@@ -420,6 +442,10 @@ func shapeLayoutEntries() []gputypes.BindGroupLayoutEntry {
 		{Binding: 2, Visibility: gputypes.ShaderStageFragment, Texture: &gputypes.TextureBindingLayout{
 			SampleType: gputypes.TextureSampleTypeFloat, ViewDimension: gputypes.TextureViewDimension2D, Multisampled: false}},
 		{Binding: 3, Visibility: gputypes.ShaderStageFragment,
+			Sampler: &gputypes.SamplerBindingLayout{Type: gputypes.SamplerBindingTypeFiltering}},
+		{Binding: 4, Visibility: gputypes.ShaderStageFragment, Texture: &gputypes.TextureBindingLayout{
+			SampleType: gputypes.TextureSampleTypeFloat, ViewDimension: gputypes.TextureViewDimension2D, Multisampled: false}},
+		{Binding: 5, Visibility: gputypes.ShaderStageFragment,
 			Sampler: &gputypes.SamplerBindingLayout{Type: gputypes.SamplerBindingTypeFiltering}},
 	}
 }
@@ -489,6 +515,8 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 			if g.text != nil {
 				g.text.addOp(op)
 			}
+		case paint.Bitmap:
+			g.images.addOp(op)
 		}
 	}
 	if len(g.instances) > g.capacity {
@@ -512,6 +540,11 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 	}
 	if g.text != nil {
 		if err := g.text.upload(g); err != nil {
+			return err
+		}
+	}
+	if g.images != nil {
+		if err := g.images.upload(g); err != nil {
 			return err
 		}
 	}
@@ -592,6 +625,8 @@ func (g *GPU) grow(n int) error {
 			{Binding: 1, Buffer: buf, Size: g.storageSize(capacity)},
 			{Binding: 2, TextureView: g.text.view},
 			{Binding: 3, Sampler: g.text.sampler},
+			{Binding: 4, TextureView: g.images.view},
+			{Binding: 5, Sampler: g.images.sampler},
 		},
 	})
 	if err != nil {

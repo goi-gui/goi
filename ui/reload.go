@@ -49,6 +49,7 @@ func (a *App) applyReload(f *syntax.File) error {
 	if err != nil {
 		return fmt.Errorf("goui: reload: %w", err)
 	}
+	a.loadImages(tr)
 	a.swapTree(tr)
 	return nil
 }
