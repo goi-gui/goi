@@ -311,7 +311,7 @@ func (p *parser) parseValue() (Value, bool) {
 	case tokString:
 		p.next()
 		return &String{At: t.pos, Val: t.text}, true
-	case tokNumber, tokLParen:
+	case tokNumber, tokLParen, tokBang, tokMinus:
 		return p.parseExpr()
 	case tokBool:
 		p.next()
@@ -350,9 +350,119 @@ func (p *parser) parseValue() (Value, bool) {
 	}
 }
 
-// parseExpr parses the additive level: a sum or difference of products.
+// parseExpr parses a full expression: a conditional at the top, then logical,
+// comparison, additive and multiplicative levels.
 func (p *parser) parseExpr() (Value, bool) {
-	return p.parseAdd()
+	return p.parseTernary()
+}
+
+func (p *parser) parseTernary() (Value, bool) {
+	cond, ok := p.parseOr()
+	if !ok {
+		return nil, false
+	}
+	if p.peek().kind != tokQuestion {
+		return cond, true
+	}
+	at := p.next().pos
+	then, ok := p.parseValue()
+	if !ok {
+		return nil, false
+	}
+	if p.peek().kind != tokColon {
+		p.errorf(p.peek(), "expected ':' in a conditional expression")
+		return nil, false
+	}
+	p.next()
+	els, ok := p.parseValue()
+	if !ok {
+		return nil, false
+	}
+	return &Ternary{At: at, Cond: cond, Then: then, Else: els}, true
+}
+
+func (p *parser) parseOr() (Value, bool) {
+	left, ok := p.parseAnd()
+	if !ok {
+		return nil, false
+	}
+	for p.peek().kind == tokOrOr {
+		p.next()
+		right, ok := p.parseAnd()
+		if !ok {
+			return nil, false
+		}
+		left = &Binary{At: left.Pos(), Op: "||", Left: left, Right: right}
+	}
+	return left, true
+}
+
+func (p *parser) parseAnd() (Value, bool) {
+	left, ok := p.parseEquality()
+	if !ok {
+		return nil, false
+	}
+	for p.peek().kind == tokAndAnd {
+		p.next()
+		right, ok := p.parseEquality()
+		if !ok {
+			return nil, false
+		}
+		left = &Binary{At: left.Pos(), Op: "&&", Left: left, Right: right}
+	}
+	return left, true
+}
+
+func (p *parser) parseEquality() (Value, bool) {
+	left, ok := p.parseComparison()
+	if !ok {
+		return nil, false
+	}
+	for {
+		op := ""
+		switch p.peek().kind {
+		case tokEqEq:
+			op = "=="
+		case tokBangEq:
+			op = "!="
+		default:
+			return left, true
+		}
+		p.next()
+		right, ok := p.parseComparison()
+		if !ok {
+			return nil, false
+		}
+		left = &Binary{At: left.Pos(), Op: op, Left: left, Right: right}
+	}
+}
+
+func (p *parser) parseComparison() (Value, bool) {
+	left, ok := p.parseAdd()
+	if !ok {
+		return nil, false
+	}
+	for {
+		op := ""
+		switch p.peek().kind {
+		case tokLt:
+			op = "<"
+		case tokLtEq:
+			op = "<="
+		case tokGt:
+			op = ">"
+		case tokGtEq:
+			op = ">="
+		default:
+			return left, true
+		}
+		p.next()
+		right, ok := p.parseAdd()
+		if !ok {
+			return nil, false
+		}
+		left = &Binary{At: left.Pos(), Op: op, Left: left, Right: right}
+	}
 }
 
 func (p *parser) parseAdd() (Value, bool) {
@@ -403,9 +513,29 @@ func (p *parser) parseMul() (Value, bool) {
 	}
 }
 
-// parseTerm parses one number, percentage, reference, or a parenthesised
-// expression. Expressions only use numeric values, so a bare identifier is
-// always followed by `.property` here.
+func (p *parser) parseUnary() (Value, bool) {
+	switch t := p.peek(); t.kind {
+	case tokBang:
+		p.next()
+		x, ok := p.parseUnary()
+		if !ok {
+			return nil, false
+		}
+		return &Unary{At: t.pos, Op: "!", X: x}, true
+	case tokMinus:
+		p.next()
+		x, ok := p.parseUnary()
+		if !ok {
+			return nil, false
+		}
+		return &Unary{At: t.pos, Op: "-", X: x}, true
+	}
+	return p.parseTerm()
+}
+
+// parseTerm parses one literal, reference, percentage or a parenthesised
+// expression. A bare identifier is a reference when a '.' follows it and an
+// identifier value otherwise, so `app.theme == dark` needs no quotes.
 func (p *parser) parseTerm() (Value, bool) {
 	t := p.peek()
 	switch t.kind {
@@ -416,6 +546,24 @@ func (p *parser) parseTerm() (Value, bool) {
 			return &Percent{At: t.pos, Val: t.num}, true
 		}
 		return &Number{At: t.pos, Val: t.num}, true
+	case tokString:
+		p.next()
+		return &String{At: t.pos, Val: t.text}, true
+	case tokBool:
+		p.next()
+		return &Bool{At: t.pos, Val: t.b}, true
+	case tokColor:
+		p.next()
+		return &Color{At: t.pos, RGBA: t.rgba}, true
+	case tokDollar:
+		at := p.next().pos
+		name := p.peek()
+		if name.kind != tokIdent {
+			p.errorf(name, "expected a param name after '$'")
+			return nil, false
+		}
+		p.next()
+		return &ParamRef{At: at, Name: name.text}, true
 	case tokLParen:
 		p.next()
 		v, ok := p.parseExpr()
@@ -431,8 +579,7 @@ func (p *parser) parseTerm() (Value, bool) {
 	case tokIdent:
 		id := p.next()
 		if p.peek().kind != tokDot {
-			p.errorf(p.peek(), "expected '.' after the id in an expression")
-			return nil, false
+			return &Ident{At: id.pos, Val: id.text}, true
 		}
 		p.next()
 		prop := p.peek()
@@ -443,7 +590,7 @@ func (p *parser) parseTerm() (Value, bool) {
 		p.next()
 		return &Ref{At: id.pos, ID: id.text, Prop: prop.text}, true
 	default:
-		p.errorf(t, "expected a number or reference")
+		p.errorf(t, "expected a value or reference")
 		return nil, false
 	}
 }

@@ -26,6 +26,15 @@ func (b *NodeBase) setColorRole(name, role string) bool {
 	return true
 }
 
+func (b *NodeBase) colorRoleFor(name string) string {
+	for i := range b.colors {
+		if b.colors[i].name == name {
+			return b.colors[i].role
+		}
+	}
+	return ""
+}
+
 func (b *NodeBase) clearColorRole(name string) {
 	for i := range b.colors {
 		if b.colors[i].name == name {

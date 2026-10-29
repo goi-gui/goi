@@ -99,14 +99,10 @@ func main() {
 		applyTheme := func(d bool) {
 			dark = d
 			theme := "light"
-			icon := "dark_mode"
 			if d {
-				theme, icon = "dark", "light_mode"
+				theme = "dark"
 			}
 			w.Root().Theme.Set(theme)
-			if bar, err := ui.ByID[*ui.TopAppBar](w, "appbar"); err == nil {
-				bar.Trailing.Set(icon)
-			}
 			if sw, err := ui.ByID[*ui.Switch](w, "darkSwitch"); err == nil {
 				sw.Checked.Set(d)
 			}

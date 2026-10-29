@@ -114,7 +114,7 @@ func TestDiagnosticCases(t *testing.T) {
 		{"percent on padding", `Window { padding: 50% }`, "only supported for width and height", ""},
 		{"unknown ref id", `Window { Text { id: a width: b.width } }`, "unknown id", ""},
 		{"unknown ref prop", `Window { Text { id: a width: a.nope } }`, "has no property", ""},
-		{"ref not a number", `Window { Text { id: a text: "x" } Text { width: a.text } }`, "is not a number", ""},
+		{"ref not a number", `Window { Text { id: a text: "x" } Text { width: a.text } }`, "not number", ""},
 		{"ref to percent", `Window { Text { id: a width: 50% } Text { width: a.width } }`, "cannot be referenced", ""},
 	}
 	for _, tc := range cases {

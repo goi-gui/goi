@@ -83,9 +83,15 @@ Property  = Ident ":" Value [";"]
 Value     = String | Number | Bool | Color | Ident | Map | Expression | "$" Ident
 Map       = "{" [ MapEntry { "," MapEntry } [","] ] "}"
 MapEntry  = Ident ":" Value
-Expression = Term { ("+" | "-") Term }
-Term      = Factor { ("*" | "/") Factor }
-Factor    = Number | Number "%" | Ident "." Ident | "(" Expression ")"
+Expression = Or [ "?" Value ":" Value ]
+Or         = And { "||" And }
+And        = Equality { "&&" Equality }
+Equality   = Compare { ("==" | "!=") Compare }
+Compare    = Sum { ("<" | "<=" | ">" | ">=") Sum }
+Sum        = Term { ("+" | "-") Term }
+Term       = Unary { ("*" | "/") Unary }
+Unary      = ("!" | "-") Unary | Factor
+Factor     = Number | Number "%" | String | Bool | Color | Ident | Ident "." Ident | "$" Ident | "(" Expression ")"
 ```
 
 Newlines are not tokens. A member is a property when the identifier is followed
@@ -200,11 +206,32 @@ any other property (`visible: { base: true, md: false }`). From Go,
 
 ## Expressions and percentages
 
-Any numeric property accepts an arithmetic expression. A reference reads
-another element's property by id (`id.property`), so the value follows that
-element automatically. Operators are `+ - * /` and parentheses, with the usual
-precedence; division by zero leaves the property at its previous value, and a
-reference cycle is ignored instead of hanging.
+Every property accepts an expression, not just the numeric ones: a color, a
+string, a bool or an enum can be conditional too. A reference reads another
+element's property by id (`id.property`), so the value follows that element
+automatically. Operators are `+ - * /`, comparisons `== != < <= > >=`, `&& ||
+!`, a conditional `cond ? a : b` and parentheses, with the usual precedence.
+`+` concatenates two strings. A type mismatch, division by zero or a reference
+cycle leaves the property at its previous value instead of failing the frame.
+
+Two namespaces are reserved for expressions:
+
+| Reference | Type | Meaning |
+|---|---|---|
+| `app.theme` | string | `"light"` or `"dark"` |
+| `app.dark` | bool | shorthand for the theme comparison |
+| `window.width`, `window.height` | number | logical client size, updated on resize |
+
+So a design can react to the scheme without any Go code:
+
+```
+TopAppBar { trailingIcon: app.dark ? "light_mode" : "dark_mode" }
+Text { text: app.dark ? "Dark scheme" : "Light scheme" color: app.dark ? onSurface : onPrimary }
+Rectangle { visible: window.width >= 640 width: window.width < 640 ? 240 : 320 }
+```
+
+Because these expressions read live state, they are re-evaluated every frame;
+an unchanged result does not mark anything dirty, so an idle window stays idle.
 
 ```
 Row {
@@ -222,7 +249,8 @@ percentage cannot be referenced, because it depends on its own parent.
 
 Expressions are resolved before layout; percentages are resolved during layout,
 when the parent's content size is known. Like responsive values, they are owned
-by the file: a later `Prop.Set` from Go is overwritten on the next layout.
+by the file: a later `Prop.Set` from Go is overwritten on the next frame. To read
+Go state from a design, put it in a property another element can reference.
 
 ## Responsive values
 

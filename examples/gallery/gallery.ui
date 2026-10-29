@@ -34,7 +34,9 @@ Window {
 					id: appbar
 					label: "Buttons"
 					icon: "menu"
-					trailingIcon: "dark_mode"
+					// An expression, not Go state: the icon follows the theme
+					// wherever the theme is changed from.
+					trailingIcon: app.dark ? "light_mode" : "dark_mode"
 				}
 
 				// ---- one page at a time
@@ -411,8 +413,21 @@ Window {
 								Rectangle { width: demoBase.width / 2 height: 10 background: secondary radius: 5 }
 								Rectangle { width: 50% height: 10 background: tertiary radius: 5 }
 							}
+							Column {
+								spacing: 6
+								Text {
+									text: app.dark ? "Conditional: the dark scheme is active." : "Conditional: the light scheme is active."
+									role: "bodyMedium"
+								}
+								Rectangle {
+									width: 160
+									height: 8
+									radius: 4
+									background: app.dark ? primaryContainer : inversePrimary
+								}
+							}
 							Text {
-								text: "A reference, a division and a percentage of the parent."
+								text: "A reference, a division, a comparison, a conditional and a percentage of the parent."
 								role: "bodySmall"
 								wrap: true
 							}

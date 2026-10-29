@@ -30,6 +30,16 @@ const (
 	tokLParen
 	tokRParen
 	tokDollar
+	tokEqEq
+	tokBang
+	tokBangEq
+	tokLt
+	tokLtEq
+	tokGt
+	tokGtEq
+	tokAndAnd
+	tokOrOr
+	tokQuestion
 	tokError
 )
 
@@ -81,6 +91,60 @@ func (l *lexer) run() ([]token, Diagnostics) {
 		case c == '.':
 			l.off++
 			l.emit(token{kind: tokDot, pos: Pos(start), end: Pos(l.off)})
+		case c == '=':
+			l.off++
+			if l.off < len(l.src) && l.src[l.off] == '=' {
+				l.off++
+				l.emit(token{kind: tokEqEq, pos: Pos(start), end: Pos(l.off)})
+				continue
+			}
+			l.fail(start, l.off, "unexpected '='; comparison is '=='")
+			l.emit(token{kind: tokError, pos: Pos(start), end: Pos(l.off)})
+		case c == '!':
+			l.off++
+			if l.off < len(l.src) && l.src[l.off] == '=' {
+				l.off++
+				l.emit(token{kind: tokBangEq, pos: Pos(start), end: Pos(l.off)})
+				continue
+			}
+			l.emit(token{kind: tokBang, pos: Pos(start), end: Pos(l.off)})
+		case c == '<':
+			l.off++
+			if l.off < len(l.src) && l.src[l.off] == '=' {
+				l.off++
+				l.emit(token{kind: tokLtEq, pos: Pos(start), end: Pos(l.off)})
+				continue
+			}
+			l.emit(token{kind: tokLt, pos: Pos(start), end: Pos(l.off)})
+		case c == '>':
+			l.off++
+			if l.off < len(l.src) && l.src[l.off] == '=' {
+				l.off++
+				l.emit(token{kind: tokGtEq, pos: Pos(start), end: Pos(l.off)})
+				continue
+			}
+			l.emit(token{kind: tokGt, pos: Pos(start), end: Pos(l.off)})
+		case c == '&':
+			l.off++
+			if l.off < len(l.src) && l.src[l.off] == '&' {
+				l.off++
+				l.emit(token{kind: tokAndAnd, pos: Pos(start), end: Pos(l.off)})
+				continue
+			}
+			l.fail(start, l.off, "unexpected '&'; conjunction is '&&'")
+			l.emit(token{kind: tokError, pos: Pos(start), end: Pos(l.off)})
+		case c == '|':
+			l.off++
+			if l.off < len(l.src) && l.src[l.off] == '|' {
+				l.off++
+				l.emit(token{kind: tokOrOr, pos: Pos(start), end: Pos(l.off)})
+				continue
+			}
+			l.fail(start, l.off, "unexpected '|'; disjunction is '||'")
+			l.emit(token{kind: tokError, pos: Pos(start), end: Pos(l.off)})
+		case c == '?':
+			l.off++
+			l.emit(token{kind: tokQuestion, pos: Pos(start), end: Pos(l.off)})
 		case c == '+':
 			l.off++
 			l.emit(token{kind: tokPlus, pos: Pos(start), end: Pos(l.off)})

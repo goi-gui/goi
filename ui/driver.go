@@ -161,7 +161,12 @@ func (a *App) frame() {
 	// tree dirty when a value changes, so this runs before the frame check.
 	logicalW := float64(d.pendingW) / float64(maxScale(d.pendingScale))
 	logicalH := float64(d.pendingH) / float64(maxScale(d.pendingScale))
+	a.win.tree.SetViewport(logicalW, logicalH)
 	a.win.tree.ApplyBreakpoints(logicalW)
+	// Expressions run before the theme resolver: a conditional can pick a role,
+	// and the role then resolves in the same frame. They also run before the
+	// frame check, because a Go property change may be what an expression reads.
+	a.win.tree.ApplyExpressions()
 	// Role colors follow the scheme, so a theme change needs no per-component
 	// work and a role declared in .ui never goes stale.
 	if a.win.tree.ResolveColors(themeFor(a.win).Colors.Role) {

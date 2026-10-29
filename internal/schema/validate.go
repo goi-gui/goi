@@ -246,6 +246,23 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 		v.add(at, end, fmt.Sprintf("%s.%s expects %s, got %s", e.Name, pd.Name, want, kindName(val)), "")
 	}
 
+	if isExprValue(val) {
+		// Expressions are evaluated at runtime against the property type, so a
+		// string, bool, color or enum can be conditional too. A percentage is
+		// still only meaningful where a parent offers a size.
+		if pd.Type == TypeNumber {
+			if !v.checkNumeric(e, pd, val) {
+				fail("a number")
+			}
+			return
+		}
+		if valueHasPercent(val) {
+			v.add(at, at+1,
+				fmt.Sprintf("%s.%s: a percentage is only supported for width and height", e.Name, pd.Name), "")
+		}
+		return
+	}
+
 	switch pd.Type {
 	case TypeID:
 		txt, ok := literalText(val)
@@ -334,13 +351,44 @@ func (v *validator) checkNumeric(e *syntax.Element, pd *Prop, val syntax.Value) 
 		return true
 	case *syntax.Ref:
 		return true // the target is checked in walkRefs, after every id exists
-	case *syntax.Binary:
-		if valueHasPercent(x.Left) || valueHasPercent(x.Right) {
+	case *syntax.Binary, *syntax.Unary, *syntax.Ternary:
+		if valueHasPercent(val) {
 			if pd.Name != "width" && pd.Name != "height" {
-				v.add(x.At, x.At+1,
+				v.add(val.Pos(), val.Pos()+1,
 					fmt.Sprintf("%s.%s: a percentage is only supported for width and height", e.Name, pd.Name), "")
 			}
 		}
+		return true
+	}
+	return false
+}
+
+// globalProp validates the two namespaces an expression can read besides node
+// properties. They are reserved ids, so a design cannot shadow them.
+func globalProp(id, prop string) (bool, string) {
+	var names []string
+	switch id {
+	case "app":
+		names = []string{"theme", "dark"}
+	case "window":
+		names = []string{"width", "height"}
+	default:
+		return true, ""
+	}
+	for _, n := range names {
+		if n == prop {
+			return true, ""
+		}
+	}
+	return false, syntax.Suggest(prop, names)
+}
+
+func typeName(t ValueType) string { return t.String() }
+
+// isExprValue reports whether a value is computed rather than a literal.
+func isExprValue(v syntax.Value) bool {
+	switch v.(type) {
+	case *syntax.Ref, *syntax.Binary, *syntax.Unary, *syntax.Ternary:
 		return true
 	}
 	return false
@@ -368,14 +416,29 @@ func (v *validator) checkRefs(e *syntax.Element, pd *Prop, val syntax.Value) {
 			v.checkRefs(e, pd, entry.Value)
 		}
 	case *syntax.Binary:
+		// A comparison or ternary can mix types on purpose, so the target's
+		// type is only checked for a bare reference.
 		v.checkRefs(e, pd, x.Left)
 		v.checkRefs(e, pd, x.Right)
+	case *syntax.Unary:
+		v.checkRefs(e, pd, x.X)
+	case *syntax.Ternary:
+		v.checkRefs(e, pd, x.Cond)
+		v.checkRefs(e, pd, x.Then)
+		v.checkRefs(e, pd, x.Else)
 	case *syntax.Ref:
 		if pd == nil {
 			return
 		}
 		at := x.At
 		end := at + syntax.Pos(len(x.ID)+1+len(x.Prop))
+		if x.ID == "app" || x.ID == "window" {
+			if ok, hint := globalProp(x.ID, x.Prop); !ok {
+				v.add(at, end,
+					fmt.Sprintf("%s.%s: %s has no property %q", e.Name, pd.Name, x.ID, x.Prop), hint)
+			}
+			return
+		}
 		target, ok := v.elems[x.ID]
 		if !ok {
 			v.add(at, end, fmt.Sprintf("%s.%s references unknown id %q", e.Name, pd.Name, x.ID), "")
@@ -391,9 +454,10 @@ func (v *validator) checkRefs(e *syntax.Element, pd *Prop, val syntax.Value) {
 			v.add(at, end,
 				fmt.Sprintf("%s.%s: %s has no property %q", e.Name, pd.Name, target.Name, x.Prop),
 				syntax.Suggest(x.Prop, propNames(tdef)))
-		case tp.Type != TypeNumber:
+		case tp.Type != pd.Type && !(tp.Type == TypeString && pd.Type == TypeEnum) && !(tp.Type == TypeEnum && pd.Type == TypeString):
 			v.add(at, end,
-				fmt.Sprintf("%s.%s: %s.%s is not a number", e.Name, pd.Name, target.Name, x.Prop), "")
+				fmt.Sprintf("%s.%s: %s.%s is %s, not %s", e.Name, pd.Name, target.Name, x.Prop,
+					typeName(tp.Type), typeName(pd.Type)), "")
 		case targetValueHasPercent(target, x.Prop):
 			v.add(at, end,
 				fmt.Sprintf("%s.%s: %s.%s is a percentage, which cannot be referenced", e.Name, pd.Name, target.Name, x.Prop), "")
@@ -414,6 +478,10 @@ func valueHasPercent(val syntax.Value) bool {
 		return true
 	case *syntax.Binary:
 		return valueHasPercent(x.Left) || valueHasPercent(x.Right)
+	case *syntax.Unary:
+		return valueHasPercent(x.X)
+	case *syntax.Ternary:
+		return valueHasPercent(x.Cond) || valueHasPercent(x.Then) || valueHasPercent(x.Else)
 	case *syntax.Map:
 		for _, entry := range x.Entries {
 			if valueHasPercent(entry.Value) {
@@ -452,7 +520,7 @@ func kindName(val syntax.Value) string {
 		return "a percentage"
 	case syntax.RefKind:
 		return "a reference"
-	case syntax.BinaryKind:
+	case syntax.BinaryKind, syntax.UnaryKind, syntax.TernaryKind:
 		return "an expression"
 	case syntax.ParamRefKind:
 		return "a param reference"

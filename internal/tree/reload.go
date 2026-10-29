@@ -30,6 +30,12 @@ func LiteralEqual(a, b syntax.Value) bool {
 	case *syntax.Binary:
 		y := b.(*syntax.Binary)
 		return x.Op == y.Op && LiteralEqual(x.Left, y.Left) && LiteralEqual(x.Right, y.Right)
+	case *syntax.Unary:
+		y := b.(*syntax.Unary)
+		return x.Op == y.Op && LiteralEqual(x.X, y.X)
+	case *syntax.Ternary:
+		y := b.(*syntax.Ternary)
+		return LiteralEqual(x.Cond, y.Cond) && LiteralEqual(x.Then, y.Then) && LiteralEqual(x.Else, y.Else)
 	case *syntax.Map:
 		y := b.(*syntax.Map)
 		if len(x.Entries) != len(y.Entries) {

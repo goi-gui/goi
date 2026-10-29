@@ -121,6 +121,8 @@ const (
 	PercentKind
 	RefKind
 	BinaryKind
+	UnaryKind
+	TernaryKind
 	ParamRefKind
 )
 
@@ -196,13 +198,27 @@ type ParamRef struct {
 	Name string
 }
 
-// Binary is an arithmetic expression: Left Op Right, with Op one of
-// "+", "-", "*", "/".
+// Binary is an expression: Left Op Right. Op is one of "+", "-", "*", "/",
+// "==", "!=", "<", "<=", ">", ">=", "&&", "||".
 type Binary struct {
 	At    Pos
 	Op    string
 	Left  Value
 	Right Value
+}
+
+// Unary is `!x` or `-x`.
+type Unary struct {
+	At Pos
+	Op string
+	X  Value
+}
+
+// Ternary is `cond ? then : else`.
+type Ternary struct {
+	At         Pos
+	Cond       Value
+	Then, Else Value
 }
 
 // Kind implementations.
@@ -216,6 +232,8 @@ func (m *Map) Kind() ValueKind      { return MapKind }
 func (p *Percent) Kind() ValueKind  { return PercentKind }
 func (r *Ref) Kind() ValueKind      { return RefKind }
 func (b *Binary) Kind() ValueKind   { return BinaryKind }
+func (u *Unary) Kind() ValueKind    { return UnaryKind }
+func (t *Ternary) Kind() ValueKind  { return TernaryKind }
 func (p *ParamRef) Kind() ValueKind { return ParamRefKind }
 
 // Pos implementations.
@@ -229,4 +247,6 @@ func (m *Map) Pos() Pos      { return m.At }
 func (p *Percent) Pos() Pos  { return p.At }
 func (r *Ref) Pos() Pos      { return r.At }
 func (b *Binary) Pos() Pos   { return b.At }
+func (u *Unary) Pos() Pos    { return u.At }
+func (t *Ternary) Pos() Pos  { return t.At }
 func (p *ParamRef) Pos() Pos { return p.At }

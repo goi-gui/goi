@@ -465,6 +465,16 @@ batch. This is what the display list will feed.
   gallery dropped its hard-coded `#FEF7FF`: a fixed light literal cannot follow a
   dark scheme. Content colours follow the same rule, so the positioned example uses
   a `Card` as its plate instead of a lavender `Rectangle`.
+- **Expressions are values, evaluated every frame.** The old numeric-only
+  expression path grew comparisons, `&& || !`, a conditional, string concat and
+  two reserved globals (`app.theme`/`app.dark`, `window.width`/`height`). The
+  evaluator returns `any` and writes back through the property's literal path, so
+  a conditional can pick a role, an enum, a bool or a string. It runs once per
+  tick before the frame check and marks a node only when the result changed; the
+  alternative, dependency tracking on every `Prop.Set`, needs a graph and a
+  generation counter for no visible gain at this tree size. `tonumber`-style
+  coercion is deliberately absent: a mismatch leaves the old value, and the
+  validator type-checks a bare reference at parse time.
 - **A design names colors by role, not by hex.** `background: surfaceContainerHigh`
   stores the role name on the node and a resolver rewrites the cell from the
   current scheme once per tick, so a role follows a theme switch with no per

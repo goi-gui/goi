@@ -65,7 +65,8 @@ func New(m Measurer) *Engine {
 
 // Layout arranges root inside a client area of width w and height h.
 func (e *Engine) Layout(root *tree.Window, w, h float64) tree.Rect {
-	root.Base().ApplyNumeric()
+	root.Base().SetViewport(w, h)
+	root.Base().ApplyExpressions()
 	r := tree.Rect{W: w, H: h}
 	root.Base().SetBounds(r)
 	// A window overlays its children, so a dialog can sit on top of content.

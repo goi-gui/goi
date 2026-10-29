@@ -54,6 +54,10 @@ func dumpValue(v Value) string {
 		return v.ID + "." + v.Prop
 	case *Binary:
 		return "(" + dumpValue(v.Left) + " " + v.Op + " " + dumpValue(v.Right) + ")"
+	case *Unary:
+		return v.Op + dumpValue(v.X)
+	case *Ternary:
+		return "(" + dumpValue(v.Cond) + " ? " + dumpValue(v.Then) + " : " + dumpValue(v.Else) + ")"
 	case *ParamRef:
 		return "$" + v.Name
 	case *Map:

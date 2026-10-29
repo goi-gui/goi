@@ -309,6 +309,14 @@ func substValue(v syntax.Value, params map[string]syntax.Value, src, from string
 		left, diag := substValue(x.Left, params, src, from, diag)
 		right, diag := substValue(x.Right, params, src, from, diag)
 		return &syntax.Binary{At: x.At, Op: x.Op, Left: left, Right: right}, diag
+	case *syntax.Unary:
+		xv, diag := substValue(x.X, params, src, from, diag)
+		return &syntax.Unary{At: x.At, Op: x.Op, X: xv}, diag
+	case *syntax.Ternary:
+		cond, diag := substValue(x.Cond, params, src, from, diag)
+		then, diag := substValue(x.Then, params, src, from, diag)
+		els, diag := substValue(x.Else, params, src, from, diag)
+		return &syntax.Ternary{At: x.At, Cond: cond, Then: then, Else: els}, diag
 	}
 	return v, diag
 }
@@ -368,6 +376,10 @@ func copyValue(v syntax.Value) syntax.Value {
 		return out
 	case *syntax.Binary:
 		return &syntax.Binary{At: x.At, Op: x.Op, Left: copyValue(x.Left), Right: copyValue(x.Right)}
+	case *syntax.Unary:
+		return &syntax.Unary{At: x.At, Op: x.Op, X: copyValue(x.X)}
+	case *syntax.Ternary:
+		return &syntax.Ternary{At: x.At, Cond: copyValue(x.Cond), Then: copyValue(x.Then), Else: copyValue(x.Else)}
 	}
 	return v
 }

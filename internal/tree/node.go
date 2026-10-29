@@ -69,10 +69,10 @@ type NodeBase struct {
 	Click Event[ClickEvent]
 	// responsive holds properties declared as a breakpoint map.
 	responsive []responsiveProp
-	// numerics holds expression-valued properties, resolved before layout and
-	// (for percentages) during it.
-	numerics      []numericSpec
-	numericListed bool
+	// exprs holds expression-valued properties, resolved every frame and (for
+	// percentages) during layout.
+	exprs      []exprSpec
+	exprListed bool
 	// colors holds properties written as theme roles, resolved whenever the
 	// scheme changes.
 	colors      []colorSpec
