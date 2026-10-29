@@ -465,6 +465,13 @@ batch. This is what the display list will feed.
   gallery dropped its hard-coded `#FEF7FF`: a fixed light literal cannot follow a
   dark scheme. Content colours follow the same rule, so the positioned example uses
   a `Card` as its plate instead of a lavender `Rectangle`.
+- **Keyboard focus is a first-class input path.** `Tab` and `Shift+Tab` walk the
+  visible, enabled controls in document order, `Enter`/`Space` press the focused
+  one through the same `activate` path as a click, and focus is drawn as a 2dp
+  Primary outline offset by 3dp. Text fields still own character focus; landing
+  on one with Tab also gives it the caret, so typing works immediately. Focus
+  follows a click too, which is what makes the ring appear where the user last
+  acted. Slider arrow keys are not wired yet.
 - **Expressions are values, evaluated every frame.** The old numeric-only
   expression path grew comparisons, `&& || !`, a conditional, string concat and
   two reserved globals (`app.theme`/`app.dark`, `window.width`/`height`). The

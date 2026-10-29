@@ -952,3 +952,50 @@ func TestClickPositionedButton(t *testing.T) {
 		t.Fatalf("clicks = %d", clicks)
 	}
 }
+
+// TestTabFocusAndEnter is the keyboard path: Tab walks the visible controls and
+// Enter presses the focused one, so the app is usable without a pointer.
+func TestTabFocusAndEnter(t *testing.T) {
+	src := `Window {
+		Column {
+			Button { id: a label: "A" width: 100 height: 40 }
+			Button { id: b label: "B" width: 100 height: 40 }
+			TextField { id: f width: 100 height: 40 }
+		}
+	}`
+	_, win, in := inputFixture(t, src, 400, 300)
+	a, b := MustByID[*Button](win, "a"), MustByID[*Button](win, "b")
+	pressed := ""
+	a.OnClick(func(ClickEvent) { pressed = "a" })
+	b.OnClick(func(ClickEvent) { pressed = "b" })
+
+	in.key(tree.KeyTab, tree.Mods{})
+	if in.kbd == nil || in.kbd != a.Node() {
+		t.Fatalf("first Tab focused %v", in.kbd)
+	}
+	in.key(tree.KeyEnter, tree.Mods{})
+	if pressed != "a" {
+		t.Fatalf("Enter pressed %q", pressed)
+	}
+	in.key(tree.KeyTab, tree.Mods{})
+	if in.kbd != b.Node() {
+		t.Fatalf("second Tab focused %v", in.kbd)
+	}
+	in.key(tree.KeySpace, tree.Mods{})
+	if pressed != "b" {
+		t.Fatalf("Space pressed %q", pressed)
+	}
+	in.key(tree.KeyTab, tree.Mods{Shift: true})
+	if in.kbd != a.Node() {
+		t.Fatalf("shift-Tab focused %v", in.kbd)
+	}
+	// The text field is reachable and takes character focus when Tab lands there.
+	in.key(tree.KeyTab, tree.Mods{})
+	in.key(tree.KeyTab, tree.Mods{})
+	if in.kbd != MustByID[*TextField](win, "f").Node() {
+		t.Fatalf("third Tab focused %v", in.kbd)
+	}
+	if in.focus == nil {
+		t.Fatal("Tab did not give the field character focus")
+	}
+}

@@ -41,6 +41,7 @@ const (
 	KeyEnd
 	KeyEnter
 	KeyTab
+	KeySpace
 	KeyEscape
 	KeyUp
 	KeyDown

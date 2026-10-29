@@ -348,6 +348,28 @@ func (l *List) paintComponent(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	case "Toolbar":
 		l.paintToolbar(c, r, clip)
 	}
+	// Keyboard focus gets an M3 outline. A text field draws its own focus
+	// border, so it is the one kind that skips this.
+	if c.Focused {
+		switch c.Node().Kind() {
+		case "TextField", "SearchBar":
+		default:
+			l.focusRing(c, r, clip)
+		}
+	}
+}
+
+// focusRing draws the 2dp outline just outside the node, following its corner
+// radius. M3 offsets the indicator by 3dp.
+func (l *List) focusRing(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	const gap, width = 3.0, 2.0
+	rad := c.Base().Radius()
+	if rad <= 0 {
+		rad = r.H / 2
+	}
+	l.fillRect(
+		tree.Rect{X: r.X - gap, Y: r.Y - gap, W: r.W + 2*gap, H: r.H + 2*gap},
+		0, rad+gap, l.Theme.Colors.Primary, width, clip)
 }
 
 // ---------------------------------------------------------------- buttons

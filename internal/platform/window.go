@@ -45,6 +45,7 @@ const (
 	KeyEnd
 	KeyEnter
 	KeyTab
+	KeySpace
 	KeyEscape
 	KeyUp
 	KeyDown
@@ -279,6 +280,8 @@ func translateKey(k glfw.Key) Key {
 		return KeyEnter
 	case glfw.KeyTab:
 		return KeyTab
+	case glfw.KeySpace:
+		return KeySpace
 	case glfw.KeyEscape:
 		return KeyEscape
 	case glfw.KeyUp:

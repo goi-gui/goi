@@ -25,6 +25,9 @@ type interactor struct {
 	// dragging marks a slider drag.
 	dragging bool
 	focus    *tree.Component
+	// kbd is the node with keyboard focus. It differs from focus: focus is the
+	// text field that receives characters, kbd is whatever Enter would press.
+	kbd tree.Node
 
 	// cursor is the last pointer position; the wheel scrolls whatever is under it.
 	cursorX, cursorY float64
@@ -160,6 +163,7 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 	// Text fields take focus wherever the press lands inside them. Only the
 	// primary button moves the caret or starts a selection drag.
 	if field != nil {
+		i.setKbd(field.Base().Node())
 		i.setFocus(field)
 		if button == 0 {
 			i.textField = field
@@ -170,11 +174,13 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 		return
 	}
 	i.setFocus(nil)
+	i.setKbd(nil)
 
 	if hit == nil {
 		return
 	}
 	if clickable(hit) {
+		i.setKbd(hit)
 		i.pressed = hit
 		if c := comp(hit); c != nil {
 			c.Pressed = true
@@ -451,6 +457,14 @@ func (i *interactor) Key(k platform.Key, mods platform.Mods) {
 func (i *interactor) key(k tree.Key, mods tree.Mods) {
 	if i.app.win != nil {
 		i.app.win.keys.Emit(tree.KeyEvent{Key: k, Mods: mods})
+	}
+	if k == tree.KeyTab {
+		i.tabFocus(mods.Shift)
+		return
+	}
+	if i.focus == nil && i.kbd != nil && (k == tree.KeyEnter || k == tree.KeySpace) {
+		i.activateKey(i.kbd)
+		return
 	}
 	f := i.focus
 	if f == nil {
@@ -770,6 +784,103 @@ func (i *interactor) setFocus(c *tree.Component) {
 	}
 	i.imeSync()
 	i.markDirty()
+}
+
+// focusables returns the nodes Tab can reach, in document order. Hidden
+// subtrees and disabled controls are skipped, which is what makes focus order
+// match what the user can see.
+func (i *interactor) focusables() []tree.Node {
+	var out []tree.Node
+	var walk func(tree.Node)
+	walk = func(n tree.Node) {
+		if n == nil || !n.Base().Visible() {
+			return
+		}
+		c := comp(n)
+		if c != nil && !c.Disabled.Get() && (interactive(n) || n.Base().Click.Len() > 0) {
+			out = append(out, n)
+		}
+		for _, k := range n.Base().Kids() {
+			walk(k.Node())
+		}
+	}
+	if i.tree != nil {
+		walk(i.tree.Root)
+	}
+	return out
+}
+
+// setKbd moves keyboard focus. A text field also takes the character focus, so
+// Tab lands in a field ready to type; any other target releases the field.
+func (i *interactor) setKbd(n tree.Node) {
+	if i.kbd == n {
+		return
+	}
+	if old := i.kbd; old != nil {
+		if c := comp(old); c != nil {
+			c.Focused = false
+			c.Base().MarkDirty(tree.DirtyPaint)
+		}
+	}
+	i.kbd = n
+	if n == nil {
+		return
+	}
+	c := comp(n)
+	if c == nil {
+		return
+	}
+	if isTextField(c) {
+		i.setFocus(c)
+	} else {
+		i.setFocus(nil)
+		c.Focused = true
+		c.Base().MarkDirty(tree.DirtyPaint)
+	}
+	i.markDirty()
+}
+
+// tabFocus moves to the next or previous focusable and wraps at the ends.
+func (i *interactor) tabFocus(back bool) {
+	list := i.focusables()
+	if len(list) == 0 {
+		return
+	}
+	idx := -1
+	for j, n := range list {
+		if n == i.kbd {
+			idx = j
+			break
+		}
+	}
+	next := 0
+	if idx >= 0 {
+		if back {
+			next = (idx - 1 + len(list)) % len(list)
+		} else {
+			next = (idx + 1) % len(list)
+		}
+	}
+	i.setKbd(list[next])
+}
+
+// activateKey presses the focused node, the way a click would. Coordinates are
+// the centre of the node in window space, because a click handler may read them.
+func (i *interactor) activateKey(n tree.Node) {
+	x, y, w, h := absoluteBounds(n)
+	i.activate(n, comp(n), x+w/2, y+h/2)
+}
+
+// absoluteBounds sums the layout offsets up to the window.
+func absoluteBounds(n tree.Node) (x, y, w, h float64) {
+	b := n.Base().Bounds()
+	x, y, w, h = b.X, b.Y, b.W, b.H
+	for p := n.Base().Parent(); p != nil; p = p.Base().Parent() {
+		pb := p.Base().Bounds()
+		x += pb.X
+		y += pb.Y
+	}
+	return x, y, w, h
 }
 
 // fieldAt finds the text field at or above a hit node.

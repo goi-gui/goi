@@ -547,3 +547,32 @@ func TestFlowContainersDoNotClipShadows(t *testing.T) {
 	}
 	t.Fatalf("no shadow op:\n%s", l.Dump())
 }
+
+// TestFocusedButtonDrawsRing checks that keyboard focus is visible: a Primary
+// outline around the component.
+func TestFocusedButtonDrawsRing(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window { Button { id: a label: "Go" } }`), nil)
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	layout.New(nil).Layout(tr.Root, 400, 400)
+	btn, _ := tr.ByID("a")
+	col := m3.Light().Colors
+	focused := func() bool {
+		l := &List{}
+		l.Build(tr, 400, 400)
+		for _, op := range l.Ops {
+			if op.Kind == Fill && op.Color == 0 && op.BorderColor == col.Primary && op.BorderWidth == 2 {
+				return true
+			}
+		}
+		return false
+	}
+	if focused() {
+		t.Fatal("an unfocused button has a ring")
+	}
+	btn.(*tree.Button).M3().Focused = true
+	if !focused() {
+		t.Fatal("a focused button has no ring")
+	}
+}

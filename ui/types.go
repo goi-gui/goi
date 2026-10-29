@@ -124,6 +124,7 @@ const (
 	KeyEnd       = tree.KeyEnd
 	KeyEnter     = tree.KeyEnter
 	KeyTab       = tree.KeyTab
+	KeySpace     = tree.KeySpace
 	KeyEscape    = tree.KeyEscape
 	KeyUp        = tree.KeyUp
 	KeyDown      = tree.KeyDown
