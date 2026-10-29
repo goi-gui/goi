@@ -368,6 +368,10 @@ batch. This is what the display list will feed.
   The mapping lives once in `fieldTextStart`, so pointer and paint cannot
   disagree. Search has no floating label band, so the caret is vertically
   centred instead of sitting in the value row of a TextField.
+- **Word editing follows the Linux convention.** Ctrl+Left/Right move the caret
+  by word; Ctrl+Backspace and Ctrl+Delete remove one word plus its separator
+  per press. A live selection still wins over the modifier, so Ctrl+A then
+  delete behaves like any editor.
 - **What is intentionally shallow for now:** DatePicker and TimePicker render a
   month grid and a clock dial but do not edit a date; FABMenu renders the FAB and
   leaves its expanded item list to app content; Slider drags but has no keyboard
