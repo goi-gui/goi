@@ -371,13 +371,20 @@ func (l *List) buttonColors(c *tree.Component) (bg, fg, border uint32, elev int,
 
 func (l *List) paintButton(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	bg, fg, border, elev, bw := l.buttonColors(c)
+	col := l.Theme.Colors
 	radius := radiusFor(m3.ShapeFull, r)
 	if themeRadius := r.H / 2; themeRadius > 0 {
 		radius = themeRadius
 	}
 	if c.Disabled.Get() {
-		bg = withAlpha(bg, m3.DisabledContainerOpacity)
-		fg = withAlpha(fg, m3.DisabledOpacity)
+		// M3 dims the label against the page, not against the container's
+		// content colour: onSurface at 38% over onSurface at 12%. Dimming
+		// OnPrimary instead left white at 38% on a pale container, so the label
+		// nearly vanished. The 38% comes from disabledAlpha below; applying it
+		// here as well would multiply into 14%.
+		bg = withAlpha(col.OnSurface, m3.DisabledContainerOpacity)
+		border = withAlpha(col.OnSurface, m3.DisabledContainerOpacity)
+		fg = col.OnSurface
 	}
 	l.shadow(r, radius, elev, clip)
 	l.fillRect(r, bg, radius, border, bw, clip)
@@ -464,8 +471,10 @@ func (l *List) paintFAB(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		bg, fg = col.TertiaryContainer, col.OnTertiaryContainer
 	}
 	if c.Disabled.Get() {
-		bg = withAlpha(bg, m3.DisabledContainerOpacity)
-		fg = withAlpha(fg, m3.DisabledOpacity)
+		// Same rule as Button: the container and the icon both come from
+		// onSurface, at 12% and 38%.
+		bg = withAlpha(col.OnSurface, m3.DisabledContainerOpacity)
+		fg = withAlpha(col.OnSurface, m3.DisabledOpacity)
 	}
 	l.shadow(r, radius, elev, clip)
 	l.fillRect(r, bg, radius, 0, 0, clip)

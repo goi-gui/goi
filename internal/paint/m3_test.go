@@ -33,6 +33,28 @@ func TestButtonPaintsFilledContainer(t *testing.T) {
 	}
 }
 
+// TestDisabledButtonLabelStaysReadable guards the M3 disabled treatment. The
+// label used to be OnPrimary at 38% over a 12% OnPrimary container, and then
+// dimmed a second time to 14%, which is unreadable on a light page.
+func TestDisabledButtonLabelStaysReadable(t *testing.T) {
+	l := m3list(t, `Window { Button { label: "Go" disabled: true } }`)
+	col := m3.Light().Colors
+	wantBg := withAlpha(col.OnSurface, m3.DisabledContainerOpacity)
+	wantLabel := withAlpha(col.OnSurface, m3.DisabledOpacity)
+	var bg, label bool
+	for _, op := range l.Ops {
+		if op.Kind == Fill && op.Color == wantBg {
+			bg = true
+		}
+		if op.Kind == Text && op.Text == "Go" && op.Color == wantLabel {
+			label = true
+		}
+	}
+	if !bg || !label {
+		t.Fatalf("disabled button ops: bg=%v label=%v\n%s", bg, label, l.Dump())
+	}
+}
+
 func TestButtonVariants(t *testing.T) {
 	for _, tc := range []struct {
 		variant string
