@@ -458,6 +458,17 @@ batch. This is what the display list will feed.
   from `sm` up, and the app-bar menu opens a modal drawer with the same
   categories. The drawer's hit area is measured from the app bar, not the window,
   because the rail moves the bar's left edge.
+- **The page behind the components is the theme surface, not a literal.** The
+  renderer's clear colour now comes from the list's theme, so switching the theme
+  recolours the whole window without the window painting a full-size fill every
+  frame. A `.ui` root that declares `background` still wins, which is why the
+  gallery dropped its hard-coded `#FEF7FF`: a fixed light literal cannot follow a
+  dark scheme. Content colours follow the same rule, so the positioned example uses
+  a `Card` as its plate instead of a lavender `Rectangle`.
+- **Theme has two entry points and one owner.** The gallery exposes it as the
+  app-bar trailing icon and as a `Switch` on the Layout page; both call one
+  function that writes `Window.theme`, so they cannot disagree, and the state
+  lives outside `Bind` so a hot reload keeps it.
 - **What is intentionally shallow for now:** DatePicker and TimePicker render a
   month grid and a clock dial but do not edit a date; FABMenu renders the FAB and
   leaves its expanded item list to app content; Slider drags but has no keyboard

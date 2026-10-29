@@ -263,7 +263,8 @@ set from Go with `Prop.Set` is replaced on the next frame.
 
 ## Rules and diagnostics
 
-- Exactly one root element, and it must be `Window`.
+- Exactly one root element, and it must be `Window` — unless the file declares
+  `param`s, which makes it a fragment that an `import` pulls in.
 - `id` must match `[a-z][A-Za-z0-9_]*` and be unique within the file.
 - `Positioned` must be a direct child of `Stack`.
 - Unknown element, unknown property, wrong literal type, unknown enum value,
@@ -274,7 +275,14 @@ set from Go with `Prop.Set` is replaced on the next frame.
 
 ## What is not in v1
 
-No expressions, no bindings, no loops, no conditionals, no scripting, and no
-event declarations — behaviour lives in Go. No animations, custom components or
-imports (planned for v2). Theming is limited to the built-in light and dark
-Material 3 schemes; dynamic color and custom palettes are not exposed yet.
+No bindings, no loops, no conditionals, no scripting, and no event declarations —
+behaviour lives in Go. No animations and no custom components. Theming is limited
+to the built-in light and dark Material 3 schemes; dynamic color and custom
+palettes are not exposed yet.
+
+`Window.theme` picks the scheme and every colour a component draws comes from it,
+so set it from Go (`win.Root().Theme.Set("dark")`) and the whole window follows.
+Leave the root's `background` unset when the page should follow the scheme: the
+renderer then fills with the theme surface. A declared `background` is a fixed
+colour and stays put across a theme change, which is what to use for a deliberate
+brand surface and not for the page.

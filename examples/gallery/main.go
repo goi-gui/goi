@@ -52,6 +52,7 @@ func main() {
 	// Which page is open is app state: a reload rebuilds the nodes, not the state.
 	active := 0
 	drawerOpen := false
+	dark := false
 
 	if err := win.Bind(func(w *ui.Window) error {
 		show := func(i int) {
@@ -93,9 +94,28 @@ func main() {
 			}
 		}
 
+		// Both theme controls drive this one function: the app-bar icon and the
+		// switch on the Layout page stay in step because neither owns the state.
+		applyTheme := func(d bool) {
+			dark = d
+			theme := "light"
+			icon := "dark_mode"
+			if d {
+				theme, icon = "dark", "light_mode"
+			}
+			w.Root().Theme.Set(theme)
+			if bar, err := ui.ByID[*ui.TopAppBar](w, "appbar"); err == nil {
+				bar.Trailing.Set(icon)
+			}
+			if sw, err := ui.ByID[*ui.Switch](w, "darkSwitch"); err == nil {
+				sw.Checked.Set(d)
+			}
+		}
+
 		// Restore the state a reload must not lose.
 		show(active)
 		setDrawer(drawerOpen)
+		applyTheme(dark)
 
 		// Navigation: a click on a destination reports its index.
 		if rail, err := ui.ByID[*ui.NavigationRail](w, "rail"); err == nil {
@@ -114,20 +134,22 @@ func main() {
 			}
 		}
 
-		// The app-bar icon opens the drawer; the scrim and Escape close it.
-		// The hit area is the bar's own leading slot: with a rail beside it the
-		// bar does not start at the window's left edge, so the window coordinate
-		// must be measured from the bar.
+		// The app-bar icons own both actions: the leading one opens the drawer,
+		// the trailing one flips the theme. Their hit areas are measured from the
+		// bar's own edges, because a rail beside it moves the bar's left edge off
+		// the window's.
 		if bar, err := ui.ByID[*ui.TopAppBar](w, "appbar"); err == nil {
 			bar.OnClick(func(e ui.ClickEvent) {
-				// Local x inside the bar: subtract every ancestor's offset,
-				// the bar's own included.
 				local := e.X
 				for n := ui.Node(bar); n != nil; n = n.Base().Parent() {
 					local -= n.Base().Bounds().X
 				}
-				if local <= 56 {
+				width := bar.Base().Bounds().W
+				switch {
+				case local <= 56:
 					setDrawer(!drawerOpen)
+				case local >= width-56:
+					applyTheme(!dark)
 				}
 			})
 		}
@@ -139,6 +161,11 @@ func main() {
 				setDrawer(false)
 			}
 		})
+
+		// The switch on the Layout page is the second entry point to the theme.
+		if sw, err := ui.ByID[*ui.Switch](w, "darkSwitch"); err == nil {
+			sw.OnToggle(applyTheme)
+		}
 
 		// Wire the stateful controls so the pages behave, not just draw.
 		if sw, err := ui.ByID[*ui.Switch](w, "switchOn"); err == nil {

@@ -535,7 +535,7 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 			View:       view,
 			LoadOp:     gputypes.LoadOpClear,
 			StoreOp:    gputypes.StoreOpStore,
-			ClearValue: gputypes.Color{R: 0, G: 0, B: 0, A: 1},
+			ClearValue: clearColor(list),
 		}},
 	})
 	if err != nil {
@@ -644,6 +644,23 @@ func (g *GPU) Release() {
 
 // shapeKind maps a paint shape to the shader's kind: 0 rect, 1 circle/arc,
 // 2 shadow. Arc and Circle share the ring code.
+// clearColor is the surface color behind the display list. The window rarely
+// paints its own background, so the theme's surface is what the page shows: using
+// it here means switching the theme also switches the page, and saves a
+// full-window fill every frame.
+func clearColor(list *paint.List) gputypes.Color {
+	if list == nil || list.Theme == nil {
+		return gputypes.Color{R: 0, G: 0, B: 0, A: 1}
+	}
+	c := list.Theme.Colors.Surface
+	return gputypes.Color{
+		R: float64((c>>24)&0xFF) / 255,
+		G: float64((c>>16)&0xFF) / 255,
+		B: float64((c>>8)&0xFF) / 255,
+		A: 1,
+	}
+}
+
 // snapRect rounds a box's edges to whole device pixels. A 1dp border at a
 // fractional x starts on two rows at 90% and 10% coverage, which reads as a
 // broken line; snapped, both edges land on one row each. Adjacent boxes share
