@@ -435,11 +435,19 @@ func (i *interactor) key(k tree.Key, mods tree.Mods) {
 		}
 	case tree.KeyBackspace:
 		if !i.deleteSelection(f) {
-			i.deleteBefore(f)
+			if ctrl {
+				i.deleteRange(f, prevWord(f.Text.Get(), f.Caret), f.Caret)
+			} else {
+				i.deleteBefore(f)
+			}
 		}
 	case tree.KeyDelete:
 		if !i.deleteSelection(f) {
-			i.deleteAfter(f)
+			if ctrl {
+				i.deleteRange(f, f.Caret, nextWordEnd(f.Text.Get(), f.Caret))
+			} else {
+				i.deleteAfter(f)
+			}
 		}
 	case tree.KeyLeft:
 		i.moveCaret(f, -1, shift, ctrl)
@@ -660,6 +668,22 @@ func isDescendantOf(n, ancestor tree.Node) bool {
 		n = n.Base().Parent()
 	}
 	return false
+}
+
+// deleteRange removes s[a:b], leaving the caret at a. Ctrl+Backspace and
+// Ctrl+Delete use it to delete a whole word at once.
+func (i *interactor) deleteRange(f *tree.Component, a, b int) {
+	s := f.Text.Get()
+	a, b = clampRune(s, a), clampRune(s, b)
+	if a >= b {
+		return
+	}
+	ns := s[:a] + s[b:]
+	f.Text.Set(ns)
+	f.Caret = a
+	f.ClearSelection()
+	f.Base().MarkDirty(tree.DirtyPaint)
+	f.Edit.Emit(ns)
 }
 
 func (i *interactor) deleteBefore(f *tree.Component) {
@@ -995,6 +1019,21 @@ func nextWord(s string, c int) int {
 }
 
 // runeClass groups runes for word selection: 0 space, 1 word, 2 punctuation.
+// nextWordEnd is where Ctrl+Delete stops: the end of the next word plus the
+// spaces after it, so repeated presses remove one word and its separator.
+// Ctrl+Right keeps using nextWord, which stops at the word end.
+func nextWordEnd(s string, c int) int {
+	c = nextWord(s, c)
+	for c < len(s) {
+		r, size := utf8.DecodeRuneInString(s[c:])
+		if !unicode.IsSpace(r) {
+			break
+		}
+		c += size
+	}
+	return c
+}
+
 func runeClass(r rune) int {
 	switch {
 	case unicode.IsSpace(r):

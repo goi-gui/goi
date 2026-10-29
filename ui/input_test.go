@@ -160,6 +160,60 @@ func TestSearchBarCaretAndSelection(t *testing.T) {
 	}
 }
 
+func TestTextInputWordEditing(t *testing.T) {
+	_, win, in := inputFixture(t, inputUI, 480, 320)
+	ti := MustByID[*TextField](win, "field")
+	b := absoluteRect(ti)
+	ctrl := tree.Mods{Ctrl: true}
+	typeWord := func(s string) {
+		for _, r := range s {
+			in.Char(r)
+		}
+	}
+	reset := func() {
+		ti.Text.Set("")
+		ti.Caret = 0
+	}
+
+	in.MouseDown(b.X+10, b.Y+10, 0, false) // focus it
+
+	// Ctrl+Backspace deletes the word before the caret, and with it the space
+	// that separated it from the previous word.
+	typeWord("hello big world")
+	in.key(backspace, ctrl)
+	if got := ti.Text.Get(); got != "hello big " {
+		t.Fatalf("ctrl+backspace = %q", got)
+	}
+	in.key(backspace, ctrl)
+	if got := ti.Text.Get(); got != "hello " {
+		t.Fatalf("second ctrl+backspace = %q", got)
+	}
+
+	// Ctrl+Delete deletes forward, word by word.
+	reset()
+	typeWord("alpha beta gamma")
+	in.key(home, noMods)
+	in.key(tree.KeyDelete, ctrl)
+	if got := ti.Text.Get(); got != "beta gamma" {
+		t.Fatalf("ctrl+delete = %q", got)
+	}
+	in.key(tree.KeyDelete, ctrl)
+	if got := ti.Text.Get(); got != "gamma" {
+		t.Fatalf("second ctrl+delete = %q", got)
+	}
+
+	// Ctrl+Backspace at the start, and Ctrl+Delete at the end, are no-ops.
+	reset()
+	typeWord("one")
+	in.key(home, noMods)
+	in.key(backspace, ctrl)
+	in.key(end, noMods)
+	in.key(tree.KeyDelete, ctrl)
+	if got := ti.Text.Get(); got != "one" {
+		t.Fatalf("edge word deletes changed %q", got)
+	}
+}
+
 func TestSegmentedButtonModes(t *testing.T) {
 	_, win, in := inputFixture(t, `Window {
 		Column {
