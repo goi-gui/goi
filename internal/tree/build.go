@@ -20,6 +20,10 @@ type Tree struct {
 	// viewW and viewH are the last viewport in logical pixels, so an expression
 	// can read window.width and window.height.
 	viewW, viewH float64
+	// cloning is set while Instantiate builds a copy: ids stay on the nodes so
+	// an app can find them, but they are not registered, because a copy would
+	// otherwise collide with the template's own ids.
+	cloning bool
 }
 
 // ByID returns the node with the given id.
@@ -114,7 +118,7 @@ func (t *Tree) build(el *syntax.Element, parent *NodeBase, hooks *Hooks) (Node, 
 		if p.Name == "id" {
 			id, _ := literalText(p.Value)
 			b.id = id
-			if id != "" {
+			if id != "" && !t.cloning {
 				if _, dup := t.ids[id]; dup {
 					return nil, fmt.Errorf("duplicate id %q", id)
 				}

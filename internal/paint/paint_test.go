@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ksckaan1/goui/internal/layout"
+	"github.com/ksckaan1/goui/internal/m3"
 	"github.com/ksckaan1/goui/internal/tree"
 )
 
@@ -93,5 +94,44 @@ fill 8,32 40x32 r=6/6/6/6 color=#3b82f6ff border=#00000000/0 clip=0,0 200x120
 `
 	if got := l.Dump(); got != want {
 		t.Fatalf("display list mismatch\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+// TestScrollbarOnlyOnOverflow checks the M3 thumb: 4dp wide, 32dp minimum
+// length, and absent when the content fits.
+func TestScrollbarOnlyOnOverflow(t *testing.T) {
+	thumb := withAlpha(m3.Light().Colors.OnSurfaceVariant, 0.4)
+	overflow := list(t, `Window { Column {
+		scroll: true
+		width: 100
+		height: 60
+		Rectangle { width: 100 height: 300 background: #ff0000 }
+	} }`, 100, 100)
+	found := false
+	for _, op := range overflow.Ops {
+		if op.Kind == Fill && op.Color == thumb {
+			found = true
+			if op.Rect[2] != 4 {
+				t.Fatalf("thumb width = %v, want 4", op.Rect[2])
+			}
+			if op.Rect[3] != 32 {
+				t.Fatalf("thumb height = %v, want the 32 minimum", op.Rect[3])
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("no thumb:\n%s", overflow.Dump())
+	}
+
+	fits := list(t, `Window { Column {
+		scroll: true
+		width: 100
+		height: 60
+		Rectangle { width: 100 height: 40 background: #ff0000 }
+	} }`, 100, 100)
+	for _, op := range fits.Ops {
+		if op.Kind == Fill && op.Color == thumb {
+			t.Fatal("thumb drawn although the content fits")
+		}
 	}
 }

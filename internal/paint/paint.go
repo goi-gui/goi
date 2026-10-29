@@ -153,6 +153,7 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 		kb.Y += oy
 		l.walkOffset(k, x, y, kb, childClip)
 	}
+	l.paintScrollbar(b, r, inner, clip)
 }
 
 // walkOffset is walk with an explicit bounds override, used for scrolled lists.
@@ -195,6 +196,60 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 		kb.X += ox
 		kb.Y += oy
 		l.walkOffset(k, x, y, kb, childClip)
+	}
+	l.paintScrollbar(b, r, inner, clip)
+}
+
+// paintScrollbar draws the M3 thumb for a scrolling node: 4dp wide, rounded, 2dp
+// in from the trailing edge, onSurfaceVariant at 40%. It is drawn last, above
+// the content, and only when the content actually overflows.
+func (l *List) paintScrollbar(b *tree.NodeBase, r, inner tree.Rect, clip tree.Rect) {
+	axis := b.ScrollAxis()
+	if axis == tree.AxisNone {
+		return
+	}
+	max := b.ScrollMax()
+	if max <= 0 {
+		return
+	}
+	const thickness, inset, minLen = 4.0, 2.0, 32.0
+	col := withAlpha(l.Theme.Colors.OnSurfaceVariant, 0.4)
+	off := b.ScrollOffset()
+	switch axis {
+	case tree.AxisY:
+		view := inner.H
+		if view <= 0 {
+			return
+		}
+		thumb := view * view / (view + max)
+		if thumb < minLen {
+			thumb = minLen
+		}
+		if thumb > view {
+			thumb = view
+		}
+		l.fillRect(tree.Rect{
+			X: inner.Right() - thickness - inset,
+			Y: inner.Y + (view-thumb)*(off/max),
+			W: thickness, H: thumb,
+		}, col, thickness/2, 0, 0, clip)
+	case tree.AxisX:
+		view := inner.W
+		if view <= 0 {
+			return
+		}
+		thumb := view * view / (view + max)
+		if thumb < minLen {
+			thumb = minLen
+		}
+		if thumb > view {
+			thumb = view
+		}
+		l.fillRect(tree.Rect{
+			X: inner.X + (view-thumb)*(off/max),
+			Y: inner.Bottom() - thickness - inset,
+			W: thumb, H: thickness,
+		}, col, thickness/2, 0, 0, clip)
 	}
 }
 

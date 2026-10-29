@@ -102,6 +102,9 @@ func (b *NodeBase) Children() []Node {
 	return out
 }
 
+// TreeRef returns the tree this node was built into, or nil for a detached node.
+func (b *NodeBase) TreeRef() *Tree { return b.tree }
+
 // Node returns the concrete node behind this base.
 func (b *NodeBase) Node() Node { return b.node }
 

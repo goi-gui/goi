@@ -796,8 +796,10 @@ func (i *interactor) focusables() []tree.Node {
 		if n == nil || !n.Base().Visible() {
 			return
 		}
+		// Only real controls take focus. A plain node with a click handler is a
+		// hit area or a scrim; ringing a whole app bar on click would be noise.
 		c := comp(n)
-		if c != nil && !c.Disabled.Get() && (interactive(n) || n.Base().Click.Len() > 0) {
+		if c != nil && !c.Disabled.Get() && interactive(n) {
 			out = append(out, n)
 		}
 		for _, k := range n.Base().Kids() {

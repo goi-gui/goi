@@ -156,6 +156,9 @@ func (a *App) frame() {
 	if d.input != nil && d.input.tick(dt) {
 		a.needsFrame = true
 	}
+	if a.tickTweens() {
+		a.needsFrame = true
+	}
 
 	// Responsive properties follow the window width. Applying them marks the
 	// tree dirty when a value changes, so this runs before the frame check.

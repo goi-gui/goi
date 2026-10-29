@@ -158,6 +158,20 @@ func main() {
 			}
 		})
 
+		// The Layout page's repeat demo: one hidden template, three copies. A
+		// reload rebuilds the tree, so this runs again from Bind and the copies
+		// come back with the page.
+		if list, err := ui.ByID[*ui.Column](w, "repeatList"); err == nil {
+			for i, name := range []string{"First copy", "Second copy", "Third copy"} {
+				item, err := ui.Instantiate[*ui.ListItem](w, "repeatTemplate", list)
+				if err != nil {
+					continue
+				}
+				item.Label.Set(name)
+				item.Icon.Set([]string{"person", "star", "photo"}[i])
+			}
+		}
+
 		// The switch on the Layout page is the second entry point to the theme.
 		if sw, err := ui.ByID[*ui.Switch](w, "darkSwitch"); err == nil {
 			sw.OnToggle(applyTheme)

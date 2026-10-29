@@ -43,6 +43,9 @@ type App struct {
 
 	watcher *hotreload.Reloader
 
+	// tweens are the running app animations, touched only on the UI goroutine.
+	tweens []*tween
+
 	// OnError receives rendering errors (a lost surface, a validation failure).
 	// When nil they are printed and the app keeps running.
 	OnError func(error)
