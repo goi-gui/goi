@@ -160,8 +160,8 @@ and [docs/DECISIONS.md](docs/DECISIONS.md).
 
 Bindings that push Go state back into `.ui` values (the file is evaluated, not
 observed), dynamic color and custom themes, an accessibility tree, multiple
-windows, drag and drop, custom components in `.ui`, scroll inertia, and caret
-mapping inside right-to-left text. IME composition shows as underlined preedit on
+windows, drag and drop, custom components in `.ui`, drag-to-fling (the wheel does
+coast), and caret mapping inside right-to-left text. IME composition shows as underlined preedit on
 Wayland. `go run ./cmd/uicheck -layout` lays a design out headlessly and reports
 nodes that cannot draw.
 

@@ -65,6 +65,11 @@ type interactor struct {
 	measure func(s string, size float64, weight int) float64
 
 	viewportW, viewportH float64
+
+	// Fling keeps a wheel or touchpad scroll moving after the gesture ends.
+	flingNode tree.Node
+	flingV    float64 // logical pixels per second
+	lastWheel time.Time
 }
 
 // comp returns the Material component behind a node, if it has one.
@@ -404,9 +409,61 @@ func (i *interactor) Scroll(dx, dy float64) {
 		}
 		delta = dx
 	}
-	b.SetScrollOffset(b.ScrollOffset() - delta*48)
+	moved := -delta * 48
+	b.SetScrollOffset(b.ScrollOffset() + moved)
+	b.MarkDirty(tree.DirtyPaint)
+	i.startFling(n, moved)
+	i.markDirty()
+}
+
+// startFling turns the last wheel step into a velocity, so a fast flick coasts.
+// A step that arrives after a pause starts a new gesture instead of adding to a
+// stale one.
+func (i *interactor) startFling(n tree.Node, moved float64) {
+	now := time.Now()
+	dt := now.Sub(i.lastWheel).Seconds()
+	i.lastWheel = now
+	if dt <= 0 || dt > 0.25 {
+		i.flingNode = n
+		i.flingV = moved / 0.05 // one step is about a 20 Hz gesture
+		return
+	}
+	i.flingNode = n
+	i.flingV = moved / dt
+	// A trackpad sends many tiny steps; cap what one tick can carry.
+	if i.flingV > 8000 {
+		i.flingV = 8000
+	}
+	if i.flingV < -8000 {
+		i.flingV = -8000
+	}
+}
+
+// flingFriction is the exponential decay per second. 6 is a short M3-like
+// coast: about 400ms to a stop from a fast flick.
+const flingFriction = 6.0
+
+// tickFling advances a coasting scroll and reports whether the loop must keep
+// drawing. It stops at the end of the content instead of bouncing.
+func (i *interactor) tickFling(dt float64) bool {
+	if i.flingNode == nil || i.flingV == 0 {
+		return false
+	}
+	b := i.flingNode.Base()
+	before := b.ScrollOffset()
+	b.SetScrollOffset(before + i.flingV*dt)
+	i.flingV *= math.Exp(-flingFriction * dt)
+	after := b.ScrollOffset()
+	// Hitting an edge kills the momentum; otherwise the offset would keep
+	// asking for frames while nothing moves.
+	if after == before || math.Abs(i.flingV) < 8 {
+		i.flingNode = nil
+		i.flingV = 0
+		return false
+	}
 	b.MarkDirty(tree.DirtyPaint)
 	i.markDirty()
+	return true
 }
 
 // dragScroll follows the pointer while a press inside a scroll area moves. It

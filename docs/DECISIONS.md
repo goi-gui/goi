@@ -496,9 +496,7 @@ batch. This is what the display list will feed.
 - **What is intentionally shallow for now:** DatePicker and TimePicker render a
   month grid and a clock dial but do not edit a date; FABMenu renders the FAB and
   leaves its expanded item list to app content; Slider drags but has no keyboard
-  handling. There is no scrollbar, no fling/inertia and no mouse-wheel axis
-  other than the container's. These are visual and behavioural follow-ups, not
-  missing elements.
+  handling. Slider arrow keys are still missing.
 - **Images are packed, not bound per image.** `Image` decodes once per path in
   the ui layer (which owns the asset fs) and the renderer packs every bitmap into
   one 2048x2048 RGBA atlas with a shelf packer, drawing it as kind 5 in the same
@@ -528,7 +526,9 @@ batch. This is what the display list will feed.
 - **Scrollbars are drawn, not overlays.** A scrolling node paints the M3 thumb
   last, over its content, 4dp wide with a 32dp minimum and no track. That is also
   what made wheel scrolling verifiable: the offset was always right, the demo had
-  no cue. Inertia is still absent.
+  no cue. A wheel step also sets a velocity and the offset coasts with
+  exponential friction, stopping at an edge or below a threshold, so the loop can
+  sleep again. Dragging still does not fling.
 - **`uicheck -layout` catches what syntax cannot.** It lays the design out with
   the real font library and reports a visible container with children and no size,
   or a leaf with a surface or label and no area — the class of bug behind a Stack

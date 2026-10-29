@@ -32,6 +32,9 @@ func (i *interactor) startRipple(n tree.Node, x, y float64) {
 // rest of a long value.
 func (i *interactor) tick(dt float64) bool {
 	scrolling := i.autoScroll(dt)
+	if i.tickFling(dt) {
+		scrolling = true
+	}
 	if len(i.ripples) == 0 {
 		return scrolling
 	}
