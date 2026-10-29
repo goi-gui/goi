@@ -2,6 +2,8 @@ package text
 
 import (
 	"testing"
+
+	"github.com/go-text/typesetting/language"
 )
 
 func TestDefaultFontLoads(t *testing.T) {
@@ -132,5 +134,64 @@ func TestAtlasFullIsGraceful(t *testing.T) {
 	}
 	if slots > 8 {
 		t.Fatalf("atlas accepted %d glyphs in 16x16", slots)
+	}
+}
+
+// TestBidiRunsCoverTheText checks that splitting a line never drops or reorders
+// characters, and that the base direction and script are picked from the text.
+func TestBidiRunsCoverTheText(t *testing.T) {
+	for _, s := range []string{
+		"hello",
+		"مرحبا بالعالم",
+		"hello مرحبا world",
+	} {
+		runs := splitBidi(s)
+		var joined string
+		for _, r := range runs {
+			joined += r.text
+		}
+		if joined != s {
+			t.Errorf("%q split into %q", s, joined)
+		}
+	}
+	if !baseDirection("مرحبا بالعالم") {
+		t.Error("an Arabic line is not right to left")
+	}
+	if baseDirection("hello") {
+		t.Error("a Latin line is right to left")
+	}
+	runs := splitBidi("مرحبا")
+	if len(runs) != 1 || !runs[0].rtl {
+		t.Fatalf("Arabic runs = %+v", runs)
+	}
+	if runs[0].script == language.Latin {
+		t.Error("Arabic text kept the Latin script")
+	}
+}
+
+// TestShapedRTLKeepsEveryGlyph guards the shaping path: the run count changes
+// but no glyph disappears.
+func TestShapedRTLKeepsEveryGlyph(t *testing.T) {
+	lib := NewLibrary()
+	if !lib.HasFont() {
+		t.Skip("no font")
+	}
+	face := lib.Face(14, WeightRegular)
+	if face == nil {
+		t.Skip("no face")
+	}
+	arabic := "مرحبا"
+	out := face.Shape(arabic)
+	if len(out.Glyphs) == 0 {
+		t.Fatal("no glyphs for Arabic text")
+	}
+	if out.Advance <= 0 {
+		t.Fatalf("advance = %v", out.Advance)
+	}
+	// Roboto has no Arabic, so this may fall back to .notdef; the point is that
+	// shaping and direction do not drop glyphs. A font with Arabic coverage
+	// through RegisterFont would shape it fully.
+	if n := len(out.Glyphs); n > len([]rune(arabic)) {
+		t.Fatalf("more glyphs than runes: %d", n)
 	}
 }

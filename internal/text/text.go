@@ -154,20 +154,67 @@ func (f *Face) Tag() uint8 { return f.tag }
 // Size returns the pixel size of the face.
 func (f *Face) Size() float64 { return f.size }
 
-// Shape returns the laid-out glyphs for one line of text.
+// Shape returns the laid-out glyphs for one line of text, in visual order.
+//
+// The line is split into bidirectional runs, each shaped with its own direction
+// and script, then the runs are ordered for display. A right-to-left line is
+// shaped as one run, which is the common case (Arabic, Hebrew) and fully
+// correct; a mixed line keeps each run in the right internal order and places
+// them with the paragraph's base direction.
+//
+// shortcut: caret mapping in a field still measures text prefixes with a left
+// to right assumption, so a caret inside right-to-left text lands between
+// clusters rather than on them. Upgrade with a real cluster-to-glyph map when a
+// field needs to edit mixed scripts.
 func (f *Face) Shape(s string) shaping.Output {
-	runes := []rune(s)
-	in := shaping.Input{
+	runs := splitBidi(s)
+	if len(runs) == 1 && runs[0].rtl == false {
+		return f.shapeRun(s, di.DirectionLTR, runs[0].script)
+	}
+	out := shaping.Output{Size: fixed.Int26_6(f.size * 64)}
+	chunks := make([][]shaping.Glyph, 0, len(runs))
+	for _, r := range runs {
+		dir := di.DirectionLTR
+		if r.rtl {
+			dir = di.DirectionRTL
+		}
+		sub := f.shapeRun(r.text, dir, r.script)
+		chunks = append(chunks, sub.Glyphs)
+		out.Advance += sub.Advance
+	}
+	// Runs are built in logical order. A right-to-left paragraph lays them out
+	// from the right, so the run order flips; glyphs inside a run are already in
+	// visual order from the shaper.
+	if baseDirection(s) {
+		for i, j := 0, len(chunks)-1; i < j; i, j = i+1, j-1 {
+			chunks[i], chunks[j] = chunks[j], chunks[i]
+		}
+	}
+	for _, c := range chunks {
+		out.Glyphs = append(out.Glyphs, c...)
+	}
+	return out
+}
+
+// bidiRun is one stretch of text with a single direction and script.
+type bidiRun struct {
+	text   string
+	rtl    bool
+	script language.Script
+}
+
+func (f *Face) shapeRun(text string, dir di.Direction, script language.Script) shaping.Output {
+	runes := []rune(text)
+	return f.shaper.Shape(shaping.Input{
 		Text:      runes,
 		RunStart:  0,
 		RunEnd:    len(runes),
-		Direction: di.DirectionLTR,
+		Direction: dir,
 		Face:      f.font,
 		Size:      fixed.Int26_6(f.size * 64),
-		Script:    language.Latin,
+		Script:    script,
 		Language:  language.NewLanguage("en"),
-	}
-	return f.shaper.Shape(in)
+	})
 }
 
 // Measure returns the size of s at this face's size, wrapping at maxWidth when

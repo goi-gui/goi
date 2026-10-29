@@ -122,6 +122,7 @@ by `:` and a child element when it is followed by `{`, so `name: value` and
 | `Wrap` | yes | `spacing`, `align` |
 | `Grid` | yes | `columns`, `spacing`, `align` |
 | `Rectangle` | no | — |
+| `Image` | no | `src`, `fit` (`cover`, `contain`, `fill`), plus `radius` |
 | `Text` | no | `text`, `fontSize`, `weight`, `color`, `align`, `wrap`, `role` |
 
 `role` selects a Material 3 type-scale role (`displayLarge` … `labelSmall`) and
@@ -304,10 +305,10 @@ set from Go with `Prop.Set` is replaced on the next frame.
 
 ## What is not in v1
 
-No bindings, no loops, no conditionals, no scripting, and no event declarations —
-behaviour lives in Go. No animations and no custom components. Theming is limited
-to the built-in light and dark Material 3 schemes; dynamic color and custom
-palettes are not exposed yet.
+No bindings, no loops and no event declarations — behaviour lives in Go. A list
+grows with `ui.Instantiate` from a hidden template, not with a `.ui` `for`.
+Theming is limited to the built-in light and dark Material 3 schemes; dynamic
+color and custom palettes are not exposed yet.
 
 `Window.theme` picks the scheme and every colour a component draws comes from it,
 so set it from Go (`win.Root().Theme.Set("dark")`) and the whole window follows.

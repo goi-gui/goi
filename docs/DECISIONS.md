@@ -499,7 +499,41 @@ batch. This is what the display list will feed.
   handling. There is no scrollbar, no fling/inertia and no mouse-wheel axis
   other than the container's. These are visual and behavioural follow-ups, not
   missing elements.
-- **Not in v1 still:** `Image`, scrollbars and full accessibility. IME
+- **Images are packed, not bound per image.** `Image` decodes once per path in
+  the ui layer (which owns the asset fs) and the renderer packs every bitmap into
+  one 2048x2048 RGBA atlas with a shelf packer, drawing it as kind 5 in the same
+  instance buffer as glyphs. One draw call survives, paint order holds, and
+  `cover` crops by UV while `contain` shrinks the quad. The atlas has no
+  eviction: past its budget images are halved and then skipped, which is the
+  shortcut to revisit before an app shows many large photos.
+- **Text is split into bidirectional runs.** The shaper used to force Latin LTR,
+  so Arabic and Hebrew drew unjoined and mirrored. A line is now cut with
+  `x/text/unicode/bidi`, each run is shaped with its own direction and script
+  (from the first strong rune), and a right-to-left paragraph reverses the run
+  order. A pure RTL line is one run and fully correct; caret mapping inside RTL
+  text still assumes LTR prefixes. Fonts are Roboto + Material Symbols, so CJK or
+  Arabic still needs `RegisterFont`; the layout now knows the difference.
+- **A hidden template plus `Instantiate` is the list story.** `.ui` has no loops
+  by design, and building a row by hand in Go means duplicating the design. A
+  template declared `visible: false` is copied per item; ids stay on the copy for
+  `Descendant` but are not registered, so copies cannot collide. `Remove` is the
+  inverse. Expressions inside a template that reference a sibling by id still
+  point at the template's node, which is the documented limit.
+- **Motion is a tween list, not a property system.** `App.Tween`/`App.Animate`
+  run an eased function on the UI goroutine; they tick before the frame check and
+  keep the loop awake only while running. A full animation DSL was not needed:
+  the tick loop already existed for ripples, and a tween that writes a `Prop` is
+  enough for a page fade or a sheet slide. Page transitions stay out until a
+  design asks for one.
+- **Scrollbars are drawn, not overlays.** A scrolling node paints the M3 thumb
+  last, over its content, 4dp wide with a 32dp minimum and no track. That is also
+  what made wheel scrolling verifiable: the offset was always right, the demo had
+  no cue. Inertia is still absent.
+- **`uicheck -layout` catches what syntax cannot.** It lays the design out with
+  the real font library and reports a visible container with children and no size,
+  or a leaf with a surface or label and no area — the class of bug behind a Stack
+  that silently collapsed to nothing.
+- **Not in v1 still:** full accessibility. IME
   composition now shows as underlined preedit on Wayland; per-clause styling of
   the composition (the protocol's cursor range) is drawn as one run. The previous
   phase notes that say "Checkbox deferred" are superseded: Checkbox,
