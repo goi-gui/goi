@@ -1,5 +1,5 @@
 // Command counter is the framework's smoke test: a window loaded from a .goi
-// file, a button whose handler updates a label through the typed property API.
+// file, buttons whose handlers update a label through the typed property API.
 //
 // Run with: go run -ldflags=-linkmode=internal ./examples/counter
 package main
@@ -33,17 +33,33 @@ func main() {
 	c := &counter{}
 	err = win.Bind(func(w *ui.Window) error {
 		label := ui.MustByID[*ui.Text](w, "label")
-		inc := ui.MustByID[*ui.Button](w, "inc")
+		inc := ui.MustByID[*ui.IconButton](w, "inc")
+		dec := ui.MustByID[*ui.IconButton](w, "dec")
 		reset := ui.MustByID[*ui.Button](w, "reset")
 		name := ui.MustByID[*ui.TextField](w, "name")
 
+		// render writes the count and keeps the minus disabled at the floor,
+		// so the control never offers an action the state refuses.
+		render := func() {
+			label.Text.Set(strconv.Itoa(c.n))
+			dec.Disabled.Set(c.n <= 0)
+			reset.Disabled.Set(c.n == 0)
+		}
+		render()
+
 		inc.OnClick(func(ui.ClickEvent) {
 			c.n++
-			label.Text.Set(strconv.Itoa(c.n))
+			render()
+		})
+		dec.OnClick(func(ui.ClickEvent) {
+			if c.n > 0 {
+				c.n--
+			}
+			render()
 		})
 		reset.OnClick(func(ui.ClickEvent) {
 			c.n = 0
-			label.Text.Set("0")
+			render()
 		})
 		name.OnEdit(func(s string) {
 			fmt.Println("name:", s)

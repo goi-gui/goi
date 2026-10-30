@@ -20,7 +20,6 @@ LinearProgress { value: 30 min: 0 max: 100 }
 | `min` | number | lowest value |
 | `max` | number | highest value |
 
-
 ## From Go
 
 ```go

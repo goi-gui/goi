@@ -18,7 +18,6 @@ LoadingIndicator { size: small }
 | `variant` | enum | visual style; see the page |
 | `size` | enum | M3 size token |
 
-
 ## From Go
 
 ```go

@@ -4,7 +4,10 @@ Window {
 	title: "goi hello"
 	width: 640
 	height: 400
-	background: #1b1d22
+	// Every colour below is a literal, so the scheme only supplies the default
+	// text colour; `theme: dark` keeps that readable on the dark panel.
+	theme: dark
+	background: surface
 
 	Column {
 		padding: 24

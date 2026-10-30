@@ -32,8 +32,9 @@ var pages = []page{
 	{"pageMotion", "Motion"},
 }
 
-// navIDs are the containers that select a page: the rail, the bottom bar and the
-// drawer. They all mirror the same selection.
+// navIDs are the containers that own a destination selection: the rail and the
+// bottom bar. The drawer items are wired one by one below, because they also
+// close the drawer.
 var navIDs = []string{"rail", "navbar"}
 
 func main() {

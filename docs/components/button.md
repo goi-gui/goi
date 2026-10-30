@@ -25,7 +25,6 @@ Button { label: "Save" icon: check variant: filled }
 | `size` | enum | M3 size token |
 | `disabled` | bool | dims the element and blocks input |
 
-
 ## From Go
 
 ```go

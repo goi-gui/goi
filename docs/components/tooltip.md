@@ -17,7 +17,6 @@ Tooltip { label: "Saves to your library" width: 200 }
 | `label` | string | the main text |
 | `variant` | enum | visual style; see the page |
 
-
 ## From Go
 
 ```go

@@ -10,7 +10,6 @@ Window {
 	width: 520
 	height: 480
 	theme: light
-	background: #FEF7FF
 
 	Column {
 		padding: 16

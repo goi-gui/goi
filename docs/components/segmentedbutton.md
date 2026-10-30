@@ -23,7 +23,6 @@ SegmentedButton { label: "Month" width: 96 variant: single }
 | `disabled` | bool | dims the element and blocks input |
 | `selected` | bool | active/selection state |
 
-
 ## From Go
 
 ```go

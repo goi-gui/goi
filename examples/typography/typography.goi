@@ -5,7 +5,6 @@ Window {
 	id: main
 	title: "Typography"
 	theme: light
-	background: #FEF7FF
 
 	Column {
 		spacing: 0

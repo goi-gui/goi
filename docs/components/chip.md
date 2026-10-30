@@ -27,7 +27,6 @@ Chip { label: "Tag" trailingIcon: close }
 | `selected` | bool | active/selection state |
 | `checked` | bool | on/off state |
 
-
 ## From Go
 
 ```go

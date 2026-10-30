@@ -24,7 +24,6 @@ TopAppBar {
 | `icon` | string | leading Material Symbols ligature |
 | `trailingIcon` | string | trailing Material Symbols ligature |
 
-
 ## From Go
 
 ```go

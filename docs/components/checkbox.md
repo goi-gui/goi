@@ -19,7 +19,6 @@ Checkbox { label: "Remember me" checked: true }
 | `disabled` | bool | dims the element and blocks input |
 | `checked` | bool | on/off state |
 
-
 ## From Go
 
 ```go

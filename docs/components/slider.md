@@ -22,7 +22,6 @@ Slider { value: 40 min: 0 max: 100 step: 10 }
 | `max` | number | highest value |
 | `step` | number | snap interval; 0 means continuous |
 
-
 ## From Go
 
 ```go

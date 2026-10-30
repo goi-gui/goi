@@ -191,7 +191,11 @@ others, and clicking the selected segment keeps it selected.
 
 `NavigationDrawer` is the panel only; it has no open/closed state of its own.
 A modal drawer is a `Stack` with the page first, then a scrim `Rectangle` and a
-`Positioned` drawer with `visible: false`; Go flips `SetVisible` on both.
+`Positioned` drawer with `visible: false`; Go flips `SetVisible`, and animates
+the drawer's `translateX` from `-width` to 0 so it slides in from the edge.
+Select events from a navigation container report the index among its
+destinations, so a header, spacer or action inside the same rail does not shift
+the page list.
 
 Containers that lay children out (`ButtonGroup`, `Toolbar`, `Carousel`, `Tabs`,
 `NavigationBar`, `NavigationRail`, `NavigationDrawer`, `List`, `Menu`, `Card`,

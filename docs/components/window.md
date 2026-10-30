@@ -21,7 +21,6 @@ Window {
 | `title` | string | window title |
 | `theme` | string | `light` or `dark` |
 
-
 ## From Go
 
 ```go

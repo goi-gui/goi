@@ -459,7 +459,9 @@ func (l *List) paintIconButton(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		l.fillRect(r, bg, radius, 0, 0, clip)
 		icon = disabledAlpha(c, col.OnSecondaryContainer)
 	case "outlined":
-		l.fillRect(r, 0, radius, col.Outline, 1, clip)
+		// A disabled outlined button dims its border with its glyph; leaving the
+		// border solid made the control read as active next to a dimmed icon.
+		l.fillRect(r, 0, radius, disabledAlpha(c, col.Outline), 1, clip)
 		icon = disabledAlpha(c, col.OnSurfaceVariant)
 	default:
 		if c.Selected.Get() {

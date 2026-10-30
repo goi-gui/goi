@@ -21,7 +21,6 @@ CircularProgress { value: 70 min: 0 max: 100 width: 48 height: 48 }
 | `max` | number | highest value |
 | `size` | enum | M3 size token |
 
-
 ## From Go
 
 ```go

@@ -378,17 +378,24 @@ func (i *interactor) activateDestination(n tree.Node, c *tree.Component) {
 	if p == nil || comp(p) == nil {
 		return
 	}
-	pc := comp(p)
-	for idx, kid := range p.Base().Kids() {
-		if kid.Base() != n.Base() {
+	// The index counts destinations only: a rail may hold a header, a spacer or
+	// an action of its own, and an app maps Select straight onto its page list.
+	idx := 0
+	for _, kid := range p.Base().Kids() {
+		if kid.Node().Kind() != "NavigationItem" {
 			continue
 		}
-		if pc.SelectedIndex != idx {
-			pc.SelectedIndex = idx
-			pc.Base().MarkDirty(tree.DirtyPaint)
+		if kid.Base() == n.Base() {
+			break
 		}
-		pc.Select.Emit(idx)
+		idx++
 	}
+	pc := comp(p)
+	if pc.SelectedIndex != idx {
+		pc.SelectedIndex = idx
+		pc.Base().MarkDirty(tree.DirtyPaint)
+	}
+	pc.Select.Emit(idx)
 }
 
 // activateSegment applies the group's mode to the contiguous run of segments

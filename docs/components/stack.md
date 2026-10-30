@@ -22,7 +22,6 @@ Stack {
 |---|---|---|
 | `align` | enum | cross-axis placement |
 
-
 ## From Go
 
 ```go

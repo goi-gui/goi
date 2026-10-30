@@ -3,7 +3,6 @@ Window {
 	id: main
 	title: "Material 3 overlays"
 	theme: light
-	background: #FEF7FF
 
 	Row {
 		spacing: 0

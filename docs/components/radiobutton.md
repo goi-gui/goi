@@ -21,7 +21,6 @@ RadioButton { label: "Large" }
 | `disabled` | bool | dims the element and blocks input |
 | `checked` | bool | on/off state |
 
-
 ## From Go
 
 ```go

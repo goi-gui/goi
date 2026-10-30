@@ -25,8 +25,9 @@ FABMenu {
 | `size` | enum | M3 size token |
 | `disabled` | bool | dims the element and blocks input |
 | `expanded` | bool | open state (menu, split button) |
-
-As a container it also accepts `spacing`/`gap` and `align`.
+| `spacing` | number | gap between children |
+| `gap` | number | alias of `spacing` |
+| `align` | enum | cross-axis placement |
 
 ## From Go
 

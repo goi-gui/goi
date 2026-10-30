@@ -550,8 +550,8 @@ Window {
 							}
 						}
 
-						// ---- theme: the same switch as the app-bar icon, for
-						// discoverability. Both drive one piece of app state.
+						// ---- theme: the same switch as the one at the bottom of the
+						// rail. Both drive one piece of app state.
 						Column {
 							spacing: 8
 							Text { text: "Theme" role: "titleMedium" }

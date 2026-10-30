@@ -10,7 +10,7 @@ Card {
 	height: 96
 	Column {
 		spacing: 4
-		Text { text: $label role: "labelMedium" color: #49454F }
+		Text { text: $label role: "labelMedium" color: onSurfaceVariant }
 		Text { text: $value role: "headlineMedium" color: $tone }
 	}
 }

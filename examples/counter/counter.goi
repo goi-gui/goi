@@ -1,43 +1,87 @@
-// The counter example window.
+// The counter example window: a filled card with the count and a stepper, plus
+// a small text field to show editing.
 Window {
 	id: main
 	title: "Counter"
 	width: 480
-	height: 360
-	background: #FEF7FF
+	height: 560
+	theme: light
 
 	Column {
-		padding: 24
-		spacing: 16
-		align: center
+		spacing: 0
 
-		Text {
-			id: label
-			text: "0"
-			role: displayLarge
+		TopAppBar {
+			id: appbar
+			label: "Counter"
 		}
 
-		Row {
-			spacing: 8
+		Column {
+			flex: 1
+			padding: 32
+			spacing: 24
 			align: center
-			Button {
-				id: inc
-				label: "Increase"
-				icon: add
-			}
-			Button {
-				id: reset
-				label: "Reset"
-				variant: tonal
-			}
-		}
 
-		TextField {
-			id: name
-			label: "Your name"
-			placeholder: "Type here"
-			variant: outlined
-			width: 260
+			Card {
+				variant: filled
+				width: 360
+
+				Column {
+					spacing: 12
+					align: center
+
+					Text { text: "Total" role: "labelLarge" color: onSurfaceVariant }
+
+					Text {
+						id: label
+						text: "0"
+						role: "displayLarge"
+						color: primary
+					}
+
+					// A Row fills the column's width, so the stepper declares
+					// its own: two 40dp buttons plus the 12dp gap.
+					Row {
+						width: 92
+						alignSelf: center
+						spacing: 12
+						IconButton {
+							id: dec
+							icon: remove
+							variant: outlined
+						}
+						IconButton {
+							id: inc
+							icon: add
+							variant: filled
+						}
+					}
+
+					Button {
+						id: reset
+						label: "Reset"
+						variant: text
+						disabled: true
+					}
+				}
+			}
+
+			Card {
+				variant: outlined
+				width: 360
+
+				Column {
+					spacing: 12
+
+					Text { text: "Notes" role: "titleSmall" }
+					TextField {
+						id: name
+						label: "Your name"
+						placeholder: "Type here"
+						supporting: "Every keystroke goes to the log."
+						variant: outlined
+					}
+				}
+			}
 		}
 	}
 }

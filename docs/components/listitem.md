@@ -24,7 +24,6 @@ ListItem { label: "Selected" icon: star selected: true }
 | `disabled` | bool | dims the element and blocks input |
 | `selected` | bool | active/selection state |
 
-
 ## From Go
 
 ```go

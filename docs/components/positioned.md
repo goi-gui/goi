@@ -29,7 +29,6 @@ Stack {
 | `translateX` | number | post-anchor horizontal shift, for enter/exit motion |
 | `translateY` | number | post-anchor vertical shift |
 
-
 ## From Go
 
 ```go

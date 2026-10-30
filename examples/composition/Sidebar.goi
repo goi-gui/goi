@@ -9,7 +9,7 @@ Column {
 	width: 280
 	padding: 12
 	spacing: 6
-	background: #F3EDF7
+	background: surfaceContainer
 
 	Text {
 		text: $title
@@ -19,10 +19,12 @@ Column {
 	Text {
 		text: $subtitle
 		role: "bodySmall"
-		color: #49454F
+		color: onSurfaceVariant
 	}
 
-	Rectangle { height: 8 background: #00000000 }
+	// An empty rectangle draws nothing but still reserves its height, which is
+	// the smallest way to open a gap that spacing alone cannot express.
+	Rectangle { height: 8 }
 
 	NavigationItem { label: "Inbox" icon: inbox selected: true }
 	NavigationItem { label: "Starred" icon: star }
@@ -31,6 +33,6 @@ Column {
 
 	Divider { }
 
-	Text { text: "Active: " role: "labelSmall" color: #49454F }
+	Text { text: "Active: " role: "labelSmall" color: onSurfaceVariant }
 	Text { text: $active role: "labelMedium" }
 }

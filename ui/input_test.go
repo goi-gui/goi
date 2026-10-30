@@ -349,6 +349,36 @@ func TestNavigationItemSelectionMovesTheIndicator(t *testing.T) {
 	}
 }
 
+// TestNavigationIndexCountsOnlyDestinations keeps a rail's own children (a
+// header, a spacer, a theme switch) out of the index, because an app maps
+// Select straight onto its page list.
+func TestNavigationIndexCountsOnlyDestinations(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		Column {
+			NavigationRail {
+				id: rail
+				Text { text: "Header" }
+				NavigationItem { id: one label: "One" icon: home selected: true }
+				Rectangle { height: 8 }
+				NavigationItem { id: two label: "Two" icon: star }
+				Switch { id: theme }
+			}
+		}
+	}`, 480, 320)
+	rail := MustByID[*NavigationRail](win, "rail")
+	two := MustByID[*NavigationItem](win, "two")
+
+	var selected []int
+	rail.OnSelect(func(i int) { selected = append(selected, i) })
+
+	b := absoluteRect(two)
+	in.MouseDown(b.X+b.W/2, b.Y+b.H/2, 0, false)
+	in.MouseUp(b.X+b.W/2, b.Y+b.H/2, 0)
+	if len(selected) != 1 || selected[0] != 1 {
+		t.Fatalf("select events = %v, want [1] (the second destination)", selected)
+	}
+}
+
 func TestTextInputWordEditing(t *testing.T) {
 	_, win, in := inputFixture(t, inputUI, 480, 320)
 	ti := MustByID[*TextField](win, "field")

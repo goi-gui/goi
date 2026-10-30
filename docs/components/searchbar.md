@@ -26,7 +26,6 @@ SearchBar {
 | `variant` | enum | visual style; see the page |
 | `disabled` | bool | dims the element and blocks input |
 
-
 ## From Go
 
 ```go

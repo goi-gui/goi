@@ -23,7 +23,6 @@ Image {
 | `src` | string | image path, resolved next to the `.goi` file |
 | `fit` | string | `cover`, `contain` or `fill` |
 
-
 ## From Go
 
 ```go

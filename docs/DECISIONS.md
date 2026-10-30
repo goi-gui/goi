@@ -502,6 +502,19 @@ batch. This is what the display list will feed.
   the translate from `-width` to 0 on open and back on close, flipping
   visibility only at the ends so a half-open sheet keeps drawing. A second press
   mid-slide continues from the current offset.
+- **One name per enum, one cell per property.** `variant` and `size` were
+  spelled twice: the schema validated against `componentdef.EnumValues`, while
+  `Component.one` had its own shorter lists, so `Divider { variant: vertical }`
+  passed validation and then failed to build. Both now read componentdef, and
+  `TestEveryComponentPropHasItsOwnCell` sets each declared property and fails if
+  any other property moved with it, which is how a name that fell through to the
+  `label` fallback would be caught. `TestComponentDocsExamplesValidate` validates
+  the `.goi` example on every component page, so a doc cannot drift from the
+  language.
+- **A navigation index counts destinations, not children.** A rail can hold a
+  header, a spacer and an action of its own (the gallery's theme switch), so
+  `Select` reports the position among `NavigationItem`s. Counting raw children
+  made the switch shift every page by one.
 - **The project is `goi`, and designs are `.goi`.** The module path, the
   command and the file extension all read `goi` (go + gui). The Go package you
   import stays `ui` (`import "github.com/ksckaan1/goi/ui"`): it names the

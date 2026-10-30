@@ -18,7 +18,6 @@ Rectangle {
 
 _No component-specific properties._
 
-
 ## From Go
 
 ```go

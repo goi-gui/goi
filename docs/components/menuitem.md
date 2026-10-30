@@ -22,7 +22,6 @@ MenuItem { label: "Delete" icon: delete disabled: true }
 | `disabled` | bool | dims the element and blocks input |
 | `selected` | bool | active/selection state |
 
-
 ## From Go
 
 ```go

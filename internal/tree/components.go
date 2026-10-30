@@ -146,12 +146,12 @@ func (c *Component) one(name string) NamedProp {
 	case "iconOff":
 		return StringProp(b, "iconOff", &c.IconOff)
 	case "variant":
-		return EnumProp(b, "variant", DirtyPaint, &c.Variant,
-			"filled", "tonal", "elevated", "outlined", "text", "standard",
-			"primary", "secondary", "small", "large", "extended", "assist",
-			"filter", "input", "suggestion", "single", "multi")
+		// The accepted words live in componentdef, which the schema validates
+		// against. Repeating them here let the validator accept `vertical` on a
+		// Divider while the node rejected it, so the enum is read once.
+		return EnumProp(b, "variant", DirtyPaint, &c.Variant, componentdef.EnumValues("variant")...)
 	case "size":
-		return EnumProp(b, "size", DirtyLayout, &c.Size, "xs", "sm", "md", "lg", "xl")
+		return EnumProp(b, "size", DirtyLayout, &c.Size, componentdef.EnumValues("size")...)
 	case "disabled":
 		return BoolProp(b, "disabled", DirtyPaint, &c.Disabled)
 	case "checked":

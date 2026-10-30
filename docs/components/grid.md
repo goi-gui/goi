@@ -25,7 +25,6 @@ Grid {
 | `gap` | number | alias of `spacing` |
 | `align` | enum | cross-axis placement |
 
-
 ## From Go
 
 ```go

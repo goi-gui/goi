@@ -28,7 +28,6 @@ Text {
 | `role` | string | M3 type-scale role |
 | `selectable` | bool | pointer selection and Ctrl+C |
 
-
 ## From Go
 
 ```go

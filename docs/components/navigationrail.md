@@ -24,8 +24,9 @@ NavigationRail {
 | Property | Type | Notes |
 |---|---|---|
 | `variant` | enum | visual style; see the page |
-
-As a container it also accepts `spacing`/`gap` and `align`.
+| `spacing` | number | gap between children |
+| `gap` | number | alias of `spacing` |
+| `align` | enum | cross-axis placement |
 
 ## From Go
 
@@ -33,12 +34,8 @@ As a container it also accepts `spacing`/`gap` and `align`.
 rail := ui.MustByID[*ui.NavigationRail](w, "rail")
 rail.OnSelect(func(i int) { show(i) })
 
-// Mark one destination without an index argument.
-for i, kid := range rail.Base().Kids() {
-	if kid.Node().Kind() == "NavigationItem" {
-		kid.Node().(interface{ M3() *ui.Component }).M3().Selected.Set(i == active)
-	}
-}
+// The index counts destinations only, so the theme switch below them does not
+// shift the page list.
 ```
 
 Every element also accepts the [common properties](../components.md#common-properties).

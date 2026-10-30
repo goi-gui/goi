@@ -38,7 +38,6 @@ They all share one property set and one way of being driven from Go.
 - [RadioButton](components/radiobutton.md) — One option in a set where exactly one is chosen.
 - [Switch](components/switch.md) — A single on/off control with an optional label and optional glyph in the thumb.
 - [Slider](components/slider.md) — A continuous value control.
-- [Badge](components/badge.md) — A small count or status dot, usually overlaid on an icon with `Positioned` or `Stack`.
 
 ## Text input
 
@@ -71,6 +70,7 @@ They all share one property set and one way of being driven from Go.
 
 ## Status and progress
 
+- [Badge](components/badge.md) — A small count or status dot, usually overlaid on an icon with `Positioned` or `Stack`.
 - [LinearProgress](components/linearprogress.md) — A horizontal progress bar.
 - [CircularProgress](components/circularprogress.md) — A circular progress ring.
 - [LoadingIndicator](components/loadingindicator.md) — The M3 indeterminate loading shape.
@@ -133,7 +133,7 @@ its alias `gap`, and `align`: `ButtonGroup`, `Toolbar`, `Carousel`, `FABMenu`,
 | `OnChangeValue(func(float64))` | Slider |
 | `OnEdit(func(string))` | TextField, SearchBar (every keystroke) |
 | `OnSubmit(func(string))` | TextField, SearchBar (Enter) |
-| `OnSelect(func(int))` | Tabs, NavigationBar, NavigationRail |
+| `OnSelect(func(int))` | Tabs, NavigationBar, NavigationRail, List, Menu |
 
 ## Finding elements from Go
 

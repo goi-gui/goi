@@ -25,7 +25,6 @@ SplitButton {
 | `disabled` | bool | dims the element and blocks input |
 | `expanded` | bool | open state (menu, split button) |
 
-
 ## From Go
 
 ```go

@@ -21,7 +21,6 @@ Tab { label: "Specs" icon: tune }
 | `disabled` | bool | dims the element and blocks input |
 | `selected` | bool | active/selection state |
 
-
 ## From Go
 
 ```go

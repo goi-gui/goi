@@ -17,7 +17,6 @@ Divider { variant: vertical }
 |---|---|---|
 | `variant` | enum | visual style; see the page |
 
-
 ## From Go
 
 ```go

@@ -20,7 +20,7 @@ Window {
 
         Text   { id: label  text: "0"  fontSize: 32  color: #222222 }
         Button { id: inc    text: "Increase"  background: #3b82f6  color: #ffffff }
-        TextInput { id: name  placeholder: "Your name"  width: 240 }
+        TextField { id: name  placeholder: "Your name"  width: 240 }
     }
 }
 `

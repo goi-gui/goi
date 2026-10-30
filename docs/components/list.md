@@ -20,8 +20,9 @@ List {
 | Property | Type | Notes |
 |---|---|---|
 | `variant` | enum | visual style; see the page |
-
-As a container it also accepts `spacing`/`gap` and `align`.
+| `spacing` | number | gap between children |
+| `gap` | number | alias of `spacing` |
+| `align` | enum | cross-axis placement |
 
 ## From Go
 
