@@ -4,9 +4,9 @@ A compact, rounded element for filters, inputs, suggestions and tags.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 Chip { label: "Assist" icon: event }
 Chip { label: "Filter" variant: filter selected: true }
 Chip { label: "Input" variant: input }

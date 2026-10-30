@@ -4,9 +4,9 @@ A vertical container for `ListItem`s and `MenuItem`s.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 List {
 	id: results
 	spacing: 4

@@ -3,9 +3,9 @@ package paint
 import (
 	"testing"
 
-	"github.com/ksckaan1/goui/internal/layout"
-	"github.com/ksckaan1/goui/internal/m3"
-	"github.com/ksckaan1/goui/internal/tree"
+	"github.com/ksckaan1/goi/internal/layout"
+	"github.com/ksckaan1/goi/internal/m3"
+	"github.com/ksckaan1/goi/internal/tree"
 )
 
 // TestSelectableTextPaintsHighlight checks that a selection is drawn under the

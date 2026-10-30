@@ -4,9 +4,9 @@ Flows children left to right and starts a new run when the next child does not f
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 Wrap {
 	spacing: 8
 	Chip { label: "One" }

@@ -1,4 +1,4 @@
-// Package syntax turns .ui source text into an immutable AST.
+// Package syntax turns .goi source text into an immutable AST.
 //
 // The parser is deliberately small: a file is one element, an element has a
 // name and braces, and members are either `name: value` properties or nested
@@ -12,7 +12,7 @@ type Pos int
 // Pos returns the position as a Pos.
 func (p Pos) Pos() Pos { return p }
 
-// File is a parsed .ui file. Exactly one root element, after an optional
+// File is a parsed .goi file. Exactly one root element, after an optional
 // preamble of `import` and `param` lines.
 type File struct {
 	// Src is the path the file was read from, for diagnostics. Empty for a file
@@ -26,7 +26,7 @@ type File struct {
 	Root   *Element
 }
 
-// Import is `import "./Sidebar.ui" as Sidebar`.
+// Import is `import "./Sidebar.goi" as Sidebar`.
 type Import struct {
 	Path  string // as written, relative to the importing file
 	Alias string // the element name that instantiates the fragment

@@ -8,8 +8,8 @@ import (
 
 	"github.com/gogpu/gputypes"
 	"github.com/gogpu/wgpu"
-	"github.com/ksckaan1/goui/internal/paint"
-	"github.com/ksckaan1/goui/internal/text"
+	"github.com/ksckaan1/goi/internal/paint"
+	"github.com/ksckaan1/goi/internal/text"
 )
 
 // textRenderer owns the glyph atlas. Glyph quads go into the same instance

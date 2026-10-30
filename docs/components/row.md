@@ -4,9 +4,9 @@ Places children left to right.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 Row {
 	spacing: 8
 	align: center

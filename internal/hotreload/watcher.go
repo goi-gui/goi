@@ -1,4 +1,4 @@
-// Package hotreload watches .ui source directories and reports when a file
+// Package hotreload watches .goi source directories and reports when a file
 // changes.
 //
 // A design is usually split across files, so the watcher covers a set of
@@ -28,7 +28,7 @@ type Reloader struct {
 	closed bool
 }
 
-// Watch starts watching dirs. Only .ui files trigger a reload. Directories that
+// Watch starts watching dirs. Only .goi files trigger a reload. Directories that
 // do not exist are skipped, so a design that has not created a part directory
 // yet still loads.
 func Watch(dirs []string, onChange func(path string)) (*Reloader, error) {
@@ -98,10 +98,10 @@ func (r *Reloader) loop() {
 	}
 }
 
-// relevant filters editor noise: only .ui files that were written, created or
+// relevant filters editor noise: only .goi files that were written, created or
 // renamed in.
 func (r *Reloader) relevant(ev fsnotify.Event) bool {
-	if filepath.Ext(ev.Name) != ".ui" {
+	if filepath.Ext(ev.Name) != ".goi" {
 		return false
 	}
 	if ev.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) == 0 {

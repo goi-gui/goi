@@ -4,9 +4,9 @@ A clock dial for picking a time.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 TimePicker { label: "Select time" width: 328 height: 420 }
 ```
 

@@ -205,7 +205,7 @@ func TestDiagnosticPositions(t *testing.T) {
 	}
 	// Position of the value literal: line 2, col 10.
 	at := f.Root.Prop("width").Value.Pos()
-	got := diag.Format("x.ui", nil)
+	got := diag.Format("x.goi", nil)
 	_ = got
 	lines := lineStarts([]byte(src))
 	line, col := lines.locate(at)
@@ -246,8 +246,8 @@ func TestSuggest(t *testing.T) {
 }
 
 func TestParsePreamble(t *testing.T) {
-	f, diag := Parse([]byte(`import "./Sidebar.ui" as Sidebar
-import "parts/Card.ui" as Card
+	f, diag := Parse([]byte(`import "./Sidebar.goi" as Sidebar
+import "parts/Card.goi" as Card
 param title: "Mail"
 param accent: #123456
 
@@ -258,7 +258,7 @@ Column { Text { text: $title } }`))
 	if len(f.Imports) != 2 {
 		t.Fatalf("imports = %d, want 2", len(f.Imports))
 	}
-	if f.Imports[0].Path != "./Sidebar.ui" || f.Imports[0].Alias != "Sidebar" {
+	if f.Imports[0].Path != "./Sidebar.goi" || f.Imports[0].Alias != "Sidebar" {
 		t.Fatalf("first import = %+v", f.Imports[0])
 	}
 	if len(f.Params) != 2 {
@@ -283,9 +283,9 @@ Column { Text { text: $title } }`))
 
 func TestParsePreambleErrors(t *testing.T) {
 	cases := []struct{ name, src, want string }{
-		{"missing as", `import "./a.ui"
+		{"missing as", `import "./a.goi"
 Window { }`, `expected "as"`},
-		{"missing alias", `import "./a.ui" as
+		{"missing alias", `import "./a.goi" as
 Window { }`, "expected an alias"},
 		{"missing param name", "param : 1\nWindow { }", "expected a param name"},
 		{"missing colon", "param x 1\nWindow { }\n", "expected ':'"},
@@ -305,14 +305,14 @@ Window { }`, "expected an alias"},
 }
 
 func TestParseDumpKeepsPreamble(t *testing.T) {
-	f, diag := Parse([]byte(`import "./S.ui" as S
+	f, diag := Parse([]byte(`import "./S.goi" as S
 param n: 4
 Column { }`))
 	if !diag.Empty() {
 		t.Fatalf("%v", diag)
 	}
 	got := Dump(f)
-	if !strings.Contains(got, `import "./S.ui" as S`) || !strings.Contains(got, "param n = 4") {
+	if !strings.Contains(got, `import "./S.goi" as S`) || !strings.Contains(got, "param n = 4") {
 		t.Fatalf("dump:\n%s", got)
 	}
 }
@@ -329,7 +329,7 @@ func FuzzParse(f *testing.F) {
 		}
 		if file != nil {
 			// Rendering diagnostics must not panic on any AST.
-			_ = diag.Format("f.ui", src)
+			_ = diag.Format("f.goi", src)
 		}
 	})
 }

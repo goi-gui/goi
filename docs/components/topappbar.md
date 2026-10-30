@@ -4,9 +4,9 @@ The bar at the top of a screen: a leading icon, a title and a trailing icon.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 TopAppBar {
 	id: appbar
 	label: "Inbox"

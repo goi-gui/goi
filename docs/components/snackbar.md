@@ -4,9 +4,9 @@ A short, transient message at the bottom of the screen.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 Snackbar { label: "Saved to your library" width: 320 }
 ```
 

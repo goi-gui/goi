@@ -3,10 +3,10 @@ package ui
 import (
 	"fmt"
 
-	"github.com/ksckaan1/goui/internal/asset"
-	"github.com/ksckaan1/goui/internal/hotreload"
-	"github.com/ksckaan1/goui/internal/syntax"
-	"github.com/ksckaan1/goui/internal/tree"
+	"github.com/ksckaan1/goi/internal/asset"
+	"github.com/ksckaan1/goi/internal/hotreload"
+	"github.com/ksckaan1/goi/internal/syntax"
+	"github.com/ksckaan1/goi/internal/tree"
 )
 
 // reload reads the whole design again and swaps it in. The watcher callback runs
@@ -47,7 +47,7 @@ func (a *App) reloadNow() error {
 func (a *App) applyReload(f *syntax.File) error {
 	tr, err := tree.Build(f, &tree.Hooks{Marked: a.markDirty})
 	if err != nil {
-		return fmt.Errorf("goui: reload: %w", err)
+		return fmt.Errorf("goi: reload: %w", err)
 	}
 	a.loadImages(tr)
 	a.swapTree(tr)
@@ -91,7 +91,7 @@ func (a *App) swapTree(tr *tree.Tree) {
 	}
 
 	if err := w.Bind(w.binding); err != nil {
-		a.reportError(fmt.Errorf("goui: reload: bind: %w", err))
+		a.reportError(fmt.Errorf("goi: reload: bind: %w", err))
 	}
 	// Everything must be repainted after a swap: the display list is rebuilt from
 	// scratch and the old node pointers are gone.
@@ -124,7 +124,7 @@ func carryOver(old, fresh *tree.Tree) {
 		}
 		sb, db := src.Base(), n.Base()
 
-		// Property values Go wrote survive, unless the .ui file changed that
+		// Property values Go wrote survive, unless the .goi file changed that
 		// property's literal between the two versions.
 		for _, name := range propNames(db) {
 			if !sb.GoSet(name) || tree.LiteralChanged(db, name, sb) {
@@ -148,14 +148,14 @@ func carryOver(old, fresh *tree.Tree) {
 	}
 }
 
-// propNames lists the .ui property names a node exposes.
+// propNames lists the .goi property names a node exposes.
 func propNames(b *tree.NodeBase) []string { return b.PropertyNames() }
 
 // enableWatcher starts watching every directory the design lives in.
 func (a *App) enableWatcher() error {
 	root, ok := watchRoot(a.assets)
 	if !ok {
-		return fmt.Errorf("goui: hot reload needs a directory container: use ui.DirFS instead of os.DirFS or an embed.FS")
+		return fmt.Errorf("goi: hot reload needs a directory container: use ui.DirFS instead of os.DirFS or an embed.FS")
 	}
 	r, err := hotreload.Watch([]string{root}, func(path string) { a.reload(path) })
 	if err != nil {

@@ -4,9 +4,9 @@ One row in a menu.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 MenuItem { label: "Cut" icon: content_cut }
 MenuItem { label: "Delete" icon: delete disabled: true }
 ```

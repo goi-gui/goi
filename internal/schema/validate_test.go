@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ksckaan1/goui/internal/syntax"
+	"github.com/ksckaan1/goi/internal/syntax"
 )
 
 func validate(t *testing.T, src string) (*Result, syntax.Diagnostics) {
@@ -181,7 +181,7 @@ func TestExpressionValues(t *testing.T) {
 	}
 }
 
-// TestColorRoles checks the role names a .ui file can use for a color, and that
+// TestColorRoles checks the role names a .goi file can use for a color, and that
 // a typo points at the nearest role instead of failing at paint time.
 func TestColorRoles(t *testing.T) {
 	_, diag := validate(t, `Window {
@@ -275,8 +275,8 @@ func TestDiagnosticHasPosition(t *testing.T) {
 	if len(diag) != 1 {
 		t.Fatalf("got %d", len(diag))
 	}
-	got := diag.Format("app.ui", []byte("Window {\n  width: \"x\"\n}\n"))
-	if !strings.Contains(got, "app.ui:2:10:") {
+	got := diag.Format("app.goi", []byte("Window {\n  width: \"x\"\n}\n"))
+	if !strings.Contains(got, "app.goi:2:10:") {
 		t.Fatalf("missing position: %s", got)
 	}
 	if !strings.Contains(got, "width: \"x\"") || !strings.Contains(got, "^") {

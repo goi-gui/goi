@@ -54,7 +54,7 @@ extern const struct wl_interface zwp_text_input_v3_interface;
 // libwayland-client at runtime instead of being link-time data references.
 // Go's internal linker cannot resolve R_X86_64_64 relocations against dynamic
 // data symbols, and this build needs internal linking for WebGPU. The array is
-// therefore writable and filled by gouiTextInputResolveInterfaces below, before
+// therefore writable and filled by goiTextInputResolveInterfaces below, before
 // any request is sent. Everything else matches upstream exactly.
 static const struct wl_interface *text_input_unstable_v3_types[] = {
 	NULL,
@@ -67,9 +67,9 @@ static const struct wl_interface *text_input_unstable_v3_types[] = {
 	NULL, /* wl_seat_interface, resolved at runtime */
 };
 
-void gouiTextInputResolveInterfaces(void);
+void goiTextInputResolveInterfaces(void);
 
-void gouiTextInputResolveInterfaces(void) {
+void goiTextInputResolveInterfaces(void) {
 	text_input_unstable_v3_types[4] = (const struct wl_interface *)dlsym(RTLD_DEFAULT, "wl_surface_interface");
 	text_input_unstable_v3_types[5] = text_input_unstable_v3_types[4];
 	text_input_unstable_v3_types[7] = (const struct wl_interface *)dlsym(RTLD_DEFAULT, "wl_seat_interface");

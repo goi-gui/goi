@@ -4,9 +4,9 @@ One run of text at a Material 3 type-scale role.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 Text {
 	text: "Body copy"
 	role: "bodyMedium"

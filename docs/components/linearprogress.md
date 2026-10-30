@@ -4,9 +4,9 @@ A horizontal progress bar.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 LinearProgress { value: 0.65 }
 LinearProgress { value: 30 min: 0 max: 100 }
 ```

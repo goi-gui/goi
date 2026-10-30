@@ -4,9 +4,9 @@ A short hint attached to a control.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 Tooltip { label: "Saves to your library" width: 200 }
 ```
 

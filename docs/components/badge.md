@@ -4,9 +4,9 @@ A small count or status dot, usually overlaid on an icon with `Positioned` or `S
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 Badge { }
 Badge { label: "12" }
 Badge { label: "99+" }

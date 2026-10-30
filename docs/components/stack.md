@@ -4,9 +4,9 @@ Overlays children on top of each other, last child on top. It is the base for di
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 Stack {
 	flex: 1
 	Rectangle { background: surfaceContainer radius: 16 }

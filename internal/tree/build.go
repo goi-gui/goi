@@ -3,8 +3,8 @@ package tree
 import (
 	"fmt"
 
-	"github.com/ksckaan1/goui/internal/schema"
-	"github.com/ksckaan1/goui/internal/syntax"
+	"github.com/ksckaan1/goi/internal/schema"
+	"github.com/ksckaan1/goi/internal/syntax"
 )
 
 // Tree is a live node tree plus its id index.

@@ -23,7 +23,7 @@ func waitFor(t *testing.T, d time.Duration, cond func() bool) bool {
 
 func TestWatchReportsWrites(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "app.ui")
+	path := filepath.Join(dir, "app.goi")
 	if err := os.WriteFile(path, []byte("first"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestWatchReportsWrites(t *testing.T) {
 	}
 	select {
 	case got := <-ch:
-		if filepath.Base(got) != "app.ui" {
+		if filepath.Base(got) != "app.goi" {
 			t.Fatalf("got %q", got)
 		}
 	case <-time.After(2 * time.Second):
@@ -52,7 +52,7 @@ func TestWatchReportsWrites(t *testing.T) {
 
 func TestWatchSurvivesAtomicRename(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "app.ui")
+	path := filepath.Join(dir, "app.goi")
 	if err := os.WriteFile(path, []byte("one"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestWatchSurvivesAtomicRename(t *testing.T) {
 	defer r.Close()
 
 	// Editors that save by rename: write a temp file, then rename over.
-	tmp := filepath.Join(dir, "app.ui.tmp")
+	tmp := filepath.Join(dir, "app.goi.tmp")
 	if err := os.WriteFile(tmp, []byte("two"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestWatchReportsFragmentChanges(t *testing.T) {
 	if err := os.Mkdir(parts, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	part := filepath.Join(parts, "Sidebar.ui")
+	part := filepath.Join(parts, "Sidebar.goi")
 	if err := os.WriteFile(part, []byte("Column {}"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestWatchReportsFragmentChanges(t *testing.T) {
 	}
 	select {
 	case got := <-ch:
-		if filepath.Base(got) != "Sidebar.ui" {
+		if filepath.Base(got) != "Sidebar.goi" {
 			t.Fatalf("got %q", got)
 		}
 	case <-time.After(2 * time.Second):
@@ -112,7 +112,7 @@ func TestWatchReportsFragmentChanges(t *testing.T) {
 
 func TestWatchIgnoresNonUIFiles(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "app.ui"), []byte("one"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "app.goi"), []byte("one"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	ch := make(chan string, 8)
@@ -134,7 +134,7 @@ func TestWatchIgnoresNonUIFiles(t *testing.T) {
 
 func TestWatchDebouncesBursts(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "app.ui")
+	path := filepath.Join(dir, "app.goi")
 	if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestWatchMissingDirectory(t *testing.T) {
 
 func TestCloseIsIdempotent(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "app.ui"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(dir, "app.goi"), []byte("x"), 0o644)
 	r, err := Watch([]string{dir}, func(string) {})
 	if err != nil {
 		t.Fatal(err)

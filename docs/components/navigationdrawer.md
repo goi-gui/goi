@@ -4,9 +4,9 @@ A modal drawer that lists the same destinations as the rail and bar.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 NavigationDrawer {
 	label: "Categories"
 	NavigationItem { label: "Home" icon: home selected: true }

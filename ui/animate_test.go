@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ksckaan1/goui/internal/tree"
+	"github.com/ksckaan1/goi/internal/tree"
 )
 
 // TestTweenRunsToCompletion checks the contract: 0 at the start, 1 at the end,

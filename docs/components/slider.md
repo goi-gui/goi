@@ -4,9 +4,9 @@ A continuous value control.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 Slider { value: 0.4 min: 0 max: 1 width: 320 }
 Slider { value: 40 min: 0 max: 100 step: 10 }
 ```

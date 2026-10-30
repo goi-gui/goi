@@ -1,6 +1,6 @@
 package tree
 
-import "github.com/ksckaan1/goui/internal/componentdef"
+import "github.com/ksckaan1/goi/internal/componentdef"
 
 // Component holds the state every Material 3 component shares. Concrete
 // components embed it and use props(kind) to expose only the properties their

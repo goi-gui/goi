@@ -1,8 +1,8 @@
-// Package asset loads .ui files from an fs.FS, resolving imports into one tree.
+// Package asset loads .goi files from an fs.FS, resolving imports into one tree.
 //
 // A file may pull in fragments:
 //
-//	import "./Sidebar.ui" as Sidebar
+//	import "./Sidebar.goi" as Sidebar
 //
 //	Window { Row { Sidebar { title: "Mail" } } }
 //
@@ -22,7 +22,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/ksckaan1/goui/internal/syntax"
+	"github.com/ksckaan1/goi/internal/syntax"
 )
 
 // Bundle is one loaded entry point together with every file it pulled in.

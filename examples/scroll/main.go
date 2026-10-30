@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ksckaan1/goui/ui"
+	"github.com/ksckaan1/goi/ui"
 )
 
 func main() {
@@ -16,7 +16,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	win, err := app.LoadWindowFile("examples/scroll/scroll.ui", ui.WithHotReload(true))
+	win, err := app.LoadWindowFile("examples/scroll/scroll.goi", ui.WithHotReload(true))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

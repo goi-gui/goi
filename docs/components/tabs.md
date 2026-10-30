@@ -4,9 +4,9 @@ A tab bar that groups `Tab` children.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 Tabs {
 	Tab { label: "Overview" selected: true }
 	Tab { label: "Specs" }

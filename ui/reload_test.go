@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ksckaan1/goui/internal/syntax"
-	"github.com/ksckaan1/goui/internal/tree"
+	"github.com/ksckaan1/goi/internal/syntax"
+	"github.com/ksckaan1/goi/internal/tree"
 )
 
 // reloadApp builds an app without a window and a window whose tree came from
@@ -153,17 +153,17 @@ func TestReloadReportsDiagnosticsWithoutReplacingTree(t *testing.T) {
 func TestWatcherTriggersReload(t *testing.T) {
 	a, w := reloadApp(t, `Window { Text { id: label text: "0" } }`)
 	dir := t.TempDir()
-	if err := writeFile(dir+"/app.ui", `Window { Text { id: label text: "0" } }`); err != nil {
+	if err := writeFile(dir+"/app.goi", `Window { Text { id: label text: "0" } }`); err != nil {
 		t.Fatal(err)
 	}
 	a.assets = DirFS(dir)
-	a.path = "app.ui"
+	a.path = "app.goi"
 	if err := a.enableWatcher(); err != nil {
 		t.Fatal(err)
 	}
 	defer a.watcher.Close()
 
-	if err := writeFile(dir+"/app.ui", `Window { Text { id: label text: "reloaded" } }`); err != nil {
+	if err := writeFile(dir+"/app.goi", `Window { Text { id: label text: "reloaded" } }`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -182,17 +182,17 @@ func TestWatcherTriggersReload(t *testing.T) {
 func TestReloadDiagnosticsAreFormatted(t *testing.T) {
 	a, _ := reloadApp(t, `Window { }`)
 	dir := t.TempDir()
-	if err := writeFile(dir+"/test.ui", "Window {\n  nope: 1\n}\n"); err != nil {
+	if err := writeFile(dir+"/test.goi", "Window {\n  nope: 1\n}\n"); err != nil {
 		t.Fatal(err)
 	}
 	a.assets = DirFS(dir)
-	a.path = "test.ui"
+	a.path = "test.goi"
 
 	err := a.reloadNow()
 	if err == nil {
 		t.Fatal("expected a diagnostic")
 	}
-	if !strings.Contains(err.Error(), "test.ui:2:3") {
+	if !strings.Contains(err.Error(), "test.goi:2:3") {
 		t.Fatalf("diagnostic lacks a position: %s", err.Error())
 	}
 }

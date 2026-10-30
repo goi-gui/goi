@@ -62,7 +62,7 @@ batch. This is what the display list will feed.
 - **Hot reload keeps app state in the app, not the framework.** `Bind` re-runs
   after every reload, so app state must be declared outside it. The framework
   only carries widget-internal state (focus, TextInput value/caret, scroll
-  offset) and Go-set property values whose `.ui` literal did not change.
+  offset) and Go-set property values whose `.goi` literal did not change.
 - **Widgets in v1:** Text, Button, TextInput. `Image` is still deferred.
 - **`opacity` deferred** — it needs offscreen layers to be correct.
 - **Numbers are `float64`**, colors are `uint32` (0xRRGGBBAA).
@@ -144,7 +144,7 @@ batch. This is what the display list will feed.
   `file:line:col` diagnostic.
 - **`Bind` runs again after every reload**; app state lives outside it. The
   framework carries by id: focus, `TextInput` text and caret, and every property
-  Go wrote whose `.ui` literal did not change. This is covered by
+  Go wrote whose `.goi` literal did not change. This is covered by
   `TestCounterSurvivesReload`.
 
 ## Phase 11 — docs and CI
@@ -169,7 +169,7 @@ batch. This is what the display list will feed.
 ## Phase 12 — Material 3 components
 
 - **Components are core elements, not a package.** The 40 component kinds are
-  built-in .ui elements (`Button`, `Chip`, `Dialog`, …) so a file needs no
+  built-in .goi elements (`Button`, `Chip`, `Dialog`, …) so a file needs no
   imports and `ByID` stays type-checked (`*ui.Button`). `internal/componentdef`
   is the single list of kinds and their property subsets; `schema` validates
   against it and `tree` builds prop tables from it, so they cannot drift.
@@ -293,7 +293,7 @@ batch. This is what the display list will feed.
   meaning auto), stretches between two opposite edges only when it has no
   declared size, and otherwise hugs its child or follows the Stack's `align` on
   an unanchored axis. It is a real element rather than parent data on the child,
-  because `.ui` has no slot for parent-owned attributes; the validator enforces
+  because `.goi` has no slot for parent-owned attributes; the validator enforces
   that it sits directly in a Stack. Positioned children still contribute their
   anchored extent to a Stack's auto size, unlike Flutter, so a stack made only
   of positioned children does not collapse to zero inside a Column. It does not
@@ -356,7 +356,7 @@ batch. This is what the display list will feed.
   quads now share the shape instance buffer as kind 4 with the atlas bound once,
   which keeps the window at one draw call and makes tree order the paint order.
 - **A modal navigation drawer is app state plus three plain elements.** The
-  `.ui` file holds a `Positioned` drawer and a scrim `Rectangle` with
+  `.goi` file holds a `Positioned` drawer and a scrim `Rectangle` with
   `visible: false`; Go toggles `SetVisible`. Any node now carries `OnClick`, so
   the scrim and the app-bar icon are hit areas without becoming components, and
   `win.OnKey` closes the drawer on Escape even when nothing is focused.
@@ -423,7 +423,7 @@ batch. This is what the display list will feed.
   an `embed.FS` gives a single executable. Expansion happens in `internal/asset`
   *before* the schema, validator and tree builder run, so none of them knows what
   a fragment is — they see one ordinary tree.
-- **Imports are structural, params are values.** `import "./x.ui" as X` replaces
+- **Imports are structural, params are values.** `import "./x.goi" as X` replaces
   `X { ... }` with the fragment's root element, so the fragment owns its layout and
   the instance places it like any child. A param always has a default, so an
   instance never has to pass one; `$name` is replaced before validation. A value
@@ -440,9 +440,9 @@ batch. This is what the display list will feed.
 - **Only an entry point must be a Window.** `schema.Validate` accepts any root;
   `ValidateEntry` adds the Window rule and rejects unbound `$param` (nothing can
   fill it in the file a program opens). A file with params is a fragment, which is
-  how `uicheck` reports it.
+  how `goicheck` reports it.
 - **Hot reload watches directories, not the entry file.** A design is several
-  files, so any `.ui` write in any directory the design used reloads the whole
+  files, so any `.goi` write in any directory the design used reloads the whole
   tree; the import graph is recomputed, and the watch set is rebuilt in case a
   reload added a directory.
 - **Navigation destinations are a radio group keyed by their own `selected`.**
@@ -461,7 +461,7 @@ batch. This is what the display list will feed.
 - **The page behind the components is the theme surface, not a literal.** The
   renderer's clear colour now comes from the list's theme, so switching the theme
   recolours the whole window without the window painting a full-size fill every
-  frame. A `.ui` root that declares `background` still wins, which is why the
+  frame. A `.goi` root that declares `background` still wins, which is why the
   gallery dropped its hard-coded `#FEF7FF`: a fixed light literal cannot follow a
   dark scheme. Content colours follow the same rule, so the positioned example uses
   a `Card` as its plate instead of a lavender `Rectangle`.
@@ -502,8 +502,15 @@ batch. This is what the display list will feed.
   the translate from `-width` to 0 on open and back on close, flipping
   visibility only at the ends so a half-open sheet keeps drawing. A second press
   mid-slide continues from the current offset.
+- **The project is `goi`, and designs are `.goi`.** The module path, the
+  command and the file extension all read `goi` (go + gui). The Go package you
+  import stays `ui` (`import "github.com/ksckaan1/goi/ui"`): it names the
+  layer, not the project, and every example in this repo and in the docs uses
+  `ui.MustByID`, so renaming the import path would churn every snippet without
+  making anything clearer. The design-language pages and the component pages
+  use the new extension.
 - **Components have one page each.** `docs/components.md` is the grouped index
-  and `docs/components/*.md` is one page per element: a `.ui` example, the
+  and `docs/components/*.md` is one page per element: a `.goi` example, the
   property table and a Go example. It is generated from a script outside the
   repo (the tables mirror `internal/componentdef`), so the check that keeps it
   honest is a compile-only test of every Go snippet, run while writing the
@@ -511,7 +518,7 @@ batch. This is what the display list will feed.
   from the README; the syntax reference still owns the language itself.
 - **The frame-rate overlay is opt-in.** `app.ShowFPS(true)` draws the paint rate
   in the top-right corner; it is off by default and meant for development, so it
-  lives on `App`, not in the `.ui` syntax. Only painted frames count, over a
+  lives on `App`, not in the `.goi` syntax. Only painted frames count, over a
   500ms window, so the number reports real paint cost rather than event-loop
   wakeups and it reacts while a stutter is still visible. While it is on the app
   keeps painting, because a rate can only be measured from painted frames; that
@@ -578,7 +585,7 @@ batch. This is what the display list will feed.
   order. A pure RTL line is one run and fully correct; caret mapping inside RTL
   text still assumes LTR prefixes. Fonts are Roboto + Material Symbols, so CJK or
   Arabic still needs `RegisterFont`; the layout now knows the difference.
-- **A hidden template plus `Instantiate` is the list story.** `.ui` has no loops
+- **A hidden template plus `Instantiate` is the list story.** `.goi` has no loops
   by design, and building a row by hand in Go means duplicating the design. A
   template declared `visible: false` is copied per item; ids stay on the copy for
   `Descendant` but are not registered, so copies cannot collide. `Remove` is the
@@ -603,7 +610,7 @@ batch. This is what the display list will feed.
   no cue. A wheel step also sets a velocity and the offset coasts with
   exponential friction, stopping at an edge or below a threshold, so the loop can
   sleep again. Dragging still does not fling.
-- **`uicheck -layout` catches what syntax cannot.** It lays the design out with
+- **`goicheck -layout` catches what syntax cannot.** It lays the design out with
   the real font library and reports a visible container with children and no size,
   or a leaf with a surface or label and no area — the class of bug behind a Stack
   that silently collapsed to nothing.

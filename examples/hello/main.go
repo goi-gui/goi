@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ksckaan1/goui/ui"
+	"github.com/ksckaan1/goi/ui"
 )
 
 func main() {
@@ -17,7 +17,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	if _, err := app.LoadWindowFile("examples/hello/hello.ui", ui.WithHotReload(true)); err != nil {
+	if _, err := app.LoadWindowFile("examples/hello/hello.goi", ui.WithHotReload(true)); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

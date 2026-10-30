@@ -4,9 +4,9 @@ A surface anchored to the bottom edge.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 BottomSheet { label: "Share" width: 320 height: 160 }
 ```
 

@@ -9,7 +9,7 @@ import (
 // TestGoldenAST pins the parse of representative files. Update with
 // `go test ./internal/syntax -update`.
 func TestGoldenAST(t *testing.T) {
-	entries, err := filepath.Glob("testdata/*.ui")
+	entries, err := filepath.Glob("testdata/*.goi")
 	if err != nil || len(entries) == 0 {
 		t.Fatalf("no golden inputs: %v", err)
 	}

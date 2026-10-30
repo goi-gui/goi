@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ksckaan1/goui/internal/m3"
-	"github.com/ksckaan1/goui/internal/syntax"
+	"github.com/ksckaan1/goi/internal/m3"
+	"github.com/ksckaan1/goi/internal/syntax"
 )
 
 var idPattern = regexp.MustCompile(`^[a-z][A-Za-z0-9_]*$`)

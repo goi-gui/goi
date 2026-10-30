@@ -8,13 +8,13 @@ package platform
 #include <wayland-client.h>
 #include "ti3.h"
 
-struct goui_ti_bind {
+struct goi_ti_bind {
 	struct zwp_text_input_manager_v3 *manager;
 	struct wl_seat *seat;
 };
 
-void gouiTextInputBind(struct wl_registry *reg, struct goui_ti_bind *b);
-void gouiTextInputAttach(struct zwp_text_input_v3 *ti);
+void goiTextInputBind(struct wl_registry *reg, struct goi_ti_bind *b);
+void goiTextInputAttach(struct zwp_text_input_v3 *ti);
 */
 import "C"
 
@@ -54,22 +54,22 @@ type textInput struct {
 // through the generated listener table, so the client registers itself here.
 var currentTextInput *textInput
 
-//export gouiTextInputEnterC
-func gouiTextInputEnterC(data unsafe.Pointer, ti *C.struct_zwp_text_input_v3, surface *C.struct_wl_surface) {
+//export goiTextInputEnterC
+func goiTextInputEnterC(data unsafe.Pointer, ti *C.struct_zwp_text_input_v3, surface *C.struct_wl_surface) {
 	if t := currentTextInput; t != nil {
 		t.surface = surface
 	}
 }
 
-//export gouiTextInputLeaveC
-func gouiTextInputLeaveC(data unsafe.Pointer, ti *C.struct_zwp_text_input_v3, surface *C.struct_wl_surface) {
+//export goiTextInputLeaveC
+func goiTextInputLeaveC(data unsafe.Pointer, ti *C.struct_zwp_text_input_v3, surface *C.struct_wl_surface) {
 	if t := currentTextInput; t != nil {
 		t.surface = nil
 	}
 }
 
-//export gouiTextInputPreeditC
-func gouiTextInputPreeditC(data unsafe.Pointer, ti *C.struct_zwp_text_input_v3, text *C.char, begin, end C.int32_t) {
+//export goiTextInputPreeditC
+func goiTextInputPreeditC(data unsafe.Pointer, ti *C.struct_zwp_text_input_v3, text *C.char, begin, end C.int32_t) {
 	t := currentTextInput
 	if t == nil {
 		return
@@ -80,15 +80,15 @@ func gouiTextInputPreeditC(data unsafe.Pointer, ti *C.struct_zwp_text_input_v3, 
 	_ = end
 }
 
-//export gouiTextInputCommitC
-func gouiTextInputCommitC(data unsafe.Pointer, ti *C.struct_zwp_text_input_v3, text *C.char) {
+//export goiTextInputCommitC
+func goiTextInputCommitC(data unsafe.Pointer, ti *C.struct_zwp_text_input_v3, text *C.char) {
 	if t := currentTextInput; t != nil {
 		t.commit = C.GoString(text)
 	}
 }
 
-//export gouiTextInputDeleteC
-func gouiTextInputDeleteC(data unsafe.Pointer, ti *C.struct_zwp_text_input_v3, before, after C.uint32_t) {
+//export goiTextInputDeleteC
+func goiTextInputDeleteC(data unsafe.Pointer, ti *C.struct_zwp_text_input_v3, before, after C.uint32_t) {
 	t := currentTextInput
 	if t == nil {
 		return
@@ -96,8 +96,8 @@ func gouiTextInputDeleteC(data unsafe.Pointer, ti *C.struct_zwp_text_input_v3, b
 	t.before, t.after = int(before), int(after)
 }
 
-//export gouiTextInputDoneC
-func gouiTextInputDoneC(data unsafe.Pointer, ti *C.struct_zwp_text_input_v3, serial C.uint32_t) {
+//export goiTextInputDoneC
+func goiTextInputDoneC(data unsafe.Pointer, ti *C.struct_zwp_text_input_v3, serial C.uint32_t) {
 	t := currentTextInput
 	if t == nil || t.in == nil {
 		return
@@ -134,14 +134,14 @@ func newTextInput(display, surface unsafe.Pointer, in Input) *textInput {
 	if reg == nil {
 		return nil
 	}
-	bind := (*C.struct_goui_ti_bind)(C.calloc(1, C.sizeof_struct_goui_ti_bind))
+	bind := (*C.struct_goi_ti_bind)(C.calloc(1, C.sizeof_struct_goi_ti_bind))
 	if bind == nil {
 		C.wl_registry_destroy(reg)
 		return nil
 	}
 	defer C.free(unsafe.Pointer(bind))
 
-	C.gouiTextInputBind(reg, bind)
+	C.goiTextInputBind(reg, bind)
 	C.wl_display_roundtrip(t.display)
 	C.wl_registry_destroy(reg)
 	if bind.manager == nil || bind.seat == nil {
@@ -151,7 +151,7 @@ func newTextInput(display, surface unsafe.Pointer, in Input) *textInput {
 	if t.ti == nil {
 		return nil
 	}
-	C.gouiTextInputAttach(t.ti)
+	C.goiTextInputAttach(t.ti)
 	currentTextInput = t
 	C.wl_display_flush(t.display)
 	return t

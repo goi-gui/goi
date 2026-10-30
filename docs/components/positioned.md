@@ -4,9 +4,9 @@ Anchors a child inside a Stack. Only valid as a direct child of `Stack`.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 Stack {
 	height: 200
 	Positioned { left: 16 top: 16

@@ -7,8 +7,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/ksckaan1/goui/internal/platform"
-	"github.com/ksckaan1/goui/internal/tree"
+	"github.com/ksckaan1/goi/internal/platform"
+	"github.com/ksckaan1/goi/internal/tree"
 )
 
 // interactor turns platform input into tree events. It runs on the UI

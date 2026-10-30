@@ -5,12 +5,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ksckaan1/goui/internal/layout"
-	"github.com/ksckaan1/goui/internal/m3"
-	"github.com/ksckaan1/goui/internal/paint"
-	"github.com/ksckaan1/goui/internal/platform"
-	"github.com/ksckaan1/goui/internal/render"
-	"github.com/ksckaan1/goui/internal/tree"
+	"github.com/ksckaan1/goi/internal/layout"
+	"github.com/ksckaan1/goi/internal/m3"
+	"github.com/ksckaan1/goi/internal/paint"
+	"github.com/ksckaan1/goi/internal/platform"
+	"github.com/ksckaan1/goi/internal/render"
+	"github.com/ksckaan1/goi/internal/tree"
 )
 
 // gpuDriver is the GLFW + WebGPU event loop. It runs on the main goroutine.
@@ -178,7 +178,7 @@ func (a *App) frame() {
 	// frame check, because a Go property change may be what an expression reads.
 	a.win.tree.ApplyExpressions()
 	// Role colors follow the scheme, so a theme change needs no per-component
-	// work and a role declared in .ui never goes stale.
+	// work and a role declared in .goi never goes stale.
 	if a.win.tree.ResolveColors(themeFor(a.win).Colors.Role) {
 		a.needsFrame = true
 	}
@@ -225,7 +225,7 @@ func (a *App) reportError(err error) {
 		a.OnError(err)
 		return
 	}
-	println("goui:", err.Error())
+	println("goi:", err.Error())
 }
 
 func markAll(b *tree.NodeBase, kind tree.DirtyKind) {

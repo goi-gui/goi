@@ -4,9 +4,9 @@ A text field shaped as a search input, with a leading search glyph.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 SearchBar {
 	label: "Search"
 	placeholder: "Search components"

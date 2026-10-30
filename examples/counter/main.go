@@ -1,4 +1,4 @@
-// Command counter is the framework's smoke test: a window loaded from a .ui
+// Command counter is the framework's smoke test: a window loaded from a .goi
 // file, a button whose handler updates a label through the typed property API.
 //
 // Run with: go run -ldflags=-linkmode=internal ./examples/counter
@@ -9,7 +9,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/ksckaan1/goui/ui"
+	"github.com/ksckaan1/goi/ui"
 )
 
 // counter lives outside Bind on purpose: Bind runs again after every hot
@@ -24,7 +24,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	win, err := app.LoadWindowFile("examples/counter/counter.ui", ui.WithHotReload(true))
+	win, err := app.LoadWindowFile("examples/counter/counter.goi", ui.WithHotReload(true))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

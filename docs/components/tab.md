@@ -4,9 +4,9 @@ One tab in a tab bar.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 Tab { label: "Overview" selected: true }
 Tab { label: "Specs" icon: tune }
 ```

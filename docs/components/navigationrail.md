@@ -4,9 +4,9 @@ The side navigation rail for medium and expanded windows.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 NavigationRail {
 	id: rail
 	visible: { base: false, sm: true }

@@ -4,9 +4,9 @@ A surface anchored to a side edge, for settings or detail.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 SideSheet { label: "Filters" width: 320 height: 480 }
 ```
 

@@ -1,7 +1,7 @@
 # Architecture
 
 ```
- .ui file
+ .goi file
     │
     ▼
 internal/syntax ── parse ──▶ AST (immutable, positions kept)

@@ -4,9 +4,9 @@ The root of the tree. It owns the title, the theme and the client area; the plat
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 Window {
 	id: main
 	title: "My app"
@@ -25,7 +25,7 @@ Window {
 ## From Go
 
 ```go
-win, err := app.LoadWindow(ui.DirFS("."), "app.ui")
+win, err := app.LoadWindow(ui.DirFS("."), "app.goi")
 if err != nil {
 	return err
 }

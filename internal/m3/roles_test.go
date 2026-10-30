@@ -7,7 +7,7 @@ import (
 )
 
 // TestEveryColorFieldHasARole keeps the role table honest: a new color role
-// added to Colors but not to Role would silently be unusable from .ui.
+// added to Colors but not to Role would silently be unusable from .goi.
 func TestEveryColorFieldHasARole(t *testing.T) {
 	c := Light().Colors
 	v := reflect.ValueOf(c)

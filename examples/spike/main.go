@@ -133,7 +133,7 @@ func main() {
 
 	glfw.WindowHint(glfw.ClientAPI, glfw.NoAPI)
 	glfw.WindowHint(glfw.ScaleToMonitor, glfw.True)
-	win, err := glfw.CreateWindow(640, 400, "goui spike", nil, nil)
+	win, err := glfw.CreateWindow(640, 400, "goi spike", nil, nil)
 	if err != nil {
 		log.Fatalf("glfw window: %v", err)
 	}

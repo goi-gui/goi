@@ -1,4 +1,4 @@
-// Package schema defines every element and property the .ui language accepts,
+// Package schema defines every element and property the .goi language accepts,
 // along with the literal type each property requires. It is the single place
 // that knows the vocabulary; the parser stays generic.
 package schema
@@ -6,7 +6,7 @@ package schema
 import (
 	"sort"
 
-	"github.com/ksckaan1/goui/internal/componentdef"
+	"github.com/ksckaan1/goi/internal/componentdef"
 )
 
 // ValueType is the literal type a property demands.

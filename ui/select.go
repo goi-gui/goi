@@ -1,9 +1,9 @@
 package ui
 
 import (
-	"github.com/ksckaan1/goui/internal/m3"
-	"github.com/ksckaan1/goui/internal/text"
-	"github.com/ksckaan1/goui/internal/tree"
+	"github.com/ksckaan1/goi/internal/m3"
+	"github.com/ksckaan1/goi/internal/text"
+	"github.com/ksckaan1/goi/internal/tree"
 )
 
 // textStyle resolves a Text node's style the same way the painter does, so

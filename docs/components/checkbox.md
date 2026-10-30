@@ -4,9 +4,9 @@ A binary choice with an optional label.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 Checkbox { label: "Remember me" checked: true }
 ```
 

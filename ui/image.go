@@ -5,8 +5,8 @@ import (
 	"io/fs"
 	"path"
 
-	"github.com/ksckaan1/goui/internal/img"
-	"github.com/ksckaan1/goui/internal/tree"
+	"github.com/ksckaan1/goi/internal/img"
+	"github.com/ksckaan1/goi/internal/tree"
 )
 
 // loadImages decodes every Image element in a freshly built tree. Decoding is

@@ -1,6 +1,6 @@
-# .ui syntax (v1)
+# .goi syntax (v1)
 
-A `.ui` file describes a design. Go code attaches behaviour; the file holds no
+A `.goi` file describes a design. Go code attaches behaviour; the file holds no
 logic. A design may be one file or several: a file can import fragments and pass
 them values.
 
@@ -31,7 +31,7 @@ Window {
 A file may start with `import` and `param` lines, before its root element:
 
 ```
-// Sidebar.ui
+// Sidebar.goi
 param title: "Mail"
 param subtitle: ""
 
@@ -43,8 +43,8 @@ Column {
 ```
 
 ```
-// Main.ui
-import "./Sidebar.ui" as Sidebar
+// Main.goi
+import "./Sidebar.goi" as Sidebar
 
 Window {
     Column {
@@ -67,7 +67,7 @@ Window {
   is applied to the fragment root, replacing the fragment's own value of the same
   name. So `Sidebar { width: 300 }` overrides the fragment's width.
 - A fragment's root may be any element; only the file a program loads must be a
-  `Window`. A file that declares params is reported as a fragment by `uicheck`.
+  `Window`. A file that declares params is reported as a fragment by `goicheck`.
 - `$name` is only valid inside a file that declares that param. In the entry file
   nothing can fill it in, so it is an error.
 
@@ -324,7 +324,7 @@ set from Go with `Prop.Set` is replaced on the next frame.
 ## What is not in v1
 
 No bindings, no loops and no event declarations — behaviour lives in Go. A list
-grows with `ui.Instantiate` from a hidden template, not with a `.ui` `for`.
+grows with `ui.Instantiate` from a hidden template, not with a `.goi` `for`.
 Theming is limited to the built-in light and dark Material 3 schemes; dynamic
 color and custom palettes are not exposed yet.
 

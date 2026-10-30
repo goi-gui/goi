@@ -9,8 +9,8 @@ import (
 
 	"github.com/gogpu/gputypes"
 	"github.com/gogpu/wgpu"
-	"github.com/ksckaan1/goui/internal/paint"
-	"github.com/ksckaan1/goui/internal/text"
+	"github.com/ksckaan1/goi/internal/paint"
+	"github.com/ksckaan1/goi/internal/text"
 
 	_ "github.com/gogpu/wgpu/hal/allbackends"
 )

@@ -3,9 +3,9 @@ package paint
 import (
 	"math"
 
-	"github.com/ksckaan1/goui/internal/m3"
-	"github.com/ksckaan1/goui/internal/text"
-	"github.com/ksckaan1/goui/internal/tree"
+	"github.com/ksckaan1/goi/internal/m3"
+	"github.com/ksckaan1/goi/internal/text"
+	"github.com/ksckaan1/goi/internal/tree"
 )
 
 // This file draws Material 3 components. Every number comes from the M3 specs

@@ -4,9 +4,9 @@ A row of related buttons that share one shape and one gap.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 ButtonGroup {
 	spacing: 8
 	Button { label: "Day" variant: outlined }

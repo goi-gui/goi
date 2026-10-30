@@ -3,7 +3,7 @@ package tree
 import (
 	"testing"
 
-	"github.com/ksckaan1/goui/internal/syntax"
+	"github.com/ksckaan1/goi/internal/syntax"
 )
 
 func TestLiteralEqualExpressions(t *testing.T) {

@@ -4,9 +4,9 @@ One destination in a navigation bar, rail or drawer.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 NavigationItem { label: "Home" icon: home selected: true }
 NavigationItem { label: "Search" icon: search }
 NavigationItem { label: "Locked" icon: lock disabled: true }

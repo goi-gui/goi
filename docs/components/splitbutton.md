@@ -4,9 +4,9 @@ A primary action with an attached menu trigger.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 SplitButton {
 	label: "Split"
 	icon: add

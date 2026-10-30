@@ -4,9 +4,9 @@ A plain colored box. It has no component behaviour, so it is the cheapest backgr
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 Rectangle {
 	background: primary
 	radius: 8

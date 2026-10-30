@@ -2,7 +2,7 @@
 // import a graphics API; everything above it works with plain data.
 package render
 
-import "github.com/ksckaan1/goui/internal/paint"
+import "github.com/ksckaan1/goi/internal/paint"
 
 // Renderer draws display lists into a window surface.
 type Renderer interface {

@@ -4,9 +4,9 @@ A popup list of `MenuItem`s.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 Menu {
 	MenuItem { label: "Cut" icon: content_cut }
 	MenuItem { label: "Copy" icon: content_copy }

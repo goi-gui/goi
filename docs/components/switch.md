@@ -4,9 +4,9 @@ A single on/off control with an optional label and optional glyph in the thumb.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 Switch { label: "Dark mode" checked: true }
 Switch { label: "Notifications" iconOn: check iconOff: close }
 Switch { label: "Theme" iconOn: dark_mode iconOff: light_mode }

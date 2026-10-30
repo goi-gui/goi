@@ -4,9 +4,9 @@ An editable single-line field with a floating label.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 TextField { label: "Email" width: 320 }
 TextField { label: "Name" text: "Ada" variant: outlined }
 TextField { label: "Email" placeholder: "you@example.com" icon: mail }

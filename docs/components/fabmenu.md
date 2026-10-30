@@ -4,9 +4,9 @@ A FAB that expands into a column of actions.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 FABMenu {
 	id: actions
 	icon: add

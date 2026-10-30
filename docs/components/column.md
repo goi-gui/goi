@@ -4,9 +4,9 @@ Stacks children vertically, top to bottom.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 Column {
 	spacing: 12
 	padding: 16

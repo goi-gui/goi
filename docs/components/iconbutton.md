@@ -4,9 +4,9 @@ A square button that holds only an icon.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 IconButton { icon: favorite }
 IconButton { icon: favorite variant: filled selected: true }
 IconButton { icon: favorite variant: tonal }

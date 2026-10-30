@@ -1,6 +1,6 @@
-// Package ui is the public API of the goui declarative GUI framework.
+// Package ui is the public API of the goi declarative GUI framework.
 //
-// A .ui file describes the window; Go code finds elements by id and attaches
+// A .goi file describes the window; Go code finds elements by id and attaches
 // behaviour:
 //
 //	win.Bind(func(w *ui.Window) error {
@@ -17,7 +17,7 @@
 package ui
 
 import (
-	"github.com/ksckaan1/goui/internal/tree"
+	"github.com/ksckaan1/goi/internal/tree"
 )
 
 // Component is the shared Material 3 component state (label, icon, variant,

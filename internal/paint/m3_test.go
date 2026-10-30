@@ -3,9 +3,9 @@ package paint
 import (
 	"testing"
 
-	"github.com/ksckaan1/goui/internal/layout"
-	"github.com/ksckaan1/goui/internal/m3"
-	"github.com/ksckaan1/goui/internal/tree"
+	"github.com/ksckaan1/goi/internal/layout"
+	"github.com/ksckaan1/goi/internal/m3"
+	"github.com/ksckaan1/goi/internal/tree"
 )
 
 // dump builds the list and returns it, failing on a parse error.

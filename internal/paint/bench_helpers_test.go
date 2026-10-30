@@ -1,8 +1,8 @@
 package paint
 
 import (
-	"github.com/ksckaan1/goui/internal/layout"
-	"github.com/ksckaan1/goui/internal/tree"
+	"github.com/ksckaan1/goi/internal/layout"
+	"github.com/ksckaan1/goi/internal/tree"
 )
 
 // Helpers for benchmarks: build a tree from source and lay it out.

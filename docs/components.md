@@ -1,7 +1,7 @@
 # Components
 
-Every element the `.ui` format knows, grouped by what it is for. Each name links
-to its own page with a `.ui` example, its properties and a Go example.
+Every element the `.goi` format knows, grouped by what it is for. Each name links
+to its own page with a `.goi` example, its properties and a Go example.
 
 The framework has three layers: layout primitives (`Column`, `Row`, `Stack`, …),
 plain drawing nodes (`Rectangle`, `Image`, `Text`) and the Material 3 components.
@@ -110,7 +110,7 @@ These apply to every element and are not repeated on the component pages.
 `marginTop`, `marginRight`, `marginBottom`, `marginLeft` (and the same four for
 `padding`) override one edge and leave the others following `margin`/`padding`:
 
-```ui
+```goi
 Column {
 	padding: 16
 	paddingLeft: 4        // 4 on the left, 16 on the other three sides

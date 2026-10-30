@@ -1,6 +1,6 @@
 package m3
 
-// Role resolves a .ui color role name such as "surfaceContainerHigh". A role is
+// Role resolves a .goi color role name such as "surfaceContainerHigh". A role is
 // a name rather than a literal, so a design that uses roles follows the theme
 // when the scheme switches; a hex literal stays put by design.
 func (c Colors) Role(name string) (uint32, bool) {

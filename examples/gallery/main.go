@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ksckaan1/goui/ui"
+	"github.com/ksckaan1/goi/ui"
 )
 
 // page is one category: the panel it shows and the label used in the app bar and
@@ -44,7 +44,7 @@ func main() {
 	}
 	fps := flag.Bool("fps", false, "draw the frame rate in the top-right corner")
 	flag.Parse()
-	path := "examples/gallery/gallery.ui"
+	path := "examples/gallery/gallery.goi"
 	if arg := flag.Arg(0); arg != "" {
 		path = arg
 	}

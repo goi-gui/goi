@@ -4,9 +4,9 @@ One option in a set where exactly one is chosen.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 RadioButton { label: "Small" checked: true }
 RadioButton { label: "Medium" }
 RadioButton { label: "Large" }

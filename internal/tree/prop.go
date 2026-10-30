@@ -1,6 +1,6 @@
 package tree
 
-import "github.com/ksckaan1/goui/internal/syntax"
+import "github.com/ksckaan1/goi/internal/syntax"
 
 // DirtyKind says what a change affects.
 type DirtyKind uint8
@@ -21,7 +21,7 @@ type Prop[T comparable] struct {
 	dirty DirtyKind
 	val   T
 	// goSet marks a value written by Go code, so hot reload knows it should not
-	// be reverted to the .ui literal.
+	// be reverted to the .goi literal.
 	goSet bool
 }
 

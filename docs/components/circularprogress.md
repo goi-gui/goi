@@ -4,9 +4,9 @@ A circular progress ring.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 CircularProgress { value: 0.3 width: 64 height: 64 }
 CircularProgress { value: 70 min: 0 max: 100 width: 48 height: 48 }
 ```

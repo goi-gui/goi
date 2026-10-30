@@ -5,27 +5,27 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/ksckaan1/goui/internal/tree"
+	"github.com/ksckaan1/goi/internal/tree"
 )
 
 // TestLoadWindowFromFS loads a design from an in-memory container, which is what
 // an embed.FS looks like to the framework.
 func TestLoadWindowFromFS(t *testing.T) {
 	fsys := fstest.MapFS{
-		"ui/Main.ui": &fstest.MapFile{Data: []byte(`import "./parts/Header.ui" as Header
+		"ui/Main.goi": &fstest.MapFile{Data: []byte(`import "./parts/Header.goi" as Header
 Window {
 	title: "From FS"
 	Column {
 		Header { heading: "Hello" }
 	}
 }`)},
-		"ui/parts/Header.ui": &fstest.MapFile{Data: []byte(`param heading: ""
+		"ui/parts/Header.goi": &fstest.MapFile{Data: []byte(`param heading: ""
 Text { text: $heading role: "headlineSmall" }`)},
 	}
 	a := newHeadlessApp()
 	// LoadWindow needs a platform window, so exercise the loading path the same
 	// way it does and check the tree it would install.
-	b, err := loadBundle(fsys, "ui/Main.ui")
+	b, err := loadBundle(fsys, "ui/Main.goi")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,16 +51,16 @@ Text { text: $heading role: "headlineSmall" }`)},
 // file and the line inside it.
 func TestLoadWindowReportsFragmentErrors(t *testing.T) {
 	fsys := fstest.MapFS{
-		"Main.ui": &fstest.MapFile{Data: []byte(`import "./Part.ui" as Part
+		"Main.goi": &fstest.MapFile{Data: []byte(`import "./Part.goi" as Part
 Window { Part { } }`)},
-		"Part.ui": &fstest.MapFile{Data: []byte("Column {\n  nope: 1\n}\n")},
+		"Part.goi": &fstest.MapFile{Data: []byte("Column {\n  nope: 1\n}\n")},
 	}
-	_, err := loadBundle(fsys, "Main.ui")
+	_, err := loadBundle(fsys, "Main.goi")
 	if err == nil {
 		t.Fatal("expected an error")
 	}
-	if !strings.Contains(err.Error(), "Part.ui:2:3") {
-		t.Fatalf("err = %v, want a Part.ui position", err)
+	if !strings.Contains(err.Error(), "Part.goi:2:3") {
+		t.Fatalf("err = %v, want a Part.goi position", err)
 	}
 }
 

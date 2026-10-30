@@ -6,22 +6,22 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/ksckaan1/goui/internal/hotreload"
-	"github.com/ksckaan1/goui/internal/img"
-	"github.com/ksckaan1/goui/internal/tree"
+	"github.com/ksckaan1/goi/internal/hotreload"
+	"github.com/ksckaan1/goi/internal/img"
+	"github.com/ksckaan1/goi/internal/tree"
 )
 
 // Options configure LoadWindow.
 type Options struct {
 	HotReload bool
-	Width     int // used only when the .ui file has no width
+	Width     int // used only when the .goi file has no width
 	Height    int
 }
 
 // Option mutates Options.
 type Option func(*Options)
 
-// WithHotReload reloads the .ui file when it changes on disk.
+// WithHotReload reloads the .goi file when it changes on disk.
 func WithHotReload(on bool) Option { return func(o *Options) { o.HotReload = on } }
 
 // WithSize sets the fallback client size for files that do not declare one.
@@ -80,7 +80,7 @@ func NewApp() (*App, error) {
 // newHeadlessApp creates an app without a window, for tests.
 func newHeadlessApp() *App { return &App{} }
 
-// LoadWindow loads a design from an asset container: fsys is where the .ui files
+// LoadWindow loads a design from an asset container: fsys is where the .goi files
 // live (an embed.FS in production, ui.DirFS in development) and path is the
 // entry file inside it, slash-separated.
 //
@@ -98,7 +98,7 @@ func (a *App) LoadWindow(fsys fs.FS, path string, opts ...Option) (*Window, erro
 	}
 	tr, err := tree.Build(b.File, &tree.Hooks{Marked: a.markDirty})
 	if err != nil {
-		return nil, fmt.Errorf("goui: %s: %w", name, err)
+		return nil, fmt.Errorf("goi: %s: %w", name, err)
 	}
 
 	w := &Window{tree: tr, app: a, title: tr.Root.Title.Get()}

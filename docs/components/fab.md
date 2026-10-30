@@ -4,9 +4,9 @@ The floating action button: the primary action of a page.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 FAB { icon: add }
 FAB { icon: edit label: "Compose" variant: extended }
 FAB { icon: add variant: small }

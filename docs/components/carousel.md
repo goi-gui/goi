@@ -4,9 +4,9 @@ A horizontally scrolling row of cards.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 Carousel {
 	spacing: 12
 	Card { label: "One" width: 200 height: 120 }

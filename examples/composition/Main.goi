@@ -1,11 +1,11 @@
 // Composition: one design split across files.
 //
-// Main.ui is the entry point; it imports two fragments and instantiates them
+// Main.goi is the entry point; it imports two fragments and instantiates them
 // with params. Run with:
 //
 //	go run -ldflags=-linkmode=internal ./examples/composition
-import "./Sidebar.ui" as Sidebar
-import "./StatCard.ui" as StatCard
+import "./Sidebar.goi" as Sidebar
+import "./StatCard.goi" as StatCard
 
 Window {
 	id: main
@@ -34,7 +34,7 @@ Window {
 
 			Text { text: "Fragments" role: "titleMedium" }
 			Text {
-				text: "Sidebar.ui and StatCard.ui are separate files. Main.ui imports them, passes params, and overrides ordinary properties such as width."
+				text: "Sidebar.goi and StatCard.goi are separate files. Main.goi imports them, passes params, and overrides ordinary properties such as width."
 				wrap: true
 				width: 520
 			}

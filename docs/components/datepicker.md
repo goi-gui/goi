@@ -4,9 +4,9 @@ A calendar surface for picking a date.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 DatePicker { label: "Select date" width: 328 height: 420 }
 ```
 

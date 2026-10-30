@@ -1,12 +1,12 @@
 package tree
 
-import "github.com/ksckaan1/goui/internal/img"
+import "github.com/ksckaan1/goi/internal/img"
 
 // Node is any element in the tree. The interface is intentionally narrow: all
 // state lives in NodeBase, and namedProps is the only per-type hook.
 type Node interface {
 	Base() *NodeBase
-	// Kind returns the .ui element name.
+	// Kind returns the .goi element name.
 	Kind() string
 	namedProps() []NamedProp
 }

@@ -4,9 +4,9 @@ A horizontal set of segments. Contiguous siblings form one group.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 SegmentedButton { label: "Day" width: 84 variant: single }
 SegmentedButton { label: "Week" width: 84 variant: single selected: true }
 SegmentedButton { label: "Month" width: 96 variant: single }

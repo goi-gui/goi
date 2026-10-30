@@ -4,9 +4,9 @@ Places children in a fixed number of equal-width columns.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 Grid {
 	columns: 3
 	spacing: 12

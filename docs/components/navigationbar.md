@@ -4,9 +4,9 @@ The bottom navigation bar for the compact window class.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 NavigationBar {
 	id: navbar
 	visible: { base: true, sm: false }

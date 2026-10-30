@@ -4,9 +4,9 @@ The M3 indeterminate loading shape.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 LoadingIndicator { width: 48 height: 48 }
 LoadingIndicator { size: small }
 ```

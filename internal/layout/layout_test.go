@@ -3,8 +3,8 @@ package layout
 import (
 	"testing"
 
-	"github.com/ksckaan1/goui/internal/syntax"
-	"github.com/ksckaan1/goui/internal/tree"
+	"github.com/ksckaan1/goi/internal/syntax"
+	"github.com/ksckaan1/goi/internal/tree"
 )
 
 func build(t *testing.T, src string) *tree.Tree {

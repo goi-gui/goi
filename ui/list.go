@@ -3,7 +3,7 @@ package ui
 import (
 	"fmt"
 
-	"github.com/ksckaan1/goui/internal/tree"
+	"github.com/ksckaan1/goi/internal/tree"
 )
 
 // Instantiate copies a hidden template element under parent, which is how an app
@@ -12,7 +12,7 @@ import (
 //	row, err := ui.Instantiate[*ui.ListItem](w, "rowTemplate", list)
 //	row.Headline.Set("Ada")
 //
-// The template stays in the .ui file with `visible: false`; every copy is
+// The template stays in the .goi file with `visible: false`; every copy is
 // visible. Ids inside the copy are kept so Descendant can find them, but they
 // are not registered, so copies never collide with each other or the template.
 func Instantiate[T Node](w *Window, templateID string, parent Node) (T, error) {
@@ -38,7 +38,7 @@ func Instantiate[T Node](w *Window, templateID string, parent Node) (T, error) {
 	return t, nil
 }
 
-// Descendant finds an element by its .ui id inside a subtree, root included.
+// Descendant finds an element by its .goi id inside a subtree, root included.
 // Use it to reach the named parts of an Instantiate copy.
 func Descendant[T Node](root Node, id string) (T, error) {
 	var zero T

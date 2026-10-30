@@ -1,9 +1,9 @@
 package tree
 
-import "github.com/ksckaan1/goui/internal/syntax"
+import "github.com/ksckaan1/goi/internal/syntax"
 
 // LiteralEqual reports whether two parsed literals carry the same value. Used
-// by hot reload to decide if the .ui file changed a property.
+// by hot reload to decide if the .goi file changed a property.
 func LiteralEqual(a, b syntax.Value) bool {
 	if a == nil || b == nil {
 		return a == b
@@ -70,7 +70,7 @@ func literalOf(el *syntax.Element, name string) syntax.Value {
 }
 
 // GoSet reports whether a property was last changed by Go code rather than by
-// the .ui file.
+// the .goi file.
 func (b *NodeBase) GoSet(name string) bool {
 	b.properties()
 	if i, ok := b.byName[name]; ok {
@@ -79,7 +79,7 @@ func (b *NodeBase) GoSet(name string) bool {
 	return false
 }
 
-// PropertyNames lists the .ui names of every property the node exposes.
+// PropertyNames lists the .goi names of every property the node exposes.
 func (b *NodeBase) PropertyNames() []string {
 	b.properties()
 	out := make([]string, len(b.props))
@@ -89,7 +89,7 @@ func (b *NodeBase) PropertyNames() []string {
 	return out
 }
 
-// RuntimeValue returns the current value of a property by .ui name.
+// RuntimeValue returns the current value of a property by .goi name.
 func (b *NodeBase) RuntimeValue(name string) (any, bool) { return b.PropValue(name) }
 
 // CopyProp copies the current value of a property from src, which must be a
@@ -105,7 +105,7 @@ func (b *NodeBase) CopyProp(name string, src *NodeBase) bool {
 	return b.props[i].CopyFrom(src.props[i])
 }
 
-// LiteralChanged reports whether the .ui file changed a property between the
+// LiteralChanged reports whether the .goi file changed a property between the
 // element that produced src and the element that produced b.
 func LiteralChanged(b *NodeBase, name string, src *NodeBase) bool {
 	return !LiteralEqual(literalOf(b.AST, name), literalOf(src.AST, name))

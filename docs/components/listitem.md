@@ -4,9 +4,9 @@ One row in a list: leading icon, label, optional supporting line, trailing affor
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 ListItem { label: "Inbox" icon: inbox }
 ListItem { label: "Two lines" supporting: "Supporting text" icon: photo }
 ListItem { label: "Selected" icon: star selected: true }

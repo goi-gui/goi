@@ -1,6 +1,6 @@
 package tree
 
-import "github.com/ksckaan1/goui/internal/syntax"
+import "github.com/ksckaan1/goi/internal/syntax"
 
 // Rect is a rectangle in logical pixels, relative to the parent's content box.
 type Rect struct {
@@ -86,7 +86,7 @@ type NodeBase struct {
 // NodeBase returns the node's shared state.
 func (b *NodeBase) Base() *NodeBase { return b }
 
-// ID returns the id declared in the .ui file, or "".
+// ID returns the id declared in the .goi file, or "".
 func (b *NodeBase) ID() string { return b.id }
 
 // Parent returns the parent node, or nil for the root.
@@ -254,7 +254,7 @@ func (b *NodeBase) properties() []NamedProp {
 	return b.props
 }
 
-// PropValue returns the type-erased property value by .ui name.
+// PropValue returns the type-erased property value by .goi name.
 func (b *NodeBase) PropValue(name string) (any, bool) {
 	b.properties()
 	if i, ok := b.byName[name]; ok {
@@ -272,7 +272,7 @@ func (b *NodeBase) PropDirty(name string) DirtyKind {
 	return DirtyLayout
 }
 
-// SetPropLiteral applies a parsed literal by .ui property name.
+// SetPropLiteral applies a parsed literal by .goi property name.
 func (b *NodeBase) SetPropLiteral(name string, v syntax.Value) bool {
 	b.properties()
 	i, ok := b.byName[name]

@@ -3,8 +3,8 @@ package ui
 import (
 	"testing"
 
-	"github.com/ksckaan1/goui/internal/platform"
-	"github.com/ksckaan1/goui/internal/tree"
+	"github.com/ksckaan1/goi/internal/platform"
+	"github.com/ksckaan1/goi/internal/tree"
 )
 
 // TestSelectableTextDragsAndCopies covers the whole path a reader uses: press,

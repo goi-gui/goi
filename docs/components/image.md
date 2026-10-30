@@ -4,9 +4,9 @@ Draws a decoded bitmap. `src` is read at build time and cached by path.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 Image {
 	src: "assets/cover.png"
 	fit: cover
@@ -20,7 +20,7 @@ Image {
 
 | Property | Type | Notes |
 |---|---|---|
-| `src` | string | image path, resolved next to the `.ui` file |
+| `src` | string | image path, resolved next to the `.goi` file |
 | `fit` | string | `cover`, `contain` or `fill` |
 
 

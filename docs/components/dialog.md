@@ -4,9 +4,9 @@ A modal surface for a decision or a short form.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 Dialog {
 	label: "Reset settings?"
 	supporting: "This cannot be undone."

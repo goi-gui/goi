@@ -1,7 +1,7 @@
 // Nested boxes: radius, border, padding and alignment.
 Window {
 	id: main
-	title: "goui hello"
+	title: "goi hello"
 	width: 640
 	height: 400
 	background: #1b1d22

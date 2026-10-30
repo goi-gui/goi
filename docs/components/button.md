@@ -4,9 +4,9 @@ The ordinary Material 3 button. Five variants share one element.
 
 [All components](../components.md)
 
-## In a `.ui` file
+## In a `.goi` file
 
-```ui
+```goi
 Button { label: "Filled" }
 Button { label: "Tonal" variant: tonal }
 Button { label: "Outlined" variant: outlined }

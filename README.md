@@ -1,10 +1,10 @@
-# goui
+# goi
 
 A declarative GUI framework for Go, rendered with WebGPU. The window is described
 in a small QML-like file; Go finds elements by id and attaches behaviour.
 
 ```go
-// app.ui
+// app.goi
 // Window {
 //     title: "Counter"
 //     Column {
@@ -19,7 +19,7 @@ in a small QML-like file; Go finds elements by id and attaches behaviour.
 
 ```go
 app, _ := ui.NewApp()
-win, _ := app.LoadWindowFile("app.ui", ui.WithHotReload(true))
+win, _ := app.LoadWindowFile("app.goi", ui.WithHotReload(true))
 
 count := 0 // outside Bind: survives hot reload
 win.Bind(func(w *ui.Window) error {
@@ -35,12 +35,12 @@ app.Run()
 
 ## One design, several files
 
-A `.ui` file can import fragments and pass them values, so a page does not have
+A `.goi` file can import fragments and pass them values, so a page does not have
 to be one long file:
 
 ```go
-// Main.ui
-// import "./Sidebar.ui" as Sidebar
+// Main.goi
+// import "./Sidebar.goi" as Sidebar
 //
 // Window {
 //     Row {
@@ -50,7 +50,7 @@ to be one long file:
 ```
 
 ```go
-// Sidebar.ui
+// Sidebar.goi
 // param title: ""
 // Column {
 //     Text { text: $title role: "titleLarge" }
@@ -61,12 +61,12 @@ Designs load from an **asset container**, an `io/fs.FS` plus a path inside it:
 
 ```go
 // Development: real files, hot reload watches every file the design reads.
-win, _ := app.LoadWindow(ui.DirFS("ui"), "Main.ui", ui.WithHotReload(true))
+win, _ := app.LoadWindow(ui.DirFS("ui"), "Main.goi", ui.WithHotReload(true))
 
 // Production: one executable, no files on disk.
 //go:embed ui
 var assets embed.FS
-win, _ := app.LoadWindow(assets, "ui/Main.ui")
+win, _ := app.LoadWindow(assets, "ui/Main.goi")
 ```
 
 `ui.DirFS` is `os.DirFS` that remembers its directory, which is what hot reload
@@ -97,15 +97,15 @@ make gallery   # every Material 3 component, one category page at a time
 make hello     # rounded corners, borders, text
 make scroll    # scrolling page, horizontal strip, ripple
 make typography # type scale, five weights, wrapping
-make composition # one design split across Main.ui, Sidebar.ui and StatCard.ui
-go run ./cmd/uicheck -layout examples/*/*.ui  # syntax plus a headless layout check
+make composition # one design split across Main.goi, Sidebar.goi and StatCard.goi
+go run ./cmd/goicheck -layout examples/*/*.goi  # syntax plus a headless layout check
 ```
 
 ## What it does
 
-- `.ui` files: literals only, no scripting. Elements, properties, ids, with
+- `.goi` files: literals only, no scripting. Elements, properties, ids, with
   diagnostics that point at `file:line:col`.
-- Composable designs: `import "./Sidebar.ui" as Sidebar` plus `param`/`$param`,
+- Composable designs: `import "./Sidebar.goi" as Sidebar` plus `param`/`$param`,
   loaded from an `io/fs.FS` so `embed.FS` and `os.DirFS` both work.
 - Typed Go API: `Prop[T]` cells, `Event[E]`, `ByID[T]`.
 - Material 3 components as core elements: buttons, FABs, chips, selection
@@ -128,7 +128,7 @@ go run ./cmd/uicheck -layout examples/*/*.ui  # syntax plus a headless layout ch
   while a hex literal stays a deliberate fixed color.
 - Images: `Image { src: "photo.png" fit: cover }` decodes PNG, JPEG or GIF once
   and packs every bitmap into one GPU atlas.
-- Lists from Go: a hidden template in the `.ui` file plus `ui.Instantiate` makes
+- Lists from Go: a hidden template in the `.goi` file plus `ui.Instantiate` makes
   N rows without hand-building nodes; `ui.Remove` takes one away.
 - Motion: `app.Tween` and `app.Animate` ease a function or a `Prop` over time,
   and the loop sleeps again when the last one finishes.
@@ -162,11 +162,11 @@ reasoning.
 
 ## Not in v1
 
-Bindings that push Go state back into `.ui` values (the file is evaluated, not
+Bindings that push Go state back into `.goi` values (the file is evaluated, not
 observed), dynamic color and custom themes, an accessibility tree, multiple
-windows, drag and drop, custom components in `.ui`, drag-to-fling (the wheel does
+windows, drag and drop, custom components in `.goi`, drag-to-fling (the wheel does
 coast), and caret mapping inside right-to-left text. IME composition shows as underlined preedit on
-Wayland. `go run ./cmd/uicheck -layout` lays a design out headlessly and reports
+Wayland. `go run ./cmd/goicheck -layout` lays a design out headlessly and reports
 nodes that cannot draw.
 
 ## Tests

@@ -3,7 +3,7 @@ package ui
 import (
 	"fmt"
 
-	"github.com/ksckaan1/goui/internal/tree"
+	"github.com/ksckaan1/goi/internal/tree"
 )
 
 // Window wraps a live node tree. Its methods must only be called from the UI
@@ -28,7 +28,7 @@ func (w *Window) T() *tree.Tree { return w.tree }
 // Root returns the root node.
 func (w *Window) Root() *WindowNode { return w.tree.Root }
 
-// Title returns the window title from the .ui file.
+// Title returns the window title from the .goi file.
 func (w *Window) Title() string { return w.title }
 
 // Size returns the client size in logical pixels.

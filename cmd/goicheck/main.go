@@ -1,7 +1,7 @@
-// Command uicheck loads .ui designs, expanding imports, and prints diagnostics.
+// Command goicheck loads .goi designs, expanding imports, and prints diagnostics.
 //
-//	go run ./cmd/uicheck examples/gallery/gallery.ui
-//	go run ./cmd/uicheck -layout examples/*/*.ui
+//	go run ./cmd/goicheck examples/gallery/gallery.goi
+//	go run ./cmd/goicheck -layout examples/*/*.goi
 //
 // With -layout it also lays the design out headlessly and reports nodes that
 // collapsed to zero size. That is the class of bug a syntax check cannot see: a
@@ -15,13 +15,13 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ksckaan1/goui/internal/asset"
-	"github.com/ksckaan1/goui/internal/layout"
-	"github.com/ksckaan1/goui/internal/m3"
-	"github.com/ksckaan1/goui/internal/paint"
-	"github.com/ksckaan1/goui/internal/schema"
-	"github.com/ksckaan1/goui/internal/text"
-	"github.com/ksckaan1/goui/internal/tree"
+	"github.com/ksckaan1/goi/internal/asset"
+	"github.com/ksckaan1/goi/internal/layout"
+	"github.com/ksckaan1/goi/internal/m3"
+	"github.com/ksckaan1/goi/internal/paint"
+	"github.com/ksckaan1/goi/internal/schema"
+	"github.com/ksckaan1/goi/internal/text"
+	"github.com/ksckaan1/goi/internal/tree"
 )
 
 func main() {
@@ -29,7 +29,7 @@ func main() {
 	ops := flag.Bool("ops", false, "print the display list op count")
 	size := flag.String("size", "1100x900", "client size for -layout and -ops")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: uicheck [-layout] [-ops] FILE.ui...")
+		fmt.Fprintln(os.Stderr, "usage: goicheck [-layout] [-ops] FILE.goi...")
 	}
 	flag.Parse()
 	if flag.NArg() < 2 && flag.NArg() != 1 {

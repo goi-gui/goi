@@ -4,7 +4,7 @@ import "fmt"
 
 // Instantiate builds a copy of template's subtree and appends it to parent. It
 // is how an app grows a list without building nodes by hand: put one hidden
-// template in the .ui file, then copy it per item.
+// template in the .goi file, then copy it per item.
 //
 //	row, err := w.T().Instantiate(w.T().MustByID("rowTemplate"), list)
 //
@@ -70,7 +70,7 @@ func (t *Tree) Remove(n Node) {
 	p.mark(DirtyLayout)
 }
 
-// Find returns the descendant of root whose .ui id is id, root included. It
+// Find returns the descendant of root whose .goi id is id, root included. It
 // exists because Instantiate keeps ids on copies without registering them.
 func Find(root Node, id string) (Node, bool) {
 	if root == nil || id == "" {

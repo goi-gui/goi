@@ -3,11 +3,11 @@ package tree
 import (
 	"testing"
 
-	"github.com/ksckaan1/goui/internal/m3"
-	"github.com/ksckaan1/goui/internal/syntax"
+	"github.com/ksckaan1/goi/internal/m3"
+	"github.com/ksckaan1/goi/internal/syntax"
 )
 
-// TestRoleColorsFollowTheScheme is the point of roles: the same .ui value paints
+// TestRoleColorsFollowTheScheme is the point of roles: the same .goi value paints
 // light in light mode and dark in dark mode, without touching the design.
 func TestRoleColorsFollowTheScheme(t *testing.T) {
 	tr, diag := BuildSource([]byte(`Window {

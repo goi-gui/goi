@@ -1,6 +1,6 @@
 package tree
 
-import "github.com/ksckaan1/goui/internal/syntax"
+import "github.com/ksckaan1/goi/internal/syntax"
 
 // exprSpec is one expression-valued property. The value stays a syntax
 // expression so it can be re-read whenever a frame runs: a reference may point
@@ -20,7 +20,7 @@ func isExpression(v syntax.Value) bool {
 	return false
 }
 
-// applyValue writes a property value from the .ui file, which may be an
+// applyValue writes a property value from the .goi file, which may be an
 // expression. Expressions are recorded for the frame loop instead of stored in
 // the property cell directly.
 func (b *NodeBase) applyValue(name string, v syntax.Value) bool {

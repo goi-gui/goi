@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ksckaan1/goui/internal/schema"
-	"github.com/ksckaan1/goui/internal/tree"
+	"github.com/ksckaan1/goi/internal/schema"
+	"github.com/ksckaan1/goi/internal/tree"
 )
 
 // design writes a set of files into a temp dir and returns an FS over it.
@@ -45,18 +45,18 @@ func (e *errText) Error() string { return e.s }
 
 func TestImportExpandsToFragmentRoot(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.ui": `import "./Sidebar.ui" as Sidebar
+		"Main.goi": `import "./Sidebar.goi" as Sidebar
 Window {
 	Row {
 		Sidebar { }
 	}
 }`,
-		"Sidebar.ui": `Column {
+		"Sidebar.goi": `Column {
 	width: 200
 	Text { text: "Mail" }
 }`,
 	})
-	tr, err := load(t, dir, "Main.ui")
+	tr, err := load(t, dir, "Main.goi")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,16 +75,16 @@ Window {
 // the fragment.
 func TestImportPassesParams(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.ui": `import "./Sidebar.ui" as Sidebar
+		"Main.goi": `import "./Sidebar.goi" as Sidebar
 Window {
 	Sidebar { title: "Inbox" }
 }`,
-		"Sidebar.ui": `param title: "none"
+		"Sidebar.goi": `param title: "none"
 Column {
 	Text { text: $title }
 }`,
 	})
-	tr, err := load(t, dir, "Main.ui")
+	tr, err := load(t, dir, "Main.goi")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,14 +96,14 @@ Column {
 
 func TestParamDefaultApplies(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.ui": `import "./Sidebar.ui" as Sidebar
+		"Main.goi": `import "./Sidebar.goi" as Sidebar
 Window {
 	Sidebar { }
 }`,
-		"Sidebar.ui": `param title: "default"
+		"Sidebar.goi": `param title: "default"
 Column { Text { text: $title } }`,
 	})
-	tr, err := load(t, dir, "Main.ui")
+	tr, err := load(t, dir, "Main.goi")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,14 +116,14 @@ Column { Text { text: $title } }`,
 // over the fragment's own width without producing a duplicate property.
 func TestInstancePropsOverrideFragmentProps(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.ui": `import "./Sidebar.ui" as Sidebar
+		"Main.goi": `import "./Sidebar.goi" as Sidebar
 Window {
 	Sidebar { width: 300 }
 }`,
-		"Sidebar.ui": `Column { width: 100 }
+		"Sidebar.goi": `Column { width: 100 }
 `,
 	})
-	tr, err := load(t, dir, "Main.ui")
+	tr, err := load(t, dir, "Main.goi")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,16 +134,16 @@ Window {
 
 func TestParamInsideResponsiveMap(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.ui": `import "./Sidebar.ui" as Sidebar
+		"Main.goi": `import "./Sidebar.goi" as Sidebar
 Window {
 	Sidebar { accent: #FF0000 }
 }`,
-		"Sidebar.ui": `param accent: #00FF00
+		"Sidebar.goi": `param accent: #00FF00
 Column {
 	Text { text: "x" color: { base: $accent, md: $accent } }
 }`,
 	})
-	tr, err := load(t, dir, "Main.ui")
+	tr, err := load(t, dir, "Main.goi")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,17 +160,17 @@ Column {
 
 func TestTwoInstancesDoNotShareNodes(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.ui": `import "./Part.ui" as Part
+		"Main.goi": `import "./Part.goi" as Part
 Window {
 	Column {
 		Part { label: "one" }
 		Part { label: "two" }
 	}
 }`,
-		"Part.ui": `param label: ""
+		"Part.goi": `param label: ""
 Text { text: $label }`,
 	})
-	tr, err := load(t, dir, "Main.ui")
+	tr, err := load(t, dir, "Main.goi")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,13 +187,13 @@ Text { text: $label }`,
 
 func TestNestedImport(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.ui": `import "./parts/Page.ui" as Page
+		"Main.goi": `import "./parts/Page.goi" as Page
 Window { Page { } }`,
-		"parts/Page.ui": `import "./Card.ui" as Card
+		"parts/Page.goi": `import "./Card.goi" as Card
 Column { Card { } }`,
-		"parts/Card.ui": `Rectangle { width: 10 height: 10 }`,
+		"parts/Card.goi": `Rectangle { width: 10 height: 10 }`,
 	})
-	tr, err := load(t, dir, "Main.ui")
+	tr, err := load(t, dir, "Main.goi")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,14 +210,14 @@ Column { Card { } }`,
 
 func TestImportCycleIsReported(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.ui": `import "./A.ui" as A
+		"Main.goi": `import "./A.goi" as A
 Window { A { } }`,
-		"A.ui": `import "./B.ui" as B
+		"A.goi": `import "./B.goi" as B
 Column { B { } }`,
-		"B.ui": `import "./A.ui" as A
+		"B.goi": `import "./A.goi" as A
 Row { A { } }`,
 	})
-	_, err := load(t, dir, "Main.ui")
+	_, err := load(t, dir, "Main.goi")
 	if err == nil || !strings.Contains(err.Error(), "import cycle") {
 		t.Fatalf("err = %v, want an import cycle", err)
 	}
@@ -225,25 +225,25 @@ Row { A { } }`,
 
 func TestMissingImportPointsAtTheImport(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.ui": `import "./Nope.ui" as Nope
+		"Main.goi": `import "./Nope.goi" as Nope
 Window { Nope { } }`,
 	})
-	_, err := load(t, dir, "Main.ui")
+	_, err := load(t, dir, "Main.goi")
 	if err == nil {
 		t.Fatal("expected an error")
 	}
-	// The message names the missing file and points into Main.ui.
-	if !strings.Contains(err.Error(), "Nope.ui") || !strings.Contains(err.Error(), "Main.ui:1:") {
+	// The message names the missing file and points into Main.goi.
+	if !strings.Contains(err.Error(), "Nope.goi") || !strings.Contains(err.Error(), "Main.goi:1:") {
 		t.Fatalf("err = %v", err)
 	}
 }
 
 func TestImportOutsideRootIsRejected(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.ui": `import "../evil.ui" as Evil
+		"Main.goi": `import "../evil.goi" as Evil
 Window { Evil { } }`,
 	})
-	_, err := load(t, dir, "Main.ui")
+	_, err := load(t, dir, "Main.goi")
 	if err == nil || !strings.Contains(err.Error(), "outside the asset root") {
 		t.Fatalf("err = %v, want a rejection", err)
 	}
@@ -251,11 +251,11 @@ Window { Evil { } }`,
 
 func TestUnknownParamIsReported(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.ui": `import "./Part.ui" as Part
+		"Main.goi": `import "./Part.goi" as Part
 Window { Part { } }`,
-		"Part.ui": `Column { Text { text: $nope } }`,
+		"Part.goi": `Column { Text { text: $nope } }`,
 	})
-	_, err := load(t, dir, "Main.ui")
+	_, err := load(t, dir, "Main.goi")
 	if err == nil || !strings.Contains(err.Error(), "has no param") {
 		t.Fatalf("err = %v, want an unknown param", err)
 	}
@@ -265,32 +265,32 @@ Window { Part { } }`,
 // must fail against the fragment root's schema.
 func TestUnknownInstancePropertyIsReported(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.ui": `import "./Part.ui" as Part
+		"Main.goi": `import "./Part.goi" as Part
 Window { Part { widht: 10 } }`,
-		"Part.ui": `Column { }`,
+		"Part.goi": `Column { }`,
 	})
-	_, err := load(t, dir, "Main.ui")
+	_, err := load(t, dir, "Main.goi")
 	if err == nil || !strings.Contains(err.Error(), `unknown property "widht"`) {
 		t.Fatalf("err = %v, want an unknown property", err)
 	}
 	// The position belongs to the instance, not to the fragment.
-	if !strings.Contains(err.Error(), "Main.ui:") {
-		t.Fatalf("err = %v, want a Main.ui position", err)
+	if !strings.Contains(err.Error(), "Main.goi:") {
+		t.Fatalf("err = %v, want a Main.goi position", err)
 	}
 }
 
 func TestDuplicateIDAcrossInstancesIsReported(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.ui": `import "./Part.ui" as Part
+		"Main.goi": `import "./Part.goi" as Part
 Window {
 	Column {
 		Part { }
 		Part { }
 	}
 }`,
-		"Part.ui": `Text { id: same text: "x" }`,
+		"Part.goi": `Text { id: same text: "x" }`,
 	})
-	_, err := load(t, dir, "Main.ui")
+	_, err := load(t, dir, "Main.goi")
 	if err == nil || !strings.Contains(err.Error(), "duplicate id") {
 		t.Fatalf("err = %v, want a duplicate id", err)
 	}
@@ -298,14 +298,14 @@ Window {
 
 func TestDataOnlyValuesInFragment(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.ui": `import "./Part.ui" as Part
+		"Main.goi": `import "./Part.goi" as Part
 Window { Part { label: "x" } }`,
-		"Part.ui": `param label: ""
+		"Part.goi": `param label: ""
 Column { Text { text: $label } }`,
 	})
 	// A bare word param value must work as a string, like every other string
 	// property.
-	tr, err := load(t, dir, "Main.ui")
+	tr, err := load(t, dir, "Main.goi")
 	if err != nil {
 		t.Fatal(err)
 	}
