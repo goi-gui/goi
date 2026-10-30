@@ -1313,7 +1313,12 @@ func (l *List) paintNavigationBar(c *tree.Component, r tree.Rect, clip tree.Rect
 
 func (l *List) paintNavigationRail(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
-	l.fillRect(r, col.Surface, 0, 0, 0, clip)
+	// SurfaceContainer, like the bottom bar, plus a 1dp edge line. A rail on
+	// plain Surface was invisible against a Surface page, and the container
+	// alone is only a few units off it; the hairline is what makes the rail
+	// read as its own surface in both schemes.
+	l.fillRect(r, col.SurfaceContainer, 0, 0, 0, clip)
+	l.fillRect(tree.Rect{X: r.Right() - 1, Y: r.Y, W: 1, H: r.H}, col.OutlineVariant, 0, 0, 0, clip)
 	for _, k := range c.Base().Kids() {
 		kc := m3Of(k)
 		if kc == nil || !kc.Selected.Get() {

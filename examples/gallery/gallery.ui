@@ -25,6 +25,15 @@ Window {
 				NavigationItem { label: "Feedback" icon: notifications }
 				NavigationItem { label: "Layout" icon: dashboard }
 				NavigationItem { label: "Motion" icon: animation }
+				// The theme lives at the bottom of the rail, where a rail puts its
+				// own actions, instead of floating in the app bar.
+				Rectangle { flex: 1 }
+				Switch {
+					id: railTheme
+					width: 52
+					alignSelf: center
+					checked: app.dark
+				}
 			}
 
 			Column {
@@ -37,9 +46,6 @@ Window {
 					// The hamburger is the compact-only way into the drawer: at
 					// sm and up the rail is on screen, so the bar drops it.
 					icon: { base: menu, sm: "" }
-					// An expression, not Go state: the icon follows the theme
-					// wherever the theme is changed from.
-					trailingIcon: app.dark ? "light_mode" : "dark_mode"
 				}
 
 				// ---- one page at a time

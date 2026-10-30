@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ksckaan1/goui/internal/m3"
 	"github.com/ksckaan1/goui/internal/tree"
 )
 
@@ -56,5 +57,30 @@ func TestTopAppBarWithoutIconDropsTheHamburger(t *testing.T) {
 	}
 	if titleX > 20 {
 		t.Fatalf("title starts at %v, want the 16dp inset", titleX)
+	}
+}
+
+// TestRailSitsOnItsOwnSurface guards the rail being visible: it paints the same
+// container tone as the bottom bar, plus a hairline on its right edge, because a
+// rail on plain Surface blended into a Surface page.
+func TestRailSitsOnItsOwnSurface(t *testing.T) {
+	l := m3list(t, `Window {
+		NavigationRail { height: 200 NavigationItem { label: "One" icon: tune } }
+	}`)
+	col := m3.Light().Colors
+	var container, edge bool
+	for _, op := range l.Ops {
+		if op.Kind != Fill {
+			continue
+		}
+		if op.Color == col.SurfaceContainer && op.Rect[2] > 60 {
+			container = true
+		}
+		if op.Color == col.OutlineVariant && op.Rect[2] <= 1 {
+			edge = true
+		}
+	}
+	if !container || !edge {
+		t.Fatalf("rail surface: container=%v edge=%v\n%s", container, edge, l.Dump())
 	}
 }

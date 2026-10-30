@@ -501,6 +501,16 @@ batch. This is what the display list will feed.
   advance of a run is now cached on the face (reset past 8k entries to bound
   memory), which brings the same layout to well under a millisecond. Glyph
   drawing still shapes once per text op, so output is unchanged.
+- **The rail owns the theme switch, and it is its own surface.** The gallery's
+  theme control moved out of the app bar into the bottom of the navigation rail,
+  where M3 puts a rail's own actions: a spacer takes the free height and the
+  switch sits above the bottom edge. The app bar now has one action (the compact
+  drawer). The rail paints `SurfaceContainer` like the bottom bar plus a 1dp
+  `OutlineVariant` hairline on its right edge; the container alone is only a few
+  units off `Surface`, so the hairline is what makes the rail read as a separate
+  surface in both the light and dark schemes. `selectChildren` counts only
+  `NavigationItem`s, so the switch below the destinations does not shift the
+  selected index.
 - **The hamburger is a compact-only affordance.** The top app bar drops the
   leading icon when `icon` is empty, and the title then starts at the 16dp M3
   inset instead of leaving a gap. The gallery expresses that as

@@ -102,8 +102,8 @@ func main() {
 			}
 		}
 
-		// Both theme controls drive this one function: the app-bar icon and the
-		// switch on the Layout page stay in step because neither owns the state.
+		// Both theme controls drive this one function: the rail switch and the
+		// one on the Layout page stay in step because neither owns the state.
 		applyTheme := func(d bool) {
 			dark = d
 			theme := "light"
@@ -111,8 +111,10 @@ func main() {
 				theme = "dark"
 			}
 			w.Root().Theme.Set(theme)
-			if sw, err := ui.ByID[*ui.Switch](w, "darkSwitch"); err == nil {
-				sw.Checked.Set(d)
+			for _, id := range []string{"darkSwitch", "railTheme"} {
+				if sw, err := ui.ByID[*ui.Switch](w, id); err == nil {
+					sw.Checked.Set(d)
+				}
 			}
 		}
 
@@ -138,22 +140,17 @@ func main() {
 			}
 		}
 
-		// The app-bar icons own both actions: the leading one opens the drawer,
-		// the trailing one flips the theme. Their hit areas are measured from the
-		// bar's own edges, because a rail beside it moves the bar's left edge off
-		// the window's.
+		// The app-bar leading icon opens the drawer. Its hit area is measured from
+		// the bar's own edge, because a rail beside it moves the bar's left edge
+		// off the window's.
 		if bar, err := ui.ByID[*ui.TopAppBar](w, "appbar"); err == nil {
 			bar.OnClick(func(e ui.ClickEvent) {
 				local := e.X
 				for n := ui.Node(bar); n != nil; n = n.Base().Parent() {
 					local -= n.Base().Bounds().X
 				}
-				width := bar.Base().Bounds().W
-				switch {
-				case local <= 56 && bar.Icon.Get() != "":
+				if local <= 56 && bar.Icon.Get() != "" {
 					setDrawer(!drawerOpen)
-				case local >= width-56:
-					applyTheme(!dark)
 				}
 			})
 		}
@@ -228,9 +225,12 @@ func main() {
 			})
 		}
 
-		// The switch on the Layout page is the second entry point to the theme.
-		if sw, err := ui.ByID[*ui.Switch](w, "darkSwitch"); err == nil {
-			sw.OnToggle(applyTheme)
+		// The rail switch and the one on the Layout page are both entry points to
+		// the theme.
+		for _, id := range []string{"railTheme", "darkSwitch"} {
+			if sw, err := ui.ByID[*ui.Switch](w, id); err == nil {
+				sw.OnToggle(applyTheme)
+			}
 		}
 
 		// Wire the stateful controls so the pages behave, not just draw.
@@ -257,13 +257,21 @@ func main() {
 	}
 }
 
-// selectChildren marks child index i as the selected destination.
+// selectChildren marks destination i as selected. Only NavigationItems count as
+// destinations, so the rail's theme switch below them does not shift the index.
 func selectChildren(b *ui.NodeBase, i int) {
-	for j, kid := range b.Children() {
-		c := kid.(interface{ M3() *ui.Component }).M3()
-		if c == nil {
+	n := 0
+	for _, kid := range b.Children() {
+		if kid.Kind() != "NavigationItem" {
 			continue
 		}
-		c.Selected.Set(j == i)
+		c, ok := kid.(interface{ M3() *ui.Component })
+		if !ok {
+			continue
+		}
+		if m := c.M3(); m != nil {
+			m.Selected.Set(n == i)
+		}
+		n++
 	}
 }
