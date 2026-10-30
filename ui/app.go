@@ -8,6 +8,7 @@ import (
 
 	"github.com/ksckaan1/goi/internal/hotreload"
 	"github.com/ksckaan1/goi/internal/img"
+	"github.com/ksckaan1/goi/internal/m3"
 	"github.com/ksckaan1/goi/internal/tree"
 )
 
@@ -16,6 +17,9 @@ type Options struct {
 	HotReload bool
 	Width     int // used only when the .goi file has no width
 	Height    int
+	// Themes are schemes registered by name for this window, on top of the
+	// built-in light and dark.
+	Themes map[string]*Theme
 }
 
 // Option mutates Options.
@@ -26,6 +30,21 @@ func WithHotReload(on bool) Option { return func(o *Options) { o.HotReload = on 
 
 // WithSize sets the fallback client size for files that do not declare one.
 func WithSize(w, h int) Option { return func(o *Options) { o.Width, o.Height = w, h } }
+
+// WithTheme registers a colour scheme under a name, so a design can say
+// `theme: "brand"`. `light` and `dark` are always available; a registered name
+// replaces a built-in one of the same name.
+func WithTheme(name string, t *Theme) Option {
+	return func(o *Options) {
+		if name == "" || t == nil {
+			return
+		}
+		if o.Themes == nil {
+			o.Themes = map[string]*Theme{}
+		}
+		o.Themes[name] = t
+	}
+}
 
 // App owns the UI goroutine, the posted-function queue and every window's
 // state. It is safe to call Post from any goroutine.
@@ -50,6 +69,8 @@ type App struct {
 	tweens []*tween
 	// images caches decoded Image assets by path, so a reload is cheap.
 	images map[string]*img.Data
+	// themes are the schemes a `.goi` file may name, keyed by name.
+	themes map[string]*Theme
 
 	// OnError receives rendering errors (a lost surface, a validation failure).
 	// When nil they are printed and the app keeps running.
@@ -114,6 +135,15 @@ func (a *App) LoadWindow(fsys fs.FS, path string, opts ...Option) (*Window, erro
 		}
 	}
 	a.win, a.assets, a.path, a.opts = w, fsys, name, o
+	a.themes = map[string]*Theme{"light": m3.Light(), "dark": m3.Dark()}
+	for n, t := range o.Themes {
+		a.themes[n] = t
+	}
+	// A typo in a theme name would otherwise paint a light window with no hint
+	// that the design asked for something else.
+	if _, ok := a.themes[tr.Root.Theme.Get()]; !ok {
+		a.reportError(fmt.Errorf("goi: %s: unknown theme %q, using light", name, tr.Root.Theme.Get()))
+	}
 	// Images resolve against the container above, so this runs after it is set.
 	a.loadImages(tr)
 	if err := a.initWindow(w); err != nil {

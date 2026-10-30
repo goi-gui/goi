@@ -125,7 +125,9 @@ var elements = func() []Element {
 	out := []Element{
 		{Name: "Window", Children: true, Attrs: withCommon(
 			Prop{Name: "title", Type: TypeString, Dirty: DirtyNone, Default: ""},
-			Prop{Name: "theme", Type: TypeEnum, Dirty: DirtyPaint, Enum: []string{"light", "dark"}, Default: "light"},
+			// Any name the app registered with ui.WithTheme; `light` and `dark`
+			// are always available.
+			Prop{Name: "theme", Type: TypeString, Dirty: DirtyPaint, Default: "light"},
 		)},
 		{Name: "Column", Children: true, Attrs: withCommon(
 			Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},

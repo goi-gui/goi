@@ -40,6 +40,8 @@ and `ui` on top.
   `tree`, `layout`, `paint`, `text` must stay pure so they run headless.
 - `internal/componentdef` is the single list of component kinds and their
   properties; the schema and the node tree both read it.
+- `internal/m3` is internal: user-facing theme work goes through the aliases in
+  `ui` (`ui.Theme`, `ui.Colors`, `ui.LightTheme()`, `ui.DarkTheme()`).
 
 ## Adding a property (the step people miss)
 

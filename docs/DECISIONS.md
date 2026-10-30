@@ -512,6 +512,17 @@ batch. This is what the display list will feed.
   the translate from `-width` to 0 on open and back on close, flipping
   visibility only at the ends so a half-open sheet keeps drawing. A second press
   mid-slide continues from the current offset.
+- **Themes are registered by name, and `app.dark` is a mood.** `theme` used to be
+  an enum of `light`/`dark` and the driver compared the string to pick a scheme.
+  Now it is a plain string resolved against `App.themes`: the two baseline
+  schemes are always present, `ui.WithTheme(name, t)` adds more, and a name the
+  app did not register keeps the window drawing in light and reports through
+  `App.OnError` instead of silently ignoring the design. `Tree.SetDark` stores the
+  resolved scheme's `Dark` flag, because a custom "midnight" theme is still a
+  dark theme for `app.dark`; before the driver resolves one, the tree falls back
+  to the old name convention so a bare `tree.BuildSource` test still works.
+  `ui.Theme`/`ui.Colors` are aliases and `ui.LightTheme()`/`ui.DarkTheme()` are
+  the public entry points, so the `internal/m3` package stays internal.
 - **One name per enum, one cell per property.** `variant` and `size` were
   spelled twice: the schema validated against `componentdef.EnumValues`, while
   `Component.one` had its own shorter lists, so `Divider { variant: vertical }`

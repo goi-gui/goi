@@ -142,6 +142,22 @@ func (t *Tree) SetViewport(w, h float64) {
 	t.viewW, t.viewH = w, h
 }
 
+// Dark reports whether the resolved scheme is dark, which is what `app.dark`
+// exposes to a design. Until the driver resolves a named scheme, the tree falls
+// back to the convention that a theme called "dark" is dark.
+func (t *Tree) Dark() bool {
+	if t.darkSet {
+		return t.dark
+	}
+	return t.Root != nil && t.Root.Theme.Get() == "dark"
+}
+
+// SetDark records the mood of the resolved scheme. The driver sets it whenever
+// it picks a theme, so a custom dark theme is still `app.dark`.
+func (t *Tree) SetDark(dark bool) {
+	t.dark, t.darkSet = dark, true
+}
+
 // SetViewport is the layout entry point; it delegates to the owning tree.
 func (b *NodeBase) SetViewport(w, h float64) {
 	if b.tree != nil {
@@ -416,7 +432,7 @@ func (c *evalCtx) evalRef(r *syntax.Ref) (any, bool) {
 		case "theme":
 			return c.tree.Root.Theme.Get(), true
 		case "dark":
-			return c.tree.Root.Theme.Get() == "dark", true
+			return c.tree.Dark(), true
 		}
 		return nil, false
 	case "window":

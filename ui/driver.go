@@ -173,12 +173,17 @@ func (a *App) frame() {
 	logicalH := float64(d.pendingH) / float64(maxScale(d.pendingScale))
 	a.win.tree.SetViewport(logicalW, logicalH)
 	a.win.tree.ApplyBreakpoints(logicalW)
+	// `app.dark` has to be settled before expressions run, because a design's
+	// conditional may read it. It comes from the scheme name only, so it needs
+	// no expression pass first.
+	a.win.tree.SetDark(themeFor(a.win).Dark)
 	// Expressions run before the theme resolver: a conditional can pick a role,
 	// and the role then resolves in the same frame. They also run before the
 	// frame check, because a Go property change may be what an expression reads.
 	a.win.tree.ApplyExpressions()
 	// Role colors follow the scheme, so a theme change needs no per-component
-	// work and a role declared in .goi never goes stale.
+	// work and a role declared in .goi never goes stale. The theme is resolved
+	// again: an expression may have just changed it.
 	if a.win.tree.ResolveColors(themeFor(a.win).Colors.Role) {
 		a.needsFrame = true
 	}
@@ -257,15 +262,19 @@ func (d *gpuDriver) windowLogicalH() float64 {
 	return float64(d.pendingH) / float64(maxScale(d.pendingScale))
 }
 
-// themeFor picks the light or dark theme from the window's theme property.
+// themeFor resolves the window's theme name against the app's registry.
 func themeFor(w *Window) *m3.Theme {
 	if w == nil || w.tree == nil || w.tree.Root == nil {
 		return m3.Light()
 	}
-	if v, ok := w.tree.Root.PropValue("theme"); ok {
-		if s, ok := v.(string); ok && s == "dark" {
-			return m3.Dark()
+	name := w.tree.Root.Theme.Get()
+	if w.app != nil {
+		if t, ok := w.app.themes[name]; ok {
+			return t
 		}
+	}
+	if name == "dark" {
+		return m3.Dark()
 	}
 	return m3.Light()
 }

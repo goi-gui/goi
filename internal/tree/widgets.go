@@ -45,7 +45,7 @@ func commonProps(b *NodeBase) []NamedProp {
 type Window struct {
 	NodeBase
 	Title Prop[string]
-	// Theme is "light" or "dark"; the UI picks the matching M3 scheme.
+	// Theme names a scheme: "light", "dark" or one the app registered.
 	Theme Prop[string]
 }
 
@@ -55,7 +55,7 @@ func (w *Window) Kind() string { return "Window" }
 func (w *Window) namedProps() []NamedProp {
 	return append(commonProps(&w.NodeBase),
 		StringProp(&w.NodeBase, "title", &w.Title),
-		EnumProp(&w.NodeBase, "theme", DirtyPaint, &w.Theme, "light", "dark"),
+		StringProp(&w.NodeBase, "theme", &w.Theme),
 	)
 }
 

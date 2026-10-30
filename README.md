@@ -98,6 +98,7 @@ make hello     # rounded corners, borders, text
 make scroll    # scrolling page, horizontal strip, ripple
 make typography # type scale, five weights, wrapping
 make composition # one design split across Main.goi, Sidebar.goi and StatCard.goi
+make theme     # built-in schemes plus one registered by name
 go run ./cmd/goicheck -layout examples/*/*.goi  # syntax plus a headless layout check
 ```
 
@@ -126,6 +127,10 @@ go run ./cmd/goicheck -layout examples/*/*.goi  # syntax plus a headless layout 
   `app.dark` and `window.width`/`height` are readable from a design.
 - Colors by M3 role: `background: surfaceContainerHigh` follows the scheme,
   while a hex literal stays a deliberate fixed color.
+- Themes: the baseline `light` and `dark` schemes plus any scheme the app
+  registers with `ui.WithTheme("brand", t)`, selected in the file with
+  `theme: brand`. Start from `ui.LightTheme()`/`ui.DarkTheme()` and change the
+  roles you need; `app.dark` follows the resolved scheme's mood, not its name.
 - Images: `Image { src: "photo.png" fit: cover }` decodes PNG, JPEG or GIF once
   and packs every bitmap into one GPU atlas.
 - Lists from Go: a hidden template in the `.goi` file plus `ui.Instantiate` makes

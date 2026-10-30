@@ -135,6 +135,26 @@ its alias `gap`, and `align`: `ButtonGroup`, `Toolbar`, `Carousel`, `FABMenu`,
 | `OnSubmit(func(string))` | TextField, SearchBar (Enter) |
 | `OnSelect(func(int))` | Tabs, NavigationBar, NavigationRail, List, Menu |
 
+## Themes
+
+`theme` names a colour scheme. `light` and `dark` are built in; the app registers
+more by name:
+
+```go
+brand := *ui.LightTheme()
+brand.Name = "brand"
+brand.Colors.Primary = 0x00695CFF
+app.LoadWindowFile("app.goi", ui.WithTheme("brand", &brand))
+```
+
+```goi
+Window { theme: brand }
+```
+
+`ui.LightTheme()`/`ui.DarkTheme()` return a copy you can edit; `ui.Theme` and
+`ui.Colors` are the exported types. An unknown name falls back to light and
+reports through `App.OnError`. `app.dark` follows the resolved scheme.
+
 ## Finding elements from Go
 
 ```go

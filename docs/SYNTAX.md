@@ -114,7 +114,7 @@ by `:` and a child element when it is followed by `{`, so `name: value` and
 
 | Element | Children | Properties beyond the common set |
 |---|---|---|
-| `Window` | yes | `title`, `theme` (`light`, `dark`) |
+| `Window` | yes | `title`, `theme` (`light`, `dark`, or a name the app registered) |
 | `Column` | yes | `spacing` (`gap`), `align` |
 | `Row` | yes | `spacing` (`gap`), `align` |
 | `Stack` | yes | `align` |
@@ -124,6 +124,11 @@ by `:` and a child element when it is followed by `{`, so `name: value` and
 | `Rectangle` | no | — |
 | `Image` | no | `src`, `fit` (`cover`, `contain`, `fill`), plus `radius` |
 | `Text` | no | `text`, `fontSize`, `weight`, `color`, `align`, `wrap`, `role`, `selectable` |
+
+`theme` names a colour scheme. `light` and `dark` are built in; the app adds
+more with `ui.WithTheme(name, theme)`, and an unknown name falls back to light
+with a diagnostic on `App.OnError`. `app.dark` reports the resolved scheme's
+mood, so a custom dark theme still reads as dark in a conditional.
 
 `role` selects a Material 3 type-scale role (`displayLarge` … `labelSmall`) and
 sets size, line height and weight together; `fontSize` and `weight` override it.

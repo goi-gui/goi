@@ -17,6 +17,7 @@
 package ui
 
 import (
+	"github.com/ksckaan1/goi/internal/m3"
 	"github.com/ksckaan1/goi/internal/tree"
 )
 
@@ -39,6 +40,20 @@ type Node = tree.Node
 
 // Rect is a layout rectangle in logical pixels.
 type Rect = tree.Rect
+
+// Theme is a complete Material 3 colour scheme. Start from LightTheme or
+// DarkTheme and change the roles you want, then register it with WithTheme.
+type Theme = m3.Theme
+
+// Colors is the set of Material 3 colour roles, as 0xRRGGBBAA.
+type Colors = m3.Colors
+
+// LightTheme returns the baseline light scheme. Copy it before editing, so the
+// built-in one stays intact.
+func LightTheme() *Theme { return m3.Light() }
+
+// DarkTheme returns the baseline dark scheme.
+func DarkTheme() *Theme { return m3.Dark() }
 
 // DirtyKind says what a change affects.
 type DirtyKind = tree.DirtyKind
