@@ -784,7 +784,8 @@ func (l *List) paintRadio(c *tree.Component, r tree.Rect, clip tree.Rect) {
 }
 
 // thumbIconColor is the glyph on the thumb: Primary on the checked OnPrimary
-// thumb, OnSurfaceVariant on the unchecked surface-container thumb.
+// thumb, Surface (white in the light scheme) on the unchecked Outline thumb, so
+// the glyph reads as a cut-out of the track at both ends.
 func thumbIconColor(c *tree.Component, on bool, col m3.Colors) uint32 {
 	if c.Disabled.Get() {
 		return withAlpha(col.OnSurfaceVariant, m3.DisabledOpacity)
@@ -792,7 +793,7 @@ func thumbIconColor(c *tree.Component, on bool, col m3.Colors) uint32 {
 	if on {
 		return col.Primary
 	}
-	return col.OnSurfaceVariant
+	return col.Surface
 }
 
 func (l *List) paintSwitch(c *tree.Component, r tree.Rect, clip tree.Rect) {

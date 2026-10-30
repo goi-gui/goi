@@ -24,6 +24,10 @@ Switch { label: "Theme" iconOn: dark_mode iconOff: light_mode }
 | `iconOn` | string | thumb glyph when checked; overrides `icon` |
 | `iconOff` | string | thumb glyph when unchecked; overrides `icon` |
 
+A switch with a glyph uses the larger thumb in both states, with the same 4dp
+inset on every side. The glyph is `Primary` on the checked thumb and the surface
+colour (white in the light scheme) on the unchecked one.
+
 
 ## From Go
 

@@ -180,8 +180,9 @@ both read, so an element can never validate without existing.
 
 `Switch` also takes `iconOn` and `iconOff`, which override `icon` for the
 checked and unchecked state. Any of them empty means no glyph in the thumb; a
-switch with an icon keeps the larger checked-size thumb in both states so the
-glyph has room.
+switch with an icon keeps the larger thumb in both states so the glyph has room,
+inset 4dp on every side. The glyph is `Primary` on the checked thumb and the
+surface colour (white in the light scheme) on the unchecked one.
 
 `SegmentedButton` segments form a group with their contiguous siblings. By
 default the group is multi-select (checkbox): clicking a segment toggles it.

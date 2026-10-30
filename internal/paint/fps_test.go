@@ -128,6 +128,35 @@ func TestSwitchIconGrowsTheThumb(t *testing.T) {
 	}
 }
 
+// TestSwitchThumbIconColor keeps the glyph readable in both states: Primary on
+// the checked white thumb, the surface colour (white in the light scheme) on the
+// unchecked outline thumb.
+func TestSwitchThumbIconColor(t *testing.T) {
+	col := m3.Light().Colors
+	for _, tc := range []struct {
+		src  string
+		want uint32
+	}{
+		{`Window { Switch { label: "a" iconOff: close } }`, col.Surface},
+		{`Window { Switch { label: "a" checked: true iconOn: check } }`, col.Primary},
+	} {
+		l := m3list(t, tc.src)
+		var got uint32
+		var found bool
+		for _, op := range l.Ops {
+			if op.Kind == Text && op.Text != "a" {
+				got, found = op.Color, true
+			}
+		}
+		if !found {
+			t.Fatalf("%s: no icon op", tc.src)
+		}
+		if got != tc.want {
+			t.Fatalf("%s: icon colour = #%08x, want #%08x", tc.src, got, tc.want)
+		}
+	}
+}
+
 // TestRippleClipStaysRounded covers the press feedback on a non-filled button:
 // the ripple is drawn in a disc clipped to the component's box, and a sub-pixel
 // difference from that intersection must not drop the pill rounding.
