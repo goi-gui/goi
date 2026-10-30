@@ -602,9 +602,16 @@ func (i *interactor) key(k tree.Key, mods tree.Mods) {
 		i.tabFocus(mods.Shift)
 		return
 	}
-	if i.focus == nil && i.kbd != nil && (k == tree.KeyEnter || k == tree.KeySpace) {
-		i.activateKey(i.kbd)
-		return
+	if i.focus == nil && i.kbd != nil {
+		// A slider takes arrow keys while it holds keyboard focus; that is the
+		// M3 behaviour and the reason it is focusable at all.
+		if i.kbd.Kind() == "Slider" && i.sliderKey(i.kbd, k, mods) {
+			return
+		}
+		if k == tree.KeyEnter || k == tree.KeySpace {
+			i.activateKey(i.kbd)
+			return
+		}
 	}
 	f := i.focus
 	if f == nil {
@@ -1001,6 +1008,56 @@ func (i *interactor) tabFocus(back bool) {
 		c.Base().MarkDirty(tree.DirtyPaint)
 	}
 	i.markDirty()
+}
+
+// sliderStep is the arrow-key increment as a fraction of the range, matching
+// M3's 5% suggestion when the slider declares no step of its own.
+const sliderStep = 0.05
+
+// sliderKey applies an arrow, Home or End press to a focused slider and reports
+// whether it consumed the key. Shift makes an arrow jump ten steps.
+func (i *interactor) sliderKey(n tree.Node, k tree.Key, mods tree.Mods) bool {
+	c := comp(n)
+	if c == nil {
+		return false
+	}
+	lo, hi := c.Min.Get(), c.Max.Get()
+	if hi <= lo {
+		return false
+	}
+	step := c.Step.Get()
+	if step <= 0 {
+		step = (hi - lo) * sliderStep
+	}
+	if mods.Shift {
+		step *= 10
+	}
+	v := c.Value.Get()
+	switch k {
+	case tree.KeyRight, tree.KeyUp:
+		v += step
+	case tree.KeyLeft, tree.KeyDown:
+		v -= step
+	case tree.KeyHome:
+		v = lo
+	case tree.KeyEnd:
+		v = hi
+	default:
+		return false
+	}
+	// Snap to the grid so repeated steps do not drift off a declared step.
+	if s := c.Step.Get(); s > 0 {
+		v = lo + float64(int((v-lo)/s+0.5))*s
+	}
+	v = math.Max(lo, math.Min(hi, v))
+	if v == c.Value.Get() {
+		return true
+	}
+	c.Value.Set(v)
+	c.Change.Emit(v)
+	c.Base().MarkDirty(tree.DirtyPaint)
+	i.markDirty()
+	return true
 }
 
 // activateKey presses the focused node, the way a click would. Coordinates are

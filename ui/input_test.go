@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"math"
 	"sync"
 	"testing"
 	"time"
@@ -1027,5 +1028,47 @@ func TestTabFocusAndEnter(t *testing.T) {
 	}
 	if in.focus == nil {
 		t.Fatal("Tab did not give the field character focus")
+	}
+}
+
+// TestSliderArrowKeys covers keyboard access: a focused slider steps with the
+// arrows, jumps ten steps with Shift, and snaps to a declared step.
+func TestSliderArrowKeys(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		Column {
+			Slider { id: s value: 0.5 min: 0 max: 1 }
+			Slider { id: p value: 50 min: 0 max: 100 step: 10 }
+		}
+	}`, 480, 320)
+	s := MustByID[*Slider](win, "s")
+	p := MustByID[*Slider](win, "p")
+	var changes []float64
+	s.OnChangeValue(func(v float64) { changes = append(changes, v) })
+
+	in.setKbd(s.Base().Node())
+	in.key(tree.KeyRight, tree.Mods{})
+	if got := s.Value.Get(); math.Abs(got-0.55) > 1e-9 {
+		t.Fatalf("right = %v, want 0.55", got)
+	}
+	in.key(tree.KeyLeft, tree.Mods{Shift: true})
+	if got := s.Value.Get(); math.Abs(got-0.05) > 1e-9 {
+		t.Fatalf("shift+left = %v, want 0.05", got)
+	}
+	in.key(tree.KeyEnd, tree.Mods{})
+	if got := s.Value.Get(); got != 1 {
+		t.Fatalf("end = %v, want 1", got)
+	}
+	in.key(tree.KeyRight, tree.Mods{})
+	if got := s.Value.Get(); got != 1 {
+		t.Fatalf("past the end = %v, want the clamp at 1", got)
+	}
+	if len(changes) != 3 {
+		t.Fatalf("change events = %v, want three (a clamp is not a change)", changes)
+	}
+
+	in.setKbd(p.Base().Node())
+	in.key(tree.KeyLeft, tree.Mods{})
+	if got := p.Value.Get(); got != 40 {
+		t.Fatalf("step slider = %v, want 40", got)
 	}
 }

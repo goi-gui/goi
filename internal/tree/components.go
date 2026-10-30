@@ -58,9 +58,6 @@ type Component struct {
 	// FocusRing is set only when the focus came from the keyboard. A pointer
 	// press moves focus too, but M3 only shows the ring for keyboard users.
 	FocusRing bool
-	// Anim is the generic 0..1 transition progress (checked, selected, expand).
-	// Paint reads it; a future animator drives it.
-	Anim float64
 	// Ripple is the live press ripple: On marks it running, 0..1 is how far it
 	// has expanded, and X/Y are its origin in window coordinates.
 	RippleOn bool

@@ -64,6 +64,8 @@ batch. This is what the display list will feed.
   only carries widget-internal state (focus, TextInput value/caret, scroll
   offset) and Go-set property values whose `.goi` literal did not change.
 - **Widgets in v1:** Text, Button, TextInput. `Image` is still deferred.
+  (Superseded: the whole component set and `Image` exist now; this records what
+  the first milestone shipped.)
 - **`opacity` deferred** — it needs offscreen layers to be correct.
 - **Numbers are `float64`**, colors are `uint32` (0xRRGGBBAA).
 - **`visible: false`** removes the node from layout and hit-testing entirely.
@@ -109,9 +111,9 @@ batch. This is what the display list will feed.
 - **Grayscale atlas, not SDF.** Rasterizer is a small scanline fill with 4x
   vertical supersampling. `shortcut:` in the code marks the missing eviction; an
   atlas overflow skips a glyph instead of corrupting the texture.
-- **Clipping is recorded per op but not yet applied by the renderer.** Layout
-  keeps children inside their parent, so the visible result matches; real
-  scissoring is the next renderer task. Marked `shortcut:` in `Render`.
+- **Clipping is recorded per op and applied in the shader.** Each instance
+  carries its clip rectangle and the fragment shader discards outside it (see
+  the later note that replaced a batched `SetScissorRect` attempt).
 - **Text is measured by the real shaper** in the app and by `FakeMeasurer` in
   layout tests, so layout tests stay headless and font-free.
 
