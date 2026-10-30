@@ -176,8 +176,11 @@ func (l *List) ripple(c *tree.Component, r tree.Rect, radius float64, color uint
 	// pill or a chip.
 	cr := intersect(clip, r)
 	rad := float32(radius)
-	if cr != r {
-		rad = 0 // a scrolled or nested edge cuts the shape; keep the cut straight
+	// Only a real cut (an ancestor clipping the box) drops the rounding; a
+	// sub-pixel difference from intersecting with a wider clip must not, or
+	// the ripple spills past the pill on every press.
+	if cr.W < r.W-0.01 || cr.H < r.H-0.01 {
+		rad = 0
 	}
 	l.Ops = append(l.Ops, Op{
 		Kind:       Fill,
@@ -824,13 +827,16 @@ func (l *List) paintSwitch(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	} else if v := c.IconOff.Get(); v != "" {
 		icon = v
 	}
-	thumbD := 16.0
-	if on || icon != "" {
-		thumbD = 24
+	// M3 keeps the same inset on every side of the thumb: 8dp around the
+	// small unchecked thumb and 4dp around the large one, so a checked or
+	// icon switch is not tighter above and below than it is at the ends.
+	thumbD, inset := 16.0, 8.0
+	if on || icon != "" || c.Icon.Get() != "" || c.IconOn.Get() != "" || c.IconOff.Get() != "" {
+		thumbD, inset = 24, 4
 	}
-	cx := tr.X + 8 + thumbD/2
+	cx := tr.X + inset + thumbD/2
 	if on {
-		cx = tr.X + trackW - 8 - thumbD/2
+		cx = tr.X + trackW - inset - thumbD/2
 	}
 	l.stateLayer(c, tr, trackH/2, thumb, clip)
 	l.Ops = append(l.Ops, Op{Kind: Fill, Shape: Circle,

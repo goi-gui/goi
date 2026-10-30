@@ -59,6 +59,8 @@ type (
 	Row        = tree.Row
 	Stack      = tree.Stack
 	Positioned = tree.Positioned
+	Wrap       = tree.Wrap
+	Grid       = tree.Grid
 	Rectangle  = tree.Rectangle
 	Image      = tree.Image
 	Text       = tree.Text

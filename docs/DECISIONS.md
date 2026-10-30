@@ -502,6 +502,13 @@ batch. This is what the display list will feed.
   the translate from `-width` to 0 on open and back on close, flipping
   visibility only at the ends so a half-open sheet keeps drawing. A second press
   mid-slide continues from the current offset.
+- **Components have one page each.** `docs/components.md` is the grouped index
+  and `docs/components/*.md` is one page per element: a `.ui` example, the
+  property table and a Go example. It is generated from a script outside the
+  repo (the tables mirror `internal/componentdef`), so the check that keeps it
+  honest is a compile-only test of every Go snippet, run while writing the
+  pages rather than committed. The index is the entry point a reader reaches
+  from the README; the syntax reference still owns the language itself.
 - **The frame-rate overlay is opt-in.** `app.ShowFPS(true)` draws the paint rate
   in the top-right corner; it is off by default and meant for development, so it
   lives on `App`, not in the `.ui` syntax. Only painted frames count, over a

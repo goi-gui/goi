@@ -35,6 +35,9 @@ Window {
 					width: 52
 					alignSelf: center
 					checked: app.dark
+					// Checked means dark, so the checked thumb carries the moon.
+					iconOn: dark_mode
+					iconOff: light_mode
 				}
 			}
 

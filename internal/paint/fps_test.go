@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ksckaan1/goui/internal/layout"
 	"github.com/ksckaan1/goui/internal/m3"
 	"github.com/ksckaan1/goui/internal/tree"
 )
@@ -125,4 +126,90 @@ func TestSwitchIconGrowsTheThumb(t *testing.T) {
 	if _, icons := thumb(l); len(icons) != 0 {
 		t.Fatalf("empty icons drew %v", icons)
 	}
+}
+
+// TestRippleClipStaysRounded covers the press feedback on a non-filled button:
+// the ripple is drawn in a disc clipped to the component's box, and a sub-pixel
+// difference from that intersection must not drop the pill rounding.
+func TestRippleClipStaysRounded(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window {
+		Column { padding: 20 Row { Button { id: b label: "Go" variant: tonal } } }
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	layout.New(nil).Layout(tr.Root, 400, 300)
+	n, _ := tr.ByID("b")
+	c := n.(*tree.Button).M3()
+	c.RippleOn, c.Ripple = true, 0.3
+	c.RippleX, c.RippleY = n.Base().Bounds().X+10, n.Base().Bounds().Y+10
+	l := &List{}
+	l.Build(tr, 400, 300)
+	var found bool
+	for _, op := range l.Ops {
+		if op.Kind == Fill && op.Shape == Circle {
+			found = true
+			if op.ClipRadius <= 0 {
+				t.Fatalf("ripple lost its rounded clip: %+v", op)
+			}
+			if op.Clip[2] > op.Rect[2] {
+				t.Fatalf("ripple clip is wider than the button: %+v", op)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no ripple op")
+	}
+}
+
+// TestSwitchThumbInsetIsEven checks the thumb sits the same distance from the
+// track edge on every side, in both thumb sizes.
+func TestSwitchThumbInsetIsEven(t *testing.T) {
+	for _, tc := range []struct {
+		src  string
+		want float32
+	}{
+		{`Window { Switch { id: s label: "a" } }`, 16},
+		{`Window { Switch { id: s label: "a" checked: true } }`, 24},
+		{`Window { Switch { id: s label: "a" iconOn: check } }`, 24},
+	} {
+		tr, diag := tree.BuildSource([]byte(tc.src), nil)
+		if !diag.Empty() {
+			t.Fatal(diag)
+		}
+		layout.New(nil).Layout(tr.Root, 400, 300)
+		n, _ := tr.ByID("s")
+		box := n.Base().Bounds()
+		l := &List{}
+		l.Build(tr, 400, 300)
+		var thumb *Op
+		for i := range l.Ops {
+			op := &l.Ops[i]
+			if op.Kind == Fill && op.Shape == Circle && op.Rect[2] == tc.want &&
+				op.Rect[0] >= float32(box.X) {
+				thumb = op
+			}
+		}
+		if thumb == nil {
+			t.Fatalf("%s: no %vpx thumb op", tc.src, tc.want)
+		}
+		track := tree.Rect{X: box.X, Y: box.Y + (box.H-32)/2, W: 52, H: 32}
+		// The thumb hugs one end, so the near horizontal gap must match the
+		// vertical gap; the far end is open by design.
+		left := float64(thumb.Rect[0]) - track.X
+		top := float64(thumb.Rect[1]) - track.Y
+		right := track.Right() - float64(thumb.Rect[0]+thumb.Rect[2])
+		bottom := track.Bottom() - float64(thumb.Rect[1]+thumb.Rect[3])
+		near := minf(left, right)
+		if absf(near-top) > 0.01 || absf(top-bottom) > 0.01 {
+			t.Fatalf("%s: uneven thumb insets l=%v t=%v r=%v b=%v", tc.src, left, top, right, bottom)
+		}
+	}
+}
+
+func absf(v float64) float64 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }

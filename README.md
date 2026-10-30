@@ -154,8 +154,11 @@ go run ./cmd/uicheck -layout examples/*/*.ui  # syntax plus a headless layout ch
 - Hot reload: edit the file, the window updates; broken files keep the last good
   tree and print diagnostics.
 
-See [docs/SYNTAX.md](docs/SYNTAX.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-and [docs/DECISIONS.md](docs/DECISIONS.md).
+See [docs/components.md](docs/components.md) for every element with its
+properties and Go examples, and [docs/SYNTAX.md](docs/SYNTAX.md),
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
+[docs/DECISIONS.md](docs/DECISIONS.md) for the language, the internals and the
+reasoning.
 
 ## Not in v1
 

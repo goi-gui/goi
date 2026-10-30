@@ -1,0 +1,34 @@
+# NavigationBar
+
+The bottom navigation bar for the compact window class.
+
+[All components](../components.md)
+
+## In a `.ui` file
+
+```ui
+NavigationBar {
+	id: navbar
+	visible: { base: true, sm: false }
+	NavigationItem { label: "Home" icon: home selected: true }
+	NavigationItem { label: "Search" icon: search }
+	NavigationItem { label: "Profile" icon: person }
+}
+```
+
+## Properties
+
+| Property | Type | Notes |
+|---|---|---|
+| `variant` | enum | visual style; see the page |
+
+As a container it also accepts `spacing`/`gap` and `align`.
+
+## From Go
+
+```go
+bar := ui.MustByID[*ui.NavigationBar](w, "navbar")
+bar.OnSelect(func(i int) { show(i) })
+```
+
+Every element also accepts the [common properties](../components.md#common-properties).
