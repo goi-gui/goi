@@ -1278,13 +1278,16 @@ func (l *List) paintSnackbar(c *tree.Component, r tree.Rect, clip tree.Rect) {
 func (l *List) paintTopAppBar(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
 	l.fillRect(r, col.Surface, 0, 0, 0, clip)
-	if c.Icon.Get() != "" {
-		l.iconIn(c.Icon.Get(), 24, col.OnSurface, r.X+28, r.Y+r.H/2, clip)
-	} else {
-		l.iconIn("menu", 24, col.OnSurface, r.X+28, r.Y+r.H/2, clip)
+	// No leading icon means no navigation affordance: a wide window shows the
+	// rail instead, so the bar drops the hamburger and starts the title at the
+	// M3 edge inset rather than leaving a gap where the icon was.
+	textX := r.X + 16
+	if name := c.Icon.Get(); name != "" {
+		l.iconIn(name, 24, col.OnSurface, r.X+28, r.Y+r.H/2, clip)
+		textX = r.X + 56
 	}
 	l.textIn(c.Label.Get(), l.style("titleLarge"), col.OnSurface,
-		tree.Rect{X: r.X + 56, Y: r.Y, W: r.W - 120, H: r.H}, AlignStart, clip)
+		tree.Rect{X: textX, Y: r.Y, W: r.Right() - textX - 64, H: r.H}, AlignStart, clip)
 	if c.Trailing.Get() != "" {
 		l.iconIn(c.Trailing.Get(), 24, col.OnSurface, r.Right()-28, r.Y+r.H/2, clip)
 	}

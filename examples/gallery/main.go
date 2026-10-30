@@ -7,6 +7,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -41,15 +42,20 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	fps := flag.Bool("fps", false, "draw the frame rate in the top-right corner")
+	flag.Parse()
 	path := "examples/gallery/gallery.ui"
-	if len(os.Args) > 1 {
-		path = os.Args[1]
+	if arg := flag.Arg(0); arg != "" {
+		path = arg
 	}
 	win, err := app.LoadWindow(ui.DirFS(filepath.Dir(path)), filepath.Base(path),
 		ui.WithHotReload(true), ui.WithSize(1100, 900))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
+	}
+	if *fps {
+		app.ShowFPS(true)
 	}
 	// Which page is open is app state: a reload rebuilds the nodes, not the state.
 	active := 0
@@ -144,7 +150,7 @@ func main() {
 				}
 				width := bar.Base().Bounds().W
 				switch {
-				case local <= 56:
+				case local <= 56 && bar.Icon.Get() != "":
 					setDrawer(!drawerOpen)
 				case local >= width-56:
 					applyTheme(!dark)

@@ -31,6 +31,12 @@ type gpuDriver struct {
 
 	// lastTick drives the animations (ripples), which run on wall-clock time.
 	lastTick time.Time
+
+	// Frame rate for the overlay: only drawn frames count, so the number is the
+	// paint rate and not the loop's wakeups.
+	fps    int
+	frames int
+	fpsAt  time.Time
 }
 
 func (a *App) initPlatform() error {
@@ -69,6 +75,7 @@ func (a *App) initWindow(w *Window) error {
 	}
 	d.list.Theme = themeFor(w)
 	d.lastTick = time.Now()
+	d.fpsAt = time.Now()
 	d.input = &interactor{app: a, tree: w.tree, measure: d.list.Measure, setCursor: pw.SetCursor}
 	pw.SetInput(d.input)
 	// IME composition needs the input sink above, so it is wired second.
@@ -188,6 +195,18 @@ func (a *App) frame() {
 		// A relayout moves children, so everything must be repainted.
 		markAll(root.Base(), tree.DirtyPaint)
 	}
+	// Half a second is long enough to smooth frame-time jitter and short enough
+	// that a stutter shows up while it is still happening.
+	now = time.Now()
+	d.frames++
+	if span := now.Sub(d.fpsAt); span >= 500*time.Millisecond {
+		d.fps = int(float64(d.frames)/span.Seconds() + 0.5)
+		d.frames, d.fpsAt = 0, now
+		// The label refreshes with the next painted frame; the overlay never
+		// asks for one itself, so an idle app stays asleep.
+	}
+	d.list.ShowFPS = a.showFPS
+	d.list.FPS = d.fps
 	d.list.Theme = themeFor(a.win)
 	d.list.Build(a.win.tree, float64(d.pendingW)/float64(maxScale(d.pendingScale)), float64(d.pendingH)/float64(maxScale(d.pendingScale)))
 	if err := d.gpu.Render(&d.list, d.pendingW, d.pendingH); err != nil {

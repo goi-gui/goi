@@ -53,3 +53,24 @@ func TestWrapLinesUnbounded(t *testing.T) {
 		t.Fatalf("lines = %q, want the whole string", lines)
 	}
 }
+
+// TestFaceAdvanceCache returns the same width and shapes only once, which is
+// what keeps a per-frame relayout from re-shaping every wrapped prefix.
+func TestFaceAdvanceCache(t *testing.T) {
+	lib := NewLibrary()
+	f := lib.Face(14, WeightRegular)
+	if f == nil {
+		t.Skip("no font")
+	}
+	const s = "hello world"
+	first := f.advance(s)
+	if first <= 0 {
+		t.Fatalf("advance = %v", first)
+	}
+	if got := f.advance(s); got != first {
+		t.Fatalf("second call = %v, want %v", got, first)
+	}
+	if len(f.adv) != 1 {
+		t.Fatalf("cached %d runs, want 1", len(f.adv))
+	}
+}

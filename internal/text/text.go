@@ -29,6 +29,10 @@ type Face struct {
 	// shaper is per-Face so the harfbuzz buffer is reused; shaping is not
 	// goroutine-safe, and all text work happens on the UI goroutine.
 	shaper shaping.HarfbuzzShaper
+	// adv caches the advance of a run. Layout wraps text by measuring growing
+	// prefixes, so without this every frame re-shapes the same strings and a
+	// full relayout costs milliseconds. Cleared when it grows past a bound.
+	adv map[string]float64
 }
 
 // Library holds the registered fonts and the glyph atlas. Create one per app.
@@ -224,9 +228,7 @@ func (f *Face) Measure(s string, maxWidth float64) (w, h float64) {
 	if s == "" {
 		return 0, f.LineHeight()
 	}
-	advance := func(run string) float64 {
-		return float64(f.Shape(run).Advance) / 64
-	}
+	advance := f.advance
 	if maxWidth <= 0 {
 		return advance(s), f.LineHeight()
 	}
@@ -238,6 +240,19 @@ func (f *Face) Measure(s string, maxWidth float64) (w, h float64) {
 		}
 	}
 	return widest, float64(len(lines)) * f.LineHeight()
+}
+
+// advance returns the width of a run, shaping it only the first time.
+func (f *Face) advance(s string) float64 {
+	if w, ok := f.adv[s]; ok {
+		return w
+	}
+	w := float64(f.Shape(s).Advance) / 64
+	if f.adv == nil || len(f.adv) > 8192 {
+		f.adv = make(map[string]float64)
+	}
+	f.adv[s] = w
+	return w
 }
 
 // LineHeight returns the distance between baselines.

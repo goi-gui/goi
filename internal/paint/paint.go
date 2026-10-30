@@ -7,6 +7,7 @@ package paint
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/ksckaan1/goui/internal/img"
@@ -103,6 +104,10 @@ type List struct {
 	// Measure returns the advance width of a string. The UI sets it to the real
 	// shaper; when nil a rough estimate is used, which keeps tests font-free.
 	Measure func(s string, size float64, weight int) float64
+	// ShowFPS draws the frame rate in the top-right corner, above the tree. It is
+	// a debug overlay; the app turns it on with App.ShowFPS.
+	ShowFPS bool
+	FPS     int
 }
 
 // Reset empties the list but keeps its capacity.
@@ -116,6 +121,11 @@ func (l *List) Build(tr *tree.Tree, w, h float64) {
 	l.Reset()
 	clip := tree.Rect{W: w, H: h}
 	l.walk(tr.Root.Base(), 0, 0, clip)
+	if l.ShowFPS {
+		// Right of centre, clear of the app bar's trailing icon.
+		l.textIn(strconv.Itoa(l.FPS)+" fps", l.style("labelSmall"), l.Theme.Colors.OnSurfaceVariant,
+			tree.Rect{X: 0, Y: 8, W: w - 68, H: 20}, AlignEnd, clip)
+	}
 }
 
 // walk emits the node and its children. x,y is the node's absolute origin.

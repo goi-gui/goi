@@ -41,6 +41,8 @@ type App struct {
 	driver     driver
 	quitOnce   sync.Once
 	needsFrame bool
+	// showFPS is the debug overlay switch; off unless the app asks for it.
+	showFPS bool
 
 	watcher *hotreload.Reloader
 
@@ -141,6 +143,17 @@ func (w *Window) Bind(fn func(*Window) error) error {
 		return nil
 	}
 	return fn(w)
+}
+
+// ShowFPS draws the frame rate in the top-right corner. It is off by default and
+// is a debugging aid, not a design element: call it from the UI goroutine, such
+// as inside Window.Bind.
+func (a *App) ShowFPS(show bool) {
+	a.showFPS = show
+	a.needsFrame = true
+	if a.driver != nil {
+		a.driver.wake()
+	}
 }
 
 // Post runs fn on the UI goroutine, in FIFO order with other posted functions.

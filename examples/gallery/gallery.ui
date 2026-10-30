@@ -34,7 +34,9 @@ Window {
 				TopAppBar {
 					id: appbar
 					label: "Buttons"
-					icon: "menu"
+					// The hamburger is the compact-only way into the drawer: at
+					// sm and up the rail is on screen, so the bar drops it.
+					icon: { base: menu, sm: "" }
 					// An expression, not Go state: the icon follows the theme
 					// wherever the theme is changed from.
 					trailingIcon: app.dark ? "light_mode" : "dark_mode"

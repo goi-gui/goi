@@ -488,6 +488,25 @@ batch. This is what the display list will feed.
   arrow everywhere else. GLFW standard cursors are cached by kind and set only
   when the shape changes, so a mouse move costs no cursor churn. A disabled
   field keeps the arrow, since it takes no input.
+- **The frame-rate overlay is opt-in.** `app.ShowFPS(true)` draws the paint rate
+  in the top-right corner; it is off by default and meant for development, so it
+  lives on `App`, not in the `.ui` syntax. Only painted frames count, over a
+  500ms window, so the number reports real paint cost rather than event-loop
+  wakeups and it reacts while a stutter is still visible. The gallery exposes it
+  as `-fps`.
+- **Text advances are memoized per face.** `Face.Shape` is the expensive step
+  (HarfBuzz), and a wrapped paragraph measures a growing prefix for every
+  candidate break, so a full relayout re-shaped the same prefixes every frame:
+  about 27ms per animated frame, which read as a stutter in the Motion demo. The
+  advance of a run is now cached on the face (reset past 8k entries to bound
+  memory), which brings the same layout to well under a millisecond. Glyph
+  drawing still shapes once per text op, so output is unchanged.
+- **The hamburger is a compact-only affordance.** The top app bar drops the
+  leading icon when `icon` is empty, and the title then starts at the 16dp M3
+  inset instead of leaving a gap. The gallery expresses that as
+  `icon: { base: menu, sm: "" }`, because at sm and up the navigation rail is
+  already on screen and a second way into the drawer is noise; the app-bar click
+  handler checks `Icon` before opening the drawer.
 - **Expressions are values, evaluated every frame.** The old numeric-only
   expression path grew comparisons, `&& || !`, a conditional, string concat and
   two reserved globals (`app.theme`/`app.dark`, `window.width`/`height`). The
