@@ -5,16 +5,16 @@ in a small QML-like file; Go finds elements by id and attaches behaviour.
 
 ```go
 // app.goi
-// Window {
-//     title: "Counter"
-//     Column {
-//         padding: 24
-//         spacing: 12
-//         align: center
-//         Text   { id: label text: "0" role: displayLarge }
-//         Button { id: inc   label: "Increase" icon: add }
-//     }
-// }
+Window {
+    title: "Counter"
+    Column {
+        padding: 24
+        spacing: 12
+        align: center
+        Text   { id: label text: "0" role: displayLarge }
+        Button { id: inc   label: "Increase" icon: add }
+    }
+}
 ```
 
 ```go
@@ -40,21 +40,21 @@ to be one long file:
 
 ```go
 // Main.goi
-// import "./Sidebar.goi" as Sidebar
-//
-// Window {
-//     Row {
-//         Sidebar { title: "Mail" width: 300 }
-//     }
-// }
+import "./Sidebar.goi" as Sidebar
+
+Window {
+    Row {
+        Sidebar { title: "Mail" width: 300 }
+    }
+}
 ```
 
 ```go
 // Sidebar.goi
-// param title: ""
-// Column {
-//     Text { text: $title role: "titleLarge" }
-// }
+param title: ""
+Column {
+    Text { text: $title role: "titleLarge" }
+}
 ```
 
 Designs load from an **asset container**, an `io/fs.FS` plus a path inside it:
