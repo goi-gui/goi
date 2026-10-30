@@ -115,12 +115,12 @@ by `:` and a child element when it is followed by `{`, so `name: value` and
 | Element | Children | Properties beyond the common set |
 |---|---|---|
 | `Window` | yes | `title`, `theme` (`light`, `dark`) |
-| `Column` | yes | `spacing`, `align` |
-| `Row` | yes | `spacing`, `align` |
+| `Column` | yes | `spacing` (`gap`), `align` |
+| `Row` | yes | `spacing` (`gap`), `align` |
 | `Stack` | yes | `align` |
-| `Positioned` | yes | `left`, `top`, `right`, `bottom` |
-| `Wrap` | yes | `spacing`, `align` |
-| `Grid` | yes | `columns`, `spacing`, `align` |
+| `Positioned` | yes | `left`, `top`, `right`, `bottom`, `translateX`, `translateY` |
+| `Wrap` | yes | `spacing` (`gap`), `align` |
+| `Grid` | yes | `columns`, `spacing` (`gap`), `align` |
 | `Rectangle` | no | — |
 | `Image` | no | `src`, `fit` (`cover`, `contain`, `fill`), plus `radius` |
 | `Text` | no | `text`, `fontSize`, `weight`, `color`, `align`, `wrap`, `role`, `selectable` |
@@ -178,6 +178,11 @@ They share one vocabulary: `label`, `supporting`, `text`, `placeholder`, `icon`,
 `internal/componentdef` is the single table that the schema and the node tree
 both read, so an element can never validate without existing.
 
+`Switch` also takes `iconOn` and `iconOff`, which override `icon` for the
+checked and unchecked state. Any of them empty means no glyph in the thumb; a
+switch with an icon keeps the larger checked-size thumb in both states so the
+glyph has room.
+
 `SegmentedButton` segments form a group with their contiguous siblings. By
 default the group is multi-select (checkbox): clicking a segment toggles it.
 `variant: single` makes it single-select (radio): picking a segment clears the
@@ -190,11 +195,23 @@ A modal drawer is a `Stack` with the page first, then a scrim `Rectangle` and a
 Containers that lay children out (`ButtonGroup`, `Toolbar`, `Carousel`, `Tabs`,
 `NavigationBar`, `NavigationRail`, `NavigationDrawer`, `List`, `Menu`, `Card`,
 `Dialog`, `BottomSheet`, `SideSheet`, `DatePicker`, `TimePicker`) also accept
-`spacing` and `align`.
+`spacing`, `gap` and `align`. `gap` is the same cell as `spacing`, under the name
+a layout reader expects.
+
+`Positioned` also takes `translateX` and `translateY`, which shift the anchored
+box without changing its anchors. They exist for enter/exit animation: `left`
+and `top` reserve `-1` for "auto", so a slide off screen animates the translate
+instead.
 
 Common to every element: `id`, `width`, `height`, `minWidth`, `maxWidth`,
 `margin`, `padding`, `background`, `borderColor`, `borderWidth`, `radius`,
-`visible`, `flex`, `alignSelf`.
+`visible`, `flex`, `alignSelf`. `marginTop`, `marginRight`, `marginBottom`,
+`marginLeft` and `paddingTop`, `paddingRight`, `paddingBottom`, `paddingLeft`
+override one edge and leave the others following `margin`/`padding`:
+
+```
+Column  { padding: 16  paddingLeft: 4 }   // 4 left, 16 the other sides
+```
 
 `align` is one of `start`, `center`, `end`, `stretch`. `alignSelf` uses the same
 values and overrides the parent's `align` for one child.

@@ -780,6 +780,18 @@ func (l *List) paintRadio(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	}
 }
 
+// thumbIconColor is the glyph on the thumb: Primary on the checked OnPrimary
+// thumb, OnSurfaceVariant on the unchecked surface-container thumb.
+func thumbIconColor(c *tree.Component, on bool, col m3.Colors) uint32 {
+	if c.Disabled.Get() {
+		return withAlpha(col.OnSurfaceVariant, m3.DisabledOpacity)
+	}
+	if on {
+		return col.Primary
+	}
+	return col.OnSurfaceVariant
+}
+
 func (l *List) paintSwitch(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
 	// Track is 52x32, the whole row may be taller.
@@ -802,16 +814,31 @@ func (l *List) paintSwitch(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		l.fillRect(tr, 0, trackH/2, col.Outline, 2, clip)
 	}
 
+	// A glyph in the thumb needs room, so a switch with an icon keeps the
+	// checked thumb size in both states and draws the icon at 16dp inside it.
+	icon := c.Icon.Get()
+	if on {
+		if v := c.IconOn.Get(); v != "" {
+			icon = v
+		}
+	} else if v := c.IconOff.Get(); v != "" {
+		icon = v
+	}
 	thumbD := 16.0
+	if on || icon != "" {
+		thumbD = 24
+	}
 	cx := tr.X + 8 + thumbD/2
 	if on {
-		thumbD = 24
 		cx = tr.X + trackW - 8 - thumbD/2
 	}
 	l.stateLayer(c, tr, trackH/2, thumb, clip)
 	l.Ops = append(l.Ops, Op{Kind: Fill, Shape: Circle,
 		Rect:  [4]float32{float32(cx - thumbD/2), float32(tr.Y + (trackH-thumbD)/2), float32(thumbD), float32(thumbD)},
 		Color: thumb, Clip: clipArr(clip)})
+	if icon != "" {
+		l.iconIn(icon, 16, thumbIconColor(c, on, col), cx, tr.Y+trackH/2, clip)
+	}
 
 	if c.Label.Get() != "" {
 		l.textIn(c.Label.Get(), l.style("bodyLarge"), disabledAlpha(c, col.OnSurface),

@@ -23,6 +23,10 @@ type Component struct {
 	Placeholder Prop[string]
 	Icon        Prop[string]
 	Trailing    Prop[string]
+	// IconOn and IconOff override Icon for a Switch's checked state. Both empty
+	// means no icon in the thumb.
+	IconOn  Prop[string]
+	IconOff Prop[string]
 
 	// Appearance.
 	Variant Prop[string]
@@ -90,6 +94,8 @@ func newComponent() Component {
 		Placeholder: newProp(nil, "placeholder", DirtyLayout, ""),
 		Icon:        newProp(nil, "icon", DirtyLayout, ""),
 		Trailing:    newProp(nil, "trailingIcon", DirtyLayout, ""),
+		IconOn:      newProp(nil, "iconOn", DirtyLayout, ""),
+		IconOff:     newProp(nil, "iconOff", DirtyLayout, ""),
 		Variant:     newProp(nil, "variant", DirtyPaint, ""),
 		Size:        newProp(nil, "size", DirtyLayout, ""),
 		Disabled:    newProp(nil, "disabled", DirtyPaint, false),
@@ -135,6 +141,10 @@ func (c *Component) one(name string) NamedProp {
 		return StringProp(b, "icon", &c.Icon)
 	case "trailingIcon":
 		return StringProp(b, "trailingIcon", &c.Trailing)
+	case "iconOn":
+		return StringProp(b, "iconOn", &c.IconOn)
+	case "iconOff":
+		return StringProp(b, "iconOff", &c.IconOff)
 	case "variant":
 		return EnumProp(b, "variant", DirtyPaint, &c.Variant,
 			"filled", "tonal", "elevated", "outlined", "text", "standard",
@@ -160,6 +170,10 @@ func (c *Component) one(name string) NamedProp {
 		return NumberProp(b, "step", DirtyLayout, &c.Step)
 	case "spacing":
 		return NumberProp(b, "spacing", DirtyLayout, &c.Spacing)
+	case "gap":
+		// gap is the same cell as spacing, under the name a layout reader
+		// expects. Whichever the file writes last wins.
+		return NumberProp(b, "gap", DirtyLayout, &c.Spacing)
 	case "align":
 		return EnumProp(b, "align", DirtyLayout, &c.Align, "start", "center", "end", "stretch")
 	}

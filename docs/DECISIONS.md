@@ -488,12 +488,27 @@ batch. This is what the display list will feed.
   arrow everywhere else. GLFW standard cursors are cached by kind and set only
   when the shape changes, so a mouse move costs no cursor churn. A disabled
   field keeps the arrow, since it takes no input.
+- **Edge insets are a fallback chain, not four props.** `padding`/`margin` set
+  all sides; `paddingLeft` and friends override one edge. An unset side stores
+  `-1` and reads the base value, so a declaration can change one edge without
+  repeating the other three, and `NodeBase.ContentBox` is the one place that
+  turns the pair into a rectangle. Layout, paint, hit-testing and scroll extent
+  all go through it now; before, four copies of `padding + border` disagreed the
+  moment a side differed. `gap` is a second name for `spacing` on the same cell,
+  because both spellings are what people reach for.
+- **A drawer slides with `translateX`.** `Positioned.left` reserves `-1` for
+  "auto", so it cannot carry a negative slide. `translateX`/`translateY` shift
+  the anchored box and exist for enter/exit motion: the gallery's drawer tweens
+  the translate from `-width` to 0 on open and back on close, flipping
+  visibility only at the ends so a half-open sheet keeps drawing. A second press
+  mid-slide continues from the current offset.
 - **The frame-rate overlay is opt-in.** `app.ShowFPS(true)` draws the paint rate
   in the top-right corner; it is off by default and meant for development, so it
   lives on `App`, not in the `.ui` syntax. Only painted frames count, over a
   500ms window, so the number reports real paint cost rather than event-loop
-  wakeups and it reacts while a stutter is still visible. The gallery exposes it
-  as `-fps`.
+  wakeups and it reacts while a stutter is still visible. While it is on the app
+  keeps painting, because a rate can only be measured from painted frames; that
+  cost is why the overlay is off by default. The gallery exposes it as `-fps`.
 - **Text advances are memoized per face.** `Face.Shape` is the expensive step
   (HarfBuzz), and a wrapped paragraph measures a growing prefix for every
   candidate break, so a full relayout re-shaped the same prefixes every frame:

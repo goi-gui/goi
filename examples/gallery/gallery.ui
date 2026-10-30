@@ -19,6 +19,8 @@ Window {
 			NavigationRail {
 				id: rail
 				visible: { base: false, sm: true }
+				// Room under the theme switch, so it does not touch the edge.
+				paddingBottom: 16
 				NavigationItem { label: "Buttons" icon: smart_button selected: true }
 				NavigationItem { label: "Inputs" icon: tune }
 				NavigationItem { label: "Surfaces" icon: layers }
@@ -150,6 +152,8 @@ Window {
 							Checkbox { id: check label: "Checkbox" checked: true width: 220 }
 							RadioButton { label: "Radio button" checked: true width: 220 }
 							Switch { id: switchOn label: "Switch" checked: true width: 220 }
+							// iconOn/iconOff override icon; empty means no glyph.
+							Switch { label: "Switch with icons" checked: true iconOn: check iconOff: close width: 240 }
 						}
 
 						Column {

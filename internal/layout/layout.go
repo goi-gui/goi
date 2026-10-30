@@ -70,7 +70,7 @@ func (e *Engine) Layout(root *tree.Window, w, h float64) tree.Rect {
 	r := tree.Rect{W: w, H: h}
 	root.Base().SetBounds(r)
 	// A window overlays its children, so a dialog can sit on top of content.
-	e.stackChildren(root.Base(), w, h, 0, 0)
+	e.stackChildren(root.Base(), w, h, 0, 0, 0, 0)
 	return r
 }
 
@@ -81,15 +81,16 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 	if len(kids) == 0 {
 		return
 	}
-	inset := b.Padding() + b.BorderWidth()
-	cw, ch := maxf(w-2*inset, 0), maxf(h-2*inset, 0)
+	pe, bw := b.PaddingEdges(), b.BorderWidth()
+	cw := maxf(w-pe.Left-pe.Right-2*bw, 0)
+	ch := maxf(h-pe.Top-pe.Bottom-2*bw, 0)
 
 	// Material components declare their own content inset.
 	if cv, ok := componentOf(b); ok {
 		mt := m3.MetricsFor(b.Node().Kind(), cv, e.measure)
-		insetL, insetT := inset+mt.Left, inset+mt.Top
-		cw = maxf(w-insetL-inset-mt.Right, 0)
-		ch = maxf(h-insetT-inset-mt.Bottom, 0)
+		insetL, insetT := pe.Left+bw+mt.Left, pe.Top+bw+mt.Top
+		cw = maxf(w-insetL-pe.Right-bw-mt.Right, 0)
+		ch = maxf(h-insetT-pe.Bottom-bw-mt.Bottom, 0)
 		switch b.Node().Kind() {
 		case "NavigationBar", "Tabs":
 			e.equalRow(b, kids, cw, ch, insetL, insetT)
@@ -105,15 +106,15 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 
 	switch b.Node().Kind() {
 	case "Row":
-		e.linear(b, kids, cw, ch, inset, true, inset)
+		e.linear(b, kids, cw, ch, pe.Left+bw, true, pe.Top+bw)
 	case "Stack", "Positioned":
-		e.stackChildren(b, w, h, inset, inset)
+		e.stackChildren(b, w, h, pe.Left+bw, pe.Top+bw, pe.Right+bw, pe.Bottom+bw)
 	case "Wrap":
-		e.wrap(b, kids, cw, ch, inset, inset)
+		e.wrap(b, kids, cw, ch, pe.Left+bw, pe.Top+bw)
 	case "Grid":
-		e.grid(b, kids, cw, ch, inset, inset)
+		e.grid(b, kids, cw, ch, pe.Left+bw, pe.Top+bw)
 	default: // Window, Column
-		e.linear(b, kids, cw, ch, inset, false, inset)
+		e.linear(b, kids, cw, ch, pe.Left+bw, false, pe.Top+bw)
 	}
 }
 
@@ -152,7 +153,12 @@ func (e *Engine) linear(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH,
 		}
 		s = clampSize(s, minSize(k, horizontal), maxSize(k, horizontal))
 		sizes[i] = s
-		used += s
+		me := k.MarginEdges()
+		if horizontal {
+			used += s + me.Left + me.Right
+		} else {
+			used += s + me.Top + me.Bottom
+		}
 		totalFlex += k.Flex()
 	}
 	used += spacing * float64(len(kids)-1)
@@ -206,12 +212,12 @@ func (e *Engine) linear(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH,
 		// A Wrap or Grid wraps to the width it actually gets, which may be a
 		// declared one rather than the parent's, so its height follows cs.
 		if !horizontal && k.Height() < 0 && (k.Node().Kind() == "Wrap" || k.Node().Kind() == "Grid") {
-			inset := k.Padding() + k.BorderWidth()
-			inner := maxf(cs-2*inset, 0)
+			pe, bw := k.PaddingEdges(), k.BorderWidth()
+			inner := maxf(cs-pe.Left-pe.Right-2*bw, 0)
 			if k.Node().Kind() == "Wrap" {
-				sz = e.wrapHeight(visibleChildren(k), inner, containerOf(k).Spacing.Get()) + 2*inset
+				sz = e.wrapHeight(visibleChildren(k), inner, containerOf(k).Spacing.Get()) + pe.Top + pe.Bottom + 2*bw
 			} else {
-				sz = e.gridHeight(visibleChildren(k), inner, gridColumns(k), containerOf(k).Spacing.Get()) + 2*inset
+				sz = e.gridHeight(visibleChildren(k), inner, gridColumns(k), containerOf(k).Spacing.Get()) + pe.Top + pe.Bottom + 2*bw
 			}
 		}
 		crossPos := 0.0
@@ -221,14 +227,14 @@ func (e *Engine) linear(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH,
 			crossPos = offsetX + crossAlign(a, availW, cs)
 		}
 
-		m := k.Margin()
+		me := k.MarginEdges()
 		var r tree.Rect
 		if horizontal {
-			r = tree.Rect{X: pos + m, Y: crossPos + m, W: sz, H: cs}
-			pos += sz + spacing
+			r = tree.Rect{X: pos + me.Left, Y: crossPos + me.Top, W: sz, H: cs}
+			pos += me.Left + sz + me.Right + spacing
 		} else {
-			r = tree.Rect{X: crossPos + m, Y: pos + m, W: cs, H: sz}
-			pos += sz + spacing
+			r = tree.Rect{X: crossPos + me.Left, Y: pos + me.Top, W: cs, H: sz}
+			pos += me.Top + sz + me.Bottom + spacing
 		}
 		k.SetBounds(r)
 		e.children(k, r.W, r.H)
@@ -291,9 +297,9 @@ func (e *Engine) wrap(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH, o
 		if a == "stretch" && it.k.Height() < 0 {
 			h = runs[it.run]
 		}
-		m := it.k.Margin()
+		me := it.k.MarginEdges()
 		yy := runY[it.run] + crossAlign(a, runs[it.run], h)
-		it.k.SetBounds(tree.Rect{X: offsetX + it.x + m, Y: yy + m, W: it.w, H: h})
+		it.k.SetBounds(tree.Rect{X: offsetX + it.x + me.Left, Y: yy + me.Top, W: it.w, H: h})
 		e.children(it.k, it.w, h)
 	}
 }
@@ -341,9 +347,9 @@ func (e *Engine) grid(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH, o
 		if a == "stretch" && k.Height() < 0 {
 			h = rowH[r]
 		}
-		m := k.Margin()
+		me := k.MarginEdges()
 		x := offsetX + float64(col)*(cellW+spacing) + crossAlign(a, cellW, widths[i])
-		k.SetBounds(tree.Rect{X: x + m, Y: y + m, W: widths[i], H: h})
+		k.SetBounds(tree.Rect{X: x + me.Left, Y: y + me.Top, W: widths[i], H: h})
 		e.children(k, widths[i], h)
 		if col == cols-1 || i == n-1 {
 			y += rowH[r] + spacing
@@ -454,7 +460,7 @@ func (e *Engine) equalRow(b *tree.NodeBase, kids []*tree.NodeBase, availW, avail
 
 // stackChildren overlays every visible child, defaulting each to fill the
 // parent. Window uses it so a dialog can cover the content.
-func (e *Engine) stackChildren(b *tree.NodeBase, w, h, insetX, insetY float64) {
+func (e *Engine) stackChildren(b *tree.NodeBase, w, h, insetL, insetT, insetR, insetB float64) {
 	align := "start"
 	if c, ok := containerKind(b); ok {
 		align = c.Align.Get()
@@ -463,13 +469,14 @@ func (e *Engine) stackChildren(b *tree.NodeBase, w, h, insetX, insetY float64) {
 		if !k.Visible() {
 			continue
 		}
+		innerW, innerH := maxf(w-insetL-insetR, 0), maxf(h-insetT-insetB, 0)
 		if k.Node().Kind() == "Positioned" {
-			r := e.positionedFrame(k, w-2*insetX, h-2*insetY, insetX, insetY, align)
+			r := e.positionedFrame(k, innerW, innerH, insetL, insetT, align)
 			k.SetBounds(r)
 			e.children(k, r.W, r.H)
 			continue
 		}
-		mw, mh := e.natural(k, w-2*insetX, h-2*insetY)
+		mw, mh := e.natural(k, innerW, innerH)
 		cw, ch := mw, mh
 		if v := k.Width(); v >= 0 {
 			cw = v
@@ -480,19 +487,19 @@ func (e *Engine) stackChildren(b *tree.NodeBase, w, h, insetX, insetY float64) {
 		// Stack and Window overlay: an undeclared child fills the area, which
 		// is what a background or a dialog expects.
 		if k.Width() < 0 {
-			cw = w - 2*insetX
+			cw = innerW
 		}
 		if k.Height() < 0 {
-			ch = h - 2*insetY
+			ch = innerH
 		}
 		a := k.AlignSelf()
 		if a == "" {
 			a = align
 		}
-		m := k.Margin()
+		me := k.MarginEdges()
 		r := tree.Rect{
-			X: insetX + crossAlign(a, w-2*insetX, cw) + m,
-			Y: insetY + crossAlign(a, h-2*insetY, ch) + m,
+			X: insetL + crossAlign(a, innerW, cw) + me.Left,
+			Y: insetT + crossAlign(a, innerH, ch) + me.Top,
 			W: cw,
 			H: ch,
 		}
@@ -553,9 +560,22 @@ func (e *Engine) positionedFrame(k *tree.NodeBase, availW, availH, offsetX, offs
 		}
 	}
 
+	// A translate is the enter/exit animation offset, applied after anchoring.
+	if v := p.TranslateX.Get(); v != 0 {
+		x += v
+	}
+	if v := p.TranslateY.Get(); v != 0 {
+		y += v
+	}
+
 	// Margin shrinks the box and shifts it inward, like everywhere else.
-	m := k.Margin()
-	return tree.Rect{X: offsetX + x + m, Y: offsetY + y + m, W: maxf(w-2*m, 0), H: maxf(h-2*m, 0)}
+	me := k.MarginEdges()
+	return tree.Rect{
+		X: offsetX + x + me.Left,
+		Y: offsetY + y + me.Top,
+		W: maxf(w-me.Left-me.Right, 0),
+		H: maxf(h-me.Top-me.Bottom, 0),
+	}
 }
 
 // positionedExtent is how much room a Positioned child takes from its Stack's
@@ -589,8 +609,8 @@ func (e *Engine) positionedExtent(k *tree.NodeBase, availW, availH float64) (flo
 	case bottom >= 0:
 		h += bottom
 	}
-	m := k.Margin()
-	return w + 2*m, h + 2*m
+	me := k.MarginEdges()
+	return w + me.Left + me.Right, h + me.Top + me.Bottom
 }
 
 // natural returns the intrinsic size of a node.
@@ -799,14 +819,16 @@ func componentOf(b *tree.NodeBase) (*m3.ComponentView, bool) {
 func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (float64, float64) {
 	kids := visibleChildren(k)
 	spacing := containerOf(k).Spacing.Get()
-	inset := (k.Padding() + k.BorderWidth()) * 2
+	pe, bw := k.PaddingEdges(), k.BorderWidth()
+	insetW := pe.Left + pe.Right + 2*bw
+	insetH := pe.Top + pe.Bottom + 2*bw
 	kind := k.Node().Kind()
-	innerW := maxf(availW-inset, 0)
+	innerW := maxf(availW-insetW, 0)
 
 	switch kind {
 	case "Positioned":
 		var maxW, maxH float64
-		innerH := maxf(availH-inset, 0)
+		innerH := maxf(availH-insetH, 0)
 		for _, c := range kids {
 			cw, ch := e.natural(c, innerW, innerH)
 			if v := c.Width(); v >= 0 {
@@ -817,7 +839,7 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 			}
 			maxW, maxH = maxf(maxW, cw), maxf(maxH, ch)
 		}
-		return maxW + inset, maxH + inset
+		return maxW + insetW, maxH + insetH
 	case "Wrap":
 		total := 0.0
 		for i, c := range kids {
@@ -830,18 +852,18 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 			}
 			total += w
 		}
-		return minf(total, innerW) + inset, e.wrapHeight(kids, innerW, spacing) + inset
+		return minf(total, innerW) + insetW, e.wrapHeight(kids, innerW, spacing) + insetH
 	case "Grid":
 		cols := gridColumns(k)
-		return minf(e.gridNaturalWidth(kids, innerW, cols, spacing), innerW) + inset,
-			e.gridHeight(kids, innerW, cols, spacing) + inset
+		return minf(e.gridNaturalWidth(kids, innerW, cols, spacing), innerW) + insetW,
+			e.gridHeight(kids, innerW, cols, spacing) + insetH
 	}
 
 	var mainSum, maxW, maxH float64
 	for i, c := range kids {
 		var cw, ch float64
 		if kind == "Stack" && c.Node().Kind() == "Positioned" {
-			cw, ch = e.positionedExtent(c, innerW, maxf(availH-inset, 0))
+			cw, ch = e.positionedExtent(c, innerW, maxf(availH-insetH, 0))
 		} else {
 			cw, ch = e.natural(c, availW, availH)
 			if v := c.Width(); v >= 0 {
@@ -866,12 +888,12 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 		}
 	}
 	if kind == "Row" {
-		return mainSum + inset, maxH + inset
+		return mainSum + insetW, maxH + insetH
 	}
 	if kind == "Stack" {
-		return maxf(maxW, mainSum) + inset, maxH + inset
+		return maxf(maxW, mainSum) + insetW, maxH + insetH
 	}
-	return maxW + inset, mainSum + inset
+	return maxW + insetW, mainSum + insetH
 }
 
 func isContainer(k *tree.NodeBase) bool {

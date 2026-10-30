@@ -808,12 +808,7 @@ func walkHit(b *tree.NodeBase, ox, oy float64, x, y float64, clip tree.Rect, fou
 	oy += br.Y
 	box := tree.Rect{X: ox, Y: oy, W: br.W, H: br.H}
 
-	inner := tree.Rect{
-		X: box.X + b.Padding() + b.BorderWidth(),
-		Y: box.Y + b.Padding() + b.BorderWidth(),
-		W: box.W - 2*(b.Padding()+b.BorderWidth()),
-		H: box.H - 2*(b.Padding()+b.BorderWidth()),
-	}
+	inner := b.ContentBox(box)
 	kidClip := clip
 	if b.ClipsChildren() {
 		kidClip = intersectRect(clip, inner)
@@ -841,12 +836,7 @@ func walkHitOffset(b *tree.NodeBase, ox, oy float64, bounds tree.Rect, x, y floa
 	ox += bounds.X
 	oy += bounds.Y
 	box := tree.Rect{X: ox, Y: oy, W: bounds.W, H: bounds.H}
-	inner := tree.Rect{
-		X: box.X + b.Padding() + b.BorderWidth(),
-		Y: box.Y + b.Padding() + b.BorderWidth(),
-		W: box.W - 2*(b.Padding()+b.BorderWidth()),
-		H: box.H - 2*(b.Padding()+b.BorderWidth()),
-	}
+	inner := b.ContentBox(box)
 	kidClip := clip
 	if b.ClipsChildren() {
 		kidClip = intersectRect(clip, inner)

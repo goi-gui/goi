@@ -202,11 +202,14 @@ func (a *App) frame() {
 	if span := now.Sub(d.fpsAt); span >= 500*time.Millisecond {
 		d.fps = int(float64(d.frames)/span.Seconds() + 0.5)
 		d.frames, d.fpsAt = 0, now
-		// The label refreshes with the next painted frame; the overlay never
-		// asks for one itself, so an idle app stays asleep.
 	}
 	d.list.ShowFPS = a.showFPS
 	d.list.FPS = d.fps
+	if a.showFPS {
+		// The overlay measures paint rate, so it keeps painting to have
+		// something to measure. Only a debug build pays this.
+		a.needsFrame = true
+	}
 	d.list.Theme = themeFor(a.win)
 	d.list.Build(a.win.tree, float64(d.pendingW)/float64(maxScale(d.pendingScale)), float64(d.pendingH)/float64(maxScale(d.pendingScale)))
 	if err := d.gpu.Render(&d.list, d.pendingW, d.pendingH); err != nil {

@@ -42,20 +42,24 @@ type NodeBase struct {
 	dirty bool
 	kind  DirtyKind
 
-	visible     Prop[bool]
-	margin      Prop[float64]
-	padding     Prop[float64]
-	borderW     Prop[float64]
-	flex        Prop[float64]
-	alignSelf   Prop[string]
-	scroll      Prop[bool]
-	width       Prop[float64]
-	height      Prop[float64]
-	minWidth    Prop[float64]
-	maxWidth    Prop[float64]
-	background  Prop[uint32]
-	borderColor Prop[uint32]
-	radius      Prop[float64]
+	visible Prop[bool]
+	margin  Prop[float64]
+	padding Prop[float64]
+	// Per-side overrides. A negative value follows margin/padding, so a
+	// declaration can set one edge without repeating the others.
+	marginTop, marginRight, marginBottom, marginLeft     Prop[float64]
+	paddingTop, paddingRight, paddingBottom, paddingLeft Prop[float64]
+	borderW                                              Prop[float64]
+	flex                                                 Prop[float64]
+	alignSelf                                            Prop[string]
+	scroll                                               Prop[bool]
+	width                                                Prop[float64]
+	height                                               Prop[float64]
+	minWidth                                             Prop[float64]
+	maxWidth                                             Prop[float64]
+	background                                           Prop[uint32]
+	borderColor                                          Prop[uint32]
+	radius                                               Prop[float64]
 
 	node   Node
 	props  []NamedProp
@@ -126,11 +130,58 @@ func (b *NodeBase) Visible() bool { return b.visible.Get() }
 // skipped by layout, paint and hit-testing.
 func (b *NodeBase) SetVisible(v bool) { b.visible.Set(v) }
 
+// Edges is an inset per side, in logical pixels.
+type Edges struct{ Top, Right, Bottom, Left float64 }
+
 // Margin returns the outer spacing.
 func (b *NodeBase) Margin() float64 { return b.margin.Get() }
 
 // Padding returns the inner spacing.
 func (b *NodeBase) Padding() float64 { return b.padding.Get() }
+
+// MarginEdges returns the outer spacing per side: a side override wins, and an
+// unset side follows margin.
+func (b *NodeBase) MarginEdges() Edges {
+	v := b.margin.Get()
+	return Edges{
+		Top:    edgeOr(b.marginTop.Get(), v),
+		Right:  edgeOr(b.marginRight.Get(), v),
+		Bottom: edgeOr(b.marginBottom.Get(), v),
+		Left:   edgeOr(b.marginLeft.Get(), v),
+	}
+}
+
+// PaddingEdges returns the inner spacing per side, with the same fallback.
+func (b *NodeBase) PaddingEdges() Edges {
+	v := b.padding.Get()
+	return Edges{
+		Top:    edgeOr(b.paddingTop.Get(), v),
+		Right:  edgeOr(b.paddingRight.Get(), v),
+		Bottom: edgeOr(b.paddingBottom.Get(), v),
+		Left:   edgeOr(b.paddingLeft.Get(), v),
+	}
+}
+
+// ContentBox returns r inset by the border and the padding, clamped to empty.
+func (b *NodeBase) ContentBox(r Rect) Rect {
+	pe, bw := b.PaddingEdges(), b.BorderWidth()
+	w := r.W - pe.Left - pe.Right - 2*bw
+	h := r.H - pe.Top - pe.Bottom - 2*bw
+	if w < 0 {
+		w = 0
+	}
+	if h < 0 {
+		h = 0
+	}
+	return Rect{X: r.X + pe.Left + bw, Y: r.Y + pe.Top + bw, W: w, H: h}
+}
+
+func edgeOr(v, fallback float64) float64 {
+	if v < 0 {
+		return fallback
+	}
+	return v
+}
 
 // BorderWidth returns the border thickness in logical pixels.
 func (b *NodeBase) BorderWidth() float64 { return b.borderW.Get() }

@@ -54,10 +54,12 @@ func (b *NodeBase) ScrollMax() float64 {
 	if axis == AxisNone {
 		return 0
 	}
-	inset := b.Padding() + b.BorderWidth()
-	view := b.bounds.H
+	// Children are positioned from the outer box, so only the far edge inset
+	// shrinks the visible area: content may run into the last padding.
+	pe, bw := b.PaddingEdges(), b.BorderWidth()
+	view := b.bounds.H - pe.Bottom - bw
 	if axis == AxisX {
-		view = b.bounds.W
+		view = b.bounds.W - pe.Right - bw
 	}
 	end := 0.0
 	for _, k := range b.kids {
@@ -75,7 +77,7 @@ func (b *NodeBase) ScrollMax() float64 {
 			end = e
 		}
 	}
-	if m := end - (view - inset); m > 0 {
+	if m := end - view; m > 0 {
 		return m
 	}
 	return 0

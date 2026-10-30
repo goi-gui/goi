@@ -122,9 +122,8 @@ func (l *List) Build(tr *tree.Tree, w, h float64) {
 	clip := tree.Rect{W: w, H: h}
 	l.walk(tr.Root.Base(), 0, 0, clip)
 	if l.ShowFPS {
-		// Right of centre, clear of the app bar's trailing icon.
 		l.textIn(strconv.Itoa(l.FPS)+" fps", l.style("labelSmall"), l.Theme.Colors.OnSurfaceVariant,
-			tree.Rect{X: 0, Y: 8, W: w - 68, H: 20}, AlignEnd, clip)
+			tree.Rect{X: 0, Y: 8, W: w - 12, H: 20}, AlignEnd, clip)
 	}
 }
 
@@ -151,18 +150,7 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 		l.paintImage(im, r, clip)
 	}
 
-	inner := tree.Rect{
-		X: r.X + b.Padding() + b.BorderWidth(),
-		Y: r.Y + b.Padding() + b.BorderWidth(),
-		W: r.W - 2*(b.Padding()+b.BorderWidth()),
-		H: r.H - 2*(b.Padding()+b.BorderWidth()),
-	}
-	if inner.W < 0 {
-		inner.W = 0
-	}
-	if inner.H < 0 {
-		inner.H = 0
-	}
+	inner := b.ContentBox(r)
 	childClip := clip
 	if b.ClipsChildren() {
 		childClip = intersect(clip, inner)
@@ -198,18 +186,7 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 		l.paintImage(im, r, clip)
 	}
 
-	inner := tree.Rect{
-		X: r.X + b.Padding() + b.BorderWidth(),
-		Y: r.Y + b.Padding() + b.BorderWidth(),
-		W: r.W - 2*(b.Padding()+b.BorderWidth()),
-		H: r.H - 2*(b.Padding()+b.BorderWidth()),
-	}
-	if inner.W < 0 {
-		inner.W = 0
-	}
-	if inner.H < 0 {
-		inner.H = 0
-	}
+	inner := b.ContentBox(r)
 	childClip := clip
 	if b.ClipsChildren() {
 		childClip = intersect(clip, inner)

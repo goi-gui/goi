@@ -87,6 +87,15 @@ var common = []Prop{
 	{Name: "maxWidth", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
 	{Name: "margin", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0, Common: true},
 	{Name: "padding", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0, Common: true},
+	// -1 means "follow margin/padding", so a side can be set on its own.
+	{Name: "marginTop", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
+	{Name: "marginRight", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
+	{Name: "marginBottom", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
+	{Name: "marginLeft", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
+	{Name: "paddingTop", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
+	{Name: "paddingRight", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
+	{Name: "paddingBottom", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
+	{Name: "paddingLeft", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
 	{Name: "background", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
 	{Name: "borderColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
 	{Name: "borderWidth", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0, Common: true},
@@ -120,10 +129,12 @@ var elements = func() []Element {
 		)},
 		{Name: "Column", Children: true, Attrs: withCommon(
 			Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
+			Prop{Name: "gap", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
 			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
 		)},
 		{Name: "Row", Children: true, Attrs: withCommon(
 			Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
+			Prop{Name: "gap", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
 			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
 		)},
 		{Name: "Stack", Children: true, Attrs: withCommon(
@@ -134,14 +145,18 @@ var elements = func() []Element {
 			Prop{Name: "top", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0},
 			Prop{Name: "right", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0},
 			Prop{Name: "bottom", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0},
+			Prop{Name: "translateX", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
+			Prop{Name: "translateY", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
 		)},
 		{Name: "Wrap", Children: true, Attrs: withCommon(
 			Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
+			Prop{Name: "gap", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
 			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
 		)},
 		{Name: "Grid", Children: true, Attrs: withCommon(
 			Prop{Name: "columns", Type: TypeNumber, Dirty: DirtyLayout, Default: 2.0},
 			Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
+			Prop{Name: "gap", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
 			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
 		)},
 		{Name: "Rectangle", Children: false, Attrs: withCommon()},

@@ -84,3 +84,45 @@ func TestRailSitsOnItsOwnSurface(t *testing.T) {
 		t.Fatalf("rail surface: container=%v edge=%v\n%s", container, edge, l.Dump())
 	}
 }
+
+// TestSwitchIconGrowsTheThumb covers icon/iconOn/iconOff: an icon enlarges the
+// unchecked thumb so the glyph fits, and iconOn wins over icon when checked.
+func TestSwitchIconGrowsTheThumb(t *testing.T) {
+	thumb := func(l *List) (w float32, icons []string) {
+		for _, op := range l.Ops {
+			if op.Kind == Fill && op.Shape == Circle {
+				w = op.Rect[2]
+			}
+			if op.Kind == Text && op.Text != "a" {
+				icons = append(icons, op.Text)
+			}
+		}
+		return w, icons
+	}
+	l := m3list(t, `Window { Switch { label: "a" } }`)
+	if w, _ := thumb(l); w != 16 {
+		t.Fatalf("plain unchecked thumb = %v, want 16", w)
+	}
+	l = m3list(t, `Window { Switch { label: "a" iconOn: check iconOff: close } }`)
+	w, icons := thumb(l)
+	if w != 24 {
+		t.Fatalf("icon unchecked thumb = %v, want 24", w)
+	}
+	if len(icons) != 1 || icons[0] != "close" {
+		t.Fatalf("unchecked icons = %v, want [close]", icons)
+	}
+	l = m3list(t, `Window { Switch { label: "a" checked: true icon: star iconOn: check iconOff: close } }`)
+	_, icons = thumb(l)
+	if len(icons) != 1 || icons[0] != "check" {
+		t.Fatalf("checked icons = %v, want [check]", icons)
+	}
+	l = m3list(t, `Window { Switch { label: "a" checked: true icon: star } }`)
+	_, icons = thumb(l)
+	if len(icons) != 1 || icons[0] != "star" {
+		t.Fatalf("icon fallback = %v, want [star]", icons)
+	}
+	l = m3list(t, `Window { Switch { label: "a" } }`)
+	if _, icons := thumb(l); len(icons) != 0 {
+		t.Fatalf("empty icons drew %v", icons)
+	}
+}

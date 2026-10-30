@@ -81,7 +81,7 @@ var props = map[string][]string{
 	"Badge":            {"label", "variant", "size"},
 	"Checkbox":         {"label", "variant", "disabled", "checked"},
 	"RadioButton":      {"label", "variant", "disabled", "checked"},
-	"Switch":           {"label", "variant", "disabled", "checked"},
+	"Switch":           {"label", "variant", "disabled", "checked", "icon", "iconOn", "iconOff"},
 	"Slider":           {"variant", "disabled", "value", "min", "max", "step"},
 	"TextField":        {"label", "text", "placeholder", "supporting", "icon", "trailingIcon", "variant", "disabled"},
 	"SearchBar":        {"label", "text", "placeholder", "icon", "trailingIcon", "variant", "disabled"},
@@ -131,7 +131,7 @@ func Props(kind string) []string {
 	}
 	out := make([]string, 0, len(base)+2)
 	out = append(out, base...)
-	return append(out, "spacing", "align")
+	return append(out, "spacing", "gap", "align")
 }
 
 // PropType is the literal type a component property needs.
@@ -150,7 +150,7 @@ func TypeOf(name string) PropType {
 	switch name {
 	case "disabled", "checked", "selected", "expanded":
 		return Bool
-	case "value", "min", "max", "step":
+	case "value", "min", "max", "step", "spacing", "gap":
 		return Number
 	case "variant", "size", "align":
 		return Enum

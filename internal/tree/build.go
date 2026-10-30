@@ -189,20 +189,28 @@ func defaultValueLiteral(v any) syntax.Value {
 func newNode(name string) Node {
 	b := func() NodeBase {
 		return NodeBase{
-			visible:     newProp(nil, "visible", DirtyLayout, true),
-			margin:      newProp(nil, "margin", DirtyLayout, 0.0),
-			padding:     newProp(nil, "padding", DirtyLayout, 0.0),
-			borderW:     newProp(nil, "borderWidth", DirtyLayout, 0.0),
-			flex:        newProp(nil, "flex", DirtyLayout, 0.0),
-			alignSelf:   newProp(nil, "alignSelf", DirtyLayout, ""),
-			scroll:      newProp(nil, "scroll", DirtyPaint, false),
-			width:       newProp(nil, "width", DirtyLayout, -1.0),
-			height:      newProp(nil, "height", DirtyLayout, -1.0),
-			minWidth:    newProp(nil, "minWidth", DirtyLayout, 0.0),
-			maxWidth:    newProp(nil, "maxWidth", DirtyLayout, -1.0),
-			background:  newProp(nil, "background", DirtyPaint, uint32(0)),
-			borderColor: newProp(nil, "borderColor", DirtyPaint, uint32(0)),
-			radius:      newProp(nil, "radius", DirtyPaint, 0.0),
+			visible:       newProp(nil, "visible", DirtyLayout, true),
+			margin:        newProp(nil, "margin", DirtyLayout, 0.0),
+			padding:       newProp(nil, "padding", DirtyLayout, 0.0),
+			marginTop:     newProp(nil, "marginTop", DirtyLayout, -1.0),
+			marginRight:   newProp(nil, "marginRight", DirtyLayout, -1.0),
+			marginBottom:  newProp(nil, "marginBottom", DirtyLayout, -1.0),
+			marginLeft:    newProp(nil, "marginLeft", DirtyLayout, -1.0),
+			paddingTop:    newProp(nil, "paddingTop", DirtyLayout, -1.0),
+			paddingRight:  newProp(nil, "paddingRight", DirtyLayout, -1.0),
+			paddingBottom: newProp(nil, "paddingBottom", DirtyLayout, -1.0),
+			paddingLeft:   newProp(nil, "paddingLeft", DirtyLayout, -1.0),
+			borderW:       newProp(nil, "borderWidth", DirtyLayout, 0.0),
+			flex:          newProp(nil, "flex", DirtyLayout, 0.0),
+			alignSelf:     newProp(nil, "alignSelf", DirtyLayout, ""),
+			scroll:        newProp(nil, "scroll", DirtyPaint, false),
+			width:         newProp(nil, "width", DirtyLayout, -1.0),
+			height:        newProp(nil, "height", DirtyLayout, -1.0),
+			minWidth:      newProp(nil, "minWidth", DirtyLayout, 0.0),
+			maxWidth:      newProp(nil, "maxWidth", DirtyLayout, -1.0),
+			background:    newProp(nil, "background", DirtyPaint, uint32(0)),
+			borderColor:   newProp(nil, "borderColor", DirtyPaint, uint32(0)),
+			radius:        newProp(nil, "radius", DirtyPaint, 0.0),
 		}
 	}
 	switch name {
@@ -240,11 +248,13 @@ func newNode(name string) Node {
 		}
 	case "Positioned":
 		return &Positioned{
-			NodeBase: b(),
-			Left:     newProp(nil, "left", DirtyLayout, -1.0),
-			Top:      newProp(nil, "top", DirtyLayout, -1.0),
-			Right:    newProp(nil, "right", DirtyLayout, -1.0),
-			Bottom:   newProp(nil, "bottom", DirtyLayout, -1.0),
+			NodeBase:   b(),
+			Left:       newProp(nil, "left", DirtyLayout, -1.0),
+			Top:        newProp(nil, "top", DirtyLayout, -1.0),
+			Right:      newProp(nil, "right", DirtyLayout, -1.0),
+			Bottom:     newProp(nil, "bottom", DirtyLayout, -1.0),
+			TranslateX: newProp(nil, "translateX", DirtyLayout, 0.0),
+			TranslateY: newProp(nil, "translateY", DirtyLayout, 0.0),
 		}
 	case "Text":
 		return &Text{

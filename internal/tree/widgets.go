@@ -21,6 +21,14 @@ func commonProps(b *NodeBase) []NamedProp {
 		NumberProp(b, "maxWidth", DirtyLayout, &b.maxWidth),
 		NumberProp(b, "margin", DirtyLayout, &b.margin),
 		NumberProp(b, "padding", DirtyLayout, &b.padding),
+		NumberProp(b, "marginTop", DirtyLayout, &b.marginTop),
+		NumberProp(b, "marginRight", DirtyLayout, &b.marginRight),
+		NumberProp(b, "marginBottom", DirtyLayout, &b.marginBottom),
+		NumberProp(b, "marginLeft", DirtyLayout, &b.marginLeft),
+		NumberProp(b, "paddingTop", DirtyLayout, &b.paddingTop),
+		NumberProp(b, "paddingRight", DirtyLayout, &b.paddingRight),
+		NumberProp(b, "paddingBottom", DirtyLayout, &b.paddingBottom),
+		NumberProp(b, "paddingLeft", DirtyLayout, &b.paddingLeft),
 		ColorProp(b, "background", DirtyPaint, &b.background),
 		ColorProp(b, "borderColor", DirtyPaint, &b.borderColor),
 		NumberProp(b, "borderWidth", DirtyLayout, &b.borderW),
@@ -63,6 +71,7 @@ type Container struct {
 func (c *Container) namedProps() []NamedProp {
 	return append(commonProps(&c.NodeBase),
 		NumberProp(&c.NodeBase, "spacing", DirtyLayout, &c.Spacing),
+		NumberProp(&c.NodeBase, "gap", DirtyLayout, &c.Spacing),
 		EnumProp(&c.NodeBase, "align", DirtyLayout, &c.Align, "start", "center", "end", "stretch"),
 	)
 }
@@ -94,6 +103,11 @@ type Positioned struct {
 	Top    Prop[float64]
 	Right  Prop[float64]
 	Bottom Prop[float64]
+	// TranslateX/Y shift the box after anchoring, which is what an enter/exit
+	// animation needs: left/top reserve -1 for "auto", so they cannot go
+	// negative.
+	TranslateX Prop[float64]
+	TranslateY Prop[float64]
 }
 
 // Kind implements Node.
@@ -105,6 +119,8 @@ func (p *Positioned) namedProps() []NamedProp {
 		NumberProp(&p.NodeBase, "top", DirtyLayout, &p.Top),
 		NumberProp(&p.NodeBase, "right", DirtyLayout, &p.Right),
 		NumberProp(&p.NodeBase, "bottom", DirtyLayout, &p.Bottom),
+		NumberProp(&p.NodeBase, "translateX", DirtyLayout, &p.TranslateX),
+		NumberProp(&p.NodeBase, "translateY", DirtyLayout, &p.TranslateY),
 	)
 }
 

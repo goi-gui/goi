@@ -92,14 +92,66 @@ func main() {
 			}
 		}
 
+		// The drawer slides in from the left edge and back out to it. translateX
+		// is the animation (left reserves -1 for "auto") and visibility only
+		// flips at the ends, so a half-open sheet keeps drawing; a second press
+		// mid-slide continues from where it is instead of jumping.
+		const drawerW = 320
+		var drawerStop func()
+		slideDrawer := func(frame *ui.Positioned, to float64, visibleAfter bool, done func()) {
+			if drawerStop != nil {
+				drawerStop()
+				drawerStop = nil
+			}
+			from := frame.TranslateX.Get()
+			if from == to {
+				frame.SetVisible(visibleAfter)
+				if done != nil {
+					done()
+				}
+				return
+			}
+			ease := ui.Emphasized
+			if to > from {
+				ease = ui.Standard
+			}
+			drawerStop = app.Tween(250*time.Millisecond, ease, func(p float64) {
+				frame.TranslateX.Set(from + (to-from)*p)
+				if p >= 1 {
+					frame.SetVisible(visibleAfter)
+					if done != nil {
+						done()
+					}
+				}
+			})
+		}
 		setDrawer := func(open bool) {
 			drawerOpen = open
-			if scrim, err := ui.ByID[*ui.Rectangle](w, "scrim"); err == nil {
-				scrim.SetVisible(open)
+			scrim, _ := ui.ByID[*ui.Rectangle](w, "scrim")
+			frame, err := ui.ByID[*ui.Positioned](w, "drawerFrame")
+			if err != nil {
+				return
 			}
-			if frame, err := ui.ByID[*ui.Positioned](w, "drawerFrame"); err == nil {
-				frame.SetVisible(open)
+			if open {
+				if !frame.Base().Visible() {
+					frame.TranslateX.Set(-drawerW)
+					frame.SetVisible(true)
+				}
+				if scrim != nil {
+					scrim.SetVisible(true)
+				}
+				slideDrawer(frame, 0, true, nil)
+				return
 			}
+			if !frame.Base().Visible() {
+				return
+			}
+			// The scrim stays for the slide out, then goes with the sheet.
+			slideDrawer(frame, -drawerW, false, func() {
+				if scrim != nil {
+					scrim.SetVisible(false)
+				}
+			})
 		}
 
 		// Both theme controls drive this one function: the rail switch and the
