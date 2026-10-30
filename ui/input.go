@@ -64,6 +64,9 @@ type interactor struct {
 	// it to the same measurer the painter uses; nil falls back to an estimate.
 	measure func(s string, size float64, weight int) float64
 
+	// setCursor changes the native pointer shape; nil in headless tests.
+	setCursor func(platform.Cursor)
+
 	viewportW, viewportH float64
 
 	// textSel is the selectable Text the pointer last selected, so Ctrl+C can
@@ -115,11 +118,14 @@ func clickable(n tree.Node) bool {
 func (i *interactor) MouseMove(x, y float64) {
 	i.cursorX, i.cursorY = x, y
 	if i.selecting && i.textSel != nil {
+		i.pointer(platform.CursorText)
 		i.textSel.SelB = i.textIndexAt(i.textSel, x, y)
 		i.textSel.Base().MarkDirty(tree.DirtyPaint)
 		i.markDirty()
 		return
 	}
+	hit := i.hit(x, y)
+	i.pointerAt(hit)
 	if i.selecting && i.textField != nil {
 		i.dragX = x
 		i.caretFromPoint(i.textField, x, true)
@@ -128,7 +134,6 @@ func (i *interactor) MouseMove(x, y float64) {
 	if i.dragScroll(x, y) {
 		return
 	}
-	hit := i.hit(x, y)
 	if hit == i.hover && !i.dragging {
 		return
 	}
@@ -152,6 +157,39 @@ func (i *interactor) MouseMove(x, y float64) {
 	if changed {
 		i.markDirty()
 	}
+}
+
+// pointer sets the native pointer shape when a driver is attached.
+func (i *interactor) pointer(c platform.Cursor) {
+	if i.setCursor != nil {
+		i.setCursor(c)
+	}
+}
+
+// pointerAt picks the shape M3 shows: an I-beam over text a reader can edit or
+// select, a pointing hand over anything clickable.
+func (i *interactor) pointerAt(hit tree.Node) {
+	if hit == nil {
+		i.pointer(platform.CursorArrow)
+		return
+	}
+	if selectableTextAt(hit) != nil {
+		i.pointer(platform.CursorText)
+		return
+	}
+	if f := fieldAt(hit); f != nil {
+		if !f.Disabled.Get() {
+			i.pointer(platform.CursorText)
+			return
+		}
+		i.pointer(platform.CursorArrow)
+		return
+	}
+	if clickable(hit) {
+		i.pointer(platform.CursorPointer)
+		return
+	}
+	i.pointer(platform.CursorArrow)
 }
 
 func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
@@ -440,6 +478,8 @@ func (i *interactor) Scroll(dx, dy float64) {
 	b.SetScrollOffset(b.ScrollOffset() + moved)
 	b.MarkDirty(tree.DirtyPaint)
 	i.startFling(n, moved)
+	// The content moved under a stationary pointer, so the shape may be stale.
+	i.pointerAt(i.hit(i.cursorX, i.cursorY))
 	i.markDirty()
 }
 

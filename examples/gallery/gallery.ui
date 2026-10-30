@@ -553,7 +553,6 @@ Window {
 							}
 						}
 					}
-				}
 
 					// ============================================== motion
 					Column {
@@ -645,6 +644,7 @@ Window {
 							Button { id: playValue label: "Animate value" icon: play_arrow variant: tonal }
 						}
 					}
+				}
 
 				// ---- compact: bottom bar
 				NavigationBar {

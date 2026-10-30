@@ -44,9 +44,9 @@ func (i *interactor) textLines(t *tree.Text, width float64) []text.Line {
 
 // textIndexAt turns a pointer position into a byte offset in the source text.
 func (i *interactor) textIndexAt(t *tree.Text, x, y float64) int {
-	// Bounds are relative to the parent, so the pointer needs the absolute box.
-	x0, y0, w, _ := absoluteBounds(t)
-	r := tree.Rect{X: x0, Y: y0, W: w}
+	// The pointer is in window space, so the box must include the scroll
+	// offsets of every ancestor; absoluteRect does that.
+	r := absoluteRect(t)
 	st := textStyle(t)
 	lh := st.LineHeight
 	if lh <= 0 {

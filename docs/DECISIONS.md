@@ -479,8 +479,15 @@ batch. This is what the display list will feed.
   the text is read-only: selection is a reading aid, not a second TextField. The
   highlight maps a line back to byte offsets through the same wrap pass the
   painter uses, so a wrapped paragraph selects per line and copy gets the
-  original source range. Plain labels stay pointer-transparent, so a card's
-  caption does not steal a click from the card.
+  original source range; a drag across lines keeps one range from the anchor to
+  the pointer. The anchor is measured with `absoluteRect`, so a scrolled page
+  does not shift the selection by its offset. Plain labels stay
+  pointer-transparent, so a card's caption does not steal a click from the card.
+- **The pointer shape follows the target.** Over a text field or a selectable
+  `Text` it is an I-beam, over anything clickable the pointing hand, and the
+  arrow everywhere else. GLFW standard cursors are cached by kind and set only
+  when the shape changes, so a mouse move costs no cursor churn. A disabled
+  field keeps the arrow, since it takes no input.
 - **Expressions are values, evaluated every frame.** The old numeric-only
   expression path grew comparisons, `&& || !`, a conditional, string concat and
   two reserved globals (`app.theme`/`app.dark`, `window.width`/`height`). The

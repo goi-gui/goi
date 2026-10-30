@@ -75,6 +75,50 @@ type Window struct {
 
 	// ime is the input-method connection, nil when the platform has none.
 	ime imeConn
+
+	// cursors caches the standard shapes by kind, and cursor/ cursorSet skip
+	// re-setting the same one on every mouse move.
+	cursors   map[Cursor]*glfw.Cursor
+	cursor    Cursor
+	cursorSet bool
+}
+
+// Cursor is the shape the pointer takes over the client area.
+type Cursor int
+
+// Cursor kinds the framework asks for.
+const (
+	CursorArrow Cursor = iota
+	CursorText
+	CursorPointer
+)
+
+// SetCursor changes the pointer shape. It is a no-op when the shape is already
+// set, so the input layer can call it on every move.
+func (p *Window) SetCursor(c Cursor) {
+	if p.win == nil || (p.cursorSet && p.cursor == c) {
+		return
+	}
+	cur := p.cursors[c]
+	if cur == nil {
+		standard := glfw.ArrowCursor
+		switch c {
+		case CursorText:
+			standard = glfw.IBeamCursor
+		case CursorPointer:
+			standard = glfw.PointingHandCursor
+		}
+		cur = glfw.CreateStandardCursor(standard)
+		if cur == nil {
+			return
+		}
+		if p.cursors == nil {
+			p.cursors = make(map[Cursor]*glfw.Cursor)
+		}
+		p.cursors[c] = cur
+	}
+	p.win.SetCursor(cur)
+	p.cursor, p.cursorSet = c, true
 }
 
 // imeConn is a platform input-method connection. Wayland implements it with

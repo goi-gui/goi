@@ -69,7 +69,7 @@ func (a *App) initWindow(w *Window) error {
 	}
 	d.list.Theme = themeFor(w)
 	d.lastTick = time.Now()
-	d.input = &interactor{app: a, tree: w.tree, measure: d.list.Measure}
+	d.input = &interactor{app: a, tree: w.tree, measure: d.list.Measure, setCursor: pw.SetCursor}
 	pw.SetInput(d.input)
 	// IME composition needs the input sink above, so it is wired second.
 	pw.InitTextInput()
