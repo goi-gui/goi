@@ -16,10 +16,10 @@ import (
 // draw call keep paint order intact; the alternative, a bind group per image,
 // would split the frame into a draw call per image.
 //
-// shortcut: the atlas is a fixed 2048x2048 with a shelf packer and no eviction,
-// so images past that budget are downscaled to fit and an image that cannot fit
-// at all is skipped. Upgrade to per-image textures with a mip chain when a real
-// app needs many large photos.
+// The atlas starts at 2048x2048 and grows on demand (up to 4096), so a screen
+// full of photos does not silently lose one. Only at the cap does an image get
+// downscaled, and the last resort is skipping the op. A real photo wall wants
+// per-image textures with a mip chain.
 type imageRenderer struct {
 	texture *wgpu.Texture
 	view    *wgpu.TextureView
@@ -32,7 +32,12 @@ type imageRenderer struct {
 	// regions maps a decoded image to its rect in the atlas.
 	regions map[*img.Data]img.Region
 	dirty   bool
+	// resized is set when the atlas grew, so the texture must be rebuilt.
+	resized bool
 }
+
+// Image atlases are capped so a pathological set cannot allocate without bound.
+const maxImageAtlasDim = 4096
 
 func (g *GPU) initImages() error {
 	const size = 2048
@@ -75,7 +80,20 @@ func (g *GPU) initImages() error {
 	return nil
 }
 
-// addOp appends the quad for one bitmap op, packing the image on first use.
+// prepare packs every image the frame needs before any quad is emitted, so a
+// growth during packing cannot leave earlier instances pointing at stale UVs.
+func (t *imageRenderer) prepare(list *paint.List) {
+	for _, op := range list.Ops {
+		if op.Kind != paint.Bitmap || op.Src == nil {
+			continue
+		}
+		if _, ok := t.regions[op.Src]; !ok {
+			t.pack(op.Src)
+		}
+	}
+}
+
+// addOp appends the quad for one bitmap op. prepare has already packed it.
 func (t *imageRenderer) addOp(op paint.Op) {
 	d := op.Src
 	if d == nil {
@@ -114,6 +132,13 @@ func (t *imageRenderer) pack(d *img.Data) (img.Region, bool) {
 		w, h = max(1, int(float64(w)*s)), max(1, int(float64(h)*s))
 	}
 	x, y, ok := t.shelf.Place(w, h)
+	// Grow before downscaling: a sharper image is worth the texture memory.
+	for tries := 0; !ok && tries < 2; tries++ {
+		if !t.grow() {
+			break
+		}
+		x, y, ok = t.shelf.Place(w, h)
+	}
 	if !ok {
 		// Still no room: halve the image until it fits, then give up.
 		for tries := 0; tries < 4 && !ok; tries++ {
@@ -137,8 +162,59 @@ func (t *imageRenderer) pack(d *img.Data) (img.Region, bool) {
 	return r, true
 }
 
+// grow doubles the shorter side of the atlas, moving the packed images across.
+// It reports whether the atlas changed.
+func (t *imageRenderer) grow() bool {
+	if t.w >= maxImageAtlasDim && t.h >= maxImageAtlasDim {
+		return false
+	}
+	nw, nh := t.w, t.h
+	switch {
+	case nw == nh, nw < nh:
+		nw *= 2
+	default:
+		nh *= 2
+	}
+	if nw > maxImageAtlasDim {
+		nw = maxImageAtlasDim
+	}
+	if nh > maxImageAtlasDim {
+		nh = maxImageAtlasDim
+	}
+	if nw == t.w && nh == t.h {
+		return false
+	}
+
+	oldPix, ow := t.pix, t.w
+	t.pix = make([]byte, nw*nh*4)
+	t.shelf = img.Shelf{W: nw, H: nh}
+	t.w, t.h = nw, nh
+
+	regions := make(map[*img.Data]img.Region, len(t.regions))
+	for d, r := range t.regions {
+		x, y, ok := t.shelf.Place(r.W, r.H)
+		if !ok {
+			continue // repacked on the next request
+		}
+		for row := 0; row < r.H; row++ {
+			copy(t.pix[((y+row)*nw+x)*4:],
+				oldPix[((r.Y+row)*ow+r.X)*4:((r.Y+row)*ow+r.X+r.W)*4])
+		}
+		regions[d] = img.Region{X: x, Y: y, W: r.W, H: r.H}
+	}
+	t.regions = regions
+	t.resized = true
+	t.dirty = true
+	return true
+}
+
 // upload pushes the atlas if a new image was packed.
 func (t *imageRenderer) upload(g *GPU) error {
+	if t.resized {
+		if err := t.recreate(g); err != nil {
+			return err
+		}
+	}
 	if !t.dirty {
 		return nil
 	}
@@ -149,6 +225,36 @@ func (t *imageRenderer) upload(g *GPU) error {
 		&wgpu.ImageDataLayout{Offset: 0, BytesPerRow: uint32(t.w * 4), RowsPerImage: uint32(t.h)},
 		&wgpu.Extent3D{Width: uint32(t.w), Height: uint32(t.h), DepthOrArrayLayers: 1},
 	)
+}
+
+// recreate rebuilds the image texture at the atlas' current size.
+func (t *imageRenderer) recreate(g *GPU) error {
+	tex, err := g.device.CreateTexture(&wgpu.TextureDescriptor{
+		Label:         "image-atlas",
+		Size:          wgpu.Extent3D{Width: uint32(t.w), Height: uint32(t.h), DepthOrArrayLayers: 1},
+		MipLevelCount: 1,
+		SampleCount:   1,
+		Dimension:     gputypes.TextureDimension2D,
+		Format:        gputypes.TextureFormatRGBA8Unorm,
+		Usage:         gputypes.TextureUsageTextureBinding | gputypes.TextureUsageCopyDst,
+	})
+	if err != nil {
+		return fmt.Errorf("image atlas texture: %w", err)
+	}
+	view, err := g.device.CreateTextureView(tex, nil)
+	if err != nil {
+		tex.Release()
+		return fmt.Errorf("image atlas view: %w", err)
+	}
+	if t.view != nil {
+		t.view.Release()
+	}
+	if t.texture != nil {
+		t.texture.Release()
+	}
+	t.texture, t.view = tex, view
+	t.resized = false
+	return g.rebind()
 }
 
 func (t *imageRenderer) release() {

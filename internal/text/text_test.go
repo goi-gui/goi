@@ -118,10 +118,17 @@ func TestAtlasCachesAndPacks(t *testing.T) {
 	}
 }
 
-func TestAtlasFullIsGraceful(t *testing.T) {
+// TestAtlasFullGrowsInsteadOfDropping is the contract the atlas keeps: a
+// working set bigger than the bitmap grows it, rather than quietly skipping
+// glyphs (which used to make text lose letters after a long session).
+func TestAtlasFullGrowsInsteadOfDropping(t *testing.T) {
 	l := NewLibrary()
 	f := l.Face(40, WeightRegular)
+	if f == nil {
+		t.Skip("no font")
+	}
 	small := NewAtlas(16, 16)
+	small.BeginFrame()
 	slots := 0
 	for _, r := range "ABCDEFGHIJKLMNOPQRSTUVWXYZ" {
 		out := f.Shape(string(r))
@@ -132,8 +139,11 @@ func TestAtlasFullIsGraceful(t *testing.T) {
 			slots++
 		}
 	}
-	if slots > 8 {
-		t.Fatalf("atlas accepted %d glyphs in 16x16", slots)
+	if slots != 26 {
+		t.Fatalf("atlas served %d of 26 glyphs", slots)
+	}
+	if small.W == 16 && small.H == 16 {
+		t.Fatal("the atlas did not grow")
 	}
 }
 

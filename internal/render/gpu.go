@@ -366,20 +366,7 @@ func (g *GPU) initPipeline() error {
 		return fmt.Errorf("bind group layout: %w", err)
 	}
 	defer layout.Release()
-
-	g.bindG, err = g.device.CreateBindGroup(&wgpu.BindGroupDescriptor{
-		Label:  "shapes-bindings",
-		Layout: layout,
-		Entries: []wgpu.BindGroupEntry{
-			{Binding: 0, Buffer: g.uniform, Size: 16},
-			{Binding: 1, Buffer: g.storage, Size: g.storageSize(g.capacity)},
-			{Binding: 2, TextureView: g.text.view},
-			{Binding: 3, Sampler: g.text.sampler},
-			{Binding: 4, TextureView: g.images.view},
-			{Binding: 5, Sampler: g.images.sampler},
-		},
-	})
-	if err != nil {
+	if err := g.rebind(); err != nil {
 		return fmt.Errorf("bind group: %w", err)
 	}
 
@@ -491,7 +478,15 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 	}
 
 	g.instances = g.instances[:0]
-	for _, op := range list.Ops {
+	// Reserve every glyph this frame needs before emitting, so an atlas
+	// compaction can only drop entries the frame does not reference.
+	if g.text != nil {
+		g.text.prepare(list)
+	}
+	if g.images != nil {
+		g.images.prepare(list)
+	}
+	for i, op := range list.Ops {
 		switch op.Kind {
 		case paint.Fill:
 			g.instances = append(g.instances, gpuInstance{
@@ -513,7 +508,7 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 			})
 		case paint.Text:
 			if g.text != nil {
-				g.text.addOp(op)
+				g.text.emit(i)
 			}
 		case paint.Bitmap:
 			g.images.addOp(op)
@@ -610,33 +605,72 @@ func (g *GPU) grow(n int) error {
 	if err != nil {
 		return err
 	}
+	g.storage.Release()
+	g.storage, g.capacity = buf, capacity
+	return g.rebind()
+}
+
+// rebind rebuilds the bind group from the current buffers and textures. A
+// recreated atlas texture (growth) changes the view, so the group must follow.
+func (g *GPU) rebind() error {
 	layout, err := g.device.CreateBindGroupLayout(&wgpu.BindGroupLayoutDescriptor{
+		Label:   "shapes-layout",
 		Entries: shapeLayoutEntries(),
 	})
 	if err != nil {
-		buf.Release()
 		return err
 	}
 	defer layout.Release()
 	bg, err := g.device.CreateBindGroup(&wgpu.BindGroupDescriptor{
+		Label:  "shapes-bindings",
 		Layout: layout,
 		Entries: []wgpu.BindGroupEntry{
 			{Binding: 0, Buffer: g.uniform, Size: 16},
-			{Binding: 1, Buffer: buf, Size: g.storageSize(capacity)},
-			{Binding: 2, TextureView: g.text.view},
-			{Binding: 3, Sampler: g.text.sampler},
-			{Binding: 4, TextureView: g.images.view},
-			{Binding: 5, Sampler: g.images.sampler},
+			{Binding: 1, Buffer: g.storage, Size: g.storageSize(g.capacity)},
+			{Binding: 2, TextureView: g.textView()},
+			{Binding: 3, Sampler: g.textSampler()},
+			{Binding: 4, TextureView: g.imageView()},
+			{Binding: 5, Sampler: g.imageSampler()},
 		},
 	})
 	if err != nil {
-		buf.Release()
 		return err
 	}
-	g.storage.Release()
-	g.bindG.Release()
-	g.storage, g.bindG, g.capacity = buf, bg, capacity
+	if g.bindG != nil {
+		g.bindG.Release()
+	}
+	g.bindG = bg
 	return nil
+}
+
+// The accessors keep rebind working before one of the sub-renderers exists
+// (a build with no font, or a test that never initialised images).
+func (g *GPU) textView() *wgpu.TextureView {
+	if g.text == nil {
+		return nil
+	}
+	return g.text.view
+}
+
+func (g *GPU) textSampler() *wgpu.Sampler {
+	if g.text == nil {
+		return nil
+	}
+	return g.text.sampler
+}
+
+func (g *GPU) imageView() *wgpu.TextureView {
+	if g.images == nil {
+		return nil
+	}
+	return g.images.view
+}
+
+func (g *GPU) imageSampler() *wgpu.Sampler {
+	if g.images == nil {
+		return nil
+	}
+	return g.images.sampler
 }
 
 // Release frees every GPU resource. Safe to call twice.

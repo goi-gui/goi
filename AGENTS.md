@@ -85,6 +85,10 @@ Tests that enforce the above: `TestEveryComponentValidates`,
   visibility or flex is `DirtyLayout`; layout dirt repaints everything.
 - In `.goi`-driven apps do not build nodes by hand; look them up with
   `ByID[T]`/`MustByID[T]`.
+- A render frame is two passes: `textRenderer.prepare`/`imageRenderer.prepare`
+  reserve atlas space for the whole display list, then the emit loop appends
+  instances. Keep that order — an atlas compaction mid-emit would invalidate
+  instances already written.
 
 ## Docs
 

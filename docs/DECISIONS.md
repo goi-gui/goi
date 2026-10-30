@@ -109,8 +109,16 @@ batch. This is what the display list will feed.
   0..255 floats and every fill rendered white — worth remembering.)
 - **Non-sRGB surface format**, so authored hex colors are exact.
 - **Grayscale atlas, not SDF.** Rasterizer is a small scanline fill with 4x
-  vertical supersampling. `shortcut:` in the code marks the missing eviction; an
-  atlas overflow skips a glyph instead of corrupting the texture.
+  vertical supersampling.
+- **The glyph atlas never drops a glyph.** It starts at 2048². When the shelves
+  run out it compacts to the current frame's working set (a per-frame stamp
+  decides what is live), and if that set alone does not fit it grows, up to
+  4096², telling the renderer to recreate the texture and rebuild its bind
+  group. A frame therefore runs in two passes: `prepare` shapes every text op
+  and resolves slots, then `emit` appends the quads in display-list order. That
+  ordering is what makes a rebuild safe — nothing already emitted can point at a
+  moved glyph. The image atlas follows the same rule (2048², grows to 4096²,
+  downscale only at the cap).
 - **Clipping is recorded per op and applied in the shader.** Each instance
   carries its clip rectangle and the fragment shader discards outside it (see
   the later note that replaced a batched `SetScissorRect` attempt).
