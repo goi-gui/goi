@@ -470,8 +470,17 @@ batch. This is what the display list will feed.
   one through the same `activate` path as a click, and focus is drawn as a 2dp
   Primary outline offset by 3dp. Text fields still own character focus; landing
   on one with Tab also gives it the caret, so typing works immediately. Focus
-  follows a click too, which is what makes the ring appear where the user last
-  acted. Slider arrow keys are not wired yet.
+  follows a click too, so Enter presses the last-touched control, but the click
+  path does not set `FocusRing`: the ring is an M3 keyboard affordance and a
+  mouse user does not need to see it. Slider arrow keys are not wired yet.
+- **Selectable text is opt-in per node.** `Text { selectable: true }` lets the
+  pointer drag a range, paints the M3 selection highlight under the glyphs, and
+  Ctrl+C copies it; Escape clears it. Only Ctrl+C and Escape are wired because
+  the text is read-only: selection is a reading aid, not a second TextField. The
+  highlight maps a line back to byte offsets through the same wrap pass the
+  painter uses, so a wrapped paragraph selects per line and copy gets the
+  original source range. Plain labels stay pointer-transparent, so a card's
+  caption does not steal a click from the card.
 - **Expressions are values, evaluated every frame.** The old numeric-only
   expression path grew comparisons, `&& || !`, a conditional, string concat and
   two reserved globals (`app.theme`/`app.dark`, `window.width`/`height`). The

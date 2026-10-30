@@ -79,6 +79,8 @@ func (a *App) swapTree(tr *tree.Tree) {
 	if d, ok := a.driver.(*gpuDriver); ok {
 		d.input.tree = tr
 		d.input.focus = nil
+		d.input.kbd = nil
+		d.input.textSel = nil
 		if focusID != "" {
 			if n, ok := tr.ByID(focusID); ok {
 				if k := n.Kind(); k == "TextField" || k == "SearchBar" {

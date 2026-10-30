@@ -24,6 +24,7 @@ Window {
 				NavigationItem { label: "Surfaces" icon: layers }
 				NavigationItem { label: "Feedback" icon: notifications }
 				NavigationItem { label: "Layout" icon: dashboard }
+				NavigationItem { label: "Motion" icon: animation }
 			}
 
 			Column {
@@ -521,6 +522,19 @@ Window {
 							}
 						}
 
+						Column {
+							spacing: 8
+							Text { text: "Selectable text" role: "titleMedium" }
+							Text {
+								id: selectableText
+								text: "Drag across this paragraph to select it, then press Ctrl+C. Text is not selectable unless it opts in, so a label that happens to sit under the pointer keeps behaving like a label."
+								role: "bodyMedium"
+								wrap: true
+								selectable: true
+								width: { base: 280, md: 420 }
+							}
+						}
+
 						// ---- theme: the same switch as the app-bar icon, for
 						// discoverability. Both drive one piece of app state.
 						Column {
@@ -541,6 +555,97 @@ Window {
 					}
 				}
 
+					// ============================================== motion
+					Column {
+						id: pageMotion
+						visible: false
+						scroll: true
+						spacing: 24
+						padding: { base: 16, md: 24, lg: 32, xl: 64 }
+						align: start
+
+						Column {
+							spacing: 10
+							Text { text: "Easing" role: "titleMedium" }
+							Text {
+								text: "One distance, three curves. Linear keeps a constant speed, Standard starts fast and lands soft, Emphasized is slow at both ends. Press Play to run them together."
+								role: "bodySmall"
+								wrap: true
+								width: { base: 280, md: 420 }
+							}
+							Column {
+								width: 300
+								spacing: 14
+								Column {
+									spacing: 4
+									Text { text: "Linear" role: "labelMedium" }
+									Stack {
+										height: 36
+										Positioned { left: 0 right: 0 top: 16 height: 4 background: surfaceContainerHighest radius: 2 }
+										Positioned {
+											id: dotLinear
+											left: 0
+											top: 0
+											width: 36
+											height: 36
+											Rectangle { width: 36 height: 36 radius: 18 background: primary }
+										}
+									}
+								}
+								Column {
+									spacing: 4
+									Text { text: "Standard" role: "labelMedium" }
+									Stack {
+										height: 36
+										Positioned { left: 0 right: 0 top: 16 height: 4 background: surfaceContainerHighest radius: 2 }
+										Positioned {
+											id: dotStandard
+											left: 0
+											top: 0
+											width: 36
+											height: 36
+											Rectangle { width: 36 height: 36 radius: 18 background: primary }
+										}
+									}
+								}
+								Column {
+									spacing: 4
+									Text { text: "Emphasized" role: "labelMedium" }
+									Stack {
+										height: 36
+										Positioned { left: 0 right: 0 top: 16 height: 4 background: surfaceContainerHighest radius: 2 }
+										Positioned {
+											id: dotEmphasized
+											left: 0
+											top: 0
+											width: 36
+											height: 36
+											Rectangle { width: 36 height: 36 radius: 18 background: primary }
+										}
+									}
+								}
+							}
+							Button { id: playEasing label: "Play" icon: play_arrow }
+						}
+
+						Column {
+							spacing: 10
+							Text { text: "Value" role: "titleMedium" }
+							Text {
+								text: "app.Animate moves any numeric Prop, so a slider and a progress ring follow the same tween without a special animation API."
+								role: "bodySmall"
+								wrap: true
+								width: { base: 280, md: 420 }
+							}
+							Row {
+								spacing: 24
+								Slider { id: motionSlider value: 0.25 width: 240 }
+								CircularProgress { id: motionProgress value: 0.3 width: 64 height: 64 }
+							}
+							Button { id: playValue label: "Animate value" icon: play_arrow variant: tonal }
+						}
+					}
+
 				// ---- compact: bottom bar
 				NavigationBar {
 					id: navbar
@@ -550,6 +655,7 @@ Window {
 					NavigationItem { label: "Surfaces" icon: layers }
 					NavigationItem { label: "Feedback" icon: notifications }
 					NavigationItem { label: "Layout" icon: dashboard }
+					NavigationItem { label: "Motion" icon: animation }
 				}
 			}
 		}
@@ -571,6 +677,7 @@ Window {
 				NavigationItem { id: drawerSurfaces label: "Surfaces" icon: layers }
 				NavigationItem { id: drawerFeedback label: "Feedback" icon: notifications }
 				NavigationItem { id: drawerLayout label: "Layout" icon: dashboard }
+				NavigationItem { id: drawerMotion label: "Motion" icon: animation }
 			}
 		}
 	}

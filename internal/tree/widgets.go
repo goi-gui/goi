@@ -168,13 +168,16 @@ func (i *Image) namedProps() []NamedProp {
 // Role is one of the type-scale names (bodyMedium is the default).
 type Text struct {
 	NodeBase
-	Text     Prop[string]
-	FontSize Prop[float64]
-	Color    Prop[uint32]
-	Align    Prop[string]
-	Wrap     Prop[bool]
-	Role     Prop[string]
-	Weight   Prop[float64]
+	Text       Prop[string]
+	FontSize   Prop[float64]
+	Color      Prop[uint32]
+	Align      Prop[string]
+	Wrap       Prop[bool]
+	Role       Prop[string]
+	Weight     Prop[float64]
+	Selectable Prop[bool]
+	// SelA and SelB are the selection in byte offsets; equal values mean none.
+	SelA, SelB int
 }
 
 // Kind implements Node.
@@ -194,5 +197,6 @@ func (t *Text) namedProps() []NamedProp {
 			"bodyLarge", "bodyMedium", "bodySmall",
 			"labelLarge", "labelMedium", "labelSmall"),
 		NumberProp(&t.NodeBase, "weight", DirtyLayout, &t.Weight),
+		BoolProp(&t.NodeBase, "selectable", DirtyPaint, &t.Selectable),
 	)
 }

@@ -349,8 +349,9 @@ func (l *List) paintComponent(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		l.paintToolbar(c, r, clip)
 	}
 	// Keyboard focus gets an M3 outline. A text field draws its own focus
-	// border, so it is the one kind that skips this.
-	if c.Focused {
+	// border, so it is the one kind that skips this. A pointer press focuses the
+	// node too but does not set FocusRing, so clicking never draws the outline.
+	if c.FocusRing {
 		switch c.Node().Kind() {
 		case "TextField", "SearchBar":
 		default:
@@ -1614,22 +1615,74 @@ func (l *List) paintText(t *tree.Text, r tree.Rect, clip tree.Rect) {
 	case "end":
 		align = AlignEnd
 	}
-	if !t.Wrap.Get() {
-		l.textIn(t.Text.Get(), st, color, r, align, clip)
-		return
-	}
 	// Wrapped text is one op per line, laid out with the same greedy break the
-	// layout pass used, so the reserved height and the drawn lines agree.
-	lines := text.WrapLines(t.Text.Get(), r.W, func(run string) float64 {
-		return textWidth(l, run, st)
-	})
-	lh := st.LineHeight
-	if lh <= 0 {
-		lh = st.Size * 1.2
+	// layout pass used, so the reserved height and the drawn lines agree. A
+	// single line keeps the node's box, which is what centers short text.
+	var lines []text.Line
+	var boxes []tree.Rect
+	if t.Wrap.Get() {
+		lines = text.WrapRanges(t.Text.Get(), r.W, func(run string) float64 {
+			return textWidth(l, run, st)
+		})
+		lh := st.LineHeight
+		if lh <= 0 {
+			lh = st.Size * 1.2
+		}
+		for i := range lines {
+			boxes = append(boxes, tree.Rect{X: r.X, Y: r.Y + float64(i)*lh, W: r.W, H: lh})
+		}
+	} else {
+		lines = []text.Line{{Text: t.Text.Get(), Start: 0, End: len(t.Text.Get())}}
+		boxes = []tree.Rect{r}
+	}
+	selA, selB := t.SelA, t.SelB
+	if selA > selB {
+		selA, selB = selB, selA
 	}
 	for i, line := range lines {
-		l.textIn(line, st, color, tree.Rect{X: r.X, Y: r.Y + float64(i)*lh, W: r.W, H: lh}, align, clip)
+		box := boxes[i]
+		// The highlight sits under the glyphs and only spans the selected
+		// characters, so a line that follows a wrapped paragraph still reads.
+		if t.Selectable.Get() && selA != selB {
+			a := clampInt(selA-line.Start, 0, len(line.Text))
+			b := clampInt(selB-line.Start, 0, len(line.Text))
+			if a != b {
+				lineW := textWidth(l, line.Text, st)
+				x := box.X + alignOffset(box.W, lineW, align)
+				x0 := x + textWidth(l, line.Text[:a], st)
+				x1 := x + textWidth(l, line.Text[:b], st)
+				h := st.Size * 1.35
+				l.Ops = append(l.Ops, Op{
+					Kind: Fill, Shape: RoundedRect,
+					Rect:  [4]float32{float32(x0), float32(box.Y + (box.H-h)/2), float32(x1 - x0), float32(h)},
+					Color: withAlpha(l.Theme.Colors.Primary, m3.SelectionOpacity),
+					Clip:  clipArr(clip),
+				})
+			}
+		}
+		l.textIn(line.Text, st, color, box, align, clip)
 	}
+}
+
+// alignOffset is where a run starts inside a box of width boxW.
+func alignOffset(boxW, runW float64, align Align) float64 {
+	switch align {
+	case AlignCenter:
+		return (boxW - runW) / 2
+	case AlignEnd:
+		return boxW - runW
+	}
+	return 0
+}
+
+func clampInt(v, lo, hi int) int {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
 }
 
 // textWidth measures a run, falling back to an estimate when no measurer is set.

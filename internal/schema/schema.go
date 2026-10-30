@@ -153,6 +153,7 @@ var elements = func() []Element {
 			Prop{Name: "text", Type: TypeString, Dirty: DirtyLayout, Default: ""},
 			Prop{Name: "fontSize", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
 			Prop{Name: "weight", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
+			Prop{Name: "selectable", Type: TypeBool, Dirty: DirtyPaint, Default: false},
 			Prop{Name: "color", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0)},
 			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end"}, Default: "start"},
 			Prop{Name: "wrap", Type: TypeBool, Dirty: DirtyLayout, Default: false},

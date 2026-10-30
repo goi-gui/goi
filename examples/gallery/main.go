@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/ksckaan1/goui/ui"
 )
@@ -27,6 +28,7 @@ var pages = []page{
 	{"pageSurfaces", "Surfaces"},
 	{"pageFeedback", "Feedback"},
 	{"pageLayout", "Layout"},
+	{"pageMotion", "Motion"},
 }
 
 // navIDs are the containers that select a page: the rail, the bottom bar and the
@@ -77,7 +79,7 @@ func main() {
 					selectChildren(h.Base(), i)
 				}
 			}
-			for j, id := range []string{"drawerButtons", "drawerInputs", "drawerSurfaces", "drawerFeedback", "drawerLayout"} {
+			for j, id := range []string{"drawerButtons", "drawerInputs", "drawerSurfaces", "drawerFeedback", "drawerLayout", "drawerMotion"} {
 				if item, err := ui.ByID[*ui.NavigationItem](w, id); err == nil {
 					item.M3().Selected.Set(j == i)
 				}
@@ -120,7 +122,7 @@ func main() {
 		if bar, err := ui.ByID[*ui.NavigationBar](w, "navbar"); err == nil {
 			bar.OnSelect(show)
 		}
-		for j, id := range []string{"drawerButtons", "drawerInputs", "drawerSurfaces", "drawerFeedback", "drawerLayout"} {
+		for j, id := range []string{"drawerButtons", "drawerInputs", "drawerSurfaces", "drawerFeedback", "drawerLayout", "drawerMotion"} {
 			idx := j
 			if item, err := ui.ByID[*ui.NavigationItem](w, id); err == nil {
 				item.OnClick(func(ui.ClickEvent) {
@@ -170,6 +172,54 @@ func main() {
 				item.Label.Set(name)
 				item.Icon.Set([]string{"person", "star", "photo"}[i])
 			}
+		}
+
+		// The Motion page: the three dots travel the same distance and differ
+		// only in easing. Stops are kept so a second Play cancels the first run
+		// instead of leaving two tweens pulling the same Left property.
+		var easingStops []func()
+		playEasing := func() {
+			for _, stop := range easingStops {
+				stop()
+			}
+			easingStops = easingStops[:0]
+			for _, d := range []struct {
+				id   string
+				ease ui.Easing
+			}{
+				{"dotLinear", ui.Linear},
+				{"dotStandard", ui.Standard},
+				{"dotEmphasized", ui.Emphasized},
+			} {
+				dot, err := ui.ByID[*ui.Positioned](w, d.id)
+				if err != nil {
+					continue
+				}
+				dot.Left.Set(0)
+				easingStops = append(easingStops, app.Animate(&dot.Left, 264, 700*time.Millisecond, d.ease))
+			}
+		}
+		if b, err := ui.ByID[*ui.Button](w, "playEasing"); err == nil {
+			b.OnClick(func(ui.ClickEvent) { playEasing() })
+		}
+
+		// One value drives the slider and the progress ring, so the Motion page
+		// shows that any numeric Prop can be animated.
+		valueUp := false
+		if b, err := ui.ByID[*ui.Button](w, "playValue"); err == nil {
+			b.OnClick(func(ui.ClickEvent) {
+				valueUp = !valueUp
+				to := 0.9
+				if !valueUp {
+					to = 0.15
+				}
+				if sl, err := ui.ByID[*ui.Slider](w, "motionSlider"); err == nil {
+					app.Animate(&sl.Value, to, 700*time.Millisecond, ui.Standard)
+				}
+				if pg, err := ui.ByID[*ui.CircularProgress](w, "motionProgress"); err == nil {
+					app.Animate(&pg.Value, to, 900*time.Millisecond, ui.Emphasized)
+				}
+			})
 		}
 
 		// The switch on the Layout page is the second entry point to the theme.

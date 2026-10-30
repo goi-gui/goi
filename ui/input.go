@@ -66,6 +66,10 @@ type interactor struct {
 
 	viewportW, viewportH float64
 
+	// textSel is the selectable Text the pointer last selected, so Ctrl+C can
+	// copy it after the pointer is released.
+	textSel *tree.Text
+
 	// Fling keeps a wheel or touchpad scroll moving after the gesture ends.
 	flingNode tree.Node
 	flingV    float64 // logical pixels per second
@@ -110,6 +114,12 @@ func clickable(n tree.Node) bool {
 
 func (i *interactor) MouseMove(x, y float64) {
 	i.cursorX, i.cursorY = x, y
+	if i.selecting && i.textSel != nil {
+		i.textSel.SelB = i.textIndexAt(i.textSel, x, y)
+		i.textSel.Base().MarkDirty(tree.DirtyPaint)
+		i.markDirty()
+		return
+	}
 	if i.selecting && i.textField != nil {
 		i.dragX = x
 		i.caretFromPoint(i.textField, x, true)
@@ -153,6 +163,7 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 	i.scrolled = false
 	i.textField = nil
 	i.selecting = false
+	i.clearTextSelection()
 	i.dragFromX, i.dragFromY = x, y
 	i.scrollNode = nil
 	field := fieldAt(hit)
@@ -163,6 +174,22 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 		if i.scrollNode != nil {
 			i.scrollFrom = i.scrollNode.Base().ScrollOffset()
 		}
+	}
+
+	// A selectable Text starts a selection drag before any container click:
+	// reading a paragraph should not also press the card around it. The press
+	// consumes the gesture, so MouseUp has nothing to activate.
+	if t := selectableTextAt(hit); t != nil && button == 0 {
+		i.setFocus(nil)
+		i.setKbd(nil)
+		i.scrollNode = nil
+		idx := i.textIndexAt(t, x, y)
+		t.SelA, t.SelB = idx, idx
+		i.textSel = t
+		i.selecting = true
+		t.Base().MarkDirty(tree.DirtyPaint)
+		i.markDirty()
+		return
 	}
 
 	// Text fields take focus wherever the press lands inside them. Only the
@@ -514,6 +541,15 @@ func (i *interactor) Key(k platform.Key, mods platform.Mods) {
 func (i *interactor) key(k tree.Key, mods tree.Mods) {
 	if i.app.win != nil {
 		i.app.win.keys.Emit(tree.KeyEvent{Key: k, Mods: mods})
+	}
+	// A static text selection is not an editable focus, so its two shortcuts
+	// are handled before the field path.
+	if mods.Control() && k == tree.KeyC && i.copyTextSelection() {
+		return
+	}
+	if k == tree.KeyEscape && i.textSel != nil {
+		i.clearTextSelection()
+		return
 	}
 	if k == tree.KeyTab {
 		i.tabFocus(mods.Shift)
@@ -878,6 +914,7 @@ func (i *interactor) setKbd(n tree.Node) {
 	if old := i.kbd; old != nil {
 		if c := comp(old); c != nil {
 			c.Focused = false
+			c.FocusRing = false
 			c.Base().MarkDirty(tree.DirtyPaint)
 		}
 	}
@@ -921,6 +958,12 @@ func (i *interactor) tabFocus(back bool) {
 		}
 	}
 	i.setKbd(list[next])
+	// Tab is keyboard focus, so it is the one path that asks for the M3 ring.
+	if c := comp(list[next]); c != nil {
+		c.FocusRing = true
+		c.Base().MarkDirty(tree.DirtyPaint)
+	}
+	i.markDirty()
 }
 
 // activateKey presses the focused node, the way a click would. Coordinates are

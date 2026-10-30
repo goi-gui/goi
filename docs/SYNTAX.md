@@ -123,7 +123,7 @@ by `:` and a child element when it is followed by `{`, so `name: value` and
 | `Grid` | yes | `columns`, `spacing`, `align` |
 | `Rectangle` | no | — |
 | `Image` | no | `src`, `fit` (`cover`, `contain`, `fill`), plus `radius` |
-| `Text` | no | `text`, `fontSize`, `weight`, `color`, `align`, `wrap`, `role` |
+| `Text` | no | `text`, `fontSize`, `weight`, `color`, `align`, `wrap`, `role`, `selectable` |
 
 `role` selects a Material 3 type-scale role (`displayLarge` … `labelSmall`) and
 sets size, line height and weight together; `fontSize` and `weight` override it.

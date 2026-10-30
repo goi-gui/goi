@@ -248,14 +248,15 @@ func newNode(name string) Node {
 		}
 	case "Text":
 		return &Text{
-			NodeBase: b(),
-			Text:     newProp(nil, "text", DirtyLayout, ""),
-			FontSize: newProp(nil, "fontSize", DirtyLayout, 16.0),
-			Color:    newProp(nil, "color", DirtyPaint, uint32(0x000000FF)),
-			Align:    newProp(nil, "align", DirtyLayout, "start"),
-			Wrap:     newProp(nil, "wrap", DirtyLayout, false),
-			Role:     newProp(nil, "role", DirtyLayout, "bodyMedium"),
-			Weight:   newProp(nil, "weight", DirtyLayout, 0.0),
+			NodeBase:   b(),
+			Text:       newProp(nil, "text", DirtyLayout, ""),
+			FontSize:   newProp(nil, "fontSize", DirtyLayout, 16.0),
+			Color:      newProp(nil, "color", DirtyPaint, uint32(0x000000FF)),
+			Align:      newProp(nil, "align", DirtyLayout, "start"),
+			Wrap:       newProp(nil, "wrap", DirtyLayout, false),
+			Role:       newProp(nil, "role", DirtyLayout, "bodyMedium"),
+			Weight:     newProp(nil, "weight", DirtyLayout, 0.0),
+			Selectable: newProp(nil, "selectable", DirtyPaint, false),
 		}
 	}
 	if c := newM3Component(name); c != nil {

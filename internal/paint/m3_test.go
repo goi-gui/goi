@@ -572,7 +572,11 @@ func TestFocusedButtonDrawsRing(t *testing.T) {
 		t.Fatal("an unfocused button has a ring")
 	}
 	btn.(*tree.Button).M3().Focused = true
+	if focused() {
+		t.Fatal("a pointer-focused button drew the keyboard ring")
+	}
+	btn.(*tree.Button).M3().FocusRing = true
 	if !focused() {
-		t.Fatal("a focused button has no ring")
+		t.Fatal("a keyboard-focused button has no ring")
 	}
 }
