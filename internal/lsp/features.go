@@ -11,6 +11,7 @@ import (
 	"github.com/ksckaan1/goi/internal/m3"
 	"github.com/ksckaan1/goi/internal/schema"
 	"github.com/ksckaan1/goi/internal/syntax"
+	"github.com/ksckaan1/goi/internal/text"
 )
 
 // diagnostic is one published problem, in LSP shape.
@@ -136,6 +137,9 @@ type completionResult struct {
 	Kind          int    `json:"kind"`
 	Detail        string `json:"detail,omitempty"`
 	Documentation *doc   `json:"documentation,omitempty"`
+	// InsertText differs from Label only when the label cannot be typed bare,
+	// such as an icon name that starts with a digit (`"10k"`).
+	InsertText string `json:"insertText,omitempty"`
 }
 
 type doc struct {
@@ -150,6 +154,7 @@ const (
 	kindProperty   = 10
 	kindKeyword    = 14
 	kindColor      = 16
+	kindValue      = 12
 	kindEnumMember = 20
 	kindConstant   = 21
 )
@@ -178,6 +183,7 @@ func (s *Server) completion(raw json.RawMessage) any {
 	}
 
 	items := []completionResult{}
+	incomplete := false
 	file, _ := syntax.Parse(d.text)
 	prop, inMap := enclosingProperty(file, d.text, off)
 
@@ -186,7 +192,9 @@ func (s *Server) completion(raw json.RawMessage) any {
 	case inMap:
 		items = append(items, breakpointItems()...)
 	case prop != "":
-		items = append(items, valueItems(file, prop, d.text, off)...)
+		values, cut := valueItems(file, prop, d.text, off, prefix, insideString(d.text, off))
+		items = append(items, values...)
+		incomplete = cut
 	}
 
 	// Member position: the line so far is only whitespace, or we are right
@@ -197,32 +205,35 @@ func (s *Server) completion(raw json.RawMessage) any {
 	} else if prop == "" && !inMap {
 		items = append(items, elementItems()...)
 	}
-	return completionList{Items: dedupe(items, prefix)}
+	return completionList{Items: dedupe(items, prefix), IsIncomplete: incomplete}
 }
 
-// valueItems offers the values a property accepts.
-func valueItems(file *syntax.File, prop string, src []byte, off int) []completionResult {
+// valueItems offers the values a property accepts. The bool reports that the
+// list was cut short, so the client asks again as the user types.
+func valueItems(file *syntax.File, prop string, src []byte, off int, prefix string, inString bool) ([]completionResult, bool) {
 	elName := enclosingElementName(file, src, off)
 	el, ok := schema.Lookup(elName)
 	if !ok {
-		return nil
+		return nil, false
 	}
-	pd := el.Prop(prop)
 	var out []completionResult
-	if pd != nil {
-		switch pd.Type {
-		case schema.TypeBool:
+	var truncated bool
+	if pd := el.Prop(prop); pd != nil {
+		switch {
+		case isIconProp(prop) && pd.Type == schema.TypeString:
+			out, truncated = iconItems(prefix, inString)
+		case pd.Type == schema.TypeBool:
 			for _, v := range []string{"true", "false"} {
 				out = append(out, completionResult{Label: v, Kind: kindKeyword, Detail: "bool"})
 			}
-		case schema.TypeEnum:
+		case pd.Type == schema.TypeEnum:
 			for _, v := range pd.Enum {
 				out = append(out, completionResult{
 					Label: v, Kind: kindEnumMember,
 					Detail: prop + ": " + v,
 				})
 			}
-		case schema.TypeColor:
+		case pd.Type == schema.TypeColor:
 			for _, v := range m3.ColorRoles() {
 				out = append(out, completionResult{
 					Label: v, Kind: kindColor,
@@ -231,7 +242,7 @@ func valueItems(file *syntax.File, prop string, src []byte, off int) []completio
 						Value: "Theme role: follows the scheme. A `#rrggbb` literal stays fixed."},
 				})
 			}
-		case schema.TypeID:
+		case pd.Type == schema.TypeID:
 			for _, id := range fileIDs(file) {
 				out = append(out, completionResult{Label: id, Kind: kindConstant, Detail: "id"})
 			}
@@ -243,7 +254,67 @@ func valueItems(file *syntax.File, prop string, src []byte, off int) []completio
 			Label: "$" + p.Name, Kind: kindVariable, Detail: "param",
 		})
 	}
-	return out
+	return out, truncated
+}
+
+// maxIconItems caps one icon list. The font names ~4300 icons; sending them all
+// on every keystroke is a lot of JSON, and IsIncomplete makes the client ask
+// again with a longer prefix.
+const maxIconItems = 200
+
+// isIconProp reports whether a property takes a Material Symbols ligature. The
+// name is the only signal the schema carries: every icon property is spelled
+// `icon`, `iconOn`, `iconOff`, `trailingIcon` and so on.
+func isIconProp(name string) bool {
+	return strings.Contains(strings.ToLower(name), "icon")
+}
+
+// iconItems lists icon names the font can draw, filtered by what has been
+// typed. A name that starts with a digit is quoted, because `icon: 10k` would
+// lex as a number followed by a word.
+func iconItems(prefix string, inString bool) ([]completionResult, bool) {
+	prefix = strings.ToLower(prefix)
+	out := make([]completionResult, 0, maxIconItems)
+	for _, name := range text.IconNames() {
+		if prefix != "" && !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		if len(out) == maxIconItems {
+			return out, true
+		}
+		item := completionResult{
+			Label:  name,
+			Kind:   kindValue,
+			Detail: "Material Symbols icon",
+		}
+		if !inString && name[0] >= '0' && name[0] <= '9' {
+			item.InsertText = `"` + name + `"`
+		}
+		out = append(out, item)
+	}
+	return out, false
+}
+
+// insideString reports whether the cursor sits in a string literal on its line,
+// so an icon name is inserted without adding quotes.
+func insideString(src []byte, off int) bool {
+	if off > len(src) {
+		off = len(src)
+	}
+	start := 0
+	if i := lastIndexByte(src[:off], '\n'); i >= 0 {
+		start = i + 1
+	}
+	quotes := 0
+	for i := start; i < off; i++ {
+		switch src[i] {
+		case '\\':
+			i++
+		case '"':
+			quotes++
+		}
+	}
+	return quotes%2 == 1
 }
 
 // memberItems offers properties and child elements inside an element body.
@@ -355,10 +426,14 @@ func (s *Server) hover(raw json.RawMessage) any {
 			"range":    idx.at(start, end),
 		}
 	}
-	// A value in an enum or colour position explains itself.
+	// A value in an enum, icon or colour position explains itself.
 	if start, end, prop, value := valueAt(file, off); value != "" {
+		summary := fmt.Sprintf("`%s` for `%s`", value, prop.Name)
+		if isIconProp(prop.Name) {
+			summary = "Material Symbols icon `" + value + "`"
+		}
 		return map[string]any{
-			"contents": doc{Kind: "markdown", Value: fmt.Sprintf("`%s` for `%s`", value, prop.Name)},
+			"contents": doc{Kind: "markdown", Value: summary},
 			"range":    idx.at(start, end),
 		}
 	}

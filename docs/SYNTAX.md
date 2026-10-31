@@ -183,6 +183,10 @@ They share one vocabulary: `label`, `supporting`, `text`, `placeholder`, `icon`,
 `internal/componentdef` is the single table that the schema and the node tree
 both read, so an element can never validate without existing.
 
+The language server completes icon names from the embedded font, so the list is
+whatever `Library.IconFace` can draw. A name that starts with a digit (`10k`,
+`3d`) needs quotes; every other name is a bare identifier (`icon: add`).
+
 `Switch` also takes `iconOn` and `iconOff`, which override `icon` for the
 checked and unchecked state. Any of them empty means no glyph in the thumb; a
 switch with an icon keeps the larger thumb in both states so the glyph has room,

@@ -13,6 +13,7 @@ language server for `.goi` design files.
 | Outline panel (Window › Column › Card › …) | `languages/goi/outline.scm` |
 | Language name, `.goi` suffix, `//` comments | `languages/goi/config.toml` |
 | Diagnostics, completion, hover, go-to-definition | `cmd/goipls` |
+| Icon name completion (Material Symbols) | `cmd/goipls` + `internal/text` |
 
 Element names read as types, property names as fields, and value identifiers
 (`filled`, `primary`, `dark_mode`) as constants, because those are names the
@@ -22,7 +23,10 @@ The language server is the same parser and schema the runtime uses, so a design
 that draws also type-checks: diagnostics land on the property they blame, even
 when it lives in an imported fragment. Completion knows the element you are
 inside, the values a property accepts, the theme's colour roles and the `id`s the
-file declares. `Ctrl`-click on an `import` path or its alias opens the fragment.
+file declares. An `icon`/`trailingIcon`/`iconOn`/`iconOff` value completes to the
+names the embedded Material Symbols font actually has, read out of the woff, so
+the list cannot drift from what draws. `Ctrl`-click on an `import` path or its
+alias opens the fragment.
 
 ## Language server
 

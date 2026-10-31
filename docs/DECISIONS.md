@@ -666,3 +666,13 @@ batch. This is what the display list will feed.
   Deliberately absent: code actions, rename, formatting and semantic tokens.
   Formatting would need to rewrite a file the parser keeps verbatim, and the
   editor already has the grammar.
+- **The icon list is read from the font, not vendored.** Material Symbols stores
+  each icon name as a ligature, so `text.IconNames` walks the GSUB table of the
+  embedded woff, maps every component glyph back through the cmap and spells the
+  name (4300+ of them, ~20 ms once). A checked-in list would drift the moment the
+  font is updated and would need a human to re-copy it; the walk keeps
+  completion honest by construction. Names are lowercase ASCII, so they insert
+  as bare identifiers; the handful that start with a digit (`10k`) get quotes
+  because `icon: 10k` would lex as a number followed by a word. The list is
+  capped per response (200, `isIncomplete`) so one keystroke does not ship every
+  name to the editor.

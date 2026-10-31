@@ -315,6 +315,86 @@ func TestCompletionOffersBreakpointsInsideMap(t *testing.T) {
 	}
 }
 
+func TestCompletionOffersIconNames(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tIconButton {\n\t\ticon: ho\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "icon: ho", len("icon: ho")),
+	})
+	var list completionList
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	var home bool
+	for _, it := range list.Items {
+		if !strings.HasPrefix(it.Label, "ho") {
+			t.Fatalf("unfiltered item %q", it.Label)
+		}
+		if it.Label == "home" {
+			home = true
+		}
+	}
+	if !home {
+		t.Fatalf("home missing from %d items", len(list.Items))
+	}
+}
+
+// TestIconItemsThatNeedQuotes keeps `icon: 10k` from lexing as a number.
+func TestIconItemsThatNeedQuotes(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tIconButton {\n\t\ticon: 10\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "icon: 10", len("icon: 10")),
+	})
+	var list completionList
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, it := range list.Items {
+		if it.Label == "10k" {
+			found = true
+			if it.InsertText != `"10k"` {
+				t.Fatalf("insertText = %q, want a quoted name", it.InsertText)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("10k missing from %d items", len(list.Items))
+	}
+}
+
+// TestIconListIsCapped keeps one keystroke from carrying every icon name.
+func TestIconListIsCapped(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tIconButton {\n\t\ticon: \n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "icon: ", len("icon: ")),
+	})
+	var list completionList
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Items) != maxIconItems || !list.IsIncomplete {
+		t.Fatalf("items = %d, incomplete = %v, want %d and true", len(list.Items), list.IsIncomplete, maxIconItems)
+	}
+}
+
 func TestHoverDocumentsAProperty(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()
