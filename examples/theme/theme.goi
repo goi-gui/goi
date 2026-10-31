@@ -3,7 +3,7 @@ Window {
 	id: main
 	title: "Theme"
 	width: 560
-	height: 620
+	height: 740
 
 	Column {
 		spacing: 0
@@ -48,6 +48,7 @@ Window {
 
 				Column {
 					spacing: 12
+					paddingBottom: 12
 
 					Text { text: "Roles" role: "titleSmall" }
 
