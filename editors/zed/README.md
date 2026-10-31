@@ -29,24 +29,28 @@ editors/zed/
 
 ## Install locally
 
-The grammar is cloned from a git URL, so the grammar directory must be its own
-repository. It already is; before installing, make sure the commit in
-`extension.toml` matches:
-
 ```sh
-cd editors/zed/tree-sitter-goi
-git rev-parse --short HEAD     # must equal `rev` under [grammars.goi]
+editors/zed/install.sh
 ```
 
-Then in Zed: `zed: install dev extension` and pick `editors/zed`.
+Then restart Zed. The status bar of a `.goi` file should read **Goi**.
 
-Rebuild the extension wasm after changing `src/lib.rs`:
+The script compiles the grammar and the extension wasm itself and drops the
+result into Zed's `extensions/installed/goi`. It exists because
+`zed: install dev extension` currently fails here with
+`compiling grammar 'goi'`: Zed asks clang for the deprecated `wasm32-wasi`
+triple while its bundled wasi-sdk only ships `wasm32-wasip1`. The script also
+creates the `wasm32-wasi` sysroot symlinks that fix that mismatch, so a later
+`install dev extension` may work too.
+
+Override the paths if yours differ:
 
 ```sh
-cd editors/zed
-cargo build --release --target wasm32-wasip2
-cp target/wasm32-wasip2/release/goi.wasm extension.wasm
+WASI_SDK_PATH=/path/to/wasi-sdk ZED_EXTENSIONS=~/.local/share/zed/extensions editors/zed/install.sh
 ```
+
+Re-run the script after editing `languages/goi/*.scm`, `grammar.js` or
+`src/lib.rs`.
 
 ## Regenerating the grammar
 

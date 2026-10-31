@@ -12,14 +12,10 @@ capabilities = []
 kind = "Rust"
 version = "0.1.0"
 
-# Local development: Zed clones the grammar with a file:// URL, so the folder
-# below must be its own git repository with the commit named in `rev`.
-# To publish, replace this block with the grammar's real git URL:
-#
-#   [grammars.goi]
-#   repository = "https://github.com/ksckaan1/goi"
-#   path = "editors/zed/tree-sitter-goi"
-#   rev = "<commit sha>"
+# The grammar lives in this repository, so `path` points at it inside the
+# clone. For local development the repository is a file:// URL; replace it with
+# the https:// URL when publishing.
 [grammars.goi]
-repository = "file:///home/ksckaan1/Documents/Dev/goui/editors/zed/tree-sitter-goi"
-rev = "70e9dfe"
+repository = "file:///home/ksckaan1/Documents/Dev/goui"
+path = "editors/zed/tree-sitter-goi"
+rev = "ad2bc25"
