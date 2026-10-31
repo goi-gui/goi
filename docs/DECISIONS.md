@@ -653,3 +653,16 @@ batch. This is what the display list will feed.
   the composition (the protocol's cursor range) is drawn as one run. The previous
   phase notes that say "Checkbox deferred" are superseded: Checkbox,
   RadioButton, Switch and the rest of the component set now exist.
+- **`goipls` is the runtime's own parser and schema behind a stdio server.** The
+  language server (`cmd/goipls`, features in `internal/lsp`) imports `syntax`,
+  `asset` and `schema` instead of re-deriving the vocabulary, so a design that
+  draws also type-checks; there is no second list to keep in sync. Validation
+  goes through `asset.Load` over an overlay FS: the buffer being edited is
+  served from memory, its imports still resolve from disk, and each diagnostic
+  keeps the `Src` it was produced with, so a typo in a fragment is published on
+  the fragment. The protocol loop is single-threaded, syncs whole documents
+  (a design file is small) and converts byte offsets to UTF-16 columns through
+  one line index, because a Turkish label or an emoji makes the two disagree.
+  Deliberately absent: code actions, rename, formatting and semantic tokens.
+  Formatting would need to rewrite a file the parser keeps verbatim, and the
+  editor already has the grammar.

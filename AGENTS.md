@@ -17,7 +17,7 @@ window; Go finds elements by id and attaches behaviour.
 go build -ldflags=-linkmode=internal ./...   # required on Linux
 go vet ./... && go vet -tags x11 ./...       # CI runs both on Linux
 gofmt -l .                                   # CI fails on any output
-go test -race ./ui ./internal/syntax ./internal/schema ./internal/layout ./internal/paint ./internal/text ./internal/hotreload
+go test -race ./ui ./internal/syntax ./internal/schema ./internal/layout ./internal/paint ./internal/text ./internal/hotreload ./internal/lsp
 go test ./...                                # also fine locally
 go run ./cmd/goicheck -layout -ops examples/*/*.goi   # headless render check
 ```

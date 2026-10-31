@@ -1,0 +1,427 @@
+package lsp
+
+import (
+	"bufio"
+	"encoding/json"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+)
+
+// client drives a server over in-memory pipes, so the tests speak the real
+// protocol instead of calling handlers directly.
+//
+// A reader goroutine drains everything the server writes into a queue. Without
+// it a notification the test is not waiting for (diagnostics) would block the
+// server inside io.Pipe and wedge the next request.
+type client struct {
+	t    *testing.T
+	to   io.Writer
+	next int
+
+	mu    sync.Mutex
+	queue []*message
+}
+
+func newClient(t *testing.T) *client {
+	t.Helper()
+	c2sR, c2sW := io.Pipe()
+	s2cR, s2cW := io.Pipe()
+	srv := New(c2sR, s2cW)
+	go func() { _ = srv.Run() }()
+
+	c := &client{t: t, to: c2sW}
+	go func() {
+		r := bufio.NewReader(s2cR)
+		for {
+			m, err := readMessage(r)
+			if err != nil {
+				return
+			}
+			c.mu.Lock()
+			c.queue = append(c.queue, m)
+			c.mu.Unlock()
+		}
+	}()
+	t.Cleanup(func() {
+		_ = c2sW.Close()
+		_ = s2cW.Close()
+	})
+	return c
+}
+
+// send writes a message.
+func (c *client) send(m *message) {
+	c.t.Helper()
+	if err := writeMessage(c.to, m); err != nil {
+		c.t.Fatalf("write: %v", err)
+	}
+}
+
+// notify sends a notification.
+func (c *client) notify(method string, params any) {
+	c.t.Helper()
+	body, err := json.Marshal(params)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	c.send(&message{Method: method, Params: body})
+}
+
+// request sends a request and returns the decoded result, skipping the
+// notifications that arrive in between.
+func (c *client) request(method string, params any) json.RawMessage {
+	c.t.Helper()
+	body, err := json.Marshal(params)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	c.next++
+	id, _ := json.Marshal(c.next)
+	c.send(&message{ID: id, Method: method, Params: body})
+	for {
+		m := c.nextMatching(func(m *message) bool { return string(m.ID) == string(id) })
+		if m.Error != nil {
+			c.t.Fatalf("%s: %s", method, m.Error.Message)
+		}
+		raw, err := json.Marshal(m.Result)
+		if err != nil {
+			c.t.Fatal(err)
+		}
+		return raw
+	}
+}
+
+// nextMatching waits for a queued message that matches, dropping the rest.
+func (c *client) nextMatching(want func(*message) bool) *message {
+	c.t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		c.mu.Lock()
+		for i, m := range c.queue {
+			if want(m) {
+				c.queue = append(c.queue[:i], c.queue[i+1:]...)
+				c.mu.Unlock()
+				return m
+			}
+		}
+		c.mu.Unlock()
+		if time.Now().After(deadline) {
+			c.t.Fatal("timed out waiting for a message")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// diagnostics waits for publishDiagnostics for uri.
+func (c *client) diagnostics(uri string) []diagnostic {
+	c.t.Helper()
+	m := c.nextMatching(func(m *message) bool {
+		if m.Method != "textDocument/publishDiagnostics" {
+			return false
+		}
+		var p struct {
+			URI string `json:"uri"`
+		}
+		return json.Unmarshal(m.Params, &p) == nil && p.URI == uri
+	})
+	var p struct {
+		Diagnostics []diagnostic `json:"diagnostics"`
+	}
+	if err := json.Unmarshal(m.Params, &p); err != nil {
+		c.t.Fatal(err)
+	}
+	return p.Diagnostics
+}
+
+// writeDesign writes src into dir/name and returns its URI.
+func writeDesign(t *testing.T, dir, name, src string) string {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return pathToURI(filepath.Join(dir, name))
+}
+
+// openDoc opens a document on the server.
+func (c *client) openDoc(uri, text string) {
+	c.notify("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": text},
+	})
+}
+
+// changeDoc sends a full-sync change, the only mode the server advertises.
+func (c *client) changeDoc(uri, text string) {
+	c.notify("textDocument/didChange", map[string]any{
+		"textDocument":   map[string]any{"uri": uri, "version": 2},
+		"contentChanges": []map[string]any{{"text": text}},
+	})
+}
+
+// pos converts a byte offset in src into a position.
+func pos(src string, off int) position {
+	return newLineIndex([]byte(src)).position(off)
+}
+
+// at finds the position of the first occurrence of needle in src.
+func at(t *testing.T, src, needle string, delta int) position {
+	t.Helper()
+	i := strings.Index(src, needle)
+	if i < 0 {
+		t.Fatalf("%q not in source", needle)
+	}
+	return pos(src, i+delta)
+}
+
+func TestDiagnosticsReportUnknownProperty(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tid: main\n\tnope: 1\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	diags := c.diagnostics(uri)
+	if len(diags) != 1 {
+		t.Fatalf("diagnostics = %v, want one", diags)
+	}
+	if !strings.Contains(diags[0].Message, "unknown property") {
+		t.Fatalf("message = %q", diags[0].Message)
+	}
+	// The range must cover the offending property, not the whole file.
+	if diags[0].Range.Start.Line != 2 || diags[0].Range.Start.Character != 1 {
+		t.Fatalf("range start = %+v, want line 2 col 1", diags[0].Range.Start)
+	}
+}
+
+// TestDiagnosticsClearWhenFixed guards the empty-list publish: a client keeps the
+// last squiggle until it is told the file is clean.
+func TestDiagnosticsClearWhenFixed(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tnope: 1\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	if diags := c.diagnostics(uri); len(diags) != 1 {
+		t.Fatalf("diagnostics = %v, want one", diags)
+	}
+	c.changeDoc(uri, "Window {\n\tid: main\n}\n")
+	if diags := c.diagnostics(uri); len(diags) != 0 {
+		t.Fatalf("stale diagnostics = %v", diags)
+	}
+}
+
+func TestDiagnosticsLandInTheFragment(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	frag := "param title: \"\"\nColumn {\n\tbogus: 1\n}\n"
+	fragURI := writeDesign(t, dir, "Side.goi", frag)
+	src := "import \"./Side.goi\" as Side\nWindow {\n\tid: main\n\tSide { title: \"x\" }\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	diags := c.diagnostics(fragURI)
+	if len(diags) != 1 || !strings.Contains(diags[0].Message, "unknown property") {
+		t.Fatalf("fragment diagnostics = %v", diags)
+	}
+	if diags[0].Range.Start.Line != 2 {
+		t.Fatalf("range start = %+v, want line 2", diags[0].Range.Start)
+	}
+}
+
+func TestCompletionOffersPropertiesAndChildren(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tColumn {\n\t\t\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "\t\t\n", 2),
+	})
+	var list completionList
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	labels := map[string]bool{}
+	for _, it := range list.Items {
+		labels[it.Label] = true
+	}
+	if !labels["spacing"] || !labels["padding"] {
+		t.Fatalf("properties missing: %v", list.Items)
+	}
+	if !labels["Button"] || !labels["Text"] {
+		t.Fatalf("child elements missing: %v", list.Items)
+	}
+}
+
+func TestCompletionOffersEnumValues(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tButton {\n\t\tvariant: \n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "variant: ", len("variant: ")),
+	})
+	var list completionList
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	var tonal bool
+	for _, it := range list.Items {
+		if it.Label == "tonal" {
+			tonal = true
+		}
+		if it.Label == "spacing" {
+			t.Fatal("a property was offered in value position")
+		}
+	}
+	if !tonal {
+		t.Fatalf("variant values missing: %v", list.Items)
+	}
+}
+
+func TestCompletionOffersBreakpointsInsideMap(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tColumn {\n\t\tpadding: { \n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "padding: { ", len("padding: { ")),
+	})
+	var list completionList
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	var base bool
+	for _, it := range list.Items {
+		if it.Label == "base" {
+			base = true
+		}
+	}
+	if !base {
+		t.Fatalf("breakpoints missing: %v", list.Items)
+	}
+}
+
+func TestHoverDocumentsAProperty(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tColumn {\n\t\tspacing: 8\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/hover", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "spacing", 2),
+	})
+	var h struct {
+		Contents doc `json:"contents"`
+	}
+	if err := json.Unmarshal(res, &h); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.Contents.Value, "spacing") || !strings.Contains(h.Contents.Value, "number") {
+		t.Fatalf("hover = %q", h.Contents.Value)
+	}
+}
+
+func TestSymbolsMirrorTheElementTree(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tColumn {\n\t\tCard {\n\t\t\tText { text: \"x\" }\n\t\t}\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/documentSymbol", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+	})
+	var syms []symbol
+	if err := json.Unmarshal(res, &syms); err != nil {
+		t.Fatal(err)
+	}
+	if len(syms) != 1 || syms[0].Name != "Window" {
+		t.Fatalf("symbols = %+v", syms)
+	}
+	if len(syms[0].Children) != 1 || syms[0].Children[0].Name != "Column" {
+		t.Fatalf("children = %+v", syms[0].Children)
+	}
+	grand := syms[0].Children[0].Children
+	if len(grand) != 1 || grand[0].Name != "Card" || len(grand[0].Children) != 1 {
+		t.Fatalf("nested = %+v", grand)
+	}
+}
+
+func TestDefinitionFollowsAnImport(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	fragURI := writeDesign(t, dir, "Side.goi", "param title: \"\"\nColumn { }\n")
+	src := "import \"./Side.goi\" as Side\nWindow {\n\tid: main\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/definition", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "Side.goi", 3),
+	})
+	var locs []location
+	if err := json.Unmarshal(res, &locs); err != nil {
+		t.Fatal(err)
+	}
+	if len(locs) != 1 || locs[0].URI != fragURI {
+		t.Fatalf("locations = %+v, want %s", locs, fragURI)
+	}
+}
+
+func TestFoldingCoversElements(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tColumn {\n\t\tid: a\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/foldingRange", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+	})
+	var fr []foldingRange
+	if err := json.Unmarshal(res, &fr); err != nil {
+		t.Fatal(err)
+	}
+	if len(fr) != 2 {
+		t.Fatalf("folding ranges = %+v, want two elements", fr)
+	}
+	if fr[0].StartLine != 0 || fr[0].EndLine != 4 {
+		t.Fatalf("outer range = %+v", fr[0])
+	}
+}
+
+// TestPositionsUseUTF16 keeps the byte-offset to column conversion honest: a
+// Turkish letter and an emoji are two UTF-16 units apart from their byte length.
+func TestPositionsUseUTF16(t *testing.T) {
+	src := "Text { text: \"şğü😀\" }\n"
+	idx := newLineIndex([]byte(src))
+	off := strings.Index(src, "}") // the brace after the string
+	p := idx.position(off)
+	if p.Line != 0 {
+		t.Fatalf("line = %d", p.Line)
+	}
+	// The prefix before the brace is 20 runes; the emoji counts as two UTF-16
+	// units, so the column is 21.
+	if p.Character != 21 {
+		t.Fatalf("character = %d, want 21", p.Character)
+	}
+	if got := idx.offset(p); got != off {
+		t.Fatalf("round trip = %d, want %d", got, off)
+	}
+}

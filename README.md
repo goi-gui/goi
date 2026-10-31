@@ -162,8 +162,16 @@ go run ./cmd/goicheck -layout examples/*/*.goi  # syntax plus a headless layout 
 ## Editor support
 
 `editors/zed` is a Zed extension for `.goi`: syntax highlighting, brackets,
-indentation and an element outline. See
-[editors/zed/README.md](editors/zed/README.md) for the local install steps.
+indentation and an element outline. It starts `goipls`, the language server in
+`cmd/goipls`, which adds diagnostics (including errors inside an imported
+fragment), completion for elements, properties, values and ids, hover docs, a
+document outline and go-to-definition for imports:
+
+```sh
+go install github.com/ksckaan1/goi/cmd/goipls@latest
+```
+
+See [editors/zed/README.md](editors/zed/README.md) for the local install steps.
 
 See [docs/components.md](docs/components.md) for every element with its
 properties and Go examples, and [docs/SYNTAX.md](docs/SYNTAX.md),

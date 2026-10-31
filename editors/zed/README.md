@@ -1,7 +1,7 @@
 # goi for Zed
 
-Syntax highlighting, bracket matching, indentation and an element outline for
-`.goi` design files.
+Syntax highlighting, bracket matching, indentation, an element outline and a
+language server for `.goi` design files.
 
 ## What it gives you
 
@@ -12,20 +12,46 @@ Syntax highlighting, bracket matching, indentation and an element outline for
 | Indent after `{` | `languages/goi/indents.scm` |
 | Outline panel (Window › Column › Card › …) | `languages/goi/outline.scm` |
 | Language name, `.goi` suffix, `//` comments | `languages/goi/config.toml` |
+| Diagnostics, completion, hover, go-to-definition | `cmd/goipls` |
 
 Element names read as types, property names as fields, and value identifiers
 (`filled`, `primary`, `dark_mode`) as constants, because those are names the
 framework resolves rather than variables.
 
+The language server is the same parser and schema the runtime uses, so a design
+that draws also type-checks: diagnostics land on the property they blame, even
+when it lives in an imported fragment. Completion knows the element you are
+inside, the values a property accepts, the theme's colour roles and the `id`s the
+file declares. `Ctrl`-click on an `import` path or its alias opens the fragment.
+
+## Language server
+
+The server is a Go binary, so it is not bundled with the extension. Install it
+once and keep it on `PATH` (`~/.local/bin` is fine):
+
+```sh
+go install github.com/ksckaan1/goi/cmd/goipls@latest
+```
+
+If Zed shows "goipls not found on PATH" in the language server menu, that
+command has not run or its directory is not on `PATH`. Restart the server from
+that menu after reinstalling.
+
+`goipls` speaks Language Server Protocol over stdio, so any editor that can start
+a stdio server can use it.
+
 ## Layout
 
 ```
 editors/zed/
-├── extension.toml           # extension manifest, wires the grammar to the language
-├── src/lib.rs               # empty extension: no LSP, no commands
+├── extension.toml           # extension manifest: grammar + language server
+├── src/lib.rs               # starts goipls from PATH; no other commands
 ├── languages/goi/           # language config and tree-sitter queries
 └── tree-sitter-goi/         # the grammar (grammar.js + generated src/parser.c)
 ```
+
+The server itself is `cmd/goipls` (transport and features live in
+`internal/lsp`).
 
 ## Install locally
 
