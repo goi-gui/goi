@@ -159,6 +159,12 @@ go run ./cmd/goicheck -layout examples/*/*.goi  # syntax plus a headless layout 
 - Hot reload: edit the file, the window updates; broken files keep the last good
   tree and print diagnostics.
 
+## Editor support
+
+`editors/zed` is a Zed extension for `.goi`: syntax highlighting, brackets,
+indentation and an element outline. See
+[editors/zed/README.md](editors/zed/README.md) for the local install steps.
+
 See [docs/components.md](docs/components.md) for every element with its
 properties and Go examples, and [docs/SYNTAX.md](docs/SYNTAX.md),
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),

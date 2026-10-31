@@ -1,0 +1,569 @@
+==================
+Minimal window
+==================
+
+Window {
+	id: main
+	title: "x"
+}
+
+---
+
+(source_file
+  (element
+    (element_name)
+    (property
+      (identifier)
+      (value
+        (or_expression
+          (and_expression
+            (equality_expression
+              (comparison_expression
+                (sum_expression
+                  (term_expression
+                    (unary_expression
+                      (primary
+                        (identifier)))))))))))
+    (property
+      (identifier)
+      (value
+        (or_expression
+          (and_expression
+            (equality_expression
+              (comparison_expression
+                (sum_expression
+                  (term_expression
+                    (unary_expression
+                      (primary
+                        (string)))))))))))))
+
+==================
+Nested elements and inline properties
+==================
+
+Column { spacing: 8 align: center }
+
+---
+
+(source_file
+  (element
+    (element_name)
+    (property
+      (identifier)
+      (value
+        (or_expression
+          (and_expression
+            (equality_expression
+              (comparison_expression
+                (sum_expression
+                  (term_expression
+                    (unary_expression
+                      (primary
+                        (number)))))))))))
+    (property
+      (identifier)
+      (value
+        (or_expression
+          (and_expression
+            (equality_expression
+              (comparison_expression
+                (sum_expression
+                  (term_expression
+                    (unary_expression
+                      (primary
+                        (identifier)))))))))))))
+
+==================
+Numbers, colours, booleans
+==================
+
+Rectangle {
+	width: 10.5
+	height: -1
+	background: #6750A4
+	borderColor: #fff
+	visible: false
+	radius: 2
+}
+
+---
+
+(source_file
+  (element
+    (element_name)
+    (property
+      (identifier)
+      (value
+        (or_expression
+          (and_expression
+            (equality_expression
+              (comparison_expression
+                (sum_expression
+                  (term_expression
+                    (unary_expression
+                      (primary
+                        (number)))))))))))
+    (property
+      (identifier)
+      (value
+        (or_expression
+          (and_expression
+            (equality_expression
+              (comparison_expression
+                (sum_expression
+                  (term_expression
+                    (unary_expression
+                      (unary_expression
+                        (primary
+                          (number))))))))))))
+    (property
+      (identifier)
+      (value
+        (or_expression
+          (and_expression
+            (equality_expression
+              (comparison_expression
+                (sum_expression
+                  (term_expression
+                    (unary_expression
+                      (primary
+                        (color)))))))))))
+    (property
+      (identifier)
+      (value
+        (or_expression
+          (and_expression
+            (equality_expression
+              (comparison_expression
+                (sum_expression
+                  (term_expression
+                    (unary_expression
+                      (primary
+                        (color)))))))))))
+    (property
+      (identifier)
+      (value
+        (or_expression
+          (and_expression
+            (equality_expression
+              (comparison_expression
+                (sum_expression
+                  (term_expression
+                    (unary_expression
+                      (primary
+                        (boolean)))))))))))
+    (property
+      (identifier)
+      (value
+        (or_expression
+          (and_expression
+            (equality_expression
+              (comparison_expression
+                (sum_expression
+                  (term_expression
+                    (unary_expression
+                      (primary
+                        (number)))))))))))))
+
+==================
+Responsive map
+==================
+
+Column {
+	padding: { base: 8, md: 16, lg: 24 }
+}
+
+---
+
+(source_file
+  (element
+    (element_name)
+    (property
+      (identifier)
+      (value
+        (or_expression
+          (and_expression
+            (equality_expression
+              (comparison_expression
+                (sum_expression
+                  (term_expression
+                    (unary_expression
+                      (primary
+                        (map
+                          (map_entry
+                            (identifier)
+                            (value
+                              (or_expression
+                                (and_expression
+                                  (equality_expression
+                                    (comparison_expression
+                                      (sum_expression
+                                        (term_expression
+                                          (unary_expression
+                                            (primary
+                                              (number)))))))))))
+                          (map_entry
+                            (identifier)
+                            (value
+                              (or_expression
+                                (and_expression
+                                  (equality_expression
+                                    (comparison_expression
+                                      (sum_expression
+                                        (term_expression
+                                          (unary_expression
+                                            (primary
+                                              (number)))))))))))
+                          (map_entry
+                            (identifier)
+                            (value
+                              (or_expression
+                                (and_expression
+                                  (equality_expression
+                                    (comparison_expression
+                                      (sum_expression
+                                        (term_expression
+                                          (unary_expression
+                                            (primary
+                                              (number))))))))))))))))))))))))
+
+==================
+Percentages and arithmetic
+==================
+
+Row {
+	width: 50%
+	height: 50% - 8
+	margin: (side.width + 40) * 0.5
+}
+
+---
+
+(source_file
+  (element
+    (element_name)
+    (property
+      (identifier)
+      (value
+        (or_expression
+          (and_expression
+            (equality_expression
+              (comparison_expression
+                (sum_expression
+                  (term_expression
+                    (unary_expression
+                      (primary
+                        (percentage
+                          (number)
+                          (percent_sign))))))))))))
+    (property
+      (identifier)
+      (value
+        (or_expression
+          (and_expression
+            (equality_expression
+              (comparison_expression
+                (sum_expression
+                  (term_expression
+                    (unary_expression
+                      (primary
+                        (percentage
+                          (number)
+                          (percent_sign)))))
+                  (term_expression
+                    (unary_expression
+                      (primary
+                        (number)))))))))))
+    (property
+      (identifier)
+      (value
+        (or_expression
+          (and_expression
+            (equality_expression
+              (comparison_expression
+                (sum_expression
+                  (term_expression
+                    (unary_expression
+                      (primary
+                        (parenthesized_expression
+                          (value
+                            (or_expression
+                              (and_expression
+                                (equality_expression
+                                  (comparison_expression
+                                    (sum_expression
+                                      (term_expression
+                                        (unary_expression
+                                          (primary
+                                            (reference
+                                              (identifier)
+                                              (identifier)))))
+                                      (term_expression
+                                        (unary_expression
+                                          (primary
+                                            (number)))))))))))))
+                    (unary_expression
+                      (primary
+                        (number)))))))))))))
+
+==================
+References and conditionals
+==================
+
+TopAppBar {
+	trailingIcon: app.dark ? "light_mode" : "dark_mode"
+	width: window.width >= 640 ? 320 : 240
+}
+
+---
+
+(source_file
+  (element
+    (element_name)
+    (property
+      (identifier)
+      (value
+        (or_expression
+          (and_expression
+            (equality_expression
+              (comparison_expression
+                (sum_expression
+                  (term_expression
+                    (unary_expression
+                      (primary
+                        (reference
+                          (identifier)
+                          (identifier))))))))))
+        (conditional_question)
+        (value
+          (or_expression
+            (and_expression
+              (equality_expression
+                (comparison_expression
+                  (sum_expression
+                    (term_expression
+                      (unary_expression
+                        (primary
+                          (string))))))))))
+        (conditional_colon)
+        (value
+          (or_expression
+            (and_expression
+              (equality_expression
+                (comparison_expression
+                  (sum_expression
+                    (term_expression
+                      (unary_expression
+                        (primary
+                          (string))))))))))))
+    (property
+      (identifier)
+      (value
+        (or_expression
+          (and_expression
+            (equality_expression
+              (comparison_expression
+                (sum_expression
+                  (term_expression
+                    (unary_expression
+                      (primary
+                        (reference
+                          (identifier)
+                          (identifier))))))
+                (sum_expression
+                  (term_expression
+                    (unary_expression
+                      (primary
+                        (number)))))))))
+        (conditional_question)
+        (value
+          (or_expression
+            (and_expression
+              (equality_expression
+                (comparison_expression
+                  (sum_expression
+                    (term_expression
+                      (unary_expression
+                        (primary
+                          (number))))))))))
+        (conditional_colon)
+        (value
+          (or_expression
+            (and_expression
+              (equality_expression
+                (comparison_expression
+                  (sum_expression
+                    (term_expression
+                      (unary_expression
+                        (primary
+                          (number))))))))))))))
+
+==================
+Boolean operators
+==================
+
+Rectangle {
+	visible: app.dark && !window.width < 640 || true
+}
+
+---
+
+(source_file
+  (element
+    (element_name)
+    (property
+      (identifier)
+      (value
+        (or_expression
+          (and_expression
+            (equality_expression
+              (comparison_expression
+                (sum_expression
+                  (term_expression
+                    (unary_expression
+                      (primary
+                        (reference
+                          (identifier)
+                          (identifier))))))))
+            (equality_expression
+              (comparison_expression
+                (sum_expression
+                  (term_expression
+                    (unary_expression
+                      (unary_expression
+                        (primary
+                          (reference
+                            (identifier)
+                            (identifier)))))))
+                (sum_expression
+                  (term_expression
+                    (unary_expression
+                      (primary
+                        (number))))))))
+          (and_expression
+            (equality_expression
+              (comparison_expression
+                (sum_expression
+                  (term_expression
+                    (unary_expression
+                      (primary
+                        (boolean)))))))))))))
+
+==================
+Import and params
+==================
+
+import "./Sidebar.goi" as Sidebar
+
+param title: "Mail"
+param width: 280
+
+Column {
+	Text { text: $title }
+}
+
+---
+
+(source_file
+  (import_statement
+    (string)
+    (identifier))
+  (param_declaration
+    (identifier)
+    (value
+      (or_expression
+        (and_expression
+          (equality_expression
+            (comparison_expression
+              (sum_expression
+                (term_expression
+                  (unary_expression
+                    (primary
+                      (string)))))))))))
+  (param_declaration
+    (identifier)
+    (value
+      (or_expression
+        (and_expression
+          (equality_expression
+            (comparison_expression
+              (sum_expression
+                (term_expression
+                  (unary_expression
+                    (primary
+                      (number)))))))))))
+  (element
+    (element_name)
+    (element
+      (element_name)
+      (property
+        (identifier)
+        (value
+          (or_expression
+            (and_expression
+              (equality_expression
+                (comparison_expression
+                  (sum_expression
+                    (term_expression
+                      (unary_expression
+                        (primary
+                          (parameter
+                            (identifier)))))))))))))))
+
+==================
+Semicolons and comments
+==================
+
+// a design
+Window { /* inline */ id: main; }
+
+---
+
+(source_file
+  (comment)
+  (element
+    (element_name)
+    (comment)
+    (property
+      (identifier)
+      (value
+        (or_expression
+          (and_expression
+            (equality_expression
+              (comparison_expression
+                (sum_expression
+                  (term_expression
+                    (unary_expression
+                      (primary
+                        (identifier)))))))))))))
+
+==================
+Escapes in strings
+==================
+
+Text {
+	text: "say \"hi\"\n\ttab \u00e9"
+}
+
+---
+
+(source_file
+  (element
+    (element_name)
+    (property
+      (identifier)
+      (value
+        (or_expression
+          (and_expression
+            (equality_expression
+              (comparison_expression
+                (sum_expression
+                  (term_expression
+                    (unary_expression
+                      (primary
+                        (string
+                          (escape_sequence)
+                          (escape_sequence)
+                          (escape_sequence)
+                          (escape_sequence)
+                          (escape_sequence))))))))))))))
