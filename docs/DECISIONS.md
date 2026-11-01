@@ -849,3 +849,13 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   late frame is not made up by a burst. `presentModeFor` rejects an unsupported
   mode, so a surface without mailbox falls back to Fifo and reports the error;
   the default stays vsync-on, and idle apps still block in `WaitEvents`.
+- **The pickers draw their cells themselves, and input reads the same
+  geometry back.** A month grid and a clock dial have no nodes per cell, so
+  `paint.DateLayoutOf`/`TimeLayoutOf` are pure functions of the box and the
+  input layer calls them to map a click; the painter and the hit test cannot
+  drift. The value is the component's `text` (`YYYY-MM-DD`, `HH:MM`) and a pick
+  emits `Submit`, so an app stores the result without a new event type. The
+  month arrows move `PickerMonth` and leave the value alone, and the time dial
+  hands over from hours to minutes after the first click, which is how M3 asks
+  for it. Before this the pickers were fixed pictures: a click did nothing and
+  the date was hard-coded to the 12th.

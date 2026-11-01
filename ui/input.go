@@ -7,6 +7,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/ksckaan1/goi/internal/paint"
 	"github.com/ksckaan1/goi/internal/platform"
 	"github.com/ksckaan1/goi/internal/tree"
 )
@@ -99,7 +100,8 @@ func interactive(n tree.Node) bool {
 	switch n.Kind() {
 	case "Button", "IconButton", "FAB", "FABMenu", "SplitButton", "SegmentedButton",
 		"Chip", "Checkbox", "RadioButton", "Switch", "Slider", "TextField",
-		"SearchBar", "ListItem", "MenuItem", "Tab", "Card", "NavigationItem":
+		"SearchBar", "ListItem", "MenuItem", "Tab", "Card", "NavigationItem",
+		"DatePicker", "TimePicker":
 		return true
 	}
 	return false
@@ -417,9 +419,54 @@ func (i *interactor) activate(n tree.Node, c *tree.Component, x, y float64) {
 		i.activateSegment(n, c)
 	case "NavigationItem":
 		i.activateDestination(n, c)
+	case "DatePicker":
+		i.pickDate(n, c, x, y)
+	case "TimePicker":
+		i.pickTime(n, c, x, y)
 	}
 	c.Click.Emit(tree.ClickEvent{X: x, Y: y})
 	i.markDirty()
+}
+
+// pickDate reads the click against the same layout the painter used: the
+// arrows move the month, a day cell becomes the value.
+func (i *interactor) pickDate(n tree.Node, c *tree.Component, x, y float64) {
+	d := paint.DateLayoutOf(absoluteRect(n), c.Text.Get(), c.PickerMonth)
+	switch {
+	case hitRect(d.Prev, x, y):
+		c.PickerMonth = d.Month - 1
+	case hitRect(d.Next, x, y):
+		c.PickerMonth = d.Month + 1
+	default:
+		iso, ok := d.DateAt(x, y)
+		if !ok {
+			return
+		}
+		c.Text.Set(iso)
+		c.Submit.Emit(iso)
+	}
+	n.Base().MarkDirty(tree.DirtyPaint)
+}
+
+// pickTime sets the hour or the minutes from where the dial was clicked, and
+// hands the dial over: hour first, then minutes.
+func (i *interactor) pickTime(n tree.Node, c *tree.Component, x, y float64) {
+	t := paint.TimeLayoutOf(absoluteRect(n), c.Text.Get(), c.PickerField)
+	switch {
+	case hitRect(t.HourBox, x, y):
+		c.PickerField = 0
+	case hitRect(t.MinuteBox, x, y):
+		c.PickerField = 1
+	default:
+		v, field, ok := t.TimeAt(x, y)
+		if !ok {
+			return
+		}
+		c.Text.Set(v)
+		c.PickerField = field
+		c.Submit.Emit(v)
+	}
+	n.Base().MarkDirty(tree.DirtyPaint)
 }
 
 // activateDestination selects a navigation destination. Navigation is a radio
@@ -1619,6 +1666,11 @@ func absoluteRect(n tree.Node) tree.Rect {
 		}
 	}
 	return tree.Rect{X: x, Y: y, W: b.W, H: b.H}
+}
+
+// hitRect reports whether a point falls in a box.
+func hitRect(r tree.Rect, x, y float64) bool {
+	return x >= r.X && x < r.Right() && y >= r.Y && y < r.Bottom()
 }
 
 func intersectRect(a, b tree.Rect) tree.Rect {

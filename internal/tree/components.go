@@ -79,6 +79,11 @@ type Component struct {
 	SelAnchor int
 	// SelectedIndex for tab bars and navigation.
 	SelectedIndex int
+	// PickerMonth is the month a DatePicker shows, as year*12 + month-1; 0
+	// means "the month of the picked date". PickerField is which half of a
+	// TimePicker is being set: 0 the hour, 1 the minutes.
+	PickerMonth int
+	PickerField int
 
 	// TogglePos is where the Switch handle sits, 0 (off) to 1 (on). TogglePosed
 	// marks that the ui layer drives it, so paint animates instead of reading

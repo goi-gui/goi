@@ -251,13 +251,15 @@ Window {
 						Column {
 							spacing: 10
 							Text { text: "Date picker" role: "titleMedium" }
-							DatePicker { label: "Select date" }
+							Text { id: dateValue text: "No date picked" role: "bodySmall" }
+							DatePicker { id: datePicker label: "Select date" }
 						}
 
 						Column {
 							spacing: 10
 							Text { text: "Time picker" role: "titleMedium" }
-							TimePicker { label: "Select time" }
+							Text { id: timeValue text: "No time picked" role: "bodySmall" }
+							TimePicker { id: timePicker label: "Select time" }
 						}
 					}
 

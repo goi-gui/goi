@@ -106,8 +106,8 @@ var props = map[string][]string{
 	"LinearProgress":   {"variant", "value", "min", "max"},
 	"CircularProgress": {"variant", "value", "min", "max", "size"},
 	"LoadingIndicator": {"variant", "size"},
-	"DatePicker":       {"label", "variant", "size"},
-	"TimePicker":       {"label", "variant", "size"},
+	"DatePicker":       {"label", "text", "variant", "size"},
+	"TimePicker":       {"label", "text", "variant", "size"},
 	"Carousel":         {"variant"},
 	"Toolbar":          {"variant", "size"},
 }

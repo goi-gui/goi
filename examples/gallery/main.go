@@ -43,6 +43,9 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	// Without Parse, flag.Arg never sees the path: the gallery would always open
+	// its own design and ignore the argument.
+	flag.Parse()
 	path := "examples/gallery/gallery.goi"
 	if arg := flag.Arg(0); arg != "" {
 		path = arg
@@ -305,6 +308,22 @@ func main() {
 		}
 		if f, err := ui.ByID[*ui.TextField](w, "field"); err == nil {
 			f.OnEdit(func(s string) { fmt.Println("field:", s) })
+		}
+		// The pickers own their value; a click on a cell or the dial sets it and
+		// reports it, so the caption below shows what was picked.
+		if dp, err := ui.ByID[*ui.DatePicker](w, "datePicker"); err == nil {
+			dp.OnSubmit(func(v string) {
+				if t, err := ui.ByID[*ui.Text](w, "dateValue"); err == nil {
+					t.Text.Set("Picked " + v)
+				}
+			})
+		}
+		if tp, err := ui.ByID[*ui.TimePicker](w, "timePicker"); err == nil {
+			tp.OnSubmit(func(v string) {
+				if t, err := ui.ByID[*ui.Text](w, "timeValue"); err == nil {
+					t.Text.Set("Picked " + v)
+				}
+			})
 		}
 		return nil
 	}); err != nil {
