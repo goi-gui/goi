@@ -260,6 +260,76 @@ func TestCompletionOffersPropertiesAndChildren(t *testing.T) {
 	}
 }
 
+// TestTitleBarVocabulary keeps the editor honest about the custom title bar:
+// the element, its property on Window and the OS global must all be in the
+// schema the server imports, or a design that draws its own frame is covered in
+// red squiggles.
+func TestTitleBarVocabulary(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := `Window {
+	titleBar: custom
+	Column {
+		TitleBar {
+			visible: app.os == "linux"
+			height: 44
+
+			IconButton { icon: close }
+		}
+	}
+}
+`
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	// The property is known and enum-checked: a typo reports the accepted
+	// values instead of "unknown property".
+	bad := `Window {
+	titleBar: nope
+}
+`
+	badURI := writeDesign(t, dir, "bad.goi", bad)
+	c.openDoc(badURI, bad)
+	diags := c.diagnostics(badURI)
+	if len(diags) != 1 || !strings.Contains(diags[0].Message, "titleBar") {
+		t.Fatalf("diagnostics = %v, want one about titleBar", diags)
+	}
+
+	// Hover documents the property, so the two modes are discoverable.
+	hres := c.request("textDocument/hover", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "titleBar", 2),
+	})
+	var hovered struct {
+		Contents doc `json:"contents"`
+	}
+	if err := json.Unmarshal(hres, &hovered); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(hovered.Contents.Value, "titleBar") {
+		t.Fatalf("hover = %q", hovered.Contents.Value)
+	}
+
+	// The element is a child candidate inside a container.
+	res := c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "height: 44\n\n", len("height: 44\n\n")),
+	})
+	var list completionList
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	var titleBar bool
+	for _, it := range list.Items {
+		if it.Label == "TitleBar" {
+			titleBar = true
+		}
+	}
+	if !titleBar {
+		t.Fatalf("TitleBar missing from %d children", len(list.Items))
+	}
+}
+
 func TestCompletionOffersEnumValues(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()
