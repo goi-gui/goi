@@ -163,9 +163,8 @@ func visibleChildren(b *tree.NodeBase) []*tree.NodeBase {
 
 // linear is the Column (vertical) and Row (horizontal) algorithm.
 func (e *Engine) linear(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH, offsetX float64, horizontal bool, offsetY float64) {
-	c := containerOf(b)
-	spacing := c.Spacing.Get()
-	align := c.Align.Get()
+	spacing := e.containerSpacing(b)
+	align := e.containerAlign(b)
 
 	main, cross := availH, availW
 	if horizontal {
@@ -723,14 +722,15 @@ func (e *Engine) contentHeight(k *tree.NodeBase, availW float64, mt m3.Metrics) 
 		if v := c.Height(); v >= 0 {
 			h = v
 		}
+		me := c.MarginEdges()
 		if horizontal {
-			total = maxf(total, h+mt.Top+mt.Bottom)
+			total = maxf(total, h+mt.Top+mt.Bottom+me.Top+me.Bottom)
 			continue
 		}
 		if !first {
 			total += spacing
 		}
-		total += h
+		total += h + me.Top + me.Bottom
 		first = false
 	}
 	return total
@@ -748,17 +748,29 @@ func (e *Engine) contentWidth(k *tree.NodeBase, availW, h float64, mt m3.Metrics
 		if v := c.Width(); v >= 0 {
 			w = v
 		}
+		// Placement lays a child out inside its margins, so the intrinsic width
+		// must include them or the last child of a row hangs past its parent.
+		me := c.MarginEdges()
 		if !horizontal {
-			total = maxf(total, w+mt.Left+mt.Right)
+			total = maxf(total, w+mt.Left+mt.Right+me.Left+me.Right)
 			continue
 		}
 		if !first {
 			total += spacing
 		}
-		total += w
+		total += w + me.Left + me.Right
 		first = false
 	}
 	return total
+}
+
+// containerAlign reads a flow container's cross alignment. A component keeps it
+// in its own cell, so reading only the plain Container would always say "start".
+func (e *Engine) containerAlign(k *tree.NodeBase) string {
+	if c, ok := e.componentOf(k); ok && c.Align != "" {
+		return c.Align
+	}
+	return containerOf(k).Align.Get()
 }
 
 // containerSpacing reads spacing from a component or a Container.
@@ -885,6 +897,8 @@ func (e *Engine) componentOf(b *tree.NodeBase) (*m3.ComponentView, bool) {
 		Min:         c.Min.Get(),
 		Max:         c.Max.Get(),
 		Step:        c.Step.Get(),
+		Spacing:     c.Spacing.Get(),
+		Align:       c.Align.Get(),
 	}
 	return cv, true
 }

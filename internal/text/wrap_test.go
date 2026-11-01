@@ -1,6 +1,9 @@
 package text
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // advancePretend is 10px per rune, which makes the expected break points easy to
 // read: a 30px column fits three characters.
@@ -72,5 +75,49 @@ func TestFaceAdvanceCache(t *testing.T) {
 	}
 	if len(f.adv) != 1 {
 		t.Fatalf("cached %d runs, want 1", len(f.adv))
+	}
+}
+
+// WrapEdit must keep every byte and give exact offsets, because a caret is
+// placed by them.
+func TestWrapEditKeepsOffsets(t *testing.T) {
+	adv := func(s string) float64 { return float64(len(s)) * 10 }
+	src := "aa bb cc\n\nlongwordthatbreaks\nend"
+	lines := WrapEdit(src, 60, adv)
+	if len(lines) < 4 {
+		t.Fatalf("got %d lines: %+v", len(lines), lines)
+	}
+	// Reassembling the lines with the dropped separators must give the source
+	// back: a wrapped line's End is the next line's Start, and lines are joined
+	// by the newline they replaced.
+	var got strings.Builder
+	for i, ln := range lines {
+		if i > 0 && ln.Start > lines[i-1].End {
+			got.WriteString(src[lines[i-1].End:ln.Start])
+		}
+		got.WriteString(src[ln.Start:ln.End])
+	}
+	if got.String() != src {
+		t.Fatalf("reassembled %q, want %q", got.String(), src)
+	}
+	for _, ln := range lines {
+		if ln.End-ln.Start != len(ln.Text) || src[ln.Start:ln.End] != ln.Text {
+			t.Fatalf("line %+v does not match its offsets", ln)
+		}
+		if adv(ln.Text) > 60 && len(ln.Text) > 1 {
+			t.Fatalf("line %q is wider than the column", ln.Text)
+		}
+	}
+}
+
+// A long word is broken between runes instead of running past the column.
+func TestWrapEditBreaksLongWord(t *testing.T) {
+	adv := func(s string) float64 { return float64(len(s)) * 10 }
+	lines := WrapEdit("abcdefghij", 30, adv)
+	if len(lines) != 4 {
+		t.Fatalf("got %d lines: %+v", len(lines), lines)
+	}
+	if lines[0].Text != "abc" || lines[3].Text != "j" {
+		t.Fatalf("unexpected break: %+v", lines)
 	}
 }

@@ -115,3 +115,41 @@ func TestTimeLayoutDialPositions(t *testing.T) {
 		_ = v
 	}
 }
+
+// A 24-hour dial needs both rings: outside is 1-12, inside is 13-00.
+func TestTimeLayout24HourRings(t *testing.T) {
+	tl := paint.TimeLayoutOf(tree.Rect{W: 328, H: 420}, "09:15", 0)
+	cx, cy := tl.Dial.X+tl.Dial.W/2, tl.Dial.Y+tl.Dial.H/2
+	at := func(radius float64, hour int) (string, int, bool) {
+		ang := float64(hour%12) * math.Pi / 6
+		return tl.TimeAt(cx+radius*math.Sin(ang), cy-radius*math.Cos(ang))
+	}
+
+	// Three o'clock outside is 03, inside is 15.
+	if v, _, _ := at(tl.OuterRadius(), 3); v != "03:15" {
+		t.Fatalf("outer 3 = %q, want 03:15", v)
+	}
+	if v, _, _ := at(tl.InnerRadius(), 3); v != "15:15" {
+		t.Fatalf("inner 3 = %q, want 15:15", v)
+	}
+	// The top of the inner ring is 00, not 24 or 12.
+	if v, _, _ := at(tl.InnerRadius(), 0); v != "00:15" {
+		t.Fatalf("inner 0 = %q, want 00:15", v)
+	}
+	if v, _, _ := at(tl.OuterRadius(), 0); v != "12:15" {
+		t.Fatalf("outer 0 = %q, want 12:15", v)
+	}
+}
+
+// The selected hour must highlight on the ring that holds it.
+func TestTimeLayoutDialInner(t *testing.T) {
+	for _, c := range []struct {
+		value string
+		inner bool
+	}{{"09:00", false}, {"12:00", false}, {"13:00", true}, {"00:30", true}, {"23:59", true}} {
+		tl := paint.TimeLayoutOf(tree.Rect{W: 328, H: 420}, c.value, 0)
+		if got := tl.DialInner(); got != c.inner {
+			t.Errorf("%s: DialInner = %v, want %v", c.value, got, c.inner)
+		}
+	}
+}

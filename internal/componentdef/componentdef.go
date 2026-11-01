@@ -52,6 +52,8 @@ var Kinds = []Kind{
 	{"TimePicker", true},
 	{"Carousel", true},
 	{"Toolbar", true},
+	{"TextArea", false},
+	{"Code", false},
 }
 
 var byName = func() map[string]Kind {
@@ -110,6 +112,8 @@ var props = map[string][]string{
 	"TimePicker":       {"label", "text", "variant", "size"},
 	"Carousel":         {"variant"},
 	"Toolbar":          {"variant", "size"},
+	"TextArea":         {"label", "text", "placeholder", "supporting", "variant", "disabled"},
+	"Code":             {"text", "language", "variant"},
 }
 
 // Flow lists containers that accept the row/column layout properties.

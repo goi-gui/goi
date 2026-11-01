@@ -250,6 +250,36 @@ Window {
 
 						Column {
 							spacing: 10
+							Text { text: "Text area" role: "titleMedium" }
+							TextArea {
+								id: notes
+								label: "Notes"
+								placeholder: "Enter starts a new line"
+								text: "A multiline field: Enter adds a line, Home and End work per line, and the caret scrolls when the text outgrows the box."
+								supporting: "supporting text sits under the field"
+								width: { base: 300, md: 420 }
+								height: 140
+							}
+						}
+
+						Column {
+							spacing: 10
+							Text { text: "Code" role: "titleMedium" }
+							Code {
+								language: go
+								width: { base: 300, md: 520 }
+								text: "// A highlighted block\nfunc bind(w *ui.Window) error {\n\tbtn := ui.MustByID[*ui.Button](w, \"go\")\n\tbtn.OnClick(func(ui.ClickEvent) {\n\t\tfmt.Println(\"clicked\")\n\t})\n\treturn nil\n}"
+							}
+							Code {
+								language: py
+								variant: outlined
+								width: { base: 300, md: 520 }
+								text: "# spans: keywords, strings, numbers, comments\nfor i in range(3):\n    print(\"easing\", i, 0.5)"
+							}
+						}
+
+						Column {
+							spacing: 10
 							Text { text: "Date picker" role: "titleMedium" }
 							Text { id: dateValue text: "No date picked" role: "bodySmall" }
 							DatePicker { id: datePicker label: "Select date" }
@@ -815,6 +845,19 @@ Window {
 				NavigationItem { id: drawerFeedback label: "Feedback" icon: notifications }
 				NavigationItem { id: drawerLayout label: "Layout" icon: dashboard }
 				NavigationItem { id: drawerMotion label: "Motion" icon: animation }
+				// Same place a rail keeps its own actions: pinned to the bottom,
+				// after a spacer, so the list can grow above it.
+				Rectangle { flex: 1 }
+				Switch {
+					id: drawerTheme
+					label: "Dark mode"
+					checked: app.dark
+					iconOn: dark_mode
+					iconOff: light_mode
+					marginLeft: 12
+					marginRight: 12
+					marginBottom: 16
+				}
 			}
 		}
 	}

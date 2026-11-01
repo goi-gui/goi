@@ -1,6 +1,9 @@
 package text
 
-import "strings"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
 // WrapLines breaks s into lines no wider than maxWidth, using greedy word
 // wrapping. advance returns the width of a run at the same style.
@@ -86,4 +89,66 @@ func splitToWidth(line string, maxWidth float64, advance func(string) float64) (
 		n--
 	}
 	return string(runes[:n]), string(runes[n:])
+}
+
+// WrapEdit breaks s into lines for an editor, keeping every byte of the source:
+// nothing is trimmed or collapsed, a hard newline always ends a line, and the
+// Start/End offsets are exact. WrapRanges is for labels, where dropping the
+// whitespace is what you want; a caret needs the other behaviour.
+func WrapEdit(s string, maxWidth float64, advance func(string) float64) []Line {
+	var out []Line
+	from := 0
+	for i := 0; i <= len(s); i++ {
+		if i == len(s) || s[i] == '\n' {
+			out = append(out, wrapParagraph(s, from, i, maxWidth, advance)...)
+			from = i + 1
+		}
+	}
+	return out
+}
+
+// wrapParagraph wraps s[a:b], which contains no newline, into lines that keep
+// their offsets. A break lands after the last space that fits so the space stays
+// on the line it belongs to; a word longer than the column breaks between runes.
+func wrapParagraph(s string, a, b int, maxWidth float64, advance func(string) float64) []Line {
+	if a >= b {
+		return []Line{{Text: "", Start: a, End: a}}
+	}
+	if maxWidth <= 0 {
+		return []Line{{Text: s[a:b], Start: a, End: b}}
+	}
+	var out []Line
+	for a < b {
+		end := b
+		space := -1
+		for i := a; i < b; {
+			_, size := utf8.DecodeRuneInString(s[i:])
+			if !fitsIn(s[a:i+size], maxWidth, advance) {
+				// Break after the last space if there is one past the start;
+				// otherwise break here, between runes.
+				if space > a {
+					end = space + 1
+				} else {
+					end = i
+					if end == a {
+						end = i + size // never stall on a single wide rune
+					}
+				}
+				break
+			}
+			if s[i] == ' ' || s[i] == '\t' {
+				space = i
+			}
+			i += size
+		}
+		out = append(out, Line{Text: s[a:end], Start: a, End: end})
+		a = end
+	}
+	return out
+}
+
+// fitsIn reports whether text fits the column. advance is called at most once
+// per candidate, so wrapping a paragraph stays linear in its runes.
+func fitsIn(text string, maxWidth float64, advance func(string) float64) bool {
+	return advance(text) <= maxWidth
 }

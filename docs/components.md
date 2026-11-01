@@ -44,6 +44,7 @@ They all share one property set and one way of being driven from Go.
 
 - [TextField](components/textfield.md) — An editable single-line field with a floating label.
 - [SearchBar](components/searchbar.md) — A text field shaped as a search input, with a leading search glyph.
+- [TextArea](components/textarea.md) — A multiline text field.
 
 ## Containment
 
@@ -85,6 +86,7 @@ They all share one property set and one way of being driven from Go.
 
 - [Carousel](components/carousel.md) — A horizontally scrolling row of cards.
 - [Toolbar](components/toolbar.md) — A horizontal strip of compact controls.
+- [Code](components/code.md) — A syntax-highlighted code block.
 
 ## Common properties
 

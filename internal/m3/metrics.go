@@ -111,7 +111,9 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 		return Metrics{W: 56, H: 56}
 	case "FABMenu", "Toolbar":
 		if kind == "Toolbar" {
-			return Metrics{W: 0, H: 64}
+			// The pill is 40dp tall inside a 64dp box, so the actions get 12dp
+			// of padding on every side instead of touching the rounded edge.
+			return Metrics{W: 0, H: 64, Top: 12, Right: 12, Bottom: 12, Left: 12}
 		}
 		return Metrics{W: 56, H: 56}
 	case "SplitButton":
@@ -217,6 +219,20 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 		return Metrics{W: 48, H: 48}
 	case "LoadingIndicator":
 		return Metrics{W: 48, H: 48}
+	case "TextArea":
+		// Three lines is the usual resting height for a multiline field; a
+		// design that wants more sets height itself.
+		return Metrics{W: 0, H: 132, FillW: true}
+	case "Code":
+		// Height follows the hard line breaks, since a code block does not
+		// wrap: what is counted here is exactly what the painter draws.
+		lines := 1
+		for i := 0; i < len(text); i++ {
+			if text[i] == '\n' {
+				lines++
+			}
+		}
+		return Metrics{W: 0, H: float64(lines)*20.15 + 24, FillW: true}
 	case "DatePicker":
 		return Metrics{W: 328, H: 400, Top: 56, Right: 24, Bottom: 24, Left: 24}
 	case "TimePicker":
@@ -235,6 +251,7 @@ type ComponentView struct {
 	Disabled, Checked, Selected, Expanded bool
 	Value, Min, Max, Step                 float64
 	Spacing                               float64
+	Align                                 string
 }
 
 func maxf(a, b float64) float64 {

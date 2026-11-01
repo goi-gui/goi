@@ -7,8 +7,10 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/ksckaan1/goi/internal/m3"
 	"github.com/ksckaan1/goi/internal/paint"
 	"github.com/ksckaan1/goi/internal/platform"
+	"github.com/ksckaan1/goi/internal/text"
 	"github.com/ksckaan1/goi/internal/tree"
 )
 
@@ -50,12 +52,22 @@ type interactor struct {
 	// dragX is the x used for caret mapping while dragging a selection. It
 	// keeps moving on its own when the pointer sits past the field edge, which
 	// is what scrolls a long value instead of stopping at the visible end.
-	dragX      float64
+	dragX float64
+	// dragY is the vertical half of the same mapping, which a multiline field
+	// needs to tell one wrapped line from the next.
+	dragY      float64
 	clickCount int
 	lastClick  time.Time
 	lastClickX float64
 	lastClickY float64
 	lastField  *tree.Component
+	// The same counters for a selectable Text, which needs word and paragraph
+	// selections but is not a field.
+	textClickCount int
+	textClickAt    time.Time
+	textClickX     float64
+	textClickY     float64
+	textClickNode  *tree.Text
 
 	// Clipboard hooks; nil uses the platform clipboard.
 	getClipboard func() string
@@ -197,8 +209,8 @@ func (i *interactor) MouseMove(x, y float64) {
 	hit := i.hit(x, y)
 	i.pointerAt(hit)
 	if i.selecting && i.textField != nil {
-		i.dragX = x
-		i.caretFromPoint(i.textField, x, true)
+		i.dragX, i.dragY = x, y
+		i.caretFromPoint(i.textField, x, y, true)
 		return
 	}
 	if i.dragScroll(x, y) {
@@ -291,12 +303,7 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 		i.setFocus(nil)
 		i.setKbd(nil)
 		i.scrollNode = nil
-		idx := i.textIndexAt(t, x, y)
-		t.SelA, t.SelB = idx, idx
-		i.textSel = t
-		i.selecting = true
-		t.Base().MarkDirty(tree.DirtyPaint)
-		i.markDirty()
+		i.pressTextNode(t, x, y, shift)
 		return
 	}
 
@@ -426,6 +433,56 @@ func (i *interactor) activate(n tree.Node, c *tree.Component, x, y float64) {
 	}
 	c.Click.Emit(tree.ClickEvent{X: x, Y: y})
 	i.markDirty()
+}
+
+// pressTextNode places a selectable Text's selection. A second click inside the
+// word selects the word and a third selects the paragraph, which is the desktop
+// convention; the drag after a multi-click extends from there instead of
+// collapsing to the caret.
+func (i *interactor) pressTextNode(t *tree.Text, x, y float64, shift bool) {
+	now := time.Now()
+	same := t == i.textClickNode && now.Sub(i.textClickAt) < 400*time.Millisecond &&
+		math.Abs(x-i.textClickX) <= 6 && math.Abs(y-i.textClickY) <= 6
+	if same {
+		i.textClickCount++
+	} else {
+		i.textClickCount = 1
+	}
+	i.textClickAt, i.textClickX, i.textClickY, i.textClickNode = now, x, y, t
+
+	idx := i.textIndexAt(t, x, y)
+	s := t.Text.Get()
+	i.textSel = t
+	switch {
+	case same && i.textClickCount >= 3:
+		a, b := paragraphBounds(s, idx)
+		t.SelA, t.SelB = a, b
+		i.selecting = false
+	case same && i.textClickCount == 2:
+		a, b := wordBounds(s, idx)
+		t.SelA, t.SelB = a, b
+		i.selecting = false
+	default:
+		t.SelA, t.SelB = idx, idx
+		i.selecting = true
+	}
+	_ = shift
+	t.Base().MarkDirty(tree.DirtyPaint)
+	i.markDirty()
+}
+
+// paragraphBounds expands an index to the text between the surrounding
+// newlines, which is what a triple click selects.
+func paragraphBounds(s string, idx int) (int, int) {
+	idx = clampRune(s, idx)
+	a := strings.LastIndexByte(s[:idx], '\n') + 1
+	b := strings.IndexByte(s[idx:], '\n')
+	if b < 0 {
+		b = len(s)
+	} else {
+		b += idx
+	}
+	return a, b
 }
 
 // pickDate reads the click against the same layout the painter used: the
@@ -752,7 +809,11 @@ func (i *interactor) key(k tree.Key, mods tree.Mods) {
 		}
 	case tree.KeyV:
 		if ctrl {
-			i.insert(f, singleLine(i.clipboardText()))
+			pasted := i.clipboardText()
+			if !isMultiline(f) {
+				pasted = singleLine(pasted)
+			}
+			i.insert(f, strings.ReplaceAll(pasted, "\r\n", "\n"))
 		}
 	case tree.KeyBackspace:
 		if !i.deleteSelection(f) {
@@ -774,12 +835,22 @@ func (i *interactor) key(k tree.Key, mods tree.Mods) {
 		i.moveCaret(f, -1, shift, ctrl)
 	case tree.KeyRight:
 		i.moveCaret(f, 1, shift, ctrl)
-	case tree.KeyHome, tree.KeyUp:
-		i.caretTo(f, 0, shift)
-	case tree.KeyEnd, tree.KeyDown:
-		i.caretTo(f, len(f.Text.Get()), shift)
+	case tree.KeyUp:
+		i.moveCaretVertical(f, -1, shift)
+	case tree.KeyDown:
+		i.moveCaretVertical(f, 1, shift)
+	case tree.KeyHome:
+		i.caretTo(f, i.lineEdge(f, false), shift)
+	case tree.KeyEnd:
+		i.caretTo(f, i.lineEdge(f, true), shift)
 	case tree.KeyEnter:
-		f.Submit.Emit(f.Text.Get())
+		// A multiline field takes the newline; a single-line one reports the
+		// value, which is what submitting a form means.
+		if isMultiline(f) {
+			i.insert(f, "\n")
+		} else {
+			f.Submit.Emit(f.Text.Get())
+		}
 	case tree.KeyEscape:
 		if _, _, ok := f.Selection(); ok {
 			f.ClearSelection()
@@ -849,7 +920,7 @@ func minInt(a, b int) int {
 // isTextField reports whether the component takes IME input.
 func isTextField(c *tree.Component) bool {
 	n := c.Base().Node()
-	return n != nil && (n.Kind() == "TextField" || n.Kind() == "SearchBar")
+	return n != nil && (n.Kind() == "TextField" || n.Kind() == "SearchBar" || n.Kind() == "TextArea")
 }
 
 // imeSync tells the platform input method whether a field is focused and where
@@ -866,6 +937,23 @@ func (i *interactor) imeSync() {
 	}
 	n := i.focusNode(f)
 	if n == nil {
+		return
+	}
+	if isMultiline(f) {
+		// A multiline field puts the candidate window on the caret's own line,
+		// which may be scrolled out of the single-line box.
+		box := paint.TextAreaBox(absoluteRect(n))
+		lines := i.areaLines(f)
+		lh := textAreaLineHeight()
+		line, x := 0, 0.0
+		for idx, ln := range lines {
+			if f.Caret >= ln.Start && f.Caret <= ln.End {
+				line = idx
+				x = i.textWidth(ln.Text[:clampRune(ln.Text, f.Caret-ln.Start)])
+				break
+			}
+		}
+		d.win.SetTextInput(true, box.X+x, box.Y+float64(line)*lh-f.TextScroll, 2, lh)
 		return
 	}
 	box := fieldTextBox(n)
@@ -1200,7 +1288,7 @@ func absoluteBounds(n tree.Node) (x, y, w, h float64) {
 // fieldAt finds the text field at or above a hit node.
 func fieldAt(n tree.Node) *tree.Component {
 	for n != nil {
-		if k := n.Kind(); k == "TextField" || k == "SearchBar" {
+		if k := n.Kind(); k == "TextField" || k == "SearchBar" || k == "TextArea" {
 			return comp(n)
 		}
 		n = n.Base().Parent()
@@ -1304,15 +1392,24 @@ func (i *interactor) drag(x, y float64) {
 
 // caretFromPoint places the caret at the nearest rune boundary to x, extending
 // the selection when extend is set.
-func (i *interactor) caretFromPoint(f *tree.Component, x float64, extend bool) {
-	idx := i.indexAt(f, x)
+func (i *interactor) caretFromPoint(f *tree.Component, x, y float64, extend bool) {
+	idx := i.indexAtXY(f, x, y)
 	f.MoveCaret(idx, extend)
 	f.Base().MarkDirty(tree.DirtyPaint)
 	i.markDirty()
 }
 
-// indexAt maps an x position to the nearest byte index inside the field text.
+// indexAt maps an x position to the nearest byte index on the field's only line.
 func (i *interactor) indexAt(f *tree.Component, x float64) int {
+	return i.indexAtXY(f, x, 0)
+}
+
+// indexAtXY is the multiline form: a TextArea is mapped through its wrapped
+// lines, everything else through the single line it draws.
+func (i *interactor) indexAtXY(f *tree.Component, x, y float64) int {
+	if isMultiline(f) {
+		return i.areaIndexAt(f, x, y)
+	}
 	rel := x - fieldTextStart(i.focusNode(f))
 	if rel <= 0 {
 		return 0
@@ -1381,10 +1478,142 @@ func (i *interactor) textWidth(s string) float64 {
 	return float64(len([]rune(s))) * 16 * 0.55
 }
 
+// lineEdge is the start or end of the logical line the caret is on, which is
+// what Home and End mean in a multiline field.
+func (i *interactor) lineEdge(f *tree.Component, end bool) int {
+	s, c := f.Text.Get(), clampRune(f.Text.Get(), f.Caret)
+	if !isMultiline(f) {
+		if end {
+			return len(s)
+		}
+		return 0
+	}
+	if end {
+		if n := strings.IndexByte(s[c:], '\n'); n >= 0 {
+			return c + n
+		}
+		return len(s)
+	}
+	if n := strings.LastIndexByte(s[:c], '\n'); n >= 0 {
+		return n + 1
+	}
+	return 0
+}
+
+// moveCaretVertical walks the wrapped lines, keeping the caret at the same
+// horizontal position rather than the same byte column, which is what the eye
+// expects when a line wraps.
+func (i *interactor) moveCaretVertical(f *tree.Component, dir int, extend bool) {
+	if !isMultiline(f) {
+		// Single-line fields treat Up/Down as home/end, as they always have.
+		if dir < 0 {
+			i.caretTo(f, 0, extend)
+		} else {
+			i.caretTo(f, len(f.Text.Get()), extend)
+		}
+		return
+	}
+	lines := i.areaLines(f)
+	if len(lines) == 0 {
+		return
+	}
+	cur, x := 0, 0.0
+	for idx, ln := range lines {
+		if f.Caret >= ln.Start && f.Caret <= ln.End {
+			cur = idx
+			x = i.textWidth(ln.Text[:clampRune(ln.Text, f.Caret-ln.Start)])
+			break
+		}
+	}
+	next := cur + dir
+	if next < 0 || next >= len(lines) {
+		return
+	}
+	target := lines[next]
+	best, bestD := target.Start, x
+	for idx := range target.Text {
+		if idx == 0 {
+			continue
+		}
+		if d := math.Abs(i.textWidth(target.Text[:idx]) - x); d < bestD {
+			best, bestD = target.Start+idx, d
+		}
+	}
+	if d := math.Abs(i.textWidth(target.Text) - x); d < bestD {
+		best = target.End
+	}
+	i.caretTo(f, best, extend)
+}
+
+// areaLines wraps the focused TextArea's value the way the painter does, so the
+// caret and the pointer agree on which visual line is which.
+func (i *interactor) areaLines(f *tree.Component) []text.Line {
+	n := i.focusNode(f)
+	if n == nil {
+		return nil
+	}
+	box := paint.TextAreaBox(absoluteRect(n))
+	return paint.TextAreaLines(f.Text.Get(), box.W, i.textWidth)
+}
+
+// areaIndexAt maps a pointer to a byte index inside a wrapped TextArea.
+func (i *interactor) areaIndexAt(f *tree.Component, x, y float64) int {
+	n := i.focusNode(f)
+	if n == nil {
+		return 0
+	}
+	box := paint.TextAreaBox(absoluteRect(n))
+	lines := i.areaLines(f)
+	if len(lines) == 0 {
+		return 0
+	}
+	lh := textAreaLineHeight()
+	li := int((y - box.Y + f.TextScroll) / lh)
+	if li < 0 {
+		li = 0
+	}
+	if li >= len(lines) {
+		li = len(lines) - 1
+	}
+	line := lines[li]
+	rel := x - box.X
+	if rel <= 0 {
+		return line.Start
+	}
+	best, bestD := line.Start, rel
+	for idx := range line.Text {
+		if idx == 0 {
+			continue
+		}
+		if d := math.Abs(i.textWidth(line.Text[:idx]) - rel); d < bestD {
+			best, bestD = line.Start+idx, d
+		}
+	}
+	if d := math.Abs(i.textWidth(line.Text) - rel); d < bestD {
+		best = line.End
+	}
+	return best
+}
+
+// textAreaLineHeight is the line advance the TextArea painter uses.
+func textAreaLineHeight() float64 {
+	lh := m3.RoleStyle("bodyLarge").LineHeight
+	if lh <= 0 {
+		lh = 16 * 1.2
+	}
+	return lh
+}
+
+// isMultiline reports whether a field holds more than one line.
+func isMultiline(c *tree.Component) bool {
+	n := c.Base().Node()
+	return n != nil && n.Kind() == "TextArea"
+}
+
 // pressText handles a press inside a field: single click places the caret,
 // shift-click extends, double click selects a word, triple click selects all.
 func (i *interactor) pressText(f *tree.Component, x, y float64, shift bool) {
-	idx := i.indexAt(f, x)
+	idx := i.indexAtXY(f, x, y)
 	now := time.Now()
 	multi := f == i.lastField && now.Sub(i.lastClick) < 400*time.Millisecond &&
 		math.Abs(x-i.lastClickX) <= 6 && math.Abs(y-i.lastClickY) <= 6

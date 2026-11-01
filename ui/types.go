@@ -120,6 +120,8 @@ type (
 	LoadingIndicator = tree.LoadingIndicator
 	DatePicker       = tree.DatePicker
 	TimePicker       = tree.TimePicker
+	TextArea         = tree.TextArea
+	Code             = tree.Code
 	Carousel         = tree.Carousel
 	Toolbar          = tree.Toolbar
 )

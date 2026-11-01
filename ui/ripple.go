@@ -86,6 +86,6 @@ func (i *interactor) autoScroll(dt float64) bool {
 	default:
 		return false
 	}
-	i.caretFromPoint(i.textField, i.dragX, true)
+	i.caretFromPoint(i.textField, i.dragX, i.dragY, true)
 	return true
 }

@@ -167,7 +167,7 @@ func main() {
 				theme = "dark"
 			}
 			w.Root().Theme.Set(theme)
-			for _, id := range []string{"darkSwitch", "railTheme"} {
+			for _, id := range []string{"darkSwitch", "railTheme", "drawerTheme"} {
 				if sw, err := ui.ByID[*ui.Switch](w, id); err == nil {
 					sw.Checked.Set(d)
 				}
@@ -283,7 +283,7 @@ func main() {
 
 		// The rail switch and the one on the Layout page are both entry points to
 		// the theme.
-		for _, id := range []string{"railTheme", "darkSwitch"} {
+		for _, id := range []string{"railTheme", "darkSwitch", "drawerTheme"} {
 			if sw, err := ui.ByID[*ui.Switch](w, id); err == nil {
 				sw.OnToggle(applyTheme)
 			}

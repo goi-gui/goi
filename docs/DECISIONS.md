@@ -859,3 +859,34 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   hands over from hours to minutes after the first click, which is how M3 asks
   for it. Before this the pickers were fixed pictures: a click did nothing and
   the date was hard-coded to the 12th.
+- **The time picker is 24-hour, with two rings.** A 12-hour dial cannot express
+  13-23, and the value format was already `HH:MM`. The outer ring is 1-12 and
+  the inner one 13-00, so a click's distance from the centre picks the half of
+  the day and its angle picks the hour; `DialInner` decides which ring gets the
+  filled circle. Midnight lives on the inner ring (00, at the top), which is why
+  the test pins `00:30` there.
+- **`Code` is a tokenizer, not a parser.** A block needs to read as code without
+  a language server: line and block comments, quoted strings, numbers and a
+  keyword set per language are enough, and every byte of the source is covered
+  by exactly one span so no run is dropped. Lines break only on `\n` because a
+  code block that reflows is unreadable; a long line is clipped. Tabs expand to
+  four spaces here rather than in the font, since a tab has no advance.
+- **`TextArea` wraps with its own `text.WrapEdit`, not the label `WrapRanges`.**
+  A label may collapse whitespace and drop offsets; a caret cannot, so the edit
+  wrapper keeps every byte and gives exact ranges. It is a separate exported
+  function for that reason, and paint and input both call it. Enter inserts a
+  newline in a TextArea and still submits in a TextField, which is the split
+  users expect from every toolkit.
+- **Selectable text and fields share the click-count logic, separately.** A
+  double click selects the word and a triple click the paragraph between
+  newlines; after a multi-click the drag is disabled, so the selection does not
+  collapse the moment the pointer moves. That is the desktop convention, and it
+  lives in `pressTextNode` because a static Text is not a field.
+- **A row's intrinsic width includes its children's margins.** Placement already
+  laid a child out inside its margins, so a Toolbar measured without them came
+  out 52dp narrower than what it drew and the last action hung past the pill. A
+  Toolbar also gained 12dp of content inset, since its 40dp actions were touching
+  a 64dp rounded box.
+- **`m3.ComponentView` carries `Spacing` and `Align`.** A component keeps them in
+  its own cells while `Container` keeps separate ones, so the layout engine was
+  reading 0 spacing and "start" alignment for every Toolbar, List and Drawer.

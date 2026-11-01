@@ -145,15 +145,26 @@ func TimeLayoutOf(r tree.Rect, value string, field int) TimeLayout {
 	return tl
 }
 
+// OuterRadius and InnerRadius are the two rings of the hour dial, measured from
+// the dial centre. A 24-hour clock needs both: 1-12 outside, 13-00 inside.
+func (t TimeLayout) OuterRadius() float64 { return t.Dial.W/2 - 28 }
+
+// InnerRadius is the ring for 13-00 on the hour dial.
+func (t TimeLayout) InnerRadius() float64 { return t.OuterRadius() * 0.55 }
+
 // TimeAt maps a point on the dial to a value, and reports which field the next
 // pick should set: the hour dial hands over to the minutes.
+//
+// The hour dial is a 24-hour one, so the ring under the pointer chooses the
+// half of the day: outside is 1-12, inside is 13-00 (index 0 is 00).
 func (t TimeLayout) TimeAt(x, y float64) (string, int, bool) {
 	if t.Dial.W <= 0 {
 		return "", 0, false
 	}
 	cx, cy := t.Dial.X+t.Dial.W/2, t.Dial.Y+t.Dial.H/2
 	dx, dy := x-cx, y-cy
-	if math.Hypot(dx, dy) > t.Dial.W/2+20 {
+	dist := math.Hypot(dx, dy)
+	if dist > t.OuterRadius()+20 {
 		return "", 0, false
 	}
 	ang := math.Atan2(dx, -dy) // 0 at twelve o'clock, clockwise
@@ -162,9 +173,19 @@ func (t TimeLayout) TimeAt(x, y float64) (string, int, bool) {
 	}
 	idx := int(ang/(math.Pi/6)+0.5) % 12
 	if t.Field == 0 {
-		h := idx
-		if h == 0 {
-			h = 12
+		// Halfway between the rings is the boundary; a click in the middle of
+		// the dial is closer to the inner ring.
+		mid := (t.OuterRadius() + t.InnerRadius()) / 2
+		if dist >= mid {
+			h := idx
+			if h == 0 {
+				h = 12
+			}
+			return pad2(h) + ":" + pad2(t.Minute), 1, true
+		}
+		h := 0
+		if idx != 0 {
+			h = idx + 12
 		}
 		return pad2(h) + ":" + pad2(t.Minute), 1, true
 	}
@@ -179,6 +200,12 @@ func (t TimeLayout) DialIndex() int {
 	return t.Minute / 5
 }
 
+// DialInner reports whether the selected hour is on the inner ring, which is
+// where 13-00 live. Midnight sits there too: 00 is the top of the inner ring.
+func (t TimeLayout) DialInner() bool {
+	return t.Field == 0 && (t.Hour == 0 || t.Hour >= 13)
+}
+
 // DialLabel is the text at dial position i.
 func (t TimeLayout) DialLabel(i int) string {
 	if t.Field == 0 {
@@ -188,6 +215,14 @@ func (t TimeLayout) DialLabel(i int) string {
 		return itoa(i)
 	}
 	return pad2(i * 5)
+}
+
+// DialInnerLabel is the inner-ring label at position i: 13-23, then 00.
+func (t TimeLayout) DialInnerLabel(i int) string {
+	if i == 0 {
+		return "00"
+	}
+	return itoa(i + 12)
 }
 
 // ---------------------------------------------------------------- paint
@@ -265,22 +300,50 @@ func (l *List) paintTimePicker(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	l.Ops = append(l.Ops, Op{Kind: Fill, Shape: Circle, Rect: rectArr(t.Dial),
 		Color: col.SurfaceContainerHighest, Clip: clipArr(clip)})
 
-	radius := t.Dial.W/2 - 28
+	outer, inner := t.OuterRadius(), t.InnerRadius()
 	selected := t.DialIndex()
 	numbers := l.style("bodyLarge")
-	for i := 0; i < 12; i++ {
-		if i == selected {
-			continue // drawn on top of its circle below
-		}
-		lx, ly := dialPoint(dcx, dcy, radius, i)
-		l.textIn(t.DialLabel(i), numbers, col.OnSurface,
-			tree.Rect{X: lx - 20, Y: ly - 14, W: 40, H: 28}, AlignCenter, clip)
+	// A 24-hour picker labels both rings: 1-12 outside, 13-00 inside. The
+	// minutes dial has a single ring, so the inner one is skipped there.
+	rings := []struct {
+		radius float64
+		label  func(int) string
+		inner  bool
+	}{{outer, t.DialLabel, false}}
+	if t.Field == 0 {
+		rings = append(rings, struct {
+			radius float64
+			label  func(int) string
+			inner  bool
+		}{inner, t.DialInnerLabel, true})
 	}
-	sx, sy := dialPoint(dcx, dcy, radius, selected)
+	for _, ring := range rings {
+		size := 40.0
+		if ring.inner {
+			size = 34
+		}
+		for i := 0; i < 12; i++ {
+			if i == selected && ring.inner == t.DialInner() {
+				continue // its filled circle is drawn below, on top
+			}
+			lx, ly := dialPoint(dcx, dcy, ring.radius, i)
+			l.textIn(ring.label(i), numbers, col.OnSurface,
+				tree.Rect{X: lx - size/2, Y: ly - 14, W: size, H: 28}, AlignCenter, clip)
+		}
+	}
+	ringRadius := outer
+	if t.DialInner() {
+		ringRadius = inner
+	}
+	sx, sy := dialPoint(dcx, dcy, ringRadius, selected)
 	l.Ops = append(l.Ops, Op{Kind: Fill, Shape: Circle,
 		Rect:  [4]float32{float32(sx - 18), float32(sy - 18), 36, 36},
 		Color: col.Primary, Clip: clipArr(clip)})
-	l.textIn(t.DialLabel(selected), numbers, col.OnPrimary,
+	selLabel := t.DialLabel(selected)
+	if t.DialInner() {
+		selLabel = t.DialInnerLabel(selected)
+	}
+	l.textIn(selLabel, numbers, col.OnPrimary,
 		tree.Rect{X: sx - 20, Y: sy - 14, W: 40, H: 28}, AlignCenter, clip)
 }
 

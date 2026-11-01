@@ -27,6 +27,8 @@ type Component struct {
 	// means no icon in the thumb.
 	IconOn  Prop[string]
 	IconOff Prop[string]
+	// Language names the syntax a Code block highlights with.
+	Language Prop[string]
 
 	// Appearance.
 	Variant Prop[string]
@@ -105,6 +107,7 @@ func newComponent() Component {
 		Trailing:    newProp(nil, "trailingIcon", DirtyLayout, ""),
 		IconOn:      newProp(nil, "iconOn", DirtyLayout, ""),
 		IconOff:     newProp(nil, "iconOff", DirtyLayout, ""),
+		Language:    newProp(nil, "language", DirtyPaint, ""),
 		Variant:     newProp(nil, "variant", DirtyPaint, ""),
 		Size:        newProp(nil, "size", DirtyLayout, ""),
 		Disabled:    newProp(nil, "disabled", DirtyPaint, false),
@@ -156,6 +159,8 @@ func (c *Component) one(name string) NamedProp {
 		return StringProp(b, "iconOn", &c.IconOn)
 	case "iconOff":
 		return StringProp(b, "iconOff", &c.IconOff)
+	case "language":
+		return StringProp(b, "language", &c.Language)
 	case "variant":
 		// The accepted words live in componentdef, which the schema validates
 		// against. Repeating them here let the validator accept `vertical` on a
@@ -464,6 +469,20 @@ type TimePicker struct{ Component }
 // Kind implements Node.
 func (*TimePicker) Kind() string              { return "TimePicker" }
 func (c *TimePicker) namedProps() []NamedProp { return c.props("TimePicker") }
+
+// TextArea is a multiline text field.
+type TextArea struct{ Component }
+
+// Kind implements Node.
+func (*TextArea) Kind() string              { return "TextArea" }
+func (c *TextArea) namedProps() []NamedProp { return c.props("TextArea") }
+
+// Code is a syntax-highlighted code block.
+type Code struct{ Component }
+
+// Kind implements Node.
+func (*Code) Kind() string              { return "Code" }
+func (c *Code) namedProps() []NamedProp { return c.props("Code") }
 
 // Carousel shows a scrollable row of items.
 type Carousel struct{ Component }

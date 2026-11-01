@@ -190,3 +190,43 @@ func TestPointerShapeFollowsHover(t *testing.T) {
 		}
 	}
 }
+
+// Double click selects the word under the pointer and triple click the whole
+// paragraph, without needing a drag.
+func TestSelectableTextWordAndParagraph(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		Column {
+			Text {
+				id: body
+				text: "first line\nsecond line here\nthird"
+				selectable: true
+				wrap: true
+				width: 200
+				height: 60
+			}
+		}
+	}`, 300, 120)
+	body := MustByID[*Text](win, "body")
+	b := absoluteRect(body)
+
+	// Put the pointer inside "line" on the second line.
+	x := b.X + in.measureStyled("second li", textStyle(body))
+	y := b.Y + textStyle(body).LineHeight*1.5
+	in.MouseDown(x, y, 0, false)
+	in.MouseUp(x, y, 0)
+	if got := body.Text.Get()[body.SelA:body.SelB]; got != "" {
+		t.Fatalf("first click selected %q, want just a caret", got)
+	}
+
+	in.MouseDown(x, y, 0, false)
+	in.MouseUp(x, y, 0)
+	if got := body.Text.Get()[body.SelA:body.SelB]; got != "line" {
+		t.Fatalf("double click selected %q, want %q", got, "line")
+	}
+
+	in.MouseDown(x, y, 0, false)
+	in.MouseUp(x, y, 0)
+	if got := body.Text.Get()[body.SelA:body.SelB]; got != "second line here" {
+		t.Fatalf("triple click selected %q, want the paragraph", got)
+	}
+}

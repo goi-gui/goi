@@ -346,6 +346,10 @@ func (l *List) paintComponent(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		l.paintDatePicker(c, r, clip)
 	case "TimePicker":
 		l.paintTimePicker(c, r, clip)
+	case "TextArea":
+		l.paintTextArea(c, r, clip)
+	case "Code":
+		l.paintCode(c, r, clip)
 	case "Carousel":
 		l.paintCarousel(c, r, clip)
 	case "Toolbar":
