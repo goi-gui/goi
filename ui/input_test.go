@@ -114,6 +114,18 @@ func TestChromeHitTestDragsTitleBarAndResizesEdges(t *testing.T) {
 	}
 }
 
+// TestExposeAsksForAFrame covers the interactive-resize path: Wayland holds the
+// configure until the client commits a buffer, so an expose must schedule a
+// frame even though nothing in the tree changed.
+func TestExposeAsksForAFrame(t *testing.T) {
+	a, _, in := inputFixture(t, inputUI, 480, 320)
+	a.needsFrame = false
+	in.Expose()
+	if !a.needsFrame {
+		t.Fatal("expose did not ask for a frame")
+	}
+}
+
 func TestClickNeedsSameNode(t *testing.T) {
 	_, win, in := inputFixture(t, inputUI, 480, 320)
 	btn := MustByID[*Button](win, "btn")

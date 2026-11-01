@@ -855,6 +855,10 @@ func (i *interactor) Resize(width, height int, scale float32) {
 	i.markDirty()
 }
 
+// Expose asks for a frame without touching the tree: the window system needs a
+// buffer to finish an interactive resize, but nothing about the design changed.
+func (i *interactor) Expose() { i.app.needsFrame = true }
+
 func (i *interactor) Close() { i.app.Quit() }
 
 func (i *interactor) markDirty() {

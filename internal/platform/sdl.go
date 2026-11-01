@@ -18,6 +18,7 @@ const (
 	evQuit
 	evClose
 	evResize
+	evExpose
 	evFocusIn
 	evFocusOut
 	evMotion

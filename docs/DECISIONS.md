@@ -720,3 +720,12 @@ batch. This is what the display list will feed.
   `pressed` node, no mouse-up pairing, and no delta arithmetic to get lost.
   `titleBar: custom` creates a `WINDOW_BORDERLESS` window, which is what makes
   the design own both the drag region and the resize edges.
+- **An expose during an interactive resize must schedule a frame.** SDL defers
+  the wayland configure while a resize grab is active: it holds the ack until
+  the next frame callback and sends `SDL_EVENT_WINDOW_EXPOSED` only to ask the
+  client for a buffer. A client that renders only on its own dirt never commits
+  one, so the compositor keeps the old size until the button is released and the
+  window appears to jump at the end of the drag. `platform` therefore forwards
+  the expose to `Input.Expose`, which sets `needsFrame` without touching the
+  tree: the same display list is repainted, that frame completes the ack, and
+  the resize follows the pointer.

@@ -25,6 +25,10 @@ type Input interface {
 	CommitText(text string)
 	Focus(focused bool)
 	Resize(width, height int, scale float32)
+	// Expose asks for a frame without changing anything. Wayland sends it
+	// during an interactive resize, where the compositor waits for a buffer
+	// before it applies the new size.
+	Expose()
 	Close()
 }
 
@@ -152,6 +156,8 @@ func New(title string, width, height int, decorated bool) (*Window, error) {
 	if s := sdlWindowScale(win); s > 0 {
 		p.scale = s
 	}
+	// Adopt the real pixel size, so the first expose does not look like a resize.
+	p.resizeToFramebuffer()
 	return p, nil
 }
 
@@ -230,6 +236,15 @@ func (p *Window) dispatch(ev rawEvent) {
 		if p.input != nil {
 			p.input.Resize(p.width, p.height, p.contentScale())
 		}
+	case evExpose:
+		// During an interactive resize Wayland holds an implicit grab: SDL
+		// defers the configure and its resize event to the next frame, and
+		// sends this event to ask for one. Ignoring it stalls the drag until
+		// the button is released.
+		p.resizeToFramebuffer()
+		if p.input != nil {
+			p.input.Expose()
+		}
 	case evFocusIn:
 		if p.input != nil {
 			p.input.Focus(true)
@@ -274,6 +289,18 @@ func (p *Window) dispatch(ev rawEvent) {
 		if p.input != nil {
 			p.input.Preedit(ev.text, ev.caret)
 		}
+	}
+}
+
+// resizeToFramebuffer re-reads the client size and reports it when it changed.
+func (p *Window) resizeToFramebuffer() {
+	w, h := p.FramebufferSize()
+	if w <= 0 || h <= 0 || (w == p.width && h == p.height) {
+		return
+	}
+	p.width, p.height = w, h
+	if p.input != nil {
+		p.input.Resize(w, h, p.contentScale())
 	}
 }
 

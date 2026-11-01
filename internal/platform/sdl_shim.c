@@ -30,6 +30,11 @@ static int goiTranslate(SDL_Event *e, goiEvent *o) {
 		o->width = e->window.data1;
 		o->height = e->window.data2;
 		return 1;
+	case SDL_EVENT_WINDOW_EXPOSED:
+		// The one event an interactive Wayland resize still delivers: SDL
+		// throttles the resize events themselves while the grab is active.
+		o->type = GOI_EV_EXPOSE;
+		return 1;
 	case SDL_EVENT_WINDOW_FOCUS_GAINED:
 		o->type = GOI_EV_FOCUS_IN;
 		return 1;
