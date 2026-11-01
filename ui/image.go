@@ -152,10 +152,10 @@ func (a *App) finishImageLoad(src string, d *img.Data, err error) {
 	if a.win == nil || a.win.tree == nil {
 		return
 	}
-	for _, n := range a.win.tree.All() {
+	a.win.tree.Walk(func(n tree.Node) {
 		im, ok := n.(*tree.Image)
 		if !ok || im.Src.Get() != src || !im.Loading {
-			continue
+			return
 		}
 		im.Loading = false
 		if d != nil {
@@ -164,7 +164,7 @@ func (a *App) finishImageLoad(src string, d *img.Data, err error) {
 			im.LoadErr = err
 		}
 		im.Base().MarkDirty(tree.DirtyPaint)
-	}
+	})
 	a.needsFrame = true
 }
 
@@ -183,15 +183,15 @@ func (a *App) tickImageLoads(dt float64) bool {
 	phase := 0.5 - 0.5*math.Cos(2*math.Pi*t)
 
 	still := false
-	for _, n := range a.win.tree.All() {
+	a.win.tree.Walk(func(n tree.Node) {
 		im, ok := n.(*tree.Image)
 		if !ok || !im.Loading {
-			continue
+			return
 		}
 		im.Phase = phase
 		im.Base().MarkDirty(tree.DirtyPaint)
 		still = true
-	}
+	})
 	if !still {
 		a.pulsing = false
 		a.loadClock = 0

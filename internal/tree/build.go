@@ -41,6 +41,8 @@ func (t *Tree) ByID(id string) (Node, bool) {
 func (t *Tree) IDs() int { return len(t.ids) }
 
 // All returns every node, parents before children.
+// All returns every node in the tree, root first. It allocates, so it is for
+// tests and one-off work; Walk is the per-frame variant.
 func (t *Tree) All() []Node {
 	var out []Node
 	var walk func(*NodeBase)
@@ -52,6 +54,22 @@ func (t *Tree) All() []Node {
 	}
 	walk(&t.Root.NodeBase)
 	return out
+}
+
+// Walk calls fn for every node, root first, without building a slice. Use it
+// where All would run every frame or every pointer move: a hover update or a
+// tick that scans for one kind of node.
+func (t *Tree) Walk(fn func(Node)) {
+	var walk func(*NodeBase)
+	walk = func(b *NodeBase) {
+		fn(b.node)
+		for _, c := range b.kids {
+			walk(c)
+		}
+	}
+	if t.Root != nil {
+		walk(&t.Root.NodeBase)
+	}
 }
 
 // Build instantiates a validated file. The schema defaults are applied first,

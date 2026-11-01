@@ -42,6 +42,11 @@ type Library struct {
 	icon  *font.Face
 	faces map[faceKey]*Face
 	atlas *Atlas
+	// last caches the most recent face lookup. A page uses a handful of sizes
+	// and asks for each of them hundreds of times per layout, so a hit here
+	// saves a map hash and keeps the lock hold down to a compare.
+	lastKey  faceKey
+	lastFace *Face
 }
 
 type faceKey struct {
@@ -114,8 +119,12 @@ func (l *Library) face(size float64, weight Weight, icon bool) *Face {
 	if !icon {
 		weight = NearestWeight(weight)
 	}
+	key := faceKey{weight: weight, size: int(size * 4), icon: icon}
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.lastFace != nil && l.lastKey == key {
+		return l.lastFace
+	}
 
 	var src *font.Face
 	var tag uint8
@@ -143,12 +152,13 @@ func (l *Library) face(size float64, weight Weight, icon bool) *Face {
 	if src == nil {
 		return nil
 	}
-	key := faceKey{weight: weight, size: int(size * 4), icon: icon}
 	if f, ok := l.faces[key]; ok {
+		l.lastKey, l.lastFace = key, f
 		return f
 	}
 	f := &Face{font: src, tag: tag, size: size, upem: float32(src.Upem())}
 	l.faces[key] = f
+	l.lastKey, l.lastFace = key, f
 	return f
 }
 

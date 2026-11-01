@@ -53,6 +53,9 @@ func fakeMeasure(text string, fontSize, maxWidth float64) (float64, float64) {
 // Engine runs layout for one tree with one measurer.
 type Engine struct {
 	Measurer Measurer
+	// view is scratch for componentOf, so reading a component's properties
+	// during a pass does not allocate one view per call.
+	view m3.ComponentView
 }
 
 // New returns an engine; a nil measurer falls back to FakeMeasurer.
@@ -86,7 +89,7 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 	ch := maxf(h-pe.Top-pe.Bottom-2*bw, 0)
 
 	// Material components declare their own content inset.
-	if cv, ok := componentOf(b); ok {
+	if cv, ok := e.componentOf(b); ok {
 		mt := m3.MetricsFor(b.Node().Kind(), cv, e.measure)
 		insetL, insetT := pe.Left+bw+mt.Left, pe.Top+bw+mt.Top
 		cw = maxf(w-insetL-pe.Right-bw-mt.Right, 0)
@@ -193,7 +196,7 @@ func (e *Engine) linear(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH,
 			a = align
 		}
 		fill := false
-		if cv, ok := componentOf(k); ok {
+		if cv, ok := e.componentOf(k); ok {
 			mt := m3.MetricsFor(k.Node().Kind(), cv, e.measure)
 			if horizontal && mt.FillH || !horizontal && mt.FillW {
 				fill = true
@@ -616,7 +619,7 @@ func (e *Engine) positionedExtent(k *tree.NodeBase, availW, availH float64) (flo
 // natural returns the intrinsic size of a node.
 func (e *Engine) natural(k *tree.NodeBase, availW, availH float64) (float64, float64) {
 	k.ResolveSize(availW, availH)
-	if cv, ok := componentOf(k); ok {
+	if cv, ok := e.componentOf(k); ok {
 		mt := m3.MetricsFor(k.Node().Kind(), cv, e.measure)
 		w, h := mt.W, mt.H
 		if mt.FillW {
@@ -656,7 +659,7 @@ func flowHorizontal(kind string) bool {
 // contentHeight is the intrinsic height: the sum for a column, the tallest
 // child for a row.
 func (e *Engine) contentHeight(k *tree.NodeBase, availW float64, mt m3.Metrics) float64 {
-	spacing := containerSpacing(k)
+	spacing := e.containerSpacing(k)
 	total := mt.Top + mt.Bottom
 	horizontal := flowHorizontal(k.Node().Kind())
 	first := true
@@ -681,7 +684,7 @@ func (e *Engine) contentHeight(k *tree.NodeBase, availW float64, mt m3.Metrics) 
 // contentWidth is the intrinsic width: the widest child for a column, the sum
 // for a row.
 func (e *Engine) contentWidth(k *tree.NodeBase, availW, h float64, mt m3.Metrics) float64 {
-	spacing := containerSpacing(k)
+	spacing := e.containerSpacing(k)
 	total := mt.Left + mt.Right
 	horizontal := flowHorizontal(k.Node().Kind())
 	first := true
@@ -704,8 +707,8 @@ func (e *Engine) contentWidth(k *tree.NodeBase, availW, h float64, mt m3.Metrics
 }
 
 // containerSpacing reads spacing from a component or a Container.
-func containerSpacing(k *tree.NodeBase) float64 {
-	if c, ok := componentOf(k); ok {
+func (e *Engine) containerSpacing(k *tree.NodeBase) float64 {
+	if c, ok := e.componentOf(k); ok {
 		return c.Spacing
 	}
 	return containerOf(k).Spacing.Get()
@@ -791,15 +794,19 @@ func containerKind(b *tree.NodeBase) (*tree.Container, bool) {
 	return nil, false
 }
 
-// componentOf returns the Material component state behind a node.
-func componentOf(b *tree.NodeBase) (*m3.ComponentView, bool) {
+// componentOf fills the engine's scratch view with the Material component state
+// behind a node and returns it. The result is only valid until the next call and
+// must not be held across one: it exists so a layout pass does not allocate a
+// view per component per pass, which was most of its garbage.
+func (e *Engine) componentOf(b *tree.NodeBase) (*m3.ComponentView, bool) {
 	type m3er interface{ M3() *tree.Component }
 	m, ok := b.Node().(m3er)
 	if !ok {
 		return nil, false
 	}
 	c := m.M3()
-	return &m3.ComponentView{
+	cv := &e.view
+	*cv = m3.ComponentView{
 		Label:       c.Label.Get(),
 		Supporting:  c.Supporting.Get(),
 		Text:        c.Text.Get(),
@@ -816,7 +823,8 @@ func componentOf(b *tree.NodeBase) (*m3.ComponentView, bool) {
 		Min:         c.Min.Get(),
 		Max:         c.Max.Get(),
 		Step:        c.Step.Get(),
-	}, true
+	}
+	return cv, true
 }
 
 // containerNatural is the auto size of Column, Row and Stack.

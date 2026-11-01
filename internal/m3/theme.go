@@ -69,7 +69,7 @@ func Light() *Theme {
 			InversePrimary: rgba(0xD0BCFF),
 			Shadow:         rgba(0x000000), Scrim: rgba(0x000000),
 		}.init(),
-		Type: defaultType(),
+		Type: typeScale,
 	}
 }
 
@@ -102,7 +102,7 @@ func Dark() *Theme {
 			InversePrimary: rgba(0x6750A4),
 			Shadow:         rgba(0x000000), Scrim: rgba(0x000000),
 		}.init(),
-		Type: defaultType(),
+		Type: typeScale,
 	}
 }
 
@@ -127,30 +127,31 @@ type TypeScale struct {
 	LabelLarge, LabelMedium, LabelSmall          TextStyle
 }
 
-func defaultType() TypeScale {
-	return TypeScale{
-		DisplayLarge:   TextStyle{57, 64, 400, -0.25},
-		DisplayMedium:  TextStyle{45, 52, 400, 0},
-		DisplaySmall:   TextStyle{36, 44, 400, 0},
-		HeadlineLarge:  TextStyle{32, 40, 400, 0},
-		HeadlineMedium: TextStyle{28, 36, 400, 0},
-		HeadlineSmall:  TextStyle{24, 32, 400, 0},
-		TitleLarge:     TextStyle{22, 28, 400, 0},
-		TitleMedium:    TextStyle{16, 24, 500, 0.15},
-		TitleSmall:     TextStyle{14, 20, 500, 0.1},
-		BodyLarge:      TextStyle{16, 24, 400, 0.5},
-		BodyMedium:     TextStyle{14, 20, 400, 0.25},
-		BodySmall:      TextStyle{12, 16, 400, 0.4},
-		LabelLarge:     TextStyle{14, 20, 500, 0.1},
-		LabelMedium:    TextStyle{12, 16, 500, 0.5},
-		LabelSmall:     TextStyle{11, 16, 500, 0.5},
-	}
+// typeScale is the one type scale: it does not vary between light and dark, and
+// RoleStyle is called for every text measurement, so building a Theme to read a
+// font size would allocate on the layout hot path.
+var typeScale = TypeScale{
+	DisplayLarge:   TextStyle{57, 64, 400, -0.25},
+	DisplayMedium:  TextStyle{45, 52, 400, 0},
+	DisplaySmall:   TextStyle{36, 44, 400, 0},
+	HeadlineLarge:  TextStyle{32, 40, 400, 0},
+	HeadlineMedium: TextStyle{28, 36, 400, 0},
+	HeadlineSmall:  TextStyle{24, 32, 400, 0},
+	TitleLarge:     TextStyle{22, 28, 400, 0},
+	TitleMedium:    TextStyle{16, 24, 500, 0.15},
+	TitleSmall:     TextStyle{14, 20, 500, 0.1},
+	BodyLarge:      TextStyle{16, 24, 400, 0.5},
+	BodyMedium:     TextStyle{14, 20, 400, 0.25},
+	BodySmall:      TextStyle{12, 16, 400, 0.4},
+	LabelLarge:     TextStyle{14, 20, 500, 0.1},
+	LabelMedium:    TextStyle{12, 16, 500, 0.5},
+	LabelSmall:     TextStyle{11, 16, 500, 0.5},
 }
 
 // RoleStyle resolves an M3 type-scale role name for text. Unknown names fall
 // back to bodyMedium, which is the default role of a Text element.
 func RoleStyle(role string) TextStyle {
-	t := Light().Type
+	t := typeScale
 	switch role {
 	case "displayLarge":
 		return t.DisplayLarge

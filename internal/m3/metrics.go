@@ -15,7 +15,7 @@ type Metrics struct {
 
 // labelStyle returns the type role a component uses for its label.
 func labelStyle(kind string) TextStyle {
-	t := defaultType()
+	t := typeScale
 	switch kind {
 	case "Button", "Chip", "SegmentedButton", "SplitButton", "MenuItem", "Tab", "FAB", "Badge":
 		if kind == "Tab" {

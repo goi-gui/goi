@@ -24,13 +24,13 @@ func (i *interactor) tickSwitches(dt float64) bool {
 		return false
 	}
 	moving := false
-	for _, n := range i.tree.All() {
+	i.tree.Walk(func(n tree.Node) {
 		if n.Kind() != "Switch" {
-			continue
+			return
 		}
 		c := comp(n)
 		if c == nil {
-			continue
+			return
 		}
 		target := 0.0
 		if c.Checked.Get() {
@@ -41,10 +41,10 @@ func (i *interactor) tickSwitches(dt float64) bool {
 			// loading a page does not slide every switch on.
 			c.TogglePosed = true
 			c.TogglePos = target
-			continue
+			return
 		}
 		if c.TogglePos == target {
-			continue
+			return
 		}
 		c.TogglePos = easeToward(c.TogglePos, target, dt)
 		if math.Abs(c.TogglePos-target) < switchSettled {
@@ -52,7 +52,7 @@ func (i *interactor) tickSwitches(dt float64) bool {
 		}
 		c.Base().MarkDirty(tree.DirtyPaint)
 		moving = true
-	}
+	})
 	return moving
 }
 

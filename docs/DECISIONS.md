@@ -771,3 +771,22 @@ batch. This is what the display list will feed.
   current tree, so a fetch that outlives a hot reload still lands. Loading state
   and phase live on the node as UI state, not as properties, for the same reason
   the switch handle does: the design language stays free of frame-rate concerns.
+- **The theme's type scale is a package-level value, not something `Light()`
+  rebuilds.** `RoleStyle` is called for every text measurement, and it used to
+read the scale off a freshly allocated `Theme`; on the gallery page that was
+  ~21 MB of garbage per relayout and 620 allocations per frame. The scale does
+  not vary between light and dark, so `typeScale` is one value and both schemes
+  point at it.
+- **`layout.Engine` keeps one scratch `m3.ComponentView`.** The view exists to
+  keep `m3` free of a `tree` import, so it cannot be replaced by reading the
+  component directly; filling it in place instead of allocating one per call
+  removed the other 75% of the layout garbage. The rule is that the pointer is
+  only valid until the next `componentOf`, which the four call sites already
+  satisfy because they use it for one `MetricsFor` call.
+- **`Tree.Walk` exists because `Tree.All` allocates.** A hover update, the switch
+  tick and the image-load tick all scan the whole tree, and doing that with a
+  fresh slice every pointer move or frame is pure garbage. `All` stays for tests
+  and one-off work; anything on the frame path uses `Walk`.
+- **`text.Library` remembers its last face lookup.** A page uses a handful of
+  sizes and asks for each hundreds of times per layout, so one cached key in
+  front of the map lookup removes most of the lock-and-hash cost of measuring.

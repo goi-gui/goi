@@ -207,10 +207,10 @@ func (i *interactor) MouseMove(x, y float64) {
 	}
 	i.hover = hit
 	changed := false
-	for _, n := range i.tree.All() {
+	i.tree.Walk(func(n tree.Node) {
 		c := comp(n)
 		if c == nil {
-			continue
+			return
 		}
 		want := isDescendantOf(hit, n) && interactive(n)
 		if c.Hover != want {
@@ -218,7 +218,7 @@ func (i *interactor) MouseMove(x, y float64) {
 			c.Base().MarkDirty(tree.DirtyPaint)
 			changed = true
 		}
-	}
+	})
 	if i.dragging {
 		i.drag(x, y)
 	}
@@ -1591,12 +1591,13 @@ func clampRune(s string, i int) int {
 
 // focusNode returns the tree node wrapping a component.
 func (i *interactor) focusNode(f *tree.Component) tree.Node {
-	for _, n := range i.tree.All() {
-		if comp(n) == f {
-			return n
+	var found tree.Node
+	i.tree.Walk(func(n tree.Node) {
+		if found == nil && comp(n) == f {
+			found = n
 		}
-	}
-	return nil
+	})
+	return found
 }
 
 // absoluteRect returns a node's rectangle in window coordinates.
