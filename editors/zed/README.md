@@ -14,6 +14,7 @@ language server for `.goi` design files.
 | Language name, `.goi` suffix, `//` comments | `languages/goi/config.toml` |
 | Diagnostics, completion, hover, go-to-definition | `cmd/goipls` |
 | Icon name completion (Material Symbols) | `cmd/goipls` + `internal/text` |
+| `app.` / `window.` global completion | `cmd/goipls` |
 
 Element names read as types, property names as fields, and value identifiers
 (`filled`, `primary`, `dark_mode`) as constants, because those are names the

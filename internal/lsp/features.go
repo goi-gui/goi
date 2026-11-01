@@ -187,7 +187,8 @@ func (s *Server) completion(raw json.RawMessage) any {
 	file, _ := syntax.Parse(d.text)
 	prop, inMap := enclosingProperty(file, d.text, off)
 
-	// A responsive map key, or the value of a property.
+	// A responsive map key, the value of a property, or a member of one of the
+	// reserved global namespaces (`app.`, `window.`).
 	switch {
 	case inMap:
 		items = append(items, breakpointItems()...)
@@ -195,6 +196,9 @@ func (s *Server) completion(raw json.RawMessage) any {
 		values, cut := valueItems(file, prop, d.text, off, prefix, insideString(d.text, off))
 		items = append(items, values...)
 		incomplete = cut
+	}
+	if ref := enclosingRef(before); ref != "" {
+		items = append(items, globalItems(ref)...)
 	}
 
 	// Member position: the line so far is only whitespace, or we are right
@@ -206,6 +210,59 @@ func (s *Server) completion(raw json.RawMessage) any {
 		items = append(items, elementItems()...)
 	}
 	return completionList{Items: dedupe(items, prefix), IsIncomplete: incomplete}
+}
+
+// globalItems lists the members of a reserved namespace. A design can read
+// `app.theme`, `app.dark`, `app.os` and `window.width`/`window.height`; nothing
+// else is accepted, so completing the closed set is the whole story.
+func globalItems(ref string) []completionResult {
+	type member struct {
+		name, typ, doc string
+	}
+	var names []member
+	switch ref {
+	case "app":
+		names = []member{
+			{"theme", "string", "the resolved scheme: light, dark or a registered name"},
+			{"dark", "bool", "true when the resolved scheme is dark"},
+			{"os", "string", "runtime.GOOS: linux, darwin, windows, freebsd"},
+		}
+	case "window":
+		names = []member{
+			{"width", "number", "logical client width, updated on resize"},
+			{"height", "number", "logical client height, updated on resize"},
+		}
+	default:
+		return nil
+	}
+	out := make([]completionResult, 0, len(names))
+	for _, m := range names {
+		out = append(out, completionResult{
+			Label:  m.name,
+			Kind:   kindProperty,
+			Detail: ref + "." + m.name + " · " + m.typ,
+			Documentation: &doc{Kind: "markdown",
+				Value: "**" + ref + "." + m.name + "**\n\nType: `" + m.typ + "`\n\n" + m.doc},
+		})
+	}
+	return out
+}
+
+// enclosingRef reports the reserved namespace the cursor is completing, given
+// the word prefix being typed and the text before it. `app.o` yields "app", and
+// so does `visible: app.` at the very start of a value.
+func enclosingRef(before []byte) string {
+	if i := lastIndexByte(before, '.'); i >= 0 {
+		start := i
+		for start > 0 && isWordByte(before[start-1]) {
+			start--
+		}
+		word := string(before[start:i])
+		if word == "app" || word == "window" {
+			return word
+		}
+	}
+	return ""
 }
 
 // valueItems offers the values a property accepts. The bool reports that the

@@ -729,3 +729,13 @@ batch. This is what the display list will feed.
   the expose to `Input.Expose`, which sets `needsFrame` without touching the
   tree: the same display list is repainted, that frame completes the ack, and
   the resize follows the pointer.
+- **The language server completes the reserved globals too.** `app.os` was
+  added to the expression layer with the custom title bar, and discovering a
+  global by reading the docs is not the same as getting it from the editor. The
+  set is closed and tiny (`app.theme`, `app.dark`, `app.os`, `window.width`,
+  `window.height`), so `globalItems` lists it directly rather than deriving it
+  from the validator: the validator knows how to reject an unknown name, not
+  what it means. Everything else in the server already came from the shared
+  schema, which is why `TitleBar` and `Window.titleBar` needed no new code —
+  only a test to prove they reached the editor, since the stale installed binary
+  was the real reason Zed flagged them.

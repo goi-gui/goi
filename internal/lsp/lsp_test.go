@@ -330,6 +330,56 @@ func TestTitleBarVocabulary(t *testing.T) {
 	}
 }
 
+// TestCompletionOffersGlobalMembers covers `app.` and `window.`: the closed set
+// an expression may read, so `app.os` is discoverable instead of guesswork.
+func TestCompletionOffersGlobalMembers(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tTitleBar {\n\t\tvisible: app.\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "visible: app.", len("visible: app.")),
+	})
+	var list completionList
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	labels := map[string]bool{}
+	for _, it := range list.Items {
+		labels[it.Label] = true
+	}
+	for _, want := range []string{"theme", "dark", "os"} {
+		if !labels[want] {
+			t.Fatalf("app.%s missing from %v", want, labels)
+		}
+	}
+	if labels["width"] {
+		t.Fatal("window members leaked into app")
+	}
+
+	// window keeps its own pair.
+	src2 := "Window {\n\tTitleBar {\n\t\twidth: window.\n\t}\n}\n"
+	uri2 := writeDesign(t, dir, "two.goi", src2)
+	c.openDoc(uri2, src2)
+	res = c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri2},
+		"position":     at(t, src2, "width: window.", len("width: window.")),
+	})
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	labels = map[string]bool{}
+	for _, it := range list.Items {
+		labels[it.Label] = true
+	}
+	if !labels["width"] || !labels["height"] || labels["os"] {
+		t.Fatalf("window members = %v", labels)
+	}
+}
+
 func TestCompletionOffersEnumValues(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()
