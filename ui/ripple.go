@@ -35,6 +35,9 @@ func (i *interactor) tick(dt float64) bool {
 	if i.tickFling(dt) {
 		scrolling = true
 	}
+	if i.tickSwitches(dt) {
+		scrolling = true
+	}
 	if len(i.ripples) == 0 {
 		return scrolling
 	}

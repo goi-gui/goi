@@ -805,49 +805,60 @@ func (l *List) paintSwitch(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	trackW, trackH := 52.0, 32.0
 	tr := tree.Rect{X: r.X, Y: r.Y + (r.H-trackH)/2, W: trackW, H: trackH}
 	on := c.Checked.Get()
-
-	track := col.SurfaceContainerHighest
-	thumb := col.Outline
+	// pos is where the handle is drawn: 0 off, 1 on, and anything between while
+	// the ui layer is animating a toggle.
+	pos := 0.0
 	if on {
-		track = col.Primary
-		thumb = col.OnPrimary
+		pos = 1
 	}
+	if c.TogglePosed {
+		pos = c.TogglePos
+	}
+
+	track := blend(col.SurfaceContainerHighest, col.Primary, pos)
+	thumb := blend(col.Outline, col.OnPrimary, pos)
 	if c.Disabled.Get() {
 		track = withAlpha(track, m3.DisabledContainerOpacity)
 		thumb = withAlpha(thumb, m3.DisabledOpacity)
 	}
 	l.fillRect(tr, track, trackH/2, 0, 0, clip)
-	if !on && !c.Disabled.Get() {
-		l.fillRect(tr, 0, trackH/2, col.Outline, 2, clip)
+	if pos < 1 && !c.Disabled.Get() {
+		// The outline fades as the track fills in.
+		l.fillRect(tr, 0, trackH/2, col.Outline, 2*(1-pos), clip)
 	}
 
 	// A glyph in the thumb needs room, so a switch with an icon keeps the
 	// checked thumb size in both states and draws the icon at 16dp inside it.
 	icon := c.Icon.Get()
-	if on {
+	if pos >= 0.5 {
 		if v := c.IconOn.Get(); v != "" {
 			icon = v
 		}
 	} else if v := c.IconOff.Get(); v != "" {
 		icon = v
 	}
-	// M3 keeps the same inset on every side of the thumb: 8dp around the
-	// small unchecked thumb and 4dp around the large one, so a checked or
-	// icon switch is not tighter above and below than it is at the ends.
-	thumbD, inset := 16.0, 8.0
-	if on || icon != "" || c.Icon.Get() != "" || c.IconOn.Get() != "" || c.IconOff.Get() != "" {
-		thumbD, inset = 24, 4
+	hasGlyph := c.Icon.Get() != "" || c.IconOn.Get() != "" || c.IconOff.Get() != ""
+	// The thumb grows from 16 to 24dp as it travels, with 8dp of inset when it
+	// is small and 4dp when it is large; a glyph needs the large size in both
+	// states. Since inset+thumbD/2 is 16 at either end, the centre only depends
+	// on how far along the travel is.
+	thumbD := 16 + 8*pos
+	if hasGlyph {
+		thumbD = 24
 	}
-	cx := tr.X + inset + thumbD/2
-	if on {
-		cx = tr.X + trackW - inset - thumbD/2
-	}
+	cx := tr.X + 16 + (trackW-32)*pos
 	l.stateLayer(c, tr, trackH/2, thumb, clip)
 	l.Ops = append(l.Ops, Op{Kind: Fill, Shape: Circle,
 		Rect:  [4]float32{float32(cx - thumbD/2), float32(tr.Y + (trackH-thumbD)/2), float32(thumbD), float32(thumbD)},
 		Color: thumb, Clip: clipArr(clip)})
 	if icon != "" {
-		l.iconIn(icon, 16, thumbIconColor(c, on, col), cx, tr.Y+trackH/2, clip)
+		// The glyph belongs to one side, so it fades out and back in as the
+		// handle crosses the middle instead of swapping abruptly.
+		alpha := 1.0
+		if c.TogglePosed {
+			alpha = math.Abs(2*pos - 1)
+		}
+		l.iconIn(icon, 16, withAlpha(thumbIconColor(c, on, col), alpha), cx, tr.Y+trackH/2, clip)
 	}
 
 	if c.Label.Get() != "" {

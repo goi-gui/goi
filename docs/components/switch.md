@@ -28,6 +28,15 @@ A switch with a glyph uses the larger thumb in both states, with the same 4dp
 inset on every side. The glyph is `Primary` on the checked thumb and the surface
 colour (white in the light scheme) on the unchecked one.
 
+Toggling animates: the thumb slides from one end to the other while it grows
+from 16dp to 24dp, the track fills in, the unchecked outline fades out and the
+glyph cross-fades at the half way point. The motion follows a target rather than
+a fixed start, so flipping the switch again mid-travel turns it around instead
+of restarting, and it always settles exactly on the end state so an idle window
+stops drawing. `checked: true` in a design starts settled; nothing slides on
+load or on a hot reload. The handle is UI state, not a property: it lives in
+`Component.TogglePos` and is advanced by `ui`'s frame tick.
+
 ## From Go
 
 ```go

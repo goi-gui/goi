@@ -747,3 +747,16 @@ batch. This is what the display list will feed.
   agree on the same numbers (16dp clear, or 8 + 18 + 8 with an icon) and the
   `selected` property is `DirtyLayout` because it swaps the leading icon for a
   check, which changes the width to a size that was never laid out.
+- **A switch toggle is animated by the ui layer, not by a property.** Adding a
+  numeric "position" property would put a frame-rate concern into the design
+  language, so `Component` carries `TogglePos`/`TogglePosed` as UI state next to
+  the hover and ripple fields; `ui`'s per-frame tick advances it and paint reads
+  it. The motion eases toward the target every tick instead of running from a
+  start time (`switchTau` 45 ms, about 150 ms to settle at 60 Hz), so flipping
+  the switch again mid-travel reverses it rather than restarting, and the handle
+  snaps onto the exact end state so an idle window stops asking for frames. The
+  first tick adopts the design's `checked` as the settled position, so a page
+  load or a hot reload does not slide every switch on. Paint falls back to
+  reading `checked` directly when `TogglePosed` is false, which keeps the
+  headless paint tests (and anything that builds a tree without `ui`) drawing the
+  end state.

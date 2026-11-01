@@ -79,6 +79,13 @@ type Component struct {
 	SelAnchor int
 	// SelectedIndex for tab bars and navigation.
 	SelectedIndex int
+
+	// TogglePos is where the Switch handle sits, 0 (off) to 1 (on). TogglePosed
+	// marks that the ui layer drives it, so paint animates instead of reading
+	// Checked directly; a headless paint test leaves it false and gets the end
+	// state at once.
+	TogglePos   float64
+	TogglePosed bool
 }
 
 // newComponent seeds the shared defaults.
