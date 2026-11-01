@@ -168,6 +168,9 @@ func (a *App) frame() {
 	if d.input != nil && d.input.tick(dt) {
 		a.needsFrame = true
 	}
+	if a.tickImageLoads(dt) {
+		a.needsFrame = true
+	}
 	if a.tickTweens() {
 		a.needsFrame = true
 	}

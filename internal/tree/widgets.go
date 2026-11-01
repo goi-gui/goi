@@ -180,8 +180,15 @@ type Image struct {
 	Src  Prop[string]
 	Fit  Prop[string]
 	Data *img.Data
-	// LoadErr is the decode failure, if any. The ui layer reports it and the
-	// node keeps drawing its placeholder.
+	// Loading is true while the ui layer is fetching a remote src; paint draws a
+	// breathing placeholder for it instead of leaving a hole.
+	Loading bool
+	// Phase is that placeholder's 0..1 opacity, advanced per frame by the ui
+	// layer. It is UI state, not a property: a rate belongs to the loop, not to
+	// the design file.
+	Phase float64
+	// LoadErr is the load or decode failure, if any. The node keeps drawing its
+	// placeholder, which is why a bad src shows as a coloured box.
 	LoadErr error
 }
 

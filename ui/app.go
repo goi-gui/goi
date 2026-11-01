@@ -67,8 +67,15 @@ type App struct {
 
 	// tweens are the running app animations, touched only on the UI goroutine.
 	tweens []*tween
-	// images caches decoded Image assets by path, so a reload is cheap.
+	// images caches decoded Image assets by path or URL, so a reload is cheap.
 	images map[string]*img.Data
+	// pending holds the URLs with a fetch in flight, so two nodes with the same
+	// src share one request and a reload does not start a second.
+	pending map[string]bool
+	// pulsing is true while at least one remote image is on the way; loadClock is
+	// the phase clock for the loading placeholder.
+	pulsing   bool
+	loadClock float64
 	// themes are the schemes a `.goi` file may name, keyed by name.
 	themes map[string]*Theme
 

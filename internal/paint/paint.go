@@ -260,6 +260,12 @@ func (l *List) paintScrollbar(b *tree.NodeBase, r, inner tree.Rect, clip tree.Re
 func (l *List) paintImage(n *tree.Image, r tree.Rect, clip tree.Rect) {
 	d := n.Data
 	if d == nil || d.W <= 0 || d.H <= 0 || r.W <= 0 || r.H <= 0 {
+		// A remote image still on the way gets a breathing wash, so the space
+		// reads as loading instead of broken. A failed or empty one stays the
+		// node's own background.
+		if n.Loading {
+			l.paintImageLoading(n, r, clip)
+		}
 		return
 	}
 	uv := [4]float32{0, 0, 1, 1}
@@ -296,6 +302,15 @@ func (l *List) paintImage(n *tree.Image, r tree.Rect, clip tree.Rect) {
 		ClipRadius: float32(n.Base().Radius()),
 		Src:        d, UV: uv,
 	})
+}
+
+// paintImageLoading draws the placeholder for an image that is still being
+// fetched: a faint wash over the box that breathes with Phase.
+func (l *List) paintImageLoading(n *tree.Image, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	alpha := 0.06 + 0.10*n.Phase
+	l.fillRect(r, withAlpha(col.OnSurface, alpha), n.Base().Radius(), 0, 0,
+		intersect(clip, r))
 }
 
 // componentNode is implemented by every Material 3 component (they all embed

@@ -760,3 +760,14 @@ batch. This is what the display list will feed.
   reading `checked` directly when `TogglePosed` is false, which keeps the
   headless paint tests (and anything that builds a tree without `ui`) drawing the
   end state.
+- **A remote image is fetched off the UI goroutine and painted before it
+  arrives.** Blocking the tree build on the network would freeze the window on a
+  slow host — the very case the feature is for. So `loadImages` reads local files
+  as before but only marks a remote `src` as loading and starts a request keyed
+  by URL; the node lays out at its declared size and paints a faint breathing
+  wash (`Image.Phase`, advanced by the frame tick like the ripple). The request
+  is capped (32 MiB, 20 s) and the decode runs on the fetch goroutine, with the
+  result posted back; the arriving bitmap is matched to nodes by `src` on the
+  current tree, so a fetch that outlives a hot reload still lands. Loading state
+  and phase live on the node as UI state, not as properties, for the same reason
+  the switch handle does: the design language stays free of frame-rate concerns.
