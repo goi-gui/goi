@@ -76,18 +76,22 @@ watched. `ui.LoadWindowFile(path)` is the single-file shortcut.
 ## Requirements
 
 - Go 1.23 or newer (developed on 1.27).
-- A C toolchain and GLFW on the machine (`glfw3` headers).
+- A C toolchain and SDL3 on the machine (`sdl3` via pkg-config). SDL picks
+  Wayland or X11 at runtime, so one binary runs on both and there is no build tag
+  to choose.
 - A Vulkan, Metal, D3D12 or OpenGL ES driver. No `wgpu-native` binary is needed:
   the renderer is pure Go (`gogpu/wgpu`).
 
-On Linux, build with the internal linker, because GLFW's cgo forces the external
-one and goffi's dynamic imports do not survive it:
+The renderer reaches the GPU through its own FFI, so the binary still needs the
+internal linker even though the only cgo left is the SDL shim:
 
 ```sh
 go build -ldflags=-linkmode=internal ./...
 ```
 
-Wayland is the default build; use `-tags x11` for X11.
+A custom title bar (`Window { titleBar: custom }`) hides the platform
+decorations and lets the design draw and drag its own; see
+[docs/components/titlebar.md](docs/components/titlebar.md).
 
 ## Run the examples
 

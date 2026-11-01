@@ -1,6 +1,28 @@
 package tree
 
-import "testing"
+import (
+	"runtime"
+	"testing"
+)
+
+// TestOSExpression covers the platform global: a design can hide a title bar
+// it did not write for this OS.
+func TestOSExpression(t *testing.T) {
+	tr, diag := BuildSource([]byte(`Window {
+		Column {
+			Rectangle { id: box visible: app.os == "linux" width: 40 height: 20 }
+		}
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	tr.SetViewport(800, 600)
+	tr.ApplyExpressions()
+	box := tr.ids["box"].Base()
+	if got, want := box.Visible(), runtime.GOOS == "linux"; got != want {
+		t.Fatalf("visible = %v on %s", got, runtime.GOOS)
+	}
+}
 
 // TestThemeExpressions covers the point of the expression layer: a view can ask
 // about the scheme and pick a value, and it must follow a later switch.

@@ -1,9 +1,10 @@
-// Command spike is the Phase 0 tech-freeze proof: a GLFW window with a WebGPU
+// Command spike is the Phase 0 tech-freeze proof: a window with a WebGPU
 // surface, a HiDPI-aware viewport uniform, and instanced SDF rounded rects
 // with borders and anti-aliasing.
 //
 // It is throwaway code that only exists to validate the bindings, the surface
-// path and the shader approach before the real packages are written.
+// path and the shader approach before the real packages are written. The window
+// and the native handles come from internal/platform, like every example.
 package main
 
 import (
@@ -13,9 +14,9 @@ import (
 	"runtime"
 	"unsafe"
 
-	"github.com/go-gl/glfw/v3.4/glfw"
 	"github.com/gogpu/gputypes"
 	"github.com/gogpu/wgpu"
+	"github.com/ksckaan1/goi/internal/platform"
 
 	_ "github.com/gogpu/wgpu/hal/allbackends"
 )
@@ -104,7 +105,7 @@ type instance struct {
 }
 
 type app struct {
-	win       *glfw.Window
+	win       *platform.Window
 	instance  *wgpu.Instance
 	adapter   *wgpu.Adapter
 	device    *wgpu.Device
@@ -126,16 +127,14 @@ type app struct {
 func main() {
 	runtime.LockOSThread()
 
-	if err := glfw.Init(); err != nil {
-		log.Fatalf("glfw init: %v", err)
+	if err := platform.Init(); err != nil {
+		log.Fatalf("platform init: %v", err)
 	}
-	defer glfw.Terminate()
+	defer platform.Terminate()
 
-	glfw.WindowHint(glfw.ClientAPI, glfw.NoAPI)
-	glfw.WindowHint(glfw.ScaleToMonitor, glfw.True)
-	win, err := glfw.CreateWindow(640, 400, "goi spike", nil, nil)
+	win, err := platform.New("goi spike", 640, 400, true)
 	if err != nil {
-		log.Fatalf("glfw window: %v", err)
+		log.Fatalf("window: %v", err)
 	}
 	defer win.Destroy()
 
@@ -146,7 +145,7 @@ func main() {
 	defer a.release()
 
 	for !win.ShouldClose() {
-		glfw.PollEvents()
+		win.PollEvents()
 		if err := a.frame(); err != nil {
 			log.Fatalf("frame: %v", err)
 		}
@@ -322,6 +321,20 @@ func (a *app) initGPU() error {
 	return nil
 }
 
+// createSurface wraps this window's native handles in a wgpu surface. platform
+// reports which pair it is, so no build tag decides the backend.
+func (a *app) createSurface() (*wgpu.Surface, error) {
+	display, handle, kind, err := a.win.SurfaceHandles()
+	if err != nil {
+		return nil, err
+	}
+	target := wgpu.SurfaceTargetFromWaylandSurface(display, handle)
+	if kind == platform.SurfaceX11 {
+		target = wgpu.SurfaceTargetFromXlibWindow(display, handle)
+	}
+	return a.instance.CreateSurfaceUnsafe(target)
+}
+
 func (a *app) configureSurface() error {
 	return a.surface.Configure(a.device, &wgpu.SurfaceConfiguration{
 		Width:       uint32(a.width),
@@ -334,9 +347,8 @@ func (a *app) configureSurface() error {
 }
 
 func (a *app) frame() error {
-	fbw, fbh := a.win.GetFramebufferSize()
-	xs, _ := a.win.GetContentScale()
-	a.scale = xs
+	fbw, fbh := a.win.FramebufferSize()
+	a.scale = a.win.Scale()
 	if s := floatFromEnv("SPIKE_SCALE", 0); s > 0 {
 		a.scale = s // simulate HiDPI: forces the logical/device split without a 2x monitor
 	}

@@ -1,31 +1,28 @@
-// Package platform owns the GLFW window, the native handle it exposes for
+// Package platform owns the SDL3 window, the native handle it exposes for
 // WebGPU, and the translation of input into framework events. Only this package
-// and render may import GLFW or a graphics API.
+// and render may import a windowing library or a graphics API.
 package platform
 
 import (
-	"errors"
+	"fmt"
 	"runtime"
-
-	"github.com/go-gl/glfw/v3.4/glfw"
+	"sync"
+	"unsafe"
 )
 
-// Input receives raw input translated from GLFW, in logical pixels.
+// Input receives raw input translated from SDL3, in logical pixels.
 type Input interface {
 	MouseMove(x, y float64)
 	MouseDown(x, y float64, button int, shift bool)
 	MouseUp(x, y float64, button int)
 	Scroll(dx, dy float64)
 	Key(key Key, mods Mods)
-	Char(r rune)
 	// Preedit carries the not-yet-committed IME composition and the caret
 	// position inside it; an empty string ends the composition.
 	Preedit(text string, caret int)
-	// CommitText replaces any composition with finished text.
+	// CommitText replaces any composition with finished text. Plain typing
+	// arrives here too, because SDL reports both as committed text.
 	CommitText(text string)
-	// DeleteSurrounding removes text around the caret, as an IME asks when it
-	// corrects earlier input.
-	DeleteSurrounding(before, after int)
 	Focus(focused bool)
 	Resize(width, height int, scale float32)
 	Close()
@@ -60,25 +57,43 @@ type Mods struct {
 	Shift, Ctrl, Alt, Super bool
 }
 
+// HitTest is what the pointer over a window position means: a normal client
+// area, a title-bar drag, or one of the edges that resizes the window.
+//
+// The values are SDL_HitTestResult's, so the callback is a cast.
+type HitTest int
+
+// Hit test results.
+const (
+	HitTestNormal            HitTest = 0
+	HitTestDrag              HitTest = 1
+	HitTestResizeTopLeft     HitTest = 2
+	HitTestResizeTop         HitTest = 3
+	HitTestResizeTopRight    HitTest = 4
+	HitTestResizeRight       HitTest = 5
+	HitTestResizeBottomRight HitTest = 6
+	HitTestResizeBottom      HitTest = 7
+	HitTestResizeBottomLeft  HitTest = 8
+	HitTestResizeLeft        HitTest = 9
+)
+
 // Window is a native window with no graphics context of its own: WebGPU draws
 // into it through the handles below.
 type Window struct {
-	win    *glfw.Window
+	win    unsafe.Pointer
 	input  Input
 	width  int
 	height int
 	scale  float32
 
-	// cursor position, in logical pixels, kept here so press and release can
-	// report the same point.
-	cx, cy float64
+	// closing is set when the window manager asks for a close, so the loop can
+	// stop without waiting for the next event.
+	closing bool
 
-	// ime is the input-method connection, nil when the platform has none.
-	ime imeConn
+	// imeActive tracks SDL_StartTextInput, which must be paired with a stop.
+	imeActive bool
 
-	// cursors caches the standard shapes by kind, and cursor/ cursorSet skip
-	// re-setting the same one on every mouse move.
-	cursors   map[Cursor]*glfw.Cursor
+	// cursor/cursorSet skip re-setting the same shape on every mouse move.
 	cursor    Cursor
 	cursorSet bool
 }
@@ -99,155 +114,194 @@ func (p *Window) SetCursor(c Cursor) {
 	if p.win == nil || (p.cursorSet && p.cursor == c) {
 		return
 	}
-	cur := p.cursors[c]
-	if cur == nil {
-		standard := glfw.ArrowCursor
-		switch c {
-		case CursorText:
-			standard = glfw.IBeamCursor
-		case CursorPointer:
-			standard = glfw.PointingHandCursor
-		}
-		cur = glfw.CreateStandardCursor(standard)
-		if cur == nil {
-			return
-		}
-		if p.cursors == nil {
-			p.cursors = make(map[Cursor]*glfw.Cursor)
-		}
-		p.cursors[c] = cur
-	}
-	p.win.SetCursor(cur)
+	sdlSetCursor(int(c))
 	p.cursor, p.cursorSet = c, true
-}
-
-// imeConn is a platform input-method connection. Wayland implements it with
-// text-input-v3; other platforms leave it nil.
-type imeConn interface {
-	setFocus(active bool, x, y, w, h int)
-	destroy()
 }
 
 // SetTextInput tells the input method whether a text field is focused and where
 // its caret is, so composed text and the candidate window land in the right
-// place. It is a no-op on platforms without IME support.
+// place. SDL only delivers text events while text input is on.
 func (p *Window) SetTextInput(active bool, x, y, w, h float64) {
-	if p.ime == nil {
+	if p.win == nil {
 		return
 	}
-	p.ime.setFocus(active, int(x), int(y), int(w), int(h))
+	if !active {
+		if p.imeActive {
+			sdlStopTextInput(p.win)
+			p.imeActive = false
+		}
+		return
+	}
+	if !p.imeActive {
+		// A compositor without text-input support ignores this; plain typing
+		// still works because it arrives through the same text path.
+		_ = sdlStartTextInput(p.win)
+		p.imeActive = true
+	}
+	sdlSetTextInputArea(p.win, int(x), int(y), int(w), int(h))
 }
 
-// New creates the window. Call ShimInit once on the main goroutine first.
-func New(title string, width, height int) (*Window, error) {
-	// The surface must exist before WebGPU asks for its handles, and some
-	// compositors only create the wl_surface once the window is shown, so the
-	// window is shown immediately.
-	glfw.WindowHint(glfw.ClientAPI, glfw.NoAPI)
-	glfw.WindowHint(glfw.ScaleToMonitor, glfw.True)
-	glfw.WindowHint(glfw.Visible, glfw.True)
-	w, err := glfw.CreateWindow(width, height, title, nil, nil)
+// New creates the window. Call Init once on the main goroutine first.
+// decorated=false hides the platform title bar, so the design draws its own.
+func New(title string, width, height int, decorated bool) (*Window, error) {
+	win, err := sdlCreateWindow(title, width, height, decorated)
 	if err != nil {
 		return nil, err
 	}
-	p := &Window{win: w, width: width, height: height, scale: 1}
-	xs, _ := w.GetContentScale()
-	if xs > 0 {
-		p.scale = xs
+	p := &Window{win: win, width: width, height: height, scale: 1}
+	if s := sdlWindowScale(win); s > 0 {
+		p.scale = s
 	}
-	w.SetUserPointer(nil)
 	return p, nil
 }
 
-// Init initializes GLFW and locks the goroutine, as macOS requires.
+var (
+	initOnce sync.Once
+	initErr  error
+)
+
+// Init initializes SDL's video subsystem and locks the goroutine, as macOS
+// requires. A missing SDL3 install is reported here instead of crashing later.
 func Init() error {
 	runtime.LockOSThread()
-	return glfw.Init()
+	initOnce.Do(func() {
+		if err := sdlInit(); err != nil {
+			initErr = fmt.Errorf("platform: %w", err)
+		}
+	})
+	return initErr
 }
 
-// Terminate releases GLFW. Call after every window is destroyed.
-func Terminate() { glfw.Terminate() }
+// Terminate releases SDL. Call after every window is destroyed.
+func Terminate() { sdlQuit() }
 
-// SetInput installs the input sink.
-func (p *Window) SetInput(in Input) {
-	p.input = in
-	p.win.SetMouseButtonCallback(func(w *glfw.Window, button glfw.MouseButton, action glfw.Action, mods glfw.ModifierKey) {
-		if p.input == nil {
+// SetInput installs the input sink. SDL is poll based, so input arrives through
+// PollEvents and WaitEvents rather than callbacks.
+func (p *Window) SetInput(in Input) { p.input = in }
+
+// currentHitTest is read by SDL's hit-test callback. There is one window per
+// process today and the callback runs on the UI goroutine, so no lock is needed.
+var currentHitTest func(x, y float64) HitTest
+
+// SetHitTest installs the region callback a borderless window needs: a press in
+// a title bar asks the compositor to move the window, and the outer pixels ask
+// it to resize. The callback runs on the UI goroutine.
+func (p *Window) SetHitTest(fn func(x, y float64) HitTest) {
+	if p.win == nil || fn == nil {
+		return
+	}
+	currentHitTest = fn
+	sdlInstallHitTest(p.win)
+}
+
+// PollEvents dispatches every pending event without blocking.
+func (p *Window) PollEvents() {
+	for {
+		ev, ok := sdlPollEvent()
+		if !ok {
 			return
 		}
-		x, y := p.cursorLogical()
-		switch action {
-		case glfw.Press:
-			p.input.MouseDown(x, y, int(button), translateMods(mods).Shift)
-		case glfw.Release:
-			p.input.MouseUp(x, y, int(button))
-		}
-	})
-	p.win.SetCursorPosCallback(func(w *glfw.Window, x, y float64) {
-		if p.input != nil {
-			p.input.MouseMove(x, y)
-		}
-	})
-	p.win.SetScrollCallback(func(w *glfw.Window, dx, dy float64) {
-		if p.input != nil {
-			p.input.Scroll(dx, dy)
-		}
-	})
-	p.win.SetKeyCallback(func(w *glfw.Window, key glfw.Key, _ int, action glfw.Action, mods glfw.ModifierKey) {
-		if p.input == nil || action == glfw.Release {
-			return
-		}
-		p.input.Key(translateKey(key), translateMods(mods))
-	})
-	p.win.SetCharCallback(func(w *glfw.Window, r rune) {
-		if p.input != nil {
-			p.input.Char(r)
-		}
-	})
-	p.win.SetFramebufferSizeCallback(func(w *glfw.Window, fw, fh int) {
-		if p.input == nil || fw == 0 || fh == 0 {
-			return
-		}
-		scale := p.contentScale()
-		p.input.Resize(fw, fh, scale)
-	})
-	p.win.SetFocusCallback(func(w *glfw.Window, focused bool) {
-		if p.input != nil {
-			p.input.Focus(focused)
-		}
-	})
-	p.win.SetCloseCallback(func(w *glfw.Window) {
+		p.dispatch(ev)
+	}
+}
+
+// WaitEvents blocks until an event arrives, then dispatches it and any others
+// already queued. PostEmptyEvent wakes it from another goroutine.
+func (p *Window) WaitEvents() {
+	ev, ok := sdlWaitEvent()
+	if ok {
+		p.dispatch(ev)
+	}
+	p.PollEvents()
+}
+
+func (p *Window) dispatch(ev rawEvent) {
+	switch ev.kind {
+	case evQuit, evClose:
+		p.closing = true
 		if p.input != nil {
 			p.input.Close()
 		}
-	})
-}
-
-func (p *Window) cursorLogical() (float64, float64) {
-	x, y := p.win.GetCursorPos()
-	p.cx, p.cy = x, y
-	return x, y
+	case evResize:
+		if ev.width <= 0 || ev.height <= 0 {
+			return
+		}
+		p.width, p.height = ev.width, ev.height
+		if p.input != nil {
+			p.input.Resize(p.width, p.height, p.contentScale())
+		}
+	case evFocusIn:
+		if p.input != nil {
+			p.input.Focus(true)
+		}
+	case evFocusOut:
+		if p.input != nil {
+			p.input.Focus(false)
+		}
+	case evMotion:
+		if p.input != nil {
+			p.input.MouseMove(ev.x, ev.y)
+		}
+	case evButton:
+		if p.input == nil {
+			return
+		}
+		if ev.down {
+			// SDL's button event carries no modifier state, so the current one
+			// is read instead; it is updated before the event is queued.
+			p.input.MouseDown(ev.x, ev.y, ev.button, translateMods(sdlModState()).Shift)
+		} else {
+			p.input.MouseUp(ev.x, ev.y, ev.button)
+		}
+	case evWheel:
+		if p.input != nil {
+			// SDL reports whole wheel steps, positive away from the user, which
+			// is the same convention the scroll handler expects.
+			p.input.Scroll(ev.wheelX, ev.wheelY)
+		}
+	case evKey:
+		println("DEBUG key scancode", ev.scancode, "key", translateKey(ev.scancode))
+		if p.input != nil {
+			p.input.Key(translateKey(ev.scancode), translateMods(ev.mod))
+		}
+	case evText:
+		if p.input != nil {
+			// Typing and an IME commit are both committed text in SDL; the text
+			// handler clears any composition and inserts the run.
+			p.input.CommitText(ev.text)
+		}
+	case evEditing:
+		if p.input != nil {
+			p.input.Preedit(ev.text, ev.caret)
+		}
+	}
 }
 
 func (p *Window) contentScale() float32 {
-	xs, _ := p.win.GetContentScale()
-	if xs <= 0 {
-		return 1
+	if s := sdlWindowScale(p.win); s > 0 {
+		p.scale = s
+	} else if p.scale <= 0 {
+		p.scale = 1
 	}
-	p.scale = xs
-	return xs
+	return p.scale
 }
 
 // FramebufferSize returns the device-pixel size of the client area.
 func (p *Window) FramebufferSize() (int, int) {
-	return p.win.GetFramebufferSize()
+	w, h := sdlWindowSizePixels(p.win)
+	if w <= 0 || h <= 0 {
+		return p.width, p.height
+	}
+	return w, h
 }
 
 // LogicalSize returns the client size in logical pixels.
 func (p *Window) LogicalSize() (float64, float64) {
-	fw, fh := p.win.GetFramebufferSize()
-	s := float64(p.contentScale())
-	return float64(fw) / s, float64(fh) / s
+	w, h := sdlWindowSize(p.win)
+	if w <= 0 || h <= 0 {
+		return float64(p.width), float64(p.height)
+	}
+	return float64(w), float64(h)
 }
 
 // Scale returns the content scale.
@@ -260,85 +314,103 @@ type SurfaceKind int
 const (
 	SurfaceWayland SurfaceKind = iota
 	SurfaceX11
-	SurfaceWin32
-	SurfaceCocoa
 )
 
 // Visible reports whether the window is shown (some compositors report a nil
 // surface while minimized).
 func (p *Window) Visible() bool {
-	return p.win.GetAttrib(glfw.Iconified) == glfw.False && p.win.GetAttrib(glfw.Visible) == glfw.True
+	flags := sdlWindowFlags(p.win)
+	return flags&(flagHidden|flagMinimized) == 0
 }
 
 // ShouldClose reports whether the user asked to close the window.
-func (p *Window) ShouldClose() bool { return p.win.ShouldClose() }
+func (p *Window) ShouldClose() bool { return p.closing }
 
 // Destroy tears the window down.
 func (p *Window) Destroy() {
-	if p.ime != nil {
-		p.ime.destroy()
-		p.ime = nil
+	if p.win == nil {
+		return
 	}
-	p.win.Destroy()
+	currentHitTest = nil
+	sdlDestroyWindow(p.win)
+	p.win = nil
+	p.cursorSet = false
 }
-
-// PollEvents processes pending input without blocking.
-func PollEvents() { glfw.PollEvents() }
-
-// WaitEvents blocks until input arrives. PostEmptyEvent wakes it.
-func WaitEvents() { glfw.WaitEvents() }
 
 // PostEmptyEvent wakes WaitEvents from another goroutine.
-func PostEmptyEvent() { glfw.PostEmptyEvent() }
+func PostEmptyEvent() { sdlPushUserEvent() }
 
 // SetTitle updates the window title.
-func (p *Window) SetTitle(title string) { p.win.SetTitle(title) }
+func (p *Window) SetTitle(title string) { sdlSetTitle(p.win, title) }
 
-// ErrNoGLFW reports a window created before Init.
-var ErrNoGLFW = errors.New("platform: GLFW is not initialized")
+// Minimize hides the window in the platform's task bar.
+func (p *Window) Minimize() { sdlMinimize(p.win) }
 
-func translateMods(m glfw.ModifierKey) Mods {
+// ToggleMaximize maximizes the window, or restores it when already maximized.
+func (p *Window) ToggleMaximize() {
+	if p.Maximized() {
+		sdlRestore(p.win)
+		return
+	}
+	sdlMaximize(p.win)
+}
+
+// Maximized reports whether the window is maximized.
+func (p *Window) Maximized() bool { return sdlWindowFlags(p.win)&flagMaximized != 0 }
+
+// Close asks the window to close, as the platform close button would.
+func (p *Window) Close() { p.closing = true }
+
+// Clipboard returns the clipboard text.
+func Clipboard() string { return sdlClipboard() }
+
+// SetClipboard replaces the clipboard text.
+func SetClipboard(s string) { sdlSetClipboard(s) }
+
+func translateMods(m int) Mods {
 	return Mods{
-		Shift: m&glfw.ModShift != 0,
-		Ctrl:  m&glfw.ModControl != 0,
-		Alt:   m&glfw.ModAlt != 0,
-		Super: m&glfw.ModSuper != 0,
+		Shift: m&sdlKmodShift != 0,
+		Ctrl:  m&sdlKmodCtrl != 0,
+		Alt:   m&sdlKmodAlt != 0,
+		Super: m&sdlKmodGui != 0,
 	}
 }
 
-func translateKey(k glfw.Key) Key {
-	switch k {
-	case glfw.KeyBackspace:
+// translateKey maps a physical key. Scancodes are used rather than keycodes so
+// the shortcuts stay in the same place on a different keyboard layout.
+func translateKey(s int) Key {
+	switch s {
+	case scancodeBackspace:
 		return KeyBackspace
-	case glfw.KeyDelete:
+	case scancodeDelete:
 		return KeyDelete
-	case glfw.KeyLeft:
+	case scancodeLeft:
 		return KeyLeft
-	case glfw.KeyRight:
+	case scancodeRight:
 		return KeyRight
-	case glfw.KeyHome:
+	case scancodeHome:
 		return KeyHome
-	case glfw.KeyEnd:
+	case scancodeEnd:
 		return KeyEnd
-	case glfw.KeyEnter, glfw.KeyKPEnter:
+	case scancodeReturn, scancodeKPEnter:
 		return KeyEnter
-	case glfw.KeyTab:
+	case scancodeTab:
 		return KeyTab
-	case glfw.KeySpace:
+	case scancodeSpace:
 		return KeySpace
-	case glfw.KeyEscape:
+	case scancodeEscape:
 		return KeyEscape
-	case glfw.KeyUp:
+	case scancodeUp:
 		return KeyUp
-	case glfw.KeyDown:
+	case scancodeDown:
 		return KeyDown
-	case glfw.KeyA:
+	case scancodeA:
 		return KeyA
-	case glfw.KeyC:
+	case scancodeC:
 		return KeyC
-	case glfw.KeyV:
+	case scancodeV:
 		return KeyV
-	case glfw.KeyX:
+	case scancodeX:
 		return KeyX
 	}
 	return KeyNone

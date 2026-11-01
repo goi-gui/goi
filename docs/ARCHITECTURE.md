@@ -16,7 +16,7 @@ internal/tree ── instantiate ──▶ node tree + id index
     ├──▶ internal/paint   (pure)                      ▶ display list
     └──▶ internal/render  (WebGPU only)               ▶ pixels
                 ▲
-      internal/platform (GLFW window, input translation)
+      internal/platform (SDL3 window, input translation)
                 ▲
               ui/ (public API, window handle, event loop, hot reload)
 ```
@@ -34,7 +34,7 @@ internal/tree ── instantiate ──▶ node tree + id index
 | `internal/paint` | tree, m3 | display list, component visuals |
 | `internal/text` | — | shaping, rasterization, glyph atlas |
 | `internal/render` | paint, text, gogpu/wgpu | GPU pipelines, texture upload |
-| `internal/platform` | go-gl/glfw | window, native handles, input |
+| `internal/platform` | SDL3 (cgo) | window, native handles, input |
 | `internal/hotreload` | fsnotify | file watching |
 | `ui` | all of the above | public API, event loop |
 
@@ -72,7 +72,7 @@ costs ~0% CPU.
 
 The node tree belongs to the UI goroutine. Everything public that touches it is
 called from `Bind` or from a function passed to `App.Post`, which queues work and
-posts an empty GLFW event to wake the loop. Hot reload parses and validates on
+posts an empty SDL user event to wake the loop. Hot reload parses and validates on
 the watcher goroutine and posts only the tree swap.
 
 ## Rendering

@@ -128,6 +128,9 @@ var elements = func() []Element {
 			// Any name the app registered with ui.WithTheme; `light` and `dark`
 			// are always available.
 			Prop{Name: "theme", Type: TypeString, Dirty: DirtyPaint, Default: "light"},
+			// system keeps the platform's title bar; custom hides it, so the
+			// design draws its own inside a TitleBar.
+			Prop{Name: "titleBar", Type: TypeEnum, Dirty: DirtyNone, Enum: []string{"system", "custom"}, Default: "system"},
 		)},
 		{Name: "Column", Children: true, Attrs: withCommon(
 			Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
@@ -135,6 +138,11 @@ var elements = func() []Element {
 			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
 		)},
 		{Name: "Row", Children: true, Attrs: withCommon(
+			Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
+			Prop{Name: "gap", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
+			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
+		)},
+		{Name: "TitleBar", Children: true, Attrs: withCommon(
 			Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
 			Prop{Name: "gap", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
 			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},

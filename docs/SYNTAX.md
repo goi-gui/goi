@@ -114,9 +114,10 @@ by `:` and a child element when it is followed by `{`, so `name: value` and
 
 | Element | Children | Properties beyond the common set |
 |---|---|---|
-| `Window` | yes | `title`, `theme` (`light`, `dark`, or a name the app registered) |
+| `Window` | yes | `title`, `theme` (`light`, `dark`, or a name the app registered), `titleBar` (`system`, `custom`) |
 | `Column` | yes | `spacing` (`gap`), `align` |
 | `Row` | yes | `spacing` (`gap`), `align` |
+| `TitleBar` | yes | `spacing` (`gap`), `align`; a press that misses its clickable children moves the window |
 | `Stack` | yes | `align` |
 | `Positioned` | yes | `left`, `top`, `right`, `bottom`, `translateX`, `translateY` |
 | `Wrap` | yes | `spacing` (`gap`), `align` |
@@ -252,14 +253,16 @@ Two namespaces are reserved for expressions:
 |---|---|---|
 | `app.theme` | string | `"light"` or `"dark"` |
 | `app.dark` | bool | shorthand for the theme comparison |
+| `app.os` | string | `runtime.GOOS`: `linux`, `darwin`, `windows`, … |
 | `window.width`, `window.height` | number | logical client size, updated on resize |
 
-So a design can react to the scheme without any Go code:
+So a design can react to the scheme or the platform without any Go code:
 
 ```
 TopAppBar { trailingIcon: app.dark ? "light_mode" : "dark_mode" }
 Text { text: app.dark ? "Dark scheme" : "Light scheme" color: app.dark ? onSurface : onPrimary }
 Rectangle { visible: window.width >= 640 width: window.width < 640 ? 240 : 320 }
+TitleBar { visible: app.os == "linux" }
 ```
 
 Because these expressions read live state, they are re-evaluated every frame;

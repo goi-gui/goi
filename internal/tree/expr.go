@@ -1,6 +1,10 @@
 package tree
 
-import "github.com/ksckaan1/goi/internal/syntax"
+import (
+	"runtime"
+
+	"github.com/ksckaan1/goi/internal/syntax"
+)
 
 // exprSpec is one expression-valued property. The value stays a syntax
 // expression so it can be re-read whenever a frame runs: a reference may point
@@ -157,6 +161,10 @@ func (t *Tree) Dark() bool {
 func (t *Tree) SetDark(dark bool) {
 	t.dark, t.darkSet = dark, true
 }
+
+// OS returns the operating system the app runs on, which is what `app.os`
+// exposes to a design: linux, darwin, windows, freebsd.
+func (t *Tree) OS() string { return runtime.GOOS }
 
 // SetViewport is the layout entry point; it delegates to the owning tree.
 func (b *NodeBase) SetViewport(w, h float64) {
@@ -433,6 +441,8 @@ func (c *evalCtx) evalRef(r *syntax.Ref) (any, bool) {
 			return c.tree.Root.Theme.Get(), true
 		case "dark":
 			return c.tree.Dark(), true
+		case "os":
+			return c.tree.OS(), true
 		}
 		return nil, false
 	case "window":

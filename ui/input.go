@@ -67,6 +67,10 @@ type interactor struct {
 	// setCursor changes the native pointer shape; nil in headless tests.
 	setCursor func(platform.Cursor)
 
+	// resizeEdges reports that the window is borderless, so the outer pixels
+	// resize it instead of belonging to the client area.
+	resizeEdges bool
+
 	viewportW, viewportH float64
 
 	// textSel is the selectable Text the pointer last selected, so Ctrl+C can
@@ -113,6 +117,70 @@ func clickable(n tree.Node) bool {
 		}
 	}
 	return n.Base().Click.Len() > 0
+}
+
+// dragRegionAt reports whether n or an ancestor moves the window on a press.
+func dragRegionAt(n tree.Node) bool {
+	for ; n != nil; n = n.Base().Parent() {
+		if d, ok := n.(interface{ DragRegion() bool }); ok && d.DragRegion() {
+			return true
+		}
+	}
+	return false
+}
+
+// resizeMargin is how close to the edge a borderless window starts resizing.
+const resizeMargin = 6
+
+// chromeHitTest tells the platform what a press at x,y means. A borderless
+// window owns its title bar and edges, so the compositor is asked to move the
+// window on a drag area and to resize it on the outer pixels; such a press
+// never reaches the input layer, which is why nothing here has to track it.
+func (i *interactor) chromeHitTest(x, y float64) platform.HitTest {
+	hit := i.hit(x, y)
+	// A real control wins over the frame: a window button parked in the corner
+	// is still a button.
+	if hit != nil && (clickable(hit) || fieldAt(hit) != nil || selectableTextAt(hit) != nil) {
+		return platform.HitTestNormal
+	}
+	if i.resizeEdges {
+		if e := i.resizeEdge(x, y); e != platform.HitTestNormal {
+			return e
+		}
+	}
+	if dragRegionAt(hit) {
+		return platform.HitTestDrag
+	}
+	return platform.HitTestNormal
+}
+
+// resizeEdge maps a point in the outer ring of the window to the edge it grabs.
+func (i *interactor) resizeEdge(x, y float64) platform.HitTest {
+	w, h := i.windowW(), i.windowH()
+	if w <= 0 || h <= 0 || x < 0 || y < 0 || x >= w || y >= h {
+		return platform.HitTestNormal
+	}
+	left, right := x < resizeMargin, x >= w-resizeMargin
+	top, bottom := y < resizeMargin, y >= h-resizeMargin
+	switch {
+	case top && left:
+		return platform.HitTestResizeTopLeft
+	case top && right:
+		return platform.HitTestResizeTopRight
+	case bottom && left:
+		return platform.HitTestResizeBottomLeft
+	case bottom && right:
+		return platform.HitTestResizeBottomRight
+	case top:
+		return platform.HitTestResizeTop
+	case bottom:
+		return platform.HitTestResizeBottom
+	case left:
+		return platform.HitTestResizeLeft
+	case right:
+		return platform.HitTestResizeRight
+	}
+	return platform.HitTestNormal
 }
 
 func (i *interactor) MouseMove(x, y float64) {
@@ -272,7 +340,6 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 	}
 	_ = button
 }
-
 func (i *interactor) MouseUp(x, y float64, button int) {
 	defer func() {
 		i.pressed = nil

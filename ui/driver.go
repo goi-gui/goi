@@ -13,7 +13,7 @@ import (
 	"github.com/ksckaan1/goi/internal/tree"
 )
 
-// gpuDriver is the GLFW + WebGPU event loop. It runs on the main goroutine.
+// gpuDriver is the SDL3 + WebGPU event loop. It runs on the main goroutine.
 type gpuDriver struct {
 	app    *App
 	win    *platform.Window
@@ -48,7 +48,8 @@ func (a *App) initPlatform() error {
 
 // initWindow creates the native window, the renderer and the input handler.
 func (a *App) initWindow(w *Window) error {
-	pw, err := platform.New(w.title, w.width, w.height)
+	// A custom title bar means the platform draws no decorations of its own.
+	pw, err := platform.New(w.title, w.width, w.height, w.tree.Root.TitleBar.Get() != "custom")
 	if err != nil {
 		return fmt.Errorf("ui: create window: %w", err)
 	}
@@ -77,9 +78,13 @@ func (a *App) initWindow(w *Window) error {
 	d.lastTick = time.Now()
 	d.fpsAt = time.Now()
 	d.input = &interactor{app: a, tree: w.tree, measure: d.list.Measure, setCursor: pw.SetCursor}
+	// A design that draws its own title bar also owns the window edges, so the
+	// platform asks us what each press means: drag, resize or a normal click.
+	if w.tree.Root.TitleBar.Get() == "custom" {
+		d.input.resizeEdges = true
+		pw.SetHitTest(d.input.chromeHitTest)
+	}
 	pw.SetInput(d.input)
-	// IME composition needs the input sink above, so it is wired second.
-	pw.InitTextInput()
 	a.driver = d
 
 	fw, fh := pw.FramebufferSize()
@@ -97,12 +102,12 @@ func (d *gpuDriver) run(frame func()) error {
 		if d.stopped.Load() || d.win.ShouldClose() {
 			return nil
 		}
-		platform.PollEvents()
+		d.win.PollEvents()
 		frame()
 		// Only block when there is nothing left to draw: that is what keeps an
 		// idle app at ~0% CPU.
 		if !d.app.needsFrame {
-			platform.WaitEvents()
+			d.win.WaitEvents()
 		}
 	}
 }

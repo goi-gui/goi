@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 
+	"github.com/ksckaan1/goi/internal/platform"
 	"github.com/ksckaan1/goi/internal/tree"
 )
 
@@ -33,6 +34,47 @@ func (w *Window) Title() string { return w.title }
 
 // Size returns the client size in logical pixels.
 func (w *Window) Size() (int, int) { return w.width, w.height }
+
+// native returns the live platform window, or nil in headless tests.
+func (w *Window) native() *platform.Window {
+	if w.app == nil {
+		return nil
+	}
+	d, _ := w.app.driver.(*gpuDriver)
+	if d == nil {
+		return nil
+	}
+	return d.win
+}
+
+// Minimize hides the window in the task bar.
+func (w *Window) Minimize() {
+	if p := w.native(); p != nil {
+		p.Minimize()
+	}
+}
+
+// ToggleMaximize maximizes the window, or restores it when already maximized.
+func (w *Window) ToggleMaximize() {
+	if p := w.native(); p != nil {
+		p.ToggleMaximize()
+	}
+}
+
+// Maximized reports whether the window is maximized. A headless window is
+// never maximized.
+func (w *Window) Maximized() bool {
+	p := w.native()
+	return p != nil && p.Maximized()
+}
+
+// Close asks the window to close, as the platform's close button would. The
+// event loop returns after the current frame.
+func (w *Window) Close() {
+	if p := w.native(); p != nil {
+		p.Close()
+	}
+}
 
 // ByID returns the node with the given id, or an error naming the id.
 func (w *Window) ByID(id string) (Node, error) {

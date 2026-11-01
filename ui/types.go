@@ -72,6 +72,7 @@ type (
 	// Layout primitives.
 	Column     = tree.Column
 	Row        = tree.Row
+	TitleBar   = tree.TitleBar
 	Stack      = tree.Stack
 	Positioned = tree.Positioned
 	Wrap       = tree.Wrap

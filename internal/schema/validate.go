@@ -369,7 +369,7 @@ func globalProp(id, prop string) (bool, string) {
 	var names []string
 	switch id {
 	case "app":
-		names = []string{"theme", "dark"}
+		names = []string{"theme", "dark", "os"}
 	case "window":
 		names = []string{"width", "height"}
 	default:

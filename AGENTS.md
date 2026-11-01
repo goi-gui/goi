@@ -15,15 +15,18 @@ window; Go finds elements by id and attaches behaviour.
 
 ```sh
 go build -ldflags=-linkmode=internal ./...   # required on Linux
-go vet ./... && go vet -tags x11 ./...       # CI runs both on Linux
+go vet ./...                                 # SDL picks Wayland/X11 at runtime
 gofmt -l .                                   # CI fails on any output
 go test -race ./ui ./internal/syntax ./internal/schema ./internal/layout ./internal/paint ./internal/text ./internal/hotreload ./internal/lsp
 go test ./...                                # also fine locally
 go run ./cmd/goicheck -layout -ops examples/*/*.goi   # headless render check
 ```
 
-- `-ldflags=-linkmode=internal` is not optional on Linux: GLFW's cgo forces the
-  external linker and goffi's dynamic imports fail without it.
+- `-ldflags=-linkmode=internal` is not optional on Linux: goffi's dynamic
+  imports (the renderer's FFI) fail under the external linker.
+- `internal/platform` is the only cgo in the tree: a small `sdl_shim.c` over
+  SDL3, because SDL3 has no Go binding we own and its dark, `cgo_import_dynamic`
+  build clashes with goffi's. Everything above `platform` stays cgo-free.
 - Run the examples **from the repo root** (`make gallery`, `make counter`, …).
   They load `examples/<name>/<name>.goi` by relative path; running the binary
   from elsewhere fails with "file not found".

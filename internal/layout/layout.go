@@ -105,7 +105,7 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 	}
 
 	switch b.Node().Kind() {
-	case "Row":
+	case "Row", "TitleBar":
 		e.linear(b, kids, cw, ch, pe.Left+bw, true, pe.Top+bw)
 	case "Stack", "Positioned":
 		e.stackChildren(b, w, h, pe.Left+bw, pe.Top+bw, pe.Right+bw, pe.Bottom+bw)
@@ -647,7 +647,7 @@ func (e *Engine) natural(k *tree.NodeBase, availW, availH float64) (float64, flo
 // flowHorizontal reports containers whose children run left to right.
 func flowHorizontal(kind string) bool {
 	switch kind {
-	case "Row", "ButtonGroup", "Toolbar", "Carousel", "Tabs", "NavigationBar":
+	case "Row", "TitleBar", "ButtonGroup", "Toolbar", "Carousel", "Tabs", "NavigationBar":
 		return true
 	}
 	return false
@@ -760,6 +760,8 @@ func containerOf(b *tree.NodeBase) *tree.Container {
 		return &n.Container
 	case *tree.Row:
 		return &n.Container
+	case *tree.TitleBar:
+		return &n.Container
 	case *tree.Stack:
 		return &n.Container
 	case *tree.Wrap:
@@ -776,6 +778,8 @@ func containerKind(b *tree.NodeBase) (*tree.Container, bool) {
 	case *tree.Column:
 		return &n.Container, true
 	case *tree.Row:
+		return &n.Container, true
+	case *tree.TitleBar:
 		return &n.Container, true
 	case *tree.Stack:
 		return &n.Container, true
@@ -874,7 +878,7 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 			}
 		}
 		switch kind {
-		case "Row":
+		case "Row", "TitleBar":
 			mainSum += cw
 		case "Stack":
 			mainSum = maxf(mainSum, cw)
@@ -887,7 +891,7 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 			mainSum += spacing
 		}
 	}
-	if kind == "Row" {
+	if kind == "Row" || kind == "TitleBar" {
 		return mainSum + insetW, maxH + insetH
 	}
 	if kind == "Stack" {
@@ -898,7 +902,7 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 
 func isContainer(k *tree.NodeBase) bool {
 	switch k.Node().Kind() {
-	case "Window", "Column", "Row", "Stack", "Positioned", "Wrap", "Grid",
+	case "Window", "Column", "Row", "TitleBar", "Stack", "Positioned", "Wrap", "Grid",
 		"Card", "Dialog", "BottomSheet", "SideSheet", "List", "Menu",
 		"NavigationDrawer", "NavigationBar", "NavigationRail", "Tabs",
 		"Toolbar", "ButtonGroup", "Carousel":

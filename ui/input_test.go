@@ -8,6 +8,7 @@ import (
 
 	"github.com/ksckaan1/goi/internal/layout"
 	"github.com/ksckaan1/goi/internal/paint"
+	"github.com/ksckaan1/goi/internal/platform"
 	"github.com/ksckaan1/goi/internal/tree"
 )
 
@@ -57,6 +58,59 @@ func TestClickPressRelease(t *testing.T) {
 	in.MouseUp(cx, cy, 0)
 	if clicks != 1 {
 		t.Fatalf("clicks = %d", clicks)
+	}
+}
+
+func TestChromeHitTestDragsTitleBarAndResizesEdges(t *testing.T) {
+	// The button sits in the top-left corner on purpose: it is inside the band
+	// where the frame would otherwise resize, and must keep its click.
+	const src = `Window {
+		Column {
+			TitleBar {
+				id: bar
+				height: 40
+				Button { id: min width: 40 height: 30 label: "x" }
+				Text { text: "Title" }
+			}
+			Rectangle { width: 20 height: 20 }
+		}
+	}`
+	_, win, in := inputFixture(t, src, 480, 320)
+	in.resizeEdges = true
+	bar := MustByID[*TitleBar](win, "bar")
+	btn := MustByID[*Button](win, "min")
+
+	// A control wins over the frame, even in the corner.
+	bb := absoluteRect(btn)
+	if got := in.chromeHitTest(bb.X+2, bb.Y+2); got != platform.HitTestNormal {
+		t.Fatalf("corner button hit = %v, want normal", got)
+	}
+	// The empty part of the bar asks the compositor to move the window.
+	b := absoluteRect(bar)
+	if got := in.chromeHitTest(b.X+b.W/2, b.Y+b.H/2); got != platform.HitTestDrag {
+		t.Fatalf("title bar hit = %v, want drag", got)
+	}
+	// The outer pixels resize, and a corner wins over an edge.
+	for _, tc := range []struct {
+		x, y float64
+		want platform.HitTest
+	}{
+		{240, 1, platform.HitTestResizeTop},
+		{1, 160, platform.HitTestResizeLeft},
+		{479, 160, platform.HitTestResizeRight},
+		{240, 319, platform.HitTestResizeBottom},
+		{1, 319, platform.HitTestResizeBottomLeft},
+		{479, 319, platform.HitTestResizeBottomRight},
+		{479, 1, platform.HitTestResizeTopRight},
+	} {
+		if got := in.chromeHitTest(tc.x, tc.y); got != tc.want {
+			t.Fatalf("hit at %v,%v = %v, want %v", tc.x, tc.y, got, tc.want)
+		}
+	}
+	// A decorated window keeps the platform borders; the client area is ours.
+	in.resizeEdges = false
+	if got := in.chromeHitTest(1, 319); got != platform.HitTestNormal {
+		t.Fatalf("decorated corner hit = %v, want normal", got)
 	}
 }
 

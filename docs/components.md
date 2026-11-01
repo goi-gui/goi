@@ -13,6 +13,7 @@ They all share one property set and one way of being driven from Go.
 - [Window](components/window.md) — The root of the tree.
 - [Column](components/column.md) — Stacks children vertically, top to bottom.
 - [Row](components/row.md) — Places children left to right.
+- [TitleBar](components/titlebar.md) — A Row that moves the window when dragged.
 - [Stack](components/stack.md) — Overlays children on top of each other, last child on top.
 - [Positioned](components/positioned.md) — Anchors a child inside a Stack.
 - [Wrap](components/wrap.md) — Flows children left to right and starts a new run when the next child does not fit.

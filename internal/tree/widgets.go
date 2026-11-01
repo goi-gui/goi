@@ -47,6 +47,9 @@ type Window struct {
 	Title Prop[string]
 	// Theme names a scheme: "light", "dark" or one the app registered.
 	Theme Prop[string]
+	// TitleBar is "system" (the platform's decorations) or "custom" (none, so
+	// the design draws a TitleBar of its own).
+	TitleBar Prop[string]
 }
 
 // Kind implements Node.
@@ -56,6 +59,7 @@ func (w *Window) namedProps() []NamedProp {
 	return append(commonProps(&w.NodeBase),
 		StringProp(&w.NodeBase, "title", &w.Title),
 		StringProp(&w.NodeBase, "theme", &w.Theme),
+		EnumProp(&w.NodeBase, "titleBar", DirtyPaint, &w.TitleBar, "system", "custom"),
 	)
 }
 
@@ -87,6 +91,17 @@ type Row struct{ Container }
 
 // Kind implements Node.
 func (*Row) Kind() string { return "Row" }
+
+// TitleBar behaves like a Row, and a press on it moves the window. It draws
+// nothing itself: the custom title bar's contents are its children.
+type TitleBar struct{ Container }
+
+// Kind implements Node.
+func (*TitleBar) Kind() string { return "TitleBar" }
+
+// DragRegion marks the node as a place where a press moves the window. A
+// clickable child such as a window button keeps its own press.
+func (*TitleBar) DragRegion() bool { return true }
 
 // Stack overlays children, last on top.
 type Stack struct{ Container }

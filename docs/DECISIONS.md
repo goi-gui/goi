@@ -676,3 +676,47 @@ batch. This is what the display list will feed.
   because `icon: 10k` would lex as a number followed by a word. The list is
   capped per response (200, `isIncomplete`) so one keystroke does not ship every
   name to the editor.
+- **A custom title bar is opt-in per design, and it is just a Row plus a drag
+  region.** `Window { titleBar: custom }` hides the platform decorations when
+  the window is created; `system` stays the default so existing designs do not
+  move. The design draws its own bar with `TitleBar`, which behaves exactly like
+  `Row` in layout, paint and scrolling — no second layout path — but answers
+  `DragRegion()`. The input layer starts a window drag only when the press is
+  not on a clickable node or a text field, so the minimize/maximize/close
+  `IconButton`s keep their clicks while the empty bar drags. The OS split is
+  plain `app.os` (`runtime.GOOS`), not build tags, so one design file can hold
+  both bars and `visible: app.os == "darwin"` picks one at runtime.
+- **Window dragging moves the window by the pointer delta.** GLFW has no
+  client-side drag request, so `platform.Window` remembers the window position
+  and the pointer's screen position at press and calls `SetPos` with the delta on
+  every cursor move. Wayland forbids client window positioning (`xdg-shell`
+  exposes no request for it), so `StartDrag` returns false there and the press
+  falls through to normal input; X11, macOS and Windows work. The controls
+  (`Minimize`, `ToggleMaximize`, `Maximized`, `Close`) mirror the platform
+  buttons through `Iconify`, `Maximize`/`Restore`, `GetAttrib` and
+  `SetShouldClose`, so a design never needs platform code of its own.
+- **The window layer is SDL3, not GLFW.** GLFW has no way to ask the compositor
+  to move a window: on Wayland `SetWindowPos` is a no-op and `xdg_toplevel` is
+  private to GLFW, so a design-drawn title bar could not drag. SDL3 exposes
+  `SDL_SetWindowHitTest`, which it turns into `xdg_toplevel_move`/`resize` with
+  the implicit-grab serial it already owns, and swallows the press so the drag
+  never reaches the app; the same callback gives frameless resize on every
+  platform. It also replaces ~1400 lines of our own `zwp_text_input_v3` binding
+  (`ti3.c`, `textinput_wayland.go`) with `SDL_EVENT_TEXT_EDITING`, and picks
+  Wayland or X11 at runtime, so `-tags x11` is gone.
+- **`internal/platform` is the tree's only cgo, and it is deliberately small.**
+  SDL3 has a Go binding (`Zyko0/go-sdl3`), but it uses purego's
+  `cgo_import_dynamic` loader, which collides with the renderer's goffi FFI
+  (`_cgo_init` defined twice with `CGO_ENABLED=0`, `SDYNIMPORT` relocations
+  unhandled with cgo + internal linker). A shim over `sdl3` via pkg-config keeps
+  the cgo confined to one file, keeps the SDL version the system's, and leaves
+  the renderer's FFI path untouched. The event union is flattened to a small C
+  struct in `sdl_shim.c`, so Go never mirrors `SDL_Event`'s layout.
+- **The window is moved by the compositor, so the drag has no client state.**
+  The input layer answers a hit test (`platform.HitTest`) for every pointer
+  position: a `TitleBar` region reports drag, the outer 6dp reports a resize
+  edge, everything else is a normal press. SDL calls that from its pointer
+  handler and keeps the press out of the event queue, which means no
+  `pressed` node, no mouse-up pairing, and no delta arithmetic to get lost.
+  `titleBar: custom` creates a `WINDOW_BORDERLESS` window, which is what makes
+  the design own both the drag region and the resize edges.

@@ -26,7 +26,7 @@ func (b *NodeBase) ScrollAxis() Axis {
 	if !b.scroll.Get() {
 		return AxisNone
 	}
-	if b.Node().Kind() == "Row" {
+	if b.Node().Kind() == "Row" || b.Node().Kind() == "TitleBar" {
 		return AxisX
 	}
 	return AxisY
@@ -41,7 +41,7 @@ func (b *NodeBase) ClipsChildren() bool {
 		return true
 	}
 	switch b.Node().Kind() {
-	case "Column", "Row", "Positioned", "Wrap", "Grid", "Toolbar", "ButtonGroup":
+	case "Column", "Row", "TitleBar", "Positioned", "Wrap", "Grid", "Toolbar", "ButtonGroup":
 		return false
 	}
 	return true
