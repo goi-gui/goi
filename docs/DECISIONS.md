@@ -739,3 +739,11 @@ batch. This is what the display list will feed.
   schema, which is why `TitleBar` and `Window.titleBar` needed no new code —
   only a test to prove they reached the editor, since the stale installed binary
   was the real reason Zed flagged them.
+- **A chip's label box is its padding minus its icons, and selecting one is a
+  layout change.** The width said 32 + 18 for a leading icon, but the paint path
+  only reserved 8dp for that icon and then asked for a label box that subtracted
+  a further 8dp on the trailing side, so a selected or icon-bearing chip gave the
+  text less room than it needs and the run spilled past the pill. Both sides now
+  agree on the same numbers (16dp clear, or 8 + 18 + 8 with an icon) and the
+  `selected` property is `DirtyLayout` because it swaps the leading icon for a
+  check, which changes the width to a size that was never laid out.

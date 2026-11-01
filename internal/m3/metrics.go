@@ -129,9 +129,12 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 		return Metrics{W: maxf(w, 48), H: 40}
 	case "Chip":
 		lw := labelWidth(m, kind, label)
+		// 16dp at each end. A leading icon — or the check a selected chip
+		// shows in its place — moves the text 18dp right, and a trailing icon
+		// takes the same 18dp back on the other side.
 		w := lw + 32
-		if hasIcon || c.Selected || c.Trailing != "" {
-			w += 8
+		if hasIcon || c.Selected {
+			w += 18
 		}
 		if c.Trailing != "" {
 			w += 18

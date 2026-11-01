@@ -97,14 +97,16 @@ func newComponent() Component {
 		Size:        newProp(nil, "size", DirtyLayout, ""),
 		Disabled:    newProp(nil, "disabled", DirtyPaint, false),
 		Checked:     newProp(nil, "checked", DirtyPaint, false),
-		Selected:    newProp(nil, "selected", DirtyPaint, false),
-		Expanded:    newProp(nil, "expanded", DirtyLayout, false),
-		Value:       newProp(nil, "value", DirtyPaint, 0.0),
-		Min:         newProp(nil, "min", DirtyPaint, 0.0),
-		Max:         newProp(nil, "max", DirtyPaint, 1.0),
-		Step:        newProp(nil, "step", DirtyPaint, 0.0),
-		Spacing:     newProp(nil, "spacing", DirtyLayout, 0.0),
-		Align:       newProp(nil, "align", DirtyLayout, "start"),
+		// A selected chip or segment shows a check in place of its leading icon,
+		// which changes its width, so this one is a layout change.
+		Selected: newProp(nil, "selected", DirtyLayout, false),
+		Expanded: newProp(nil, "expanded", DirtyLayout, false),
+		Value:    newProp(nil, "value", DirtyPaint, 0.0),
+		Min:      newProp(nil, "min", DirtyPaint, 0.0),
+		Max:      newProp(nil, "max", DirtyPaint, 1.0),
+		Step:     newProp(nil, "step", DirtyPaint, 0.0),
+		Spacing:  newProp(nil, "spacing", DirtyLayout, 0.0),
+		Align:    newProp(nil, "align", DirtyLayout, "start"),
 	}
 }
 
@@ -154,7 +156,9 @@ func (c *Component) one(name string) NamedProp {
 	case "checked":
 		return BoolProp(b, "checked", DirtyPaint, &c.Checked)
 	case "selected":
-		return BoolProp(b, "selected", DirtyPaint, &c.Selected)
+		// A selected chip or segment swaps its leading icon for a check, which
+		// changes its width, so this is a layout change rather than a repaint.
+		return BoolProp(b, "selected", DirtyLayout, &c.Selected)
 	case "expanded":
 		return BoolProp(b, "expanded", DirtyLayout, &c.Expanded)
 	case "value":

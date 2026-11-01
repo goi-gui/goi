@@ -694,25 +694,26 @@ func (l *List) paintChip(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	l.fillRect(r, bg, radius, border, bw, clip)
 	l.stateLayer(c, r, radius, fg, clip)
 
+	// A leading icon sits 8dp from the edge with an 8dp gap, which pushes the
+	// label 18dp further in than the plain 16dp padding.
+	x := r.X + 16
 	lead := c.Icon.Get()
 	if c.Selected.Get() && lead == "" {
 		lead = "check"
 	}
-	x := r.X + 8
 	if lead != "" {
-		l.iconIn(lead, 18, fg, x+9, r.Y+r.H/2, clip)
-		x += 18 + 8
-	} else {
-		x = r.X + 16
+		l.iconIn(lead, 18, fg, r.X+17, r.Y+r.H/2, clip)
+		x = r.X + 8 + 18 + 8
 	}
+	trail := c.Trailing.Get()
 	endPad := 16.0
-	if c.Trailing.Get() != "" {
-		endPad = 8
+	if trail != "" {
+		endPad = 8 + 18 + 8
 	}
 	l.textIn(c.Label.Get(), l.style("labelLarge"), fg,
 		tree.Rect{X: x, Y: r.Y, W: r.Right() - x - endPad, H: r.H}, AlignStart, clip)
-	if c.Trailing.Get() != "" {
-		l.iconIn(c.Trailing.Get(), 18, fg, r.Right()-17, r.Y+r.H/2, clip)
+	if trail != "" {
+		l.iconIn(trail, 18, fg, r.Right()-17, r.Y+r.H/2, clip)
 	}
 }
 
