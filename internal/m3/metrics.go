@@ -176,6 +176,9 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 	case "SideSheet":
 		return Metrics{W: 320, FillH: true, Top: 72, Right: 16, Bottom: 16, Left: 16}
 	case "Divider":
+		if c.Variant == "vertical" {
+			return Metrics{W: 1, FillH: true}
+		}
 		return Metrics{W: 0, H: 1, FillW: true}
 	case "List":
 		return Metrics{W: 0, FillW: true}

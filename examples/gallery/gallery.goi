@@ -94,12 +94,43 @@ Window {
 
 						Column {
 							spacing: 10
+							Text { text: "Button group" role: "titleMedium" }
+							ButtonGroup {
+								spacing: 8
+								Button { label: "Back" icon: arrow_back variant: tonal }
+								Button { label: "Next" icon: arrow_forward variant: tonal }
+							}
+							Text {
+								text: "A row that shares one gap and one alignment, so the actions read as a set."
+								role: "bodySmall"
+							}
+						}
+
+						Column {
+							spacing: 10
 							Text { text: "FAB" role: "titleMedium" }
 							Wrap {
 								spacing: 16
 								FAB { icon: edit size: sm }
 								FAB { icon: add }
 								FAB { label: "Compose" icon: edit variant: extended }
+							}
+						}
+
+						Column {
+							spacing: 10
+							Text { text: "FAB menu" role: "titleMedium" }
+							FABMenu {
+								id: fabMenu
+								icon: add
+								expanded: true
+								FAB { icon: edit size: sm }
+								FAB { icon: photo size: sm }
+								FAB { icon: share size: sm }
+							}
+							Text {
+								text: "The actions stack above the FAB while expanded; a closed menu has none."
+								role: "bodySmall"
 							}
 						}
 
@@ -216,6 +247,18 @@ Window {
 							SearchBar { placeholder: "Search components" width: { base: 280, md: 400 } }
 							Text { text: "Click it and type: the value scrolls and selects." role: "bodySmall" }
 						}
+
+						Column {
+							spacing: 10
+							Text { text: "Date picker" role: "titleMedium" }
+							DatePicker { label: "Select date" }
+						}
+
+						Column {
+							spacing: 10
+							Text { text: "Time picker" role: "titleMedium" }
+							TimePicker { label: "Select time" }
+						}
 					}
 
 					// ============================================= surfaces
@@ -286,6 +329,22 @@ Window {
 								role: "bodySmall"
 								wrap: true
 								width: { base: 280, md: 420 }
+							}
+						}
+
+						Column {
+							spacing: 10
+							Text { text: "Carousel" role: "titleMedium" }
+							Carousel {
+								height: 200
+								Card { width: 220 label: "One" supporting: "Scroll sideways" variant: filled }
+								Card { width: 220 label: "Two" supporting: "Drag or use the wheel" }
+								Card { width: 220 label: "Three" supporting: "The strip clips" variant: outlined }
+								Card { width: 220 label: "Four" supporting: "Last item" variant: filled }
+							}
+							Text {
+								text: "A horizontally scrolling strip: the wheel over it moves it sideways."
+								role: "bodySmall"
 							}
 						}
 
@@ -393,6 +452,67 @@ Window {
 						spacing: 24
 						padding: { base: 16, md: 24, lg: 32, xl: 64 }
 						align: start
+
+						Column {
+							spacing: 10
+							Text { text: "Title bar" role: "titleMedium" }
+							// The same design can carry both platforms: app.os picks
+							// one at runtime. Here they are plain rows inside the
+							// page; with titleBar: custom on the Window, a TitleBar
+							// also drags the window and the outer edge resizes it.
+							TitleBar {
+								visible: app.os == "linux"
+								height: 40
+								paddingLeft: 12
+								paddingRight: 4
+								spacing: 4
+								align: center
+								background: surfaceContainerHigh
+								radius: 8
+								Text { text: "Linux layout: buttons on the right" role: "labelMedium" }
+								Rectangle { flex: 1 }
+								IconButton { icon: remove variant: text size: sm }
+								IconButton { icon: crop_square variant: text size: sm }
+								IconButton { icon: close variant: text size: sm }
+							}
+							TitleBar {
+								visible: app.os == "darwin"
+								height: 40
+								paddingLeft: 4
+								paddingRight: 12
+								spacing: 4
+								align: center
+								background: surfaceContainerHigh
+								radius: 8
+								IconButton { icon: close variant: text size: sm }
+								IconButton { icon: remove variant: text size: sm }
+								IconButton { icon: crop_square variant: text size: sm }
+								Text { text: "macOS layout: buttons on the left" role: "labelMedium" }
+							}
+							Text {
+								text: "visible: app.os == \"linux\" picks a bar per platform; only one of the two above exists at runtime."
+								role: "bodySmall"
+								wrap: true
+								width: { base: 280, md: 460 }
+							}
+						}
+
+						Column {
+							spacing: 10
+							Text { text: "Toolbar" role: "titleMedium" }
+							Toolbar {
+								spacing: 4
+								IconButton { icon: undo }
+								IconButton { icon: redo }
+								Divider { variant: vertical height: 24 marginLeft: 6 marginRight: 6 }
+								IconButton { icon: format_bold }
+								IconButton { icon: format_italic }
+								IconButton { icon: format_underlined }
+								Divider { variant: vertical height: 24 marginLeft: 6 marginRight: 6 }
+								IconButton { icon: share }
+							}
+							Text { text: "A floating row of actions in one pill." role: "bodySmall" }
+						}
 
 						Column {
 							spacing: 12

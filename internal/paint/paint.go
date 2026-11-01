@@ -136,20 +136,28 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 	x += br.X
 	y += br.Y
 	r := tree.Rect{X: x, Y: y, W: br.W, H: br.H}
+	// A node laid out with no area has nothing to show: its fill would be
+	// invisible anyway, and an icon or a label would otherwise land on the
+	// parent's origin (a collapsed FAB menu, for one). Children still walk, so
+	// a zero-size Stack can hold anchored content.
+	empty := br.W <= 0 || br.H <= 0
 
-	if c, ok := b.Node().(componentNode); ok {
-		l.paintComponent(c.M3(), r, clip)
-	} else if b.Background() != 0 || b.BorderWidth() > 0 {
-		l.fillRect(r, b.Background(), b.Radius(), b.BorderColor(), b.BorderWidth(), clip)
+	if !empty {
+		if c, ok := b.Node().(componentNode); ok {
+			l.paintComponent(c.M3(), r, clip)
+		} else if b.Background() != 0 || b.BorderWidth() > 0 {
+			l.fillRect(r, b.Background(), b.Radius(), b.BorderColor(), b.BorderWidth(), clip)
+		}
 	}
 
-	if t, ok := b.Node().(*tree.Text); ok {
-		l.paintText(t, r, clip)
+	if !empty {
+		if t, ok := b.Node().(*tree.Text); ok {
+			l.paintText(t, r, clip)
+		}
+		if im, ok := b.Node().(*tree.Image); ok {
+			l.paintImage(im, r, clip)
+		}
 	}
-	if im, ok := b.Node().(*tree.Image); ok {
-		l.paintImage(im, r, clip)
-	}
-
 	inner := b.ContentBox(r)
 	childClip := clip
 	if b.ClipsChildren() {
@@ -173,17 +181,22 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 	x += bounds.X
 	y += bounds.Y
 	r := tree.Rect{X: x, Y: y, W: bounds.W, H: bounds.H}
+	empty := bounds.W <= 0 || bounds.H <= 0
 
-	if c, ok := b.Node().(componentNode); ok {
-		l.paintComponent(c.M3(), r, clip)
-	} else if b.Background() != 0 || b.BorderWidth() > 0 {
-		l.fillRect(r, b.Background(), b.Radius(), b.BorderColor(), b.BorderWidth(), clip)
+	if !empty {
+		if c, ok := b.Node().(componentNode); ok {
+			l.paintComponent(c.M3(), r, clip)
+		} else if b.Background() != 0 || b.BorderWidth() > 0 {
+			l.fillRect(r, b.Background(), b.Radius(), b.BorderColor(), b.BorderWidth(), clip)
+		}
 	}
-	if t, ok := b.Node().(*tree.Text); ok {
-		l.paintText(t, r, clip)
-	}
-	if im, ok := b.Node().(*tree.Image); ok {
-		l.paintImage(im, r, clip)
+	if !empty {
+		if t, ok := b.Node().(*tree.Text); ok {
+			l.paintText(t, r, clip)
+		}
+		if im, ok := b.Node().(*tree.Image); ok {
+			l.paintImage(im, r, clip)
+		}
 	}
 
 	inner := b.ContentBox(r)

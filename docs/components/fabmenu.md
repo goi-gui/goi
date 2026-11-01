@@ -29,6 +29,11 @@ FABMenu {
 | `gap` | number | alias of `spacing` |
 | `align` | enum | cross-axis placement |
 
+While `expanded` is true the FAB sits at the bottom of its own box and the
+actions stack above it, right-aligned with a 16dp gap, the last declared action
+closest to the FAB. While it is closed the box is just the FAB and the actions
+have no bounds at all, so they neither draw nor take a click.
+
 ## From Go
 
 ```go

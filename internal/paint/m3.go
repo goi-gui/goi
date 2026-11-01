@@ -519,11 +519,19 @@ func (l *List) paintFAB(c *tree.Component, r tree.Rect, clip tree.Rect) {
 }
 
 func (l *List) paintFABMenu(c *tree.Component, r tree.Rect, clip tree.Rect) {
-	// The menu items are children above the FAB; the FAB sits at the bottom.
+	// Only the FAB is drawn here: layout stacks the actions above it, and they
+	// paint themselves. While the menu is closed the rect is the FAB.
+	const fab = 56.0
+	side := minf(minf(r.W, r.H), fab)
+	if side <= 0 {
+		return
+	}
+	box := tree.Rect{X: r.Right() - side, Y: r.Bottom() - side, W: side, H: side}
 	col := l.Theme.Colors
-	radius := m3.ShapeLarge
-	l.fillRect(r, col.PrimaryContainer, radius, 0, 0, clip)
-	l.iconIn(c.Icon.Get(), 24, col.OnPrimaryContainer, r.X+r.W/2, r.Y+r.H/2, clip)
+	radius := radiusFor(m3.ShapeLarge, box)
+	l.shadow(box, radius, m3.Elevation3, clip)
+	l.fillRect(box, col.PrimaryContainer, radius, 0, 0, clip)
+	l.iconIn(c.Icon.Get(), 24, col.OnPrimaryContainer, box.X+box.W/2, box.Y+box.H/2, clip)
 }
 
 func (l *List) paintButtonGroup(c *tree.Component, r tree.Rect, clip tree.Rect) {
@@ -1242,6 +1250,15 @@ func (l *List) paintSideSheet(c *tree.Component, r tree.Rect, clip tree.Rect) {
 
 func (l *List) paintDivider(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
+	if c.Variant.Get() == "vertical" {
+		w := r.W
+		if w <= 0 {
+			w = 1
+		}
+		l.fillRect(tree.Rect{X: r.X + (r.W-w)/2, Y: r.Y, W: w, H: r.H},
+			col.OutlineVariant, 0, 0, 0, clip)
+		return
+	}
 	h := r.H
 	if h <= 0 {
 		h = 1
@@ -1602,7 +1619,11 @@ func (l *List) paintTimePicker(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
 	l.shadow(r, m3.ShapeExtraLarge, m3.Elevation3, clip)
 	l.fillRect(r, col.SurfaceContainerHigh, m3.ShapeExtraLarge, 0, 0, clip)
-	l.textIn("Select time", l.style("labelMedium"), col.OnSurfaceVariant,
+	label := c.Label.Get()
+	if label == "" {
+		label = "Select time"
+	}
+	l.textIn(label, l.style("labelMedium"), col.OnSurfaceVariant,
 		tree.Rect{X: r.X + 24, Y: r.Y + 16, W: r.W - 48, H: 16}, AlignStart, clip)
 
 	// Dial: a large circle with 12 hour labels.

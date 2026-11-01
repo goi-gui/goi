@@ -103,6 +103,13 @@ func (e *Engine) Layout(root *tree.Window, w, h float64) tree.Rect {
 // size; b's own padding and border are applied here, in one place.
 func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 	kids := visibleChildren(b)
+	// A FAB menu stacks its actions above the FAB, and has none while closed;
+	// it must still visit an empty child list, so a menu that just closed can
+	// clear the bounds its actions had.
+	if b.Node().Kind() == "FABMenu" {
+		e.fabMenuChildren(b, kids, w, h)
+		return
+	}
 	if len(kids) == 0 {
 		return
 	}
@@ -664,6 +671,9 @@ func (e *Engine) natural(k *tree.NodeBase, availW, availH float64) (float64, flo
 // valid for the rest of the pass.
 func (e *Engine) naturalSize(k *tree.NodeBase, availW, availH float64) (float64, float64) {
 	k.ResolveSize(availW, availH)
+	if k.Node().Kind() == "FABMenu" {
+		return e.fabMenuNatural(k, availW, availH)
+	}
 	if cv, ok := e.componentOf(k); ok {
 		mt := e.metricsFor(k, cv)
 		w, h := mt.W, mt.H
@@ -892,6 +902,64 @@ func (e *Engine) metricsFor(k *tree.NodeBase, cv *m3.ComponentView) m3.Metrics {
 	return mt
 }
 
+// A FAB menu is a 56dp FAB with its actions stacked above it, 16dp apart.
+const (
+	fabSize = 56.0
+	fabGap  = 16.0
+)
+
+// fabMenuNatural is the size of a FAB menu: the FAB alone while closed, and the
+// FAB plus every action while open.
+func (e *Engine) fabMenuNatural(k *tree.NodeBase, availW, availH float64) (float64, float64) {
+	cv, ok := e.componentOf(k)
+	if !ok || !cv.Expanded {
+		return fabSize, fabSize
+	}
+	w, h := fabSize, fabSize
+	for _, kid := range visibleChildren(k) {
+		kw, kh := e.natural(kid, availW, availH)
+		if v := kid.Width(); v >= 0 {
+			kw = v
+		}
+		if v := kid.Height(); v >= 0 {
+			kh = v
+		}
+		w = maxf(w, kw)
+		h += fabGap + kh
+	}
+	return w, h
+}
+
+// fabMenuChildren stacks the actions above the FAB, right-aligned, with the
+// first declared action closest to the FAB. A closed menu gives its actions no
+// bounds at all, so they neither draw nor take a click.
+func (e *Engine) fabMenuChildren(b *tree.NodeBase, kids []*tree.NodeBase, w, h float64) {
+	cv, ok := e.componentOf(b)
+	if !ok || !cv.Expanded {
+		for _, k := range kids {
+			k.SetBounds(tree.Rect{})
+			e.children(k, 0, 0)
+		}
+		return
+	}
+	pe, bw := b.PaddingEdges(), b.BorderWidth()
+	innerW := maxf(w-pe.Left-pe.Right-2*bw, 0)
+	right := pe.Left + bw + innerW
+	y := h - pe.Bottom - bw - fabSize
+	for _, k := range kids {
+		kw, kh := e.natural(k, innerW, y)
+		if v := k.Width(); v >= 0 {
+			kw = v
+		}
+		if v := k.Height(); v >= 0 {
+			kh = v
+		}
+		y -= fabGap + kh
+		k.SetBounds(tree.Rect{X: right - kw, Y: y, W: kw, H: kh})
+		e.children(k, kw, kh)
+	}
+}
+
 // containerNatural is the auto size of Column, Row and Stack.
 func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (float64, float64) {
 	kids := visibleChildren(k)
@@ -973,12 +1041,16 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 	return maxW + insetW, mainSum + insetH
 }
 
+// isContainer reports whether a child fills its parent's cross axis. It lists
+// the containers that are meant to span the space they are given: a Column or a
+// page body, a sheet, a bar. A floating Toolbar is deliberately absent — it is a
+// pill that hugs its actions, like a FAB menu.
 func isContainer(k *tree.NodeBase) bool {
 	switch k.Node().Kind() {
 	case "Window", "Column", "Row", "TitleBar", "Stack", "Positioned", "Wrap", "Grid",
 		"Card", "Dialog", "BottomSheet", "SideSheet", "List", "Menu",
 		"NavigationDrawer", "NavigationBar", "NavigationRail", "Tabs",
-		"Toolbar", "ButtonGroup", "Carousel":
+		"ButtonGroup", "Carousel":
 		return true
 	}
 	return false

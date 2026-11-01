@@ -816,3 +816,19 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   "last face" slot missed almost every time because a page alternates between
   sizes (11, 12, 14, 16, 22), so the map hash and the lock were paid per
   measurement. Four slots keyed by the size absorb that pattern.
+- **A FAB menu is laid out by the layout pass, not by the painter.** It was
+  drawn as a single 56dp box with its actions placed at the parent's origin,
+  which is why `expanded` did nothing visible. Now a closed menu is just the FAB
+  and its actions get zero bounds (so neither paint nor hit testing sees them),
+  and an open one is the FAB at the bottom with the actions stacked above it,
+  right-aligned, the last declared action nearest the FAB. `expanded` inherited
+  `DirtyLayout` from the component definition, so the switch already relaid out.
+- **A node with no area draws nothing of its own.** A collapsed FAB menu left its
+  action glyphs on the parent's origin: the icon of a zero-size node was still
+  emitted at that point. `walk` and `walkOffset` now skip a node's own visuals
+  when its box has no width or height, while still walking its children, so a
+  zero-size Stack can keep holding anchored content.
+- **A floating Toolbar hugs its actions.** `isContainer` made every container
+  stretch on the cross axis, and a Toolbar was in that list, so a pill meant to
+  wrap five icon buttons spanned the whole page. It no longer stretches; a design
+  that wants a full-width bar can set `width: 100%` or put it in a Row.

@@ -290,6 +290,13 @@ func main() {
 		if sw, err := ui.ByID[*ui.Switch](w, "switchOn"); err == nil {
 			sw.OnToggle(func(v bool) { fmt.Println("switch:", v) })
 		}
+		// The FAB menu opens and closes: a closed menu gives its actions no bounds,
+		// so they neither draw nor take a click.
+		if fab, err := ui.ByID[*ui.FABMenu](w, "fabMenu"); err == nil {
+			fab.OnClick(func(ui.ClickEvent) {
+				fab.Expanded.Set(!fab.Expanded.Get())
+			})
+		}
 		if cb, err := ui.ByID[*ui.Checkbox](w, "check"); err == nil {
 			cb.OnToggle(func(v bool) { fmt.Println("checkbox:", v) })
 		}
