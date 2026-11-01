@@ -832,3 +832,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   stretch on the cross axis, and a Toolbar was in that list, so a pill meant to
   wrap five icon buttons spanned the whole page. It no longer stretches; a design
   that wants a full-width bar can set `width: 100%` or put it in a Row.
+- **The viewport uniform is only written when it changes.** It was uploaded every
+  frame, and wgpu's Vulkan backend drains the queue (`waitForGPU`) on every
+  `Queue.WriteBuffer`. That drain was invisible in the median but showed up as
+  3–21 ms spikes whenever it landed near the end of a frame, which is what made
+  the FPS counter dip to ~50. `GPU.uniformWritten` now guards the write. The
+  remaining per-frame instance upload drains the same way and is an upstream
+  limitation; measured at ~0.5% dropped frames on the gallery, so it stays.

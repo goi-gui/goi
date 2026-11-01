@@ -226,16 +226,17 @@ type gpuInstance struct {
 
 // GPU is the WebGPU renderer.
 type GPU struct {
-	instance *wgpu.Instance
-	adapter  *wgpu.Adapter
-	device   *wgpu.Device
-	queue    *wgpu.Queue
-	surface  *wgpu.Surface
-	pipeline *wgpu.RenderPipeline
-	uniform  *wgpu.Buffer
-	storage  *wgpu.Buffer
-	bindG    *wgpu.BindGroup
-	format   gputypes.TextureFormat
+	instance       *wgpu.Instance
+	adapter        *wgpu.Adapter
+	device         *wgpu.Device
+	queue          *wgpu.Queue
+	surface        *wgpu.Surface
+	pipeline       *wgpu.RenderPipeline
+	uniform        *wgpu.Buffer
+	uniformWritten [4]float32
+	storage        *wgpu.Buffer
+	bindG          *wgpu.BindGroup
+	format         gputypes.TextureFormat
 
 	width, height int
 	scale         float32
@@ -520,13 +521,19 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 		}
 	}
 
-	uniform := []float32{
+	// The viewport uniform only changes on a resize or a scale change. Writing
+	// it every frame is not free: wgpu's Vulkan backend drains the queue on
+	// every Queue.WriteBuffer, which costs a frame whenever it lands badly.
+	uniform := [4]float32{
 		float32(width) / maxf(g.scale, 0.01),
 		float32(height) / maxf(g.scale, 0.01),
 		g.scale, 0,
 	}
-	if err := g.queue.WriteBuffer(g.uniform, 0, floatsToBytes(uniform)); err != nil {
-		return err
+	if uniform != g.uniformWritten {
+		g.uniformWritten = uniform
+		if err := g.queue.WriteBuffer(g.uniform, 0, floatsToBytes(uniform[:])); err != nil {
+			return err
+		}
 	}
 	if len(g.instances) > 0 {
 		if err := g.queue.WriteBuffer(g.storage, 0, instancesToBytes(g.instances)); err != nil {
