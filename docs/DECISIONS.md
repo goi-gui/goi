@@ -790,3 +790,12 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
 - **`text.Library` remembers its last face lookup.** A page uses a handful of
   sizes and asks for each hundreds of times per layout, so one cached key in
   front of the map lookup removes most of the lock-and-hash cost of measuring.
+- **Shaping is cached per face and string.** Every repaint walks the display list
+  and calls `Shape` for each text run, and a short line costs ~20 µs to shape;
+  a page with a few dozen runs therefore paid a millisecond per repaint just to
+  re-shape strings that had not changed. `Face.shaped` keeps the whole `shaping.Output`
+  (glyphs included) for up to 512 distinct runs per face, dropping the map when
+  it fills. The outputs are read-only to every caller — `shapeOp` reads `Advance`
+  and the glyph slice — so the cache is safe to share. A distinct run is still
+  ~30 µs, which is why the map is per face (size and weight) rather than global:
+  the key is the string alone.

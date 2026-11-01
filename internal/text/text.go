@@ -33,7 +33,17 @@ type Face struct {
 	// prefixes, so without this every frame re-shapes the same strings and a
 	// full relayout costs milliseconds. Cleared when it grows past a bound.
 	adv map[string]float64
+	// shaped caches whole shaping results, glyphs included. Every repaint runs
+	// through Shape for each text run, and shaping a short line costs ~20us, so
+	// an unchanged page would otherwise pay milliseconds per frame just to
+	// re-shape the same strings. The results are read-only to every caller.
+	shaped map[string]shaping.Output
 }
+
+// maxShapedRuns bounds the shaping cache. A page has far fewer distinct runs
+// than this; a design that exceeds it drops the whole map rather than growing
+// without limit, and the runs it still shows are re-shaped once.
+const maxShapedRuns = 512
 
 // Library holds the registered fonts and the glyph atlas. Create one per app.
 type Library struct {
@@ -181,6 +191,19 @@ func (f *Face) Size() float64 { return f.size }
 // clusters rather than on them. Upgrade with a real cluster-to-glyph map when a
 // field needs to edit mixed scripts.
 func (f *Face) Shape(s string) shaping.Output {
+	if out, ok := f.shaped[s]; ok {
+		return out
+	}
+	out := f.shape(s)
+	if f.shaped == nil || len(f.shaped) >= maxShapedRuns {
+		f.shaped = make(map[string]shaping.Output)
+	}
+	f.shaped[s] = out
+	return out
+}
+
+// shape runs the shaper; Shape caches the result.
+func (f *Face) shape(s string) shaping.Output {
 	runs := splitBidi(s)
 	if len(runs) == 1 && runs[0].rtl == false {
 		return f.shapeRun(s, di.DirectionLTR, runs[0].script)
