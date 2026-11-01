@@ -717,3 +717,38 @@ func TestStackSizesToPositionedExtent(t *testing.T) {
 	New(nil).Layout(tr.Root, 300, 200)
 	want(t, bounds(t, tr, "below"), 0, 25, 10, 10)
 }
+
+// TestPassCacheIsPerPass guards the memoization added for speed: intrinsic sizes
+// and component metrics are cached for one Layout call, so a property that
+// changes between two calls must show up in the second one.
+func TestPassCacheIsPerPass(t *testing.T) {
+	tr := build(t, `Window { Column { Text { id: label text: "a" } Chip { id: chip label: "x" } } }`)
+	e := New(nil)
+	e.Layout(tr.Root, 400, 300)
+
+	label, _ := tr.ByID("label")
+	chip, _ := tr.ByID("chip")
+	narrow, chipNarrow := label.Base().Bounds().W, chip.Base().Bounds().W
+
+	label.(*tree.Text).Text.Set("a much longer line of text")
+	chip.(*tree.Chip).Label.Set("a much longer chip label")
+	e.Layout(tr.Root, 400, 300)
+
+	if got := label.Base().Bounds().W; got <= narrow {
+		t.Fatalf("text stayed %v after growing, the pass cache leaked", got)
+	}
+	if got := chip.Base().Bounds().W; got <= chipNarrow {
+		t.Fatalf("chip stayed %v after growing, the metrics cache leaked", got)
+	}
+
+	// And back down again, so a shrinking value is not pinned either.
+	label.(*tree.Text).Text.Set("a")
+	chip.(*tree.Chip).Label.Set("x")
+	e.Layout(tr.Root, 400, 300)
+	if got := label.Base().Bounds().W; got != narrow {
+		t.Fatalf("text = %v after shrinking, want %v", got, narrow)
+	}
+	if got := chip.Base().Bounds().W; got != chipNarrow {
+		t.Fatalf("chip = %v after shrinking, want %v", got, chipNarrow)
+	}
+}

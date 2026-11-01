@@ -799,3 +799,20 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   and the glyph slice — so the cache is safe to share. A distinct run is still
   ~30 µs, which is why the map is per face (size and weight) rather than global:
   the key is the string alone.
+- **Layout memoizes per pass, and the pass boundary is the only invalidation.**
+  A parent asks a child for its natural size while measuring itself and again
+  while placing it, and each ask recursed into the whole subtree, so a deep tree
+  was measured once per level; a component's metrics were recomputed for the same
+  reason. `Engine.memo`, `Engine.metrics` are cleared at the top of every
+  `Layout`, which is where a property change lands, so nothing stale survives.
+  Only subtrees are cached: a leaf is cheaper to measure than to look up, and a
+  wide row of 10k children made the map lookup a net loss. `TestPassCacheIsPerPass`
+  grows and shrinks a text and a chip across two calls to prove the boundary.
+- **`containerOf` returns a shared zero `Container` for nodes that have none.**
+  It used to allocate one per call, which happened for every component in the
+  tree. Nothing writes through it; `Spacing.Get()` on the zero cell is 0 and
+  `Align.Get()` is "", which is exactly what a non-container should answer.
+- **`text.Library` keeps a four-slot direct-mapped face cache.** The single
+  "last face" slot missed almost every time because a page alternates between
+  sizes (11, 12, 14, 16, 22), so the map hash and the lock were paid per
+  measurement. Four slots keyed by the size absorb that pattern.

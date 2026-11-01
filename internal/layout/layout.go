@@ -56,7 +56,25 @@ type Engine struct {
 	// view is scratch for componentOf, so reading a component's properties
 	// during a pass does not allocate one view per call.
 	view m3.ComponentView
+	// metrics caches each component's M3 metrics for the pass. A component is
+	// measured once while its parent asks for a natural size, again while it is
+	// laid out, and once more for the fill flags; the answer depends only on its
+	// properties and the measurer, both constant in a pass.
+	metrics map[*tree.NodeBase]m3.Metrics
+	// memo caches intrinsic sizes for the current pass. A parent asks a child
+	// for its natural size while measuring itself and again while sizing it, and
+	// each ask recurses into the whole subtree, so without this a deep tree is
+	// measured once per level. Cleared at the start of every Layout.
+	memo map[naturalKey]naturalSize
 }
+
+// naturalKey is one intrinsic-size question: which node, offered how much room.
+type naturalKey struct {
+	node           *tree.NodeBase
+	availW, availH float64
+}
+
+type naturalSize struct{ w, h float64 }
 
 // New returns an engine; a nil measurer falls back to FakeMeasurer.
 func New(m Measurer) *Engine {
@@ -68,6 +86,10 @@ func New(m Measurer) *Engine {
 
 // Layout arranges root inside a client area of width w and height h.
 func (e *Engine) Layout(root *tree.Window, w, h float64) tree.Rect {
+	// Intrinsic sizes are per pass: a pass is where a property change lands, so
+	// nothing from the previous one can still be true.
+	clear(e.memo)
+	clear(e.metrics)
 	root.Base().SetViewport(w, h)
 	root.Base().ApplyExpressions()
 	r := tree.Rect{W: w, H: h}
@@ -90,7 +112,7 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 
 	// Material components declare their own content inset.
 	if cv, ok := e.componentOf(b); ok {
-		mt := m3.MetricsFor(b.Node().Kind(), cv, e.measure)
+		mt := e.metricsFor(b, cv)
 		insetL, insetT := pe.Left+bw+mt.Left, pe.Top+bw+mt.Top
 		cw = maxf(w-insetL-pe.Right-bw-mt.Right, 0)
 		ch = maxf(h-insetT-pe.Bottom-bw-mt.Bottom, 0)
@@ -197,7 +219,7 @@ func (e *Engine) linear(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH,
 		}
 		fill := false
 		if cv, ok := e.componentOf(k); ok {
-			mt := m3.MetricsFor(k.Node().Kind(), cv, e.measure)
+			mt := e.metricsFor(k, cv)
 			if horizontal && mt.FillH || !horizontal && mt.FillW {
 				fill = true
 			}
@@ -616,11 +638,34 @@ func (e *Engine) positionedExtent(k *tree.NodeBase, availW, availH float64) (flo
 	return w + me.Left + me.Right, h + me.Top + me.Bottom
 }
 
-// natural returns the intrinsic size of a node.
+// natural returns the intrinsic size of a node, memoized for the current pass.
+//
+// A leaf is cheap to measure and most trees are wide rather than deep, so only a
+// subtree is worth a map slot: the lookup on a flat row of 10k children would
+// cost more than the answers it saves.
 func (e *Engine) natural(k *tree.NodeBase, availW, availH float64) (float64, float64) {
+	if len(k.Kids()) == 0 {
+		return e.naturalSize(k, availW, availH)
+	}
+	key := naturalKey{node: k, availW: availW, availH: availH}
+	if got, ok := e.memo[key]; ok {
+		return got.w, got.h
+	}
+	w, h := e.naturalSize(k, availW, availH)
+	if e.memo == nil {
+		e.memo = make(map[naturalKey]naturalSize, 64)
+	}
+	e.memo[key] = naturalSize{w, h}
+	return w, h
+}
+
+// naturalSize is natural without the cache. It only reads properties, padding,
+// margins and children's intrinsic sizes, never bounds, so a cached answer stays
+// valid for the rest of the pass.
+func (e *Engine) naturalSize(k *tree.NodeBase, availW, availH float64) (float64, float64) {
 	k.ResolveSize(availW, availH)
 	if cv, ok := e.componentOf(k); ok {
-		mt := m3.MetricsFor(k.Node().Kind(), cv, e.measure)
+		mt := e.metricsFor(k, cv)
 		w, h := mt.W, mt.H
 		if mt.FillW {
 			w = availW
@@ -772,8 +817,15 @@ func containerOf(b *tree.NodeBase) *tree.Container {
 	case *tree.Grid:
 		return &n.Container
 	}
-	return &tree.Container{}
+	// A node that is not a container has no spacing or alignment of its own.
+	// Its zero value answers both questions; sharing one avoids an allocation
+	// per call, which happens for every component in the tree.
+	return &zeroContainer
 }
+
+// zeroContainer is the read-only answer for nodes without a Container. Nothing
+// ever writes through it.
+var zeroContainer tree.Container
 
 // containerKind reports whether the node has a Container with alignment.
 func containerKind(b *tree.NodeBase) (*tree.Container, bool) {
@@ -825,6 +877,19 @@ func (e *Engine) componentOf(b *tree.NodeBase) (*m3.ComponentView, bool) {
 		Step:        c.Step.Get(),
 	}
 	return cv, true
+}
+
+// metricsFor returns a component's M3 metrics, once per pass.
+func (e *Engine) metricsFor(k *tree.NodeBase, cv *m3.ComponentView) m3.Metrics {
+	if mt, ok := e.metrics[k]; ok {
+		return mt
+	}
+	mt := m3.MetricsFor(k.Node().Kind(), cv, e.measure)
+	if e.metrics == nil {
+		e.metrics = make(map[*tree.NodeBase]m3.Metrics, 32)
+	}
+	e.metrics[k] = mt
+	return mt
 }
 
 // containerNatural is the auto size of Column, Row and Stack.

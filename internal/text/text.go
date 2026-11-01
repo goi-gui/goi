@@ -52,17 +52,24 @@ type Library struct {
 	icon  *font.Face
 	faces map[faceKey]*Face
 	atlas *Atlas
-	// last caches the most recent face lookup. A page uses a handful of sizes
-	// and asks for each of them hundreds of times per layout, so a hit here
-	// saves a map hash and keeps the lock hold down to a compare.
-	lastKey  faceKey
-	lastFace *Face
+	// front is a small direct-mapped cache in front of faces. A page uses a
+	// handful of sizes and asks for each of them hundreds of times per pass, and
+	// it alternates between them (12, 14, 16, 22), so remembering only the last
+	// one missed most of the time. Four slots keyed by the size absorb that
+	// pattern without a map lookup or a hash.
+	front [4]faceSlot
 }
 
 type faceKey struct {
 	weight Weight
 	size   int // 1/4 pixels, so 12.5 and 12.75 do not collide
 	icon   bool
+}
+
+// faceSlot is one entry of the direct-mapped face cache.
+type faceSlot struct {
+	key faceKey
+	f   *Face
 }
 
 // NewLibrary returns a library with Roboto and Material Symbols loaded.
@@ -132,8 +139,9 @@ func (l *Library) face(size float64, weight Weight, icon bool) *Face {
 	key := faceKey{weight: weight, size: int(size * 4), icon: icon}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.lastFace != nil && l.lastKey == key {
-		return l.lastFace
+	slot := &l.front[(key.size^int(weight)*7)&3]
+	if slot.f != nil && slot.key == key {
+		return slot.f
 	}
 
 	var src *font.Face
@@ -163,12 +171,12 @@ func (l *Library) face(size float64, weight Weight, icon bool) *Face {
 		return nil
 	}
 	if f, ok := l.faces[key]; ok {
-		l.lastKey, l.lastFace = key, f
+		*slot = faceSlot{key: key, f: f}
 		return f
 	}
 	f := &Face{font: src, tag: tag, size: size, upem: float32(src.Upem())}
 	l.faces[key] = f
-	l.lastKey, l.lastFace = key, f
+	*slot = faceSlot{key: key, f: f}
 	return f
 }
 
