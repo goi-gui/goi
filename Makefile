@@ -8,7 +8,7 @@ counter:
 	go run -ldflags=-linkmode=internal ./examples/counter
 
 gallery:
-	go run -ldflags=-linkmode=internal ./examples/gallery
+	go run -ldflags=-linkmode=internal ./examples/gallery -fps
 
 hello:
 	go run -ldflags=-linkmode=internal ./examples/hello

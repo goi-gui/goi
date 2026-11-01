@@ -260,13 +260,13 @@ Window {
 								spacing: 12
 								// cover crops to fill the box; contain letterboxes.
 								Image {
-									src: "sample.png"
+									src: "sample.jpg"
 									width: 180
 									height: 120
 									radius: 12
 								}
 								Image {
-									src: "sample.png"
+									src: "sample.jpg"
 									fit: contain
 									width: 180
 									height: 120
@@ -274,7 +274,7 @@ Window {
 									background: surfaceContainerHigh
 								}
 								Image {
-									src: "sample.png"
+									src: "sample.jpg"
 									fit: fill
 									width: 180
 									height: 120
