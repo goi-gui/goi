@@ -839,3 +839,13 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   the FPS counter dip to ~50. `GPU.uniformWritten` now guards the write. The
   remaining per-frame instance upload drains the same way and is an upstream
   limitation; measured at ~0.5% dropped frames on the gallery, so it stays.
+- **Vsync can be turned off, and `MaxFPS` caps what that exposes.** The paint
+  rate was pinned to the panel: Fifo present mode blocks in `acquire`, so a
+  60 Hz display always reads 60 and the overlay could not show headroom. With
+  `VSync(false)` the surface switches to mailbox and a frame is presented as
+  soon as it is ready (measured: ~1500 fps on the gallery, same panel), which is
+  useful for benchmarking and useless for a shipped app. `MaxFPS(120)` is the
+  companion: the loop sleeps to an absolute deadline, one period per frame, so a
+  late frame is not made up by a burst. `presentModeFor` rejects an unsupported
+  mode, so a surface without mailbox falls back to Fifo and reports the error;
+  the default stays vsync-on, and idle apps still block in `WaitEvents`.

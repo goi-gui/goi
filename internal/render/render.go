@@ -9,6 +9,10 @@ type Renderer interface {
 	// Resize reconfigures the surface for a new framebuffer size in device
 	// pixels, with the given content scale (logical to device ratio).
 	Resize(width, height int, scale float32) error
+	// SetVSync ties presentation to the display refresh, which is the default.
+	// With it off a frame is presented as soon as it is ready, so the app can
+	// draw faster than the panel.
+	SetVSync(on bool) error
 	// Render draws the list and presents the frame. width and height are the
 	// framebuffer size in device pixels.
 	Render(list *paint.List, width, height int) error

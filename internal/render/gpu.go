@@ -240,6 +240,7 @@ type GPU struct {
 
 	width, height int
 	scale         float32
+	vsync         bool
 	capacity      int
 	// images is the bitmap atlas; it exists even without a font.
 	images    *imageRenderer
@@ -271,7 +272,7 @@ func NewGPU(display, window uintptr, kind TargetKind) (*GPU, error) {
 	if err != nil {
 		return nil, fmt.Errorf("wgpu instance: %w", err)
 	}
-	g := &GPU{instance: inst, scale: 1, capacity: 256}
+	g := &GPU{instance: inst, scale: 1, vsync: true, capacity: 256}
 
 	target := wgpu.SurfaceTargetFromWaylandSurface(display, window)
 	if kind == TargetX11 {
@@ -457,12 +458,40 @@ func (g *GPU) Resize(width, height int, scale float32) error {
 		return nil
 	}
 	g.width, g.height, g.scale = width, height, scale
+	return g.configure()
+}
+
+// SetVSync ties presentation to the display refresh. Turning it off lets the
+// app draw faster than the panel, which is what makes the FPS overlay show the
+// renderer's rate. A surface without a non-vsync mode stays on vsync and the
+// error says so.
+func (g *GPU) SetVSync(on bool) error {
+	if g.closed || g.vsync == on {
+		return nil
+	}
+	g.vsync = on
+	if err := g.configure(); err != nil && !on {
+		g.vsync = true
+		_ = g.configure()
+		return err
+	}
+	return nil
+}
+
+func (g *GPU) configure() error {
+	if g.closed || g.width <= 0 || g.height <= 0 {
+		return nil
+	}
+	mode := gputypes.PresentModeFifo
+	if !g.vsync {
+		mode = gputypes.PresentModeMailbox
+	}
 	return g.surface.Configure(g.device, &wgpu.SurfaceConfiguration{
-		Width:       uint32(width),
-		Height:      uint32(height),
+		Width:       uint32(g.width),
+		Height:      uint32(g.height),
 		Format:      g.format,
 		Usage:       gputypes.TextureUsageRenderAttachment,
-		PresentMode: gputypes.PresentModeFifo,
+		PresentMode: mode,
 		AlphaMode:   gputypes.CompositeAlphaModeOpaque,
 	})
 }

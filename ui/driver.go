@@ -37,6 +37,8 @@ type gpuDriver struct {
 	fps    int
 	frames int
 	fpsAt  time.Time
+	// frameAt is the deadline of the next paced frame, from App.MaxFPS.
+	frameAt time.Time
 }
 
 func (a *App) initPlatform() error {
@@ -62,6 +64,13 @@ func (a *App) initWindow(w *Window) error {
 	if err != nil {
 		pw.Destroy()
 		return fmt.Errorf("ui: %w", err)
+	}
+	if !a.vsync {
+		// The surface is configured on the first frame, so this only has to set
+		// the mode before that happens.
+		if err := gpu.SetVSync(false); err != nil {
+			a.reportError(err)
+		}
 	}
 	meas := textMeasurer{lib: gpu.Text()}
 	d := &gpuDriver{
@@ -103,12 +112,35 @@ func (d *gpuDriver) run(frame func()) error {
 			return nil
 		}
 		d.win.PollEvents()
+		start := time.Now()
 		frame()
 		// Only block when there is nothing left to draw: that is what keeps an
 		// idle app at ~0% CPU.
 		if !d.app.needsFrame {
 			d.win.WaitEvents()
+			d.frameAt = time.Time{}
+			continue
 		}
+		d.pace(start)
+	}
+}
+
+// pace holds the loop to App.MaxFPS. The deadline is absolute, so a late frame
+// is caught up on the next one instead of adding its lateness to every frame.
+// With vsync on, a period shorter than the refresh never sleeps: acquire is
+// already the pacer.
+func (d *gpuDriver) pace(start time.Time) {
+	limit := d.app.maxFPS
+	if limit <= 0 {
+		return
+	}
+	period := time.Second / time.Duration(limit)
+	if d.frameAt.IsZero() || start.Sub(d.frameAt) > 4*period {
+		d.frameAt = start
+	}
+	d.frameAt = d.frameAt.Add(period)
+	if wait := time.Until(d.frameAt); wait > 0 {
+		time.Sleep(wait)
 	}
 }
 

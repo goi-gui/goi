@@ -44,6 +44,7 @@ func main() {
 		os.Exit(1)
 	}
 	fps := flag.Bool("fps", false, "draw the frame rate in the top-right corner")
+	maxFPS := flag.Int("maxfps", 0, "uncap vsync and hold this frame rate (with -fps)")
 	flag.Parse()
 	path := "examples/gallery/gallery.goi"
 	if arg := flag.Arg(0); arg != "" {
@@ -57,6 +58,10 @@ func main() {
 	}
 	if *fps {
 		app.ShowFPS(true)
+	}
+	if *maxFPS > 0 {
+		app.VSync(false)
+		app.MaxFPS(*maxFPS)
 	}
 	// Which page is open is app state: a reload rebuilds the nodes, not the state.
 	active := 0

@@ -62,6 +62,10 @@ type App struct {
 	needsFrame bool
 	// showFPS is the debug overlay switch; off unless the app asks for it.
 	showFPS bool
+	// vsync waits for the display refresh; maxFPS caps the drawn frames per
+	// second when it does not. Both default to "tied to the display".
+	vsync  bool
+	maxFPS int
 
 	watcher *hotreload.Reloader
 
@@ -98,7 +102,7 @@ type driver interface {
 
 // NewApp creates an app with the platform driver for this OS.
 func NewApp() (*App, error) {
-	a := &App{}
+	a := &App{vsync: true}
 	if err := a.initPlatform(); err != nil {
 		return nil, err
 	}
@@ -106,7 +110,7 @@ func NewApp() (*App, error) {
 }
 
 // newHeadlessApp creates an app without a window, for tests.
-func newHeadlessApp() *App { return &App{} }
+func newHeadlessApp() *App { return &App{vsync: true} }
 
 // LoadWindow loads a design from an asset container: fsys is where the .goi files
 // live (an embed.FS in production, ui.DirFS in development) and path is the
@@ -187,6 +191,39 @@ func (w *Window) Bind(fn func(*Window) error) error {
 // as inside Window.Bind.
 func (a *App) ShowFPS(show bool) {
 	a.showFPS = show
+	a.needsFrame = true
+	if a.driver != nil {
+		a.driver.wake()
+	}
+}
+
+// VSync ties the frame rate to the display refresh; it is on by default.
+// Turning it off presents each frame as soon as it is ready, so the app can
+// draw faster than the panel and ShowFPS reports the renderer's rate rather
+// than the display's. MaxFPS is the usual companion: uncapped alone goes as
+// fast as the GPU allows and burns the battery. Call it from the UI goroutine,
+// such as inside Window.Bind.
+func (a *App) VSync(on bool) {
+	a.vsync = on
+	a.needsFrame = true
+	if d, ok := a.driver.(*gpuDriver); ok && d.gpu != nil {
+		if err := d.gpu.SetVSync(on); err != nil {
+			a.reportError(err)
+		}
+	}
+	if a.driver != nil {
+		a.driver.wake()
+	}
+}
+
+// MaxFPS caps the drawn frames per second; 0 (the default) means no cap. A cap
+// below the display refresh only takes effect together with VSync(false), so a
+// 60 Hz panel still shows 60 unless vsync is off.
+func (a *App) MaxFPS(fps int) {
+	if fps < 0 {
+		fps = 0
+	}
+	a.maxFPS = fps
 	a.needsFrame = true
 	if a.driver != nil {
 		a.driver.wake()
