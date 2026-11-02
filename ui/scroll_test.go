@@ -16,7 +16,7 @@ func TestTouchpadFlingCoasts(t *testing.T) {
 		Rectangle { width: 100 height: 600 background: #ff0000 }
 	} }`, 200, 200)
 	in.cursorX, in.cursorY = 10, 10
-	in.Scroll(0, -0.4) // a fraction of a notch: a touchpad, not a wheel
+	in.Scroll(0, -0.4, false) // a fraction of a notch: a touchpad, not a wheel
 	n := in.flingNode
 	if n == nil {
 		t.Fatal("a touchpad step did not start a fling")

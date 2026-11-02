@@ -15,7 +15,9 @@ type Input interface {
 	MouseMove(x, y float64)
 	MouseDown(x, y float64, button int, shift bool)
 	MouseUp(x, y float64, button int)
-	Scroll(dx, dy float64)
+	// Scroll carries the wheel delta, in logical steps, plus the Shift state:
+	// a notched wheel is vertical unless Shift asks for horizontal.
+	Scroll(dx, dy float64, shift bool)
 	Key(key Key, mods Mods)
 	// Preedit carries the not-yet-committed IME composition and the caret
 	// position inside it; an empty string ends the composition.
@@ -271,8 +273,9 @@ func (p *Window) dispatch(ev rawEvent) {
 	case evWheel:
 		if p.input != nil {
 			// SDL reports whole wheel steps, positive away from the user, which
-			// is the same convention the scroll handler expects.
-			p.input.Scroll(ev.wheelX, ev.wheelY)
+			// is the same convention the scroll handler expects. The wheel event
+			// carries no modifiers, so the current Shift state is read instead.
+			p.input.Scroll(ev.wheelX, ev.wheelY, translateMods(sdlModState()).Shift)
 		}
 	case evKey:
 		println("DEBUG key scancode", ev.scancode, "key", translateKey(ev.scancode))

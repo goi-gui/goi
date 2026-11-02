@@ -111,6 +111,12 @@ These apply to every element and are not repeated on the component pages.
 | `alignSelf` | enum | `start`, `center`, `end`, `stretch`; overrides the parent's align |
 | `scroll` | bool | scroll when content overflows the box |
 
+A scrolling element takes a gesture along its own axis only: a notched wheel
+scrolls vertically and **Shift + wheel** scrolls a sideways element, while a
+touchpad's two-finger swipe needs no modifier and keeps whichever axis the hand
+moved. A gesture that reaches the end of a child carries on into the page above
+it, so the pointer never looks stuck over a small scroller.
+
 `marginTop`, `marginRight`, `marginBottom`, `marginLeft` (and the same four for
 `padding`) override one edge and leave the others following `margin`/`padding`:
 

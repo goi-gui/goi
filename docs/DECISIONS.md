@@ -951,3 +951,18 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   `TestWheelChainsFromInnerToPage`,
   `TestWheelPassesThroughAnInnerThatCannotScroll` and
   `TestTouchpadFlingChainsToThePage` pin it.
+- **A scroll gesture only moves the axis it was made on.** A vertical wheel used
+  to be pressed into service for a horizontal area under the pointer, so
+  scrolling a page down through a sideways row dragged that row along. The
+  wheel is now axial: a notched wheel is vertical, **Shift swaps the axes** (so
+  it reaches a sideways area, and a sideways wheel becomes vertical), and a
+  touchpad's real dx/dy are kept apart, so a two-finger sideways swipe scrolls
+  a row without Shift. `scrollChain` takes both pixel amounts and each node
+  consumes the one for its own axis, which also means a diagonal swipe scrolls
+  the row sideways and the page vertically at once. Drag-to-scroll follows the
+  same rule and the same chain, moving by the step between two pointer
+  positions instead of an absolute offset.
+  `TestWheelKeepsItsAxisOverAHorizontalRow`, `TestShiftWheelScrollsTheHorizontalRow`,
+  `TestTouchpadKeepsBothAxes`, `TestDragScrollChainsAndKeepsItsAxis`,
+  `TestDragKeepsItsAxisOverAHorizontalRow` and `TestDragScrollsTheHorizontalRow`
+  pin it.

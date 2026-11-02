@@ -776,15 +776,15 @@ func TestWheelScrollsAndClamps(t *testing.T) {
 	page, _ := win.tree.ByID("page")
 	in.MouseMove(50, 50)
 
-	in.Scroll(0, -1)
+	in.Scroll(0, -1, false)
 	if got := page.Base().ScrollOffset(); got != 48 {
 		t.Fatalf("offset after one notch = %v, want 48", got)
 	}
-	in.Scroll(0, -100) // far past the end
+	in.Scroll(0, -100, false) // far past the end
 	if got := page.Base().ScrollOffset(); got != 200 {
 		t.Fatalf("offset = %v, want clamped to 200", got)
 	}
-	in.Scroll(0, 100)
+	in.Scroll(0, 100, false)
 	if got := page.Base().ScrollOffset(); got != 0 {
 		t.Fatalf("offset = %v, want 0 after scrolling back", got)
 	}
