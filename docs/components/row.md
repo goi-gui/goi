@@ -9,7 +9,7 @@ Places children left to right.
 ```goi
 Row {
 	spacing: 8
-	align: center
+	crossAxisAlign: center
 	Button { label: "Save" }
 	Button { label: "Cancel" variant: text }
 }
@@ -21,7 +21,8 @@ Row {
 |---|---|---|
 | `spacing` | number | gap between children |
 | `gap` | number | alias of `spacing` |
-| `align` | enum | cross-axis placement |
+| `crossAxisAlign` | enum | `start`, `center`, `end`, `stretch`; places a child across the flow |
+| `mainAxisAlign` | enum | `start`, `center`, `end`, `spaceBetween`, `spaceAround`, `spaceEvenly`; places the run along the flow |
 
 ## From Go
 

@@ -109,7 +109,7 @@ These apply to every element and are not repeated on the component pages.
 | `visible` | bool | removes the element from layout, painting and hit-testing |
 | `template` | bool | marks a hidden row prototype for `ui.Fill` |
 | `flex` | number | share of the parent's leftover main-axis space |
-| `alignSelf` | enum | `start`, `center`, `end`, `stretch`; overrides the parent's align |
+| `alignSelf` | enum | `start`, `center`, `end`, `stretch`; overrides the parent's `crossAxisAlign` |
 | `scroll` | bool | scroll when content overflows the box |
 
 A scrolling element takes a gesture along its own axis only: a notched wheel
@@ -131,9 +131,24 @@ Column {
 ## Containers and `gap`
 
 Containers lay their children out in a row or a column and accept `spacing`,
-its alias `gap`, and `align`: `ButtonGroup`, `Toolbar`, `Carousel`, `FABMenu`,
-`Tabs`, `NavigationBar`, `NavigationRail`, `NavigationDrawer`, `List`, `Menu`,
-`Card`, `Dialog`, `BottomSheet`, `SideSheet`, `DatePicker`, `TimePicker`.
+its alias `gap`, `crossAxisAlign` and `mainAxisAlign`: `ButtonGroup`, `Toolbar`,
+`Carousel`, `FABMenu`, `Tabs`, `NavigationBar`, `NavigationRail`,
+`NavigationDrawer`, `List`, `Menu`, `Card`, `Dialog`, `BottomSheet`, `SideSheet`,
+`DatePicker`, `TimePicker`.
+
+The two axes are the Flutter pair, and they replace the old single `align`:
+
+| Property | Where it acts | Values |
+|---|---|---|
+| `crossAxisAlign` | across the flow: sideways in a `Column`, up and down in a `Row` | `start`, `center`, `end`, `stretch` |
+| `mainAxisAlign` | along the flow, on the leftover space | `start`, `center`, `end`, `spaceBetween`, `spaceAround`, `spaceEvenly` |
+
+Both default to `start`. A child that is a container still fills the cross axis
+of its parent, so a `Column` inside a `Column` is full width; `stretch` forces
+that for a leaf too. `mainAxisAlign` only has room to work when the children do
+not already fill the axis, and in a `Wrap` it spreads each run; a `Stack` and a
+`ClipRRect` overlay one box at a time, so they accept only the four geometric
+values. `alignSelf` overrides the parent's `crossAxisAlign` for one child.
 
 ## Events
 

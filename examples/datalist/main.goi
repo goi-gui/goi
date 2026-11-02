@@ -31,6 +31,7 @@ Window {
 		{#if data.loading}
 			Row {
 				spacing: 12
+				crossAxisAlign: center
 				CircularProgress { }
 				Text { text: "Loading…" color: onSurfaceVariant }
 			}

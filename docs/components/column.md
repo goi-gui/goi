@@ -10,7 +10,7 @@ Stacks children vertically, top to bottom.
 Column {
 	spacing: 12
 	padding: 16
-	align: stretch
+	crossAxisAlign: stretch
 	Text { text: "Title" role: "titleMedium" }
 	Text { text: "Body" role: "bodyMedium" }
 }
@@ -22,7 +22,8 @@ Column {
 |---|---|---|
 | `spacing` | number | gap between children |
 | `gap` | number | alias of `spacing` |
-| `align` | enum | cross-axis placement |
+| `crossAxisAlign` | enum | `start`, `center`, `end`, `stretch`; places a child across the flow |
+| `mainAxisAlign` | enum | `start`, `center`, `end`, `spaceBetween`, `spaceAround`, `spaceEvenly`; places the run along the flow |
 
 ## From Go
 

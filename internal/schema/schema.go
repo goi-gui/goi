@@ -136,23 +136,30 @@ var elements = func() []Element {
 		{Name: "Column", Children: true, Attrs: withCommon(
 			Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
 			Prop{Name: "gap", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
-			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
+			Prop{Name: "crossAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
+			Prop{Name: "mainAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "spaceBetween", "spaceAround", "spaceEvenly"}, Default: "start"},
 		)},
 		{Name: "Row", Children: true, Attrs: withCommon(
 			Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
 			Prop{Name: "gap", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
-			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
+			Prop{Name: "crossAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
+			Prop{Name: "mainAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "spaceBetween", "spaceAround", "spaceEvenly"}, Default: "start"},
 		)},
 		{Name: "TitleBar", Children: true, Attrs: withCommon(
 			Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
 			Prop{Name: "gap", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
-			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
+			Prop{Name: "crossAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
+			Prop{Name: "mainAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "spaceBetween", "spaceAround", "spaceEvenly"}, Default: "start"},
 		)},
 		{Name: "Stack", Children: true, Attrs: withCommon(
-			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
+			Prop{Name: "crossAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
+			// An overlay places one box at a time, so only the geometric
+			// alignments mean anything; spaceBetween has nothing to space.
+			Prop{Name: "mainAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
 		)},
 		{Name: "ClipRRect", Children: true, Attrs: withCommon(
-			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
+			Prop{Name: "crossAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
+			Prop{Name: "mainAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
 		)},
 		{Name: "Positioned", Children: true, Attrs: withCommon(
 			Prop{Name: "left", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0}, // -1 = auto
@@ -165,13 +172,15 @@ var elements = func() []Element {
 		{Name: "Wrap", Children: true, Attrs: withCommon(
 			Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
 			Prop{Name: "gap", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
-			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
+			Prop{Name: "crossAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
+			Prop{Name: "mainAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "spaceBetween", "spaceAround", "spaceEvenly"}, Default: "start"},
 		)},
 		{Name: "Grid", Children: true, Attrs: withCommon(
 			Prop{Name: "columns", Type: TypeNumber, Dirty: DirtyLayout, Default: 2.0},
 			Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
 			Prop{Name: "gap", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
-			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
+			Prop{Name: "crossAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
+			Prop{Name: "mainAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "spaceBetween", "spaceAround", "spaceEvenly"}, Default: "start"},
 		)},
 		{Name: "Rectangle", Children: false, Attrs: withCommon()},
 		{Name: "Image", Children: false, Attrs: withCommon(
@@ -197,7 +206,8 @@ var elements = func() []Element {
 			// the same spacing and alignment as Row and Column.
 			attrs = append(attrs,
 				Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
-				Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
+				Prop{Name: "crossAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
+				Prop{Name: "mainAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "spaceBetween", "spaceAround", "spaceEvenly"}, Default: "start"},
 			)
 		}
 		for _, name := range componentdef.Props(k.Name) {

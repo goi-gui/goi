@@ -18,7 +18,7 @@ Window {
     Column {
         padding: 16
         spacing: 8
-        align: center
+        crossAxisAlign: center
 
         Text   { id: label text: "0" role: displayLarge }
         Button { id: inc   label: "Increase" icon: add }

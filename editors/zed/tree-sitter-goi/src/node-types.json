@@ -20,6 +20,21 @@
     "fields": {}
   },
   {
+    "type": "children_slot",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "slot_name",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "comparison_expression",
     "named": true,
     "fields": {},
@@ -29,6 +44,141 @@
       "types": [
         {
           "type": "sum_expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "data_block",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "data_field",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "data_field",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "data_type",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "data_shape",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "data_field",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "data_type",
+    "named": true,
+    "fields": {
+      "element": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "each_block",
+    "named": true,
+    "fields": {
+      "item": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "list": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "reference",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "children_slot",
+          "named": true
+        },
+        {
+          "type": "each_block",
+          "named": true
+        },
+        {
+          "type": "element",
+          "named": true
+        },
+        {
+          "type": "if_block",
+          "named": true
+        },
+        {
+          "type": "property",
           "named": true
         }
       ]
@@ -54,7 +204,19 @@
       "required": false,
       "types": [
         {
+          "type": "children_slot",
+          "named": true
+        },
+        {
+          "type": "each_block",
+          "named": true
+        },
+        {
           "type": "element",
+          "named": true
+        },
+        {
+          "type": "if_block",
           "named": true
         },
         {
@@ -74,6 +236,48 @@
       "types": [
         {
           "type": "comparison_expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "if_block",
+    "named": true,
+    "fields": {
+      "condition": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "value",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "children_slot",
+          "named": true
+        },
+        {
+          "type": "each_block",
+          "named": true
+        },
+        {
+          "type": "element",
+          "named": true
+        },
+        {
+          "type": "if_block",
+          "named": true
+        },
+        {
+          "type": "property",
           "named": true
         }
       ]
@@ -360,6 +564,14 @@
       "required": false,
       "types": [
         {
+          "type": "data_block",
+          "named": true
+        },
+        {
+          "type": "data_shape",
+          "named": true
+        },
+        {
           "type": "import_statement",
           "named": true
         },
@@ -565,6 +777,14 @@
     "named": false
   },
   {
+    "type": "[",
+    "named": false
+  },
+  {
+    "type": "]",
+    "named": false
+  },
+  {
     "type": "as",
     "named": false
   },
@@ -586,6 +806,10 @@
     "named": true
   },
   {
+    "type": "data",
+    "named": false
+  },
+  {
     "type": "element_name",
     "named": true
   },
@@ -600,6 +824,10 @@
   {
     "type": "identifier",
     "named": true
+  },
+  {
+    "type": "if",
+    "named": false
   },
   {
     "type": "import",
@@ -618,11 +846,35 @@
     "named": true
   },
   {
+    "type": "slot_name",
+    "named": true
+  },
+  {
     "type": "true",
     "named": false
   },
   {
     "type": "{",
+    "named": false
+  },
+  {
+    "type": "{#each",
+    "named": false
+  },
+  {
+    "type": "{#if",
+    "named": false
+  },
+  {
+    "type": "{/each}",
+    "named": false
+  },
+  {
+    "type": "{/if}",
+    "named": false
+  },
+  {
+    "type": "{:else",
     "named": false
   },
   {

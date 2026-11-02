@@ -133,9 +133,9 @@ func Props(kind string) []string {
 	if !Flow(kind) {
 		return base
 	}
-	out := make([]string, 0, len(base)+2)
+	out := make([]string, 0, len(base)+4)
 	out = append(out, base...)
-	return append(out, "spacing", "gap", "align")
+	return append(out, "spacing", "gap", "crossAxisAlign", "mainAxisAlign")
 }
 
 // PropType is the literal type a component property needs.
@@ -156,7 +156,7 @@ func TypeOf(name string) PropType {
 		return Bool
 	case "value", "min", "max", "step", "spacing", "gap":
 		return Number
-	case "variant", "size", "align":
+	case "variant", "size", "crossAxisAlign", "mainAxisAlign":
 		return Enum
 	}
 	return String
@@ -168,8 +168,11 @@ func EnumValues(name string) []string {
 	if name == "size" {
 		return []string{"xs", "sm", "md", "lg", "xl", "small", "large", "extended", "primary", "secondary"}
 	}
-	if name == "align" {
+	if name == "crossAxisAlign" {
 		return []string{"start", "center", "end", "stretch"}
+	}
+	if name == "mainAxisAlign" {
+		return []string{"start", "center", "end", "spaceBetween", "spaceAround", "spaceEvenly"}
 	}
 	return []string{
 		"filled", "tonal", "elevated", "outlined", "text", "standard",

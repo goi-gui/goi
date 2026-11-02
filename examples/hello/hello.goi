@@ -56,15 +56,17 @@ Window {
 
 		Stack {
 			height: 120
-			align: center
+			crossAxisAlign: center
 
 			Rectangle { width: 320 height: 120 radius: 12 background: #2a2d34 }
+			// The Stack centres on the cross axis (horizontal); the label's own
+			// `align` centres the text inside the box it is given.
 			Text {
 				text: "centered in a stack"
 				fontSize: 18
 				color: #d0d4dc
-				align: center
 				height: 120
+				align: center
 			}
 		}
 	}

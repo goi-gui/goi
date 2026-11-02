@@ -251,7 +251,7 @@ type ComponentView struct {
 	Disabled, Checked, Selected, Expanded bool
 	Value, Min, Max, Step                 float64
 	Spacing                               float64
-	Align                                 string
+	CrossAlign, MainAlign                 string
 }
 
 func maxf(a, b float64) float64 {

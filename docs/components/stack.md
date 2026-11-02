@@ -20,7 +20,8 @@ Stack {
 
 | Property | Type | Notes |
 |---|---|---|
-| `align` | enum | cross-axis placement |
+| `crossAxisAlign` | enum | `start`, `center`, `end`, `stretch`; horizontal placement |
+| `mainAxisAlign` | enum | `start`, `center`, `end`, `stretch`; vertical placement |
 
 ## From Go
 

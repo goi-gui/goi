@@ -530,7 +530,7 @@ func TestSplitButtonRadiusIsStable(t *testing.T) {
 func TestFlowContainersDoNotClipShadows(t *testing.T) {
 	l := m3list(t, `Window {
 		Column {
-			align: start
+			crossAxisAlign: start
 			Row {
 				Button { label: "x" variant: elevated }
 			}

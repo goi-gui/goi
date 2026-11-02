@@ -20,7 +20,8 @@ DatePicker { id: date label: "Select date" text: "2026-11-02" }
 | `size` | enum | M3 size token |
 | `spacing` | number | gap between children |
 | `gap` | number | alias of `spacing` |
-| `align` | enum | cross-axis placement |
+| `crossAxisAlign` | enum | `start`, `center`, `end`, `stretch`; places a child across the flow |
+| `mainAxisAlign` | enum | `start`, `center`, `end`, `spaceBetween`, `spaceAround`, `spaceEvenly`; places the run along the flow |
 
 ## Behaviour
 

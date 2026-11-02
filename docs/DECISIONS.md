@@ -1053,3 +1053,32 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   `TestEachPrunesStaleRegistrations`, `TestNestedEachWalksTheInnerList`,
   `TestDataValidation`, `TestParseDataAndEach` and
   `TestDataAndEachAreKnownToTheEditor` pin it.
+
+- **Alignment is two axes, named after Flutter's.** One `align` on a container
+  was ambiguous: on a `Column` it meant "where across", on a `Row` it meant the
+  same thing but read as if it were vertical, and there was no way to say "push
+  the run to the end" or "spread the children apart" at all. `crossAxisAlign`
+  (across the flow: sideways in a `Column`, up and down in a `Row`) and
+  `mainAxisAlign` (along it, on the leftover space) replace it, with Flutter's
+  six main values: `start`, `center`, `end`, `spaceBetween`, `spaceAround`,
+  `spaceEvenly`. One `distribute` helper splits the leftover into a leading
+  offset and an extra gap, so a `Row`, a `Column`, each `Wrap` run and a `Grid`'s
+  rows all read the same six names. A `Stack` and a `ClipRRect` overlay a single
+  box, so they accept the four geometric values on the main axis instead and
+  borrow the `Column` convention (main runs down). `align` stays only on `Text`,
+  where it means what it says: how the glyphs sit inside their own box.
+  `alignSelf` is unchanged and still overrides the parent's `crossAxisAlign` for
+  one child. `TestMainAxisAlignment`, `TestMainAxisAlignmentIgnoresAFullRun`,
+  `TestColumnAxisNames`, `TestWrapMainAxisAlignPerRun` and
+  `TestAlignmentAxesAreSeparate` pin it.
+- **The Zed extension ships the current grammar.** `{#if}`, `{#each}`, `data`
+  and `$children` were in the language but not in the tree-sitter grammar, so the
+  highlighter parsed blocks as errors. The grammar now has `data_block`,
+  `data_shape`, `data_field`, `if_block`, `each_block` and `children_slot`,
+  generated with the `tree-sitter` CLI at ABI 14 (the version the shipped
+  `parser.c` already used), and `highlights.scm` colours the block tags as
+  keywords, the row variable as a variable and a declared shape as a type.
+  `outline.scm` nests blocks and shapes, `indents.scm` indents a block body.
+  Generating the parser needs the CLI, which is not on this machine's PATH:
+  `npx tree-sitter-cli` downloads its binary on install, and its `install.js`
+  has to be run once (`node install.js`) before `tree-sitter generate` works.

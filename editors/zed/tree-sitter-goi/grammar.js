@@ -15,8 +15,43 @@ module.exports = grammar({
 
   rules: {
     source_file: $ => seq(
-      repeat(choice($.import_statement, $.param_declaration)),
+      repeat(choice(
+        $.import_statement,
+        $.param_declaration,
+        $.data_block,
+        $.data_shape,
+      )),
       field('root', $.element),
+    ),
+
+    // data { loading: bool, rows: ticket[] }
+    data_block: $ => seq(
+      'data',
+      '{',
+      repeat($.data_field),
+      '}',
+    ),
+
+    // data ticket { title: string }
+    data_shape: $ => seq(
+      'data',
+      field('name', $.identifier),
+      '{',
+      repeat($.data_field),
+      '}',
+    ),
+
+    data_field: $ => seq(
+      field('name', $.identifier),
+      ':',
+      field('type', $.data_type),
+      optional(';'),
+    ),
+
+    // bool, string, number, color, ticket[]
+    data_type: $ => seq(
+      field('element', $.identifier),
+      optional(seq('[', ']')),
     ),
 
     // import "./Sidebar.goi" as Sidebar
@@ -45,7 +80,53 @@ module.exports = grammar({
       '}',
     ),
 
-    _member: $ => choice($.property, $.element),
+    _member: $ => choice(
+      $.property,
+      $.element,
+      $.if_block,
+      $.each_block,
+      $.children_slot,
+    ),
+
+    // {#if cond} … {:else if cond} … {:else} … {/if}
+    if_block: $ => seq(
+      '{#if',
+      field('condition', $.value),
+      '}',
+      repeat($._member),
+      repeat(seq(
+        '{:else',
+        'if',
+        field('condition', $.value),
+        '}',
+        repeat($._member),
+      )),
+      optional(seq(
+        '{:else',
+        '}',
+        repeat($._member),
+      )),
+      '{/if}',
+    ),
+
+    // {#each data.rows as row} … {:else} … {/each}
+    each_block: $ => seq(
+      '{#each',
+      field('list', $.reference),
+      'as',
+      field('item', $.identifier),
+      '}',
+      repeat($._member),
+      optional(seq(
+        '{:else',
+        '}',
+        repeat($._member),
+      )),
+      '{/each}',
+    ),
+
+    // $children — where an instance's children go.
+    children_slot: $ => seq('$', alias('children', $.slot_name)),
 
     // spacing: 8
     property: $ => seq(

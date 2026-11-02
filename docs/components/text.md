@@ -23,7 +23,7 @@ Text {
 | `fontSize` | number | overrides the role's size |
 | `weight` | number | overrides the role's weight |
 | `color` | string | text colour role |
-| `align` | enum | cross-axis placement |
+| `align` | enum | `start`, `center`, `end`; text alignment inside the box |
 | `wrap` | bool | wrap at the node width |
 | `role` | string | M3 type-scale role |
 | `selectable` | bool | pointer selection and Ctrl+C |

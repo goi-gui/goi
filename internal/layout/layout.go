@@ -164,7 +164,8 @@ func visibleChildren(b *tree.NodeBase) []*tree.NodeBase {
 // linear is the Column (vertical) and Row (horizontal) algorithm.
 func (e *Engine) linear(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH, offsetX float64, horizontal bool, offsetY float64) {
 	spacing := e.containerSpacing(b)
-	align := e.containerAlign(b)
+	align := e.containerCrossAlign(b)
+	mainAlign := e.containerMainAlign(b)
 
 	main, cross := availH, availW
 	if horizontal {
@@ -205,9 +206,23 @@ func (e *Engine) linear(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH,
 		}
 	}
 
-	pos := offsetY
+	// The leftover along the main axis is what mainAxisAlign distributes: a
+	// flex child already took it, and an overflowing scroller has none.
+	var occupied float64
+	for i, k := range kids {
+		me := k.MarginEdges()
+		if horizontal {
+			occupied += sizes[i] + me.Left + me.Right
+		} else {
+			occupied += sizes[i] + me.Top + me.Bottom
+		}
+	}
+	occupied += spacing * float64(len(kids)-1)
+	lead, extra := distribute(mainAlign, main-occupied, len(kids))
+
+	pos := offsetY + lead
 	if horizontal {
-		pos = offsetX
+		pos = offsetX + lead
 	}
 	for i, k := range kids {
 		sz := sizes[i]
@@ -262,10 +277,10 @@ func (e *Engine) linear(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH,
 		var r tree.Rect
 		if horizontal {
 			r = tree.Rect{X: pos + me.Left, Y: crossPos + me.Top, W: sz, H: cs}
-			pos += me.Left + sz + me.Right + spacing
+			pos += me.Left + sz + me.Right + spacing + extra
 		} else {
 			r = tree.Rect{X: crossPos + me.Left, Y: pos + me.Top, W: cs, H: sz}
-			pos += me.Top + sz + me.Bottom + spacing
+			pos += me.Top + sz + me.Bottom + spacing + extra
 		}
 		k.SetBounds(r)
 		e.children(k, r.W, r.H)
@@ -278,15 +293,19 @@ func (e *Engine) linear(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH,
 func (e *Engine) wrap(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH, offsetX, offsetY float64) {
 	c := containerOf(b)
 	spacing := c.Spacing.Get()
-	align := c.Align.Get()
+	align := e.containerCrossAlign(b)
+	mainAlign := e.containerMainAlign(b)
 
 	type item struct {
-		k       *tree.NodeBase
-		x, w, h float64
-		run     int
+		k        *tree.NodeBase
+		x, w, h  float64
+		run, idx int
 	}
 	items := make([]item, 0, len(kids))
-	var runs []float64
+	// runs holds each run's height, runW its width and runN how many children
+	// it took, which is what the main-axis distribution needs.
+	var runs, runW []float64
+	var runN []int
 	x := 0.0
 	for _, k := range kids {
 		mw, mh := e.natural(k, availW, availH)
@@ -304,12 +323,16 @@ func (e *Engine) wrap(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH, o
 		}
 		if x == 0 {
 			runs = append(runs, 0)
+			runW = append(runW, 0)
+			runN = append(runN, 0)
 		}
 		run := len(runs) - 1
 		if mh > runs[run] {
 			runs[run] = mh
 		}
-		items = append(items, item{k: k, x: x, w: mw, h: mh, run: run})
+		runW[run] = x + mw
+		items = append(items, item{k: k, x: x, w: mw, h: mh, run: run, idx: runN[run]})
+		runN[run]++
 		x += mw + spacing
 	}
 
@@ -328,9 +351,13 @@ func (e *Engine) wrap(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH, o
 		if a == "stretch" && it.k.Height() < 0 {
 			h = runs[it.run]
 		}
+		// A run is usually narrower than the row, so mainAxisAlign can centre
+		// it or spread it out, the same set a Row offers.
+		lead, extra := distribute(mainAlign, availW-runW[it.run], runN[it.run])
 		me := it.k.MarginEdges()
 		yy := runY[it.run] + crossAlign(a, runs[it.run], h)
-		it.k.SetBounds(tree.Rect{X: offsetX + it.x + me.Left, Y: yy + me.Top, W: it.w, H: h})
+		xx := offsetX + lead + it.x + float64(it.idx)*extra + me.Left
+		it.k.SetBounds(tree.Rect{X: xx, Y: yy + me.Top, W: it.w, H: h})
 		e.children(it.k, it.w, h)
 	}
 }
@@ -341,7 +368,8 @@ func (e *Engine) grid(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH, o
 	c := containerOf(b)
 	cols := gridColumns(b)
 	spacing := c.Spacing.Get()
-	align := c.Align.Get()
+	align := e.containerCrossAlign(b)
+	mainAlign := e.containerMainAlign(b)
 	cellW := (availW - spacing*float64(cols-1)) / float64(cols)
 	if cellW < 0 {
 		cellW = 0
@@ -367,7 +395,17 @@ func (e *Engine) grid(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH, o
 			rowH[r] = mh
 		}
 	}
-	y := offsetY
+	// A grid's main axis runs down: the leftover vertical space can centre the
+	// block of rows or spread the rows apart.
+	var gridH float64
+	for _, h := range rowH {
+		gridH += h + spacing
+	}
+	if len(rowH) > 0 {
+		gridH -= spacing
+	}
+	lead, extra := distribute(mainAlign, availH-gridH, len(rowH))
+	y := offsetY + lead
 	for i, k := range kids {
 		r, col := i/cols, i%cols
 		a := k.AlignSelf()
@@ -383,7 +421,7 @@ func (e *Engine) grid(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH, o
 		k.SetBounds(tree.Rect{X: x + me.Left, Y: y + me.Top, W: widths[i], H: h})
 		e.children(k, widths[i], h)
 		if col == cols-1 || i == n-1 {
-			y += rowH[r] + spacing
+			y += rowH[r] + spacing + extra
 		}
 	}
 }
@@ -492,9 +530,11 @@ func (e *Engine) equalRow(b *tree.NodeBase, kids []*tree.NodeBase, availW, avail
 // stackChildren overlays every visible child, defaulting each to fill the
 // parent. Window uses it so a dialog can cover the content.
 func (e *Engine) stackChildren(b *tree.NodeBase, w, h, insetL, insetT, insetR, insetB float64) {
-	align := "start"
+	// An overlay has no flow direction of its own, so it borrows the Column
+	// convention: the main axis runs down, the cross axis across.
+	cross, main := "start", "start"
 	if c, ok := containerKind(b); ok {
-		align = c.Align.Get()
+		cross, main = c.CrossAlign.Get(), c.MainAlign.Get()
 	}
 	for _, k := range b.Kids() {
 		if !k.Visible() {
@@ -502,7 +542,7 @@ func (e *Engine) stackChildren(b *tree.NodeBase, w, h, insetL, insetT, insetR, i
 		}
 		innerW, innerH := maxf(w-insetL-insetR, 0), maxf(h-insetT-insetB, 0)
 		if k.Node().Kind() == "Positioned" {
-			r := e.positionedFrame(k, innerW, innerH, insetL, insetT, align)
+			r := e.positionedFrame(k, innerW, innerH, insetL, insetT, cross, main)
 			k.SetBounds(r)
 			e.children(k, r.W, r.H)
 			continue
@@ -523,14 +563,14 @@ func (e *Engine) stackChildren(b *tree.NodeBase, w, h, insetL, insetT, insetR, i
 		if k.Height() < 0 {
 			ch = innerH
 		}
-		a := k.AlignSelf()
+		a, b2 := k.AlignSelf(), k.AlignSelf()
 		if a == "" {
-			a = align
+			a, b2 = cross, main
 		}
 		me := k.MarginEdges()
 		r := tree.Rect{
 			X: insetL + crossAlign(a, innerW, cw) + me.Left,
-			Y: insetT + crossAlign(a, innerH, ch) + me.Top,
+			Y: insetT + crossAlign(b2, innerH, ch) + me.Top,
 			W: cw,
 			H: ch,
 		}
@@ -543,7 +583,7 @@ func (e *Engine) stackChildren(b *tree.NodeBase, w, h, insetL, insetT, insetR, i
 // offset is auto: the declared or intrinsic size is used and the Stack's align
 // decides where the box sits. left+right (or top+bottom) without a declared
 // size stretches the box between the two edges.
-func (e *Engine) positionedFrame(k *tree.NodeBase, availW, availH, offsetX, offsetY float64, align string) tree.Rect {
+func (e *Engine) positionedFrame(k *tree.NodeBase, availW, availH, offsetX, offsetY float64, cross, main string) tree.Rect {
 	p, ok := k.Node().(*tree.Positioned)
 	if !ok {
 		return tree.Rect{X: offsetX, Y: offsetY, W: availW, H: availH}
@@ -567,10 +607,10 @@ func (e *Engine) positionedFrame(k *tree.NodeBase, availW, availH, offsetX, offs
 	case right >= 0:
 		x = availW - right - w
 	default:
-		if align == "stretch" && k.Width() < 0 {
+		if cross == "stretch" && k.Width() < 0 {
 			w = availW
 		} else {
-			x = crossAlign(align, availW, w)
+			x = crossAlign(cross, availW, w)
 		}
 	}
 
@@ -584,10 +624,10 @@ func (e *Engine) positionedFrame(k *tree.NodeBase, availW, availH, offsetX, offs
 	case bottom >= 0:
 		y = availH - bottom - h
 	default:
-		if align == "stretch" && k.Height() < 0 {
+		if main == "stretch" && k.Height() < 0 {
 			h = availH
 		} else {
-			y = crossAlign(align, availH, h)
+			y = crossAlign(main, availH, h)
 		}
 	}
 
@@ -764,13 +804,23 @@ func (e *Engine) contentWidth(k *tree.NodeBase, availW, h float64, mt m3.Metrics
 	return total
 }
 
-// containerAlign reads a flow container's cross alignment. A component keeps it
-// in its own cell, so reading only the plain Container would always say "start".
-func (e *Engine) containerAlign(k *tree.NodeBase) string {
-	if c, ok := e.componentOf(k); ok && c.Align != "" {
-		return c.Align
+// containerCrossAlign reads a flow container's cross-axis alignment. A component
+// keeps it in its own cell, so reading only the plain Container would always say
+// "start".
+func (e *Engine) containerCrossAlign(k *tree.NodeBase) string {
+	if c, ok := e.componentOf(k); ok && c.CrossAlign != "" {
+		return c.CrossAlign
 	}
-	return containerOf(k).Align.Get()
+	return containerOf(k).CrossAlign.Get()
+}
+
+// containerMainAlign reads the main-axis alignment, which places the whole run
+// along the container's own direction.
+func (e *Engine) containerMainAlign(k *tree.NodeBase) string {
+	if c, ok := e.componentOf(k); ok && c.MainAlign != "" {
+		return c.MainAlign
+	}
+	return containerOf(k).MainAlign.Get()
 }
 
 // containerSpacing reads spacing from a component or a Container.
@@ -898,7 +948,8 @@ func (e *Engine) componentOf(b *tree.NodeBase) (*m3.ComponentView, bool) {
 		Max:         c.Max.Get(),
 		Step:        c.Step.Get(),
 		Spacing:     c.Spacing.Get(),
-		Align:       c.Align.Get(),
+		CrossAlign:  c.CrossAlign.Get(),
+		MainAlign:   c.MainAlign.Get(),
 	}
 	return cv, true
 }
@@ -1082,6 +1133,34 @@ func declaredCross(k *tree.NodeBase, horizontal bool) float64 {
 		return k.Height()
 	}
 	return k.Width()
+}
+
+// distribute splits a free main-axis amount into a leading offset and an extra
+// gap between children, which is what Flutter's MainAxisAlignment does. It is
+// used by the row/column algorithm, by a wrap run and by a grid's rows, so the
+// six names mean the same thing everywhere.
+func distribute(a string, free float64, n int) (lead, gap float64) {
+	if n <= 0 || free <= 0 {
+		return 0, 0
+	}
+	switch a {
+	case "center":
+		return free / 2, 0
+	case "end":
+		return free, 0
+	case "spaceBetween":
+		if n == 1 {
+			return 0, 0
+		}
+		return 0, free / float64(n-1)
+	case "spaceAround":
+		g := free / float64(n)
+		return g / 2, g
+	case "spaceEvenly":
+		g := free / float64(n+1)
+		return g, g
+	}
+	return 0, 0
 }
 
 func crossAlign(a string, avail, size float64) float64 {

@@ -18,8 +18,9 @@ type Component struct {
 
 	// Flow containers (Toolbar, ButtonGroup, List, ...) lay children out with
 	// the same spacing and alignment properties as Row and Column.
-	Spacing Prop[float64]
-	Align   Prop[string]
+	Spacing    Prop[float64]
+	CrossAlign Prop[string]
+	MainAlign  Prop[string]
 
 	// Content.
 	Label       Prop[string]
@@ -122,14 +123,15 @@ func newComponent() Component {
 		Checked:     newProp(nil, "checked", DirtyPaint, false),
 		// A selected chip or segment shows a check in place of its leading icon,
 		// which changes its width, so this one is a layout change.
-		Selected: newProp(nil, "selected", DirtyLayout, false),
-		Expanded: newProp(nil, "expanded", DirtyLayout, false),
-		Value:    newProp(nil, "value", DirtyPaint, 0.0),
-		Min:      newProp(nil, "min", DirtyPaint, 0.0),
-		Max:      newProp(nil, "max", DirtyPaint, 1.0),
-		Step:     newProp(nil, "step", DirtyPaint, 0.0),
-		Spacing:  newProp(nil, "spacing", DirtyLayout, 0.0),
-		Align:    newProp(nil, "align", DirtyLayout, "start"),
+		Selected:   newProp(nil, "selected", DirtyLayout, false),
+		Expanded:   newProp(nil, "expanded", DirtyLayout, false),
+		Value:      newProp(nil, "value", DirtyPaint, 0.0),
+		Min:        newProp(nil, "min", DirtyPaint, 0.0),
+		Max:        newProp(nil, "max", DirtyPaint, 1.0),
+		Step:       newProp(nil, "step", DirtyPaint, 0.0),
+		Spacing:    newProp(nil, "spacing", DirtyLayout, 0.0),
+		CrossAlign: newProp(nil, "crossAxisAlign", DirtyLayout, "start"),
+		MainAlign:  newProp(nil, "mainAxisAlign", DirtyLayout, "start"),
 	}
 }
 
@@ -202,8 +204,10 @@ func (c *Component) one(name string) NamedProp {
 		// gap is the same cell as spacing, under the name a layout reader
 		// expects. Whichever the file writes last wins.
 		return NumberProp(b, "gap", DirtyLayout, &c.Spacing)
-	case "align":
-		return EnumProp(b, "align", DirtyLayout, &c.Align, "start", "center", "end", "stretch")
+	case "crossAxisAlign":
+		return EnumProp(b, "crossAxisAlign", DirtyLayout, &c.CrossAlign, CrossAxisValues...)
+	case "mainAxisAlign":
+		return EnumProp(b, "mainAxisAlign", DirtyLayout, &c.MainAlign, MainAxisValues...)
 	}
 	return StringProp(b, name, &c.Label)
 }

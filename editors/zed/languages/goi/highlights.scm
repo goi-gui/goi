@@ -13,7 +13,37 @@
 (number) @number
 (boolean) @boolean
 
-["import" "as" "param"] @keyword
+["import" "as" "param" "data"] @keyword
+
+;; Block tags: {#if}, {:else}, {/if}, {#each}, {/each}. They read as control
+;; flow, so they take the keyword colour rather than the punctuation one.
+[
+  "{#if"
+  "{:else"
+  "{/if}"
+  "{#each"
+  "{/each}"
+  "if"
+  "as"
+] @keyword
+
+;; $children is a slot, not a value.
+(children_slot
+  "$" @punctuation.special
+  (slot_name) @keyword)
+
+;; The row variable of {#each data.rows as row}.
+(each_block
+  item: (identifier) @variable)
+
+;; A declared data variable reads as a field; its type as a type.
+(data_field
+  name: (identifier) @property
+  type: (data_type
+    element: (identifier) @type))
+
+(data_shape
+  name: (identifier) @type)
 
 (conditional_question) @operator
 (conditional_colon) @operator

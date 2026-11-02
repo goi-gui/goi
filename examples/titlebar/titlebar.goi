@@ -17,7 +17,7 @@ Window {
 			paddingLeft: 12
 			paddingRight: 4
 			spacing: 4
-			align: center
+			crossAxisAlign: center
 			background: surfaceContainer
 
 			Text { text: "Custom title bar" role: titleSmall }
@@ -33,7 +33,7 @@ Window {
 			paddingLeft: 4
 			paddingRight: 12
 			spacing: 4
-			align: center
+			crossAxisAlign: center
 			background: surfaceContainer
 
 			IconButton { id: macClose icon: close variant: text size: sm }
@@ -48,7 +48,7 @@ Window {
 			flex: 1
 			padding: 32
 			spacing: 12
-			align: center
+			crossAxisAlign: center
 
 			Text { text: "Drag the title bar to move the window." role: titleLarge }
 			Text {

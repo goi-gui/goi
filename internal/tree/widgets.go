@@ -64,20 +64,35 @@ func (w *Window) namedProps() []NamedProp {
 	)
 }
 
+// CrossAxisValues are the cross-axis alignments a flow container accepts.
+// `stretch` is the default feel of a Column: a child that can fill the width
+// does, because most children are containers themselves.
+var CrossAxisValues = []string{"start", "center", "end", "stretch"}
+
+// MainAxisValues are the main-axis alignments, the same set Flutter's
+// MainAxisAlignment offers: the space handlers only matter when the children do
+// not already fill the axis.
+var MainAxisValues = []string{"start", "center", "end", "spaceBetween", "spaceAround", "spaceEvenly"}
+
 // Container holds the properties shared by Column, Row and Stack. It is never
 // a node by itself; the three concrete types give each its own Go type so id
 // lookups are type-checked.
 type Container struct {
 	NodeBase
 	Spacing Prop[float64]
-	Align   Prop[string]
+	// CrossAlign places a child that is smaller than the container across the
+	// container's own direction: side to side in a Column, top to bottom in a
+	// Row. MainAlign places the whole run along that direction.
+	CrossAlign Prop[string]
+	MainAlign  Prop[string]
 }
 
 func (c *Container) namedProps() []NamedProp {
 	return append(commonProps(&c.NodeBase),
 		NumberProp(&c.NodeBase, "spacing", DirtyLayout, &c.Spacing),
 		NumberProp(&c.NodeBase, "gap", DirtyLayout, &c.Spacing),
-		EnumProp(&c.NodeBase, "align", DirtyLayout, &c.Align, "start", "center", "end", "stretch"),
+		EnumProp(&c.NodeBase, "crossAxisAlign", DirtyLayout, &c.CrossAlign, CrossAxisValues...),
+		EnumProp(&c.NodeBase, "mainAxisAlign", DirtyLayout, &c.MainAlign, MainAxisValues...),
 	)
 }
 

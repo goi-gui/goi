@@ -20,7 +20,8 @@ ClipRRect {
 | Property | Type | Notes |
 |---|---|---|
 | `radius` | number | corner radius of the cut, in dp |
-| `align` | enum | placement of a child smaller than the box |
+| `crossAxisAlign` | enum | `start`, `center`, `end`, `stretch`; horizontal placement |
+| `mainAxisAlign` | enum | `start`, `center`, `end`, `stretch`; vertical placement |
 | `padding` | number | inset the cut from the box |
 
 `ClipRRect` takes children like `Stack`: an undeclared child fills the box, and

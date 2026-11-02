@@ -209,7 +209,7 @@ func TestRowHorizontal(t *testing.T) {
 func TestCrossAxisAlignment(t *testing.T) {
 	tr := build(t, `Window {
 		Column {
-			align: center
+			crossAxisAlign: center
 			Text { id: a width: 100 height: 10 }
 		}
 	}`)
@@ -218,7 +218,7 @@ func TestCrossAxisAlignment(t *testing.T) {
 
 	tr2 := build(t, `Window {
 		Column {
-			align: end
+			crossAxisAlign: end
 			Text { id: a width: 100 height: 10 }
 		}
 	}`)
@@ -229,7 +229,7 @@ func TestCrossAxisAlignment(t *testing.T) {
 func TestAlignSelfOverridesParent(t *testing.T) {
 	tr := build(t, `Window {
 		Column {
-			align: end
+			crossAxisAlign: end
 			Text { id: a width: 100 height: 10 }
 			Text { id: b width: 100 height: 10 alignSelf: start }
 		}
@@ -306,7 +306,8 @@ func TestStackOverlays(t *testing.T) {
 func TestStackCenter(t *testing.T) {
 	tr := build(t, `Window {
 		Stack {
-			align: center
+			crossAxisAlign: center
+			mainAxisAlign: center
 			Rectangle { id: box width: 40 height: 20 }
 		}
 	}`)
@@ -377,7 +378,7 @@ func TestGoldenTreeLayout(t *testing.T) {
 			spacing: 8
 			Text   { id: title text: "Counter" fontSize: 24 }
 			Button { id: inc   label: "Increase" }
-			Row    { id: toolbar spacing: 6 align: center
+			Row    { id: toolbar spacing: 6 crossAxisAlign: center
 				Text { id: left  width: 30 height: 10 }
 				Text { id: right width: 30 height: 10 }
 			}
@@ -523,7 +524,7 @@ func TestWrapAlignsInsideRun(t *testing.T) {
 	tr := build(t, `Window {
 		Wrap {
 			spacing: 10
-			align: center
+			crossAxisAlign: center
 			Text { id: a width: 40 height: 10 }
 			Text { id: b width: 40 height: 20 }
 		}
@@ -538,7 +539,7 @@ func TestWrapStretchFillsRun(t *testing.T) {
 	tr := build(t, `Window {
 		Wrap {
 			spacing: 10
-			align: stretch
+			crossAxisAlign: stretch
 			Text { id: a width: 40 }
 			Text { id: b width: 40 fontSize: 32 }
 		}
@@ -551,7 +552,7 @@ func TestWrapStretchFillsRun(t *testing.T) {
 func TestWrapHugsItsContentHeight(t *testing.T) {
 	tr := build(t, `Window {
 		Column {
-			align: start
+			crossAxisAlign: start
 			Wrap {
 				width: 100
 				spacing: 10
@@ -589,7 +590,7 @@ func TestGridColumnsAndSpacing(t *testing.T) {
 func TestGridContainerChildFillsCell(t *testing.T) {
 	tr := build(t, `Window {
 		Column {
-			align: start
+			crossAxisAlign: start
 			Grid {
 				columns: 2
 				spacing: 8
@@ -679,7 +680,8 @@ func TestPositionedUsesStackAlign(t *testing.T) {
 		Stack {
 			width: 300
 			height: 200
-			align: center
+			crossAxisAlign: center
+			mainAxisAlign: center
 			Positioned { id: box width: 40 height: 20 }
 		}
 	}`)
@@ -707,7 +709,7 @@ func TestPositionedHugsChild(t *testing.T) {
 func TestStackSizesToPositionedExtent(t *testing.T) {
 	tr := build(t, `Window {
 		Column {
-			align: start
+			crossAxisAlign: start
 			Stack {
 				Positioned { left: 10 top: 5 width: 40 height: 20 }
 			}
@@ -750,5 +752,93 @@ func TestPassCacheIsPerPass(t *testing.T) {
 	}
 	if got := chip.Base().Bounds().W; got != chipNarrow {
 		t.Fatalf("chip = %v after shrinking, want %v", got, chipNarrow)
+	}
+}
+
+// TestMainAxisAlignment pins the six Flutter modes: the leftover along the main
+// axis moves the run, or spreads it out.
+func TestMainAxisAlignment(t *testing.T) {
+	cases := map[string][3]float64{
+		// child x, and the second child's x (two 20-wide boxes in 100).
+		"start":        {0, 20, 0},
+		"center":       {30, 50, 0},
+		"end":          {60, 80, 0},
+		"spaceBetween": {0, 80, 0},
+		"spaceAround":  {15, 65, 0},
+		"spaceEvenly":  {20, 60, 0},
+	}
+	for mode, want := range cases {
+		tr := build(t, `Window {
+			Row {
+				width: 100
+				height: 20
+				mainAxisAlign: `+mode+`
+				Rectangle { id: a width: 20 height: 20 }
+				Rectangle { id: b width: 20 height: 20 }
+			}
+		}`)
+		New(nil).Layout(tr.Root, 100, 20)
+		a := bounds(t, tr, "a")
+		b := bounds(t, tr, "b")
+		if a.X != want[0] || b.X != want[1] {
+			t.Errorf("%s: a.X=%v b.X=%v, want %v %v", mode, a.X, b.X, want[0], want[1])
+		}
+	}
+}
+
+// A full run has no leftover, so the space-* modes stay put instead of dividing
+// zero or squeezing the children.
+func TestMainAxisAlignmentIgnoresAFullRun(t *testing.T) {
+	tr := build(t, `Window {
+		Row {
+			width: 40
+			mainAxisAlign: spaceBetween
+			Rectangle { width: 20 height: 10 }
+			Rectangle { id: b width: 20 height: 10 }
+		}
+	}`)
+	New(nil).Layout(tr.Root, 40, 100)
+	if got := bounds(t, tr, "b").X; got != 20 {
+		t.Fatalf("b.X = %v, want 20", got)
+	}
+}
+
+// Column's main axis is vertical, and the cross axis is the width.
+func TestColumnAxisNames(t *testing.T) {
+	tr := build(t, `Window {
+		Column {
+			width: 100
+			height: 100
+			crossAxisAlign: center
+			mainAxisAlign: end
+			Rectangle { id: box width: 20 height: 10 }
+		}
+	}`)
+	New(nil).Layout(tr.Root, 100, 100)
+	want(t, bounds(t, tr, "box"), 40, 90, 20, 10)
+}
+
+// A Wrap's middle axis runs down, so its mainAxisAlign spreads each run across
+// the width.
+func TestWrapMainAxisAlignPerRun(t *testing.T) {
+	tr := build(t, `Window {
+		Wrap {
+			width: 100
+			mainAxisAlign: spaceBetween
+			Rectangle { id: a width: 20 height: 10 }
+			Rectangle { id: b width: 20 height: 10 }
+			Rectangle { id: c width: 70 height: 10 }
+		}
+	}`)
+	New(nil).Layout(tr.Root, 100, 100)
+	if got := bounds(t, tr, "a").X; got != 0 {
+		t.Fatalf("a.X = %v, want 0", got)
+	}
+	if got := bounds(t, tr, "b").X; got != 80 {
+		t.Fatalf("b.X = %v, want the run spread to the right edge", got)
+	}
+	// The third child does not fit next to the first two, so it starts a run.
+	if got := bounds(t, tr, "c").X; got != 0 {
+		t.Fatalf("c.X = %v, want the start of its own run", got)
 	}
 }

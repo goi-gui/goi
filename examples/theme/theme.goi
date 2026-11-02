@@ -14,7 +14,7 @@ Window {
 			flex: 1
 			padding: 24
 			spacing: 20
-			align: center
+			crossAxisAlign: center
 
 			Card {
 				width: 440
@@ -22,7 +22,7 @@ Window {
 
 				Column {
 					spacing: 16
-					align: center
+					crossAxisAlign: center
 
 					Text { text: "Colour scheme" role: "titleMedium" }
 					Row {
@@ -34,7 +34,7 @@ Window {
 					}
 					Row {
 						spacing: 6
-						align: center
+						crossAxisAlign: center
 						Text { text: "Active:" role: "bodySmall" }
 						Text { id: current text: "light" role: "labelLarge" color: primary }
 					}
@@ -65,7 +65,7 @@ Window {
 
 					Row {
 						spacing: 12
-						align: center
+						crossAxisAlign: center
 						IconButton { id: add icon: add variant: filled }
 						Text { id: count text: "0" role: "headlineMedium" }
 					}

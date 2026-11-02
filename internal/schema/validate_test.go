@@ -26,7 +26,7 @@ func TestValidFile(t *testing.T) {
 		Column {
 			padding: 16
 			spacing: 8
-			align: center
+			crossAxisAlign: center
 			Text { id: label text: "0" fontSize: 32 color: #222222 }
 		}
 	}`
@@ -99,14 +99,14 @@ func TestDiagnosticCases(t *testing.T) {
 		{"unknown property", `Window { titl: "x" }`, "unknown property", "title"},
 		{"wrong type", `Window { width: "wide" }`, "expects a number", ""},
 		{"wrong bool", `Window { visible: 1 }`, "expects true or false", ""},
-		{"unknown enum", `Window { Column { align: centr } }`, "no value", "center"},
+		{"unknown enum", `Window { Column { crossAxisAlign: centr } }`, "no value", "center"},
 		{"duplicate id", `Window { Text { id: a } Text { id: a } }`, "duplicate id", ""},
 		{"bad id", `Window { Text { id: A } }`, "invalid id", ""},
 		{"duplicate prop", `Window { width: 1 width: 2 }`, "duplicate property", ""},
 
 		{"leaf with child", `Window { Rectangle { Text { } } }`, "cannot contain", ""},
 		{"bad color literal", `Window { background: #12345 }`, "color must be", ""},
-		{"bad enum type", `Window { Column { align: 3 } }`, "expects an identifier", ""},
+		{"bad enum type", `Window { Column { crossAxisAlign: 3 } }`, "expects an identifier", ""},
 		{"unknown breakpoint", `Window { width: { md: 1, xxl: 2 } }`, "no breakpoint", "xl"},
 		{"bad breakpoint value", `Window { width: { md: "wide" } }`, "expects a number", ""},
 		{"nested map", `Window { width: { md: { base: 1 } } }`, "cannot be another map", ""},
@@ -160,7 +160,7 @@ func TestResponsiveValues(t *testing.T) {
 	_, diag := validate(t, `Window {
 		width: { base: 320, md: 480, lg: 640 }
 		background: { md: #123456 }
-		Column { padding: { sm: 8 } align: { lg: center } }
+		Column { padding: { sm: 8 } crossAxisAlign: { lg: center } }
 	}`)
 	if !diag.Empty() {
 		t.Fatalf("%v", diag)
@@ -435,6 +435,46 @@ func TestDataValidation(t *testing.T) {
 		"data { groups: group[] }\ndata group { name: string, items: item[] }\ndata item { label: string }\nWindow {\n\tColumn {\n\t\t{#each data.groups as g}\n\t\t\tText { text: g.name }\n\t\t{/each}\n\t}\n}",
 		// A number feeding a string property is formatted at runtime.
 		"data { count: number }\nWindow {\n\tText { text: data.count }\n}",
+	}
+	for _, src := range good {
+		if _, diag := validate(t, src); !diag.Empty() {
+			t.Errorf("%s: %v", src, diag.Format("<src>", []byte(src)))
+		}
+	}
+}
+
+// TestAlignmentAxesAreSeparate lists the accepted values on each kind of
+// container, so an old `align` does not silently pass and the overlay's shorter
+// main-axis set stays honest.
+func TestAlignmentAxesAreSeparate(t *testing.T) {
+	bad := map[string]string{
+		"Window { Column { align: center } }":                 "unknown property",
+		"Window { Row { crossAxisAlign: middle } }":           "no value",
+		"Window { Row { mainAxisAlign: middle } }":            "no value",
+		"Window { Stack { mainAxisAlign: spaceBetween } }":    "no value",
+		"Window { ClipRRect { mainAxisAlign: spaceAround } }": "no value",
+		"Window { List { align: center } }":                   "unknown property",
+		"Window { Column { crossAxisAlign: spaceBetween } }":  "no value",
+	}
+	for src, want := range bad {
+		_, diag := validate(t, src)
+		if diag.Empty() {
+			t.Errorf("%q was accepted", src)
+			continue
+		}
+		if got := diag.Format("<src>", []byte(src)); !strings.Contains(got, want) {
+			t.Errorf("%q gave %s, want %q", src, got, want)
+		}
+	}
+
+	good := []string{
+		"Window { Column { crossAxisAlign: end mainAxisAlign: spaceEvenly } }",
+		"Window { Row { crossAxisAlign: stretch mainAxisAlign: spaceAround } }",
+		"Window { Stack { crossAxisAlign: center mainAxisAlign: stretch } }",
+		"Window { Wrap { mainAxisAlign: spaceBetween } }",
+		"Window { Grid { mainAxisAlign: center } }",
+		"Window { List { mainAxisAlign: spaceBetween } }",
+		"Window { Text { align: center text: \"x\" } }",
 	}
 	for _, src := range good {
 		if _, diag := validate(t, src); !diag.Empty() {

@@ -297,9 +297,10 @@ func newNode(name string) Node {
 		}
 	case "Column", "Row", "Stack", "ClipRRect", "Wrap", "Grid", "TitleBar":
 		c := Container{
-			NodeBase: b(),
-			Spacing:  newProp(nil, "spacing", DirtyLayout, 0.0),
-			Align:    newProp(nil, "align", DirtyLayout, "start"),
+			NodeBase:   b(),
+			Spacing:    newProp(nil, "spacing", DirtyLayout, 0.0),
+			CrossAlign: newProp(nil, "crossAxisAlign", DirtyLayout, "start"),
+			MainAlign:  newProp(nil, "mainAxisAlign", DirtyLayout, "start"),
 		}
 		switch name {
 		case "Column":

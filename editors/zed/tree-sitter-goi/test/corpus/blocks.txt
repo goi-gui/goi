@@ -1,0 +1,80 @@
+==================
+Data and an if block
+==================
+
+data {
+	loading: bool
+	rows: row[]
+}
+
+data row { title: string }
+
+Window {
+	{#if data.loading}
+		Text { text: "wait" }
+	{:else}
+		Text { text: "done" }
+	{/if}
+}
+
+---
+
+(source_file
+  (data_block
+    (data_field
+      name: (identifier)
+      type: (data_type
+        element: (identifier)))
+    (data_field
+      name: (identifier)
+      type: (data_type
+        element: (identifier))))
+  (data_shape
+    name: (identifier)
+    (data_field
+      name: (identifier)
+      type: (data_type
+        element: (identifier))))
+  root: (element
+    name: (element_name)
+    (if_block
+      condition: (value
+        condition: (or_expression
+          (and_expression
+            (equality_expression
+              (comparison_expression
+                (sum_expression
+                  (term_expression
+                    (unary_expression
+                      (primary
+                        (reference
+                          object: (identifier)
+                          member: (identifier)))))))))))
+      (element
+        name: (element_name)
+        (property
+          name: (identifier)
+          value: (value
+            condition: (or_expression
+              (and_expression
+                (equality_expression
+                  (comparison_expression
+                    (sum_expression
+                      (term_expression
+                        (unary_expression
+                          (primary
+                            (string))))))))))))
+      (element
+        name: (element_name)
+        (property
+          name: (identifier)
+          value: (value
+            condition: (or_expression
+              (and_expression
+                (equality_expression
+                  (comparison_expression
+                    (sum_expression
+                      (term_expression
+                        (unary_expression
+                          (primary
+                            (string)))))))))))))))

@@ -17,7 +17,7 @@ func TestApplyBreakpointsPicksLargestTier(t *testing.T) {
 		Column {
 			id: box
 			padding: { base: 8, md: 16 }
-			align: { md: center }
+			crossAxisAlign: { md: center }
 		}
 	}`)
 	box, ok := tr.ByID("box")
@@ -46,7 +46,7 @@ func TestApplyBreakpointsPicksLargestTier(t *testing.T) {
 		if got := box.Base().Padding(); got != c.pad {
 			t.Errorf("width %v: padding = %v, want %v", c.width, got, c.pad)
 		}
-		if got := col.Align.Get(); got != c.align {
+		if got := col.CrossAlign.Get(); got != c.align {
 			t.Errorf("width %v: align = %q, want %q", c.width, got, c.align)
 		}
 	}

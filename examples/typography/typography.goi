@@ -131,7 +131,7 @@ Window {
 				Text { text: "Wrapped next to other content" role: "titleMedium" }
 				Row {
 					spacing: 16
-					align: start
+					crossAxisAlign: start
 
 					Column {
 						spacing: 6
