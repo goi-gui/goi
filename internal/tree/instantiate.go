@@ -29,6 +29,9 @@ func (t *Tree) Instantiate(template Node, parent Node) (Node, error) {
 		return nil, err
 	}
 	n.Base().SetVisible(true)
+	// A copy is a row, not a prototype: otherwise a second Fill would treat
+	// the rows it just made as templates.
+	n.Base().template.Set(false)
 	// A copy inherits the template's breakpoint maps, so register it with the
 	// same lists a freshly built node would join.
 	if len(n.Base().responsive) > 0 {

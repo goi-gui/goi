@@ -43,8 +43,11 @@ type NodeBase struct {
 	kind  DirtyKind
 
 	visible Prop[bool]
-	margin  Prop[float64]
-	padding Prop[float64]
+	// template marks a hidden row prototype for ui.Fill. It is a build marker,
+	// so a copy made by Instantiate drops it and acts like an ordinary row.
+	template Prop[bool]
+	margin   Prop[float64]
+	padding  Prop[float64]
 	// Per-side overrides. A negative value follows margin/padding, so a
 	// declaration can set one edge without repeating the others.
 	marginTop, marginRight, marginBottom, marginLeft     Prop[float64]
@@ -88,6 +91,10 @@ func (b *NodeBase) Base() *NodeBase { return b }
 
 // ID returns the id declared in the .goi file, or "".
 func (b *NodeBase) ID() string { return b.id }
+
+// Template reports whether this node is a row prototype: `template: true` in
+// the design hides it and lets ui.Fill build copies of it.
+func (b *NodeBase) Template() bool { return b.template.Get() }
 
 // Parent returns the parent node, or nil for the root.
 func (b *NodeBase) Parent() Node {

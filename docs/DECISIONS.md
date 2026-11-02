@@ -986,3 +986,17 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   Shift + wheel-up scrolls left, matching a browser. With the old `-dx`, a
   two-finger horizontal swipe moved the content against the fingers, which is
   what natural scrolling must not do. `TestTouchpadKeepsBothAxes` pins it.
+
+- **A row prototype is `template: true`, and `ui.Fill` rebuilds the list.** The
+  old recipe (hidden template + a clear loop + `Instantiate` per item + a `Set`
+  per field) had two traps: forget the clear and a refresh stacked duplicates,
+  and the template id was repeated in Go and in the file. `template: true` hides
+  the marked row when the tree is built and lets `Fill` find it; `Fill` removes
+  the other children, instantiates one copy per item and hands each copy to the
+  caller. Copies drop the marker, because a copy is a row and not a prototype,
+  so a second `Fill` starts from the same prototype. `Instantiate`/`Remove`
+  remain for a row added or removed one at a time. A `repeat` in `.goi` was
+  rejected: it needs field access and an untyped `$item` scope, which neither
+  the schema nor the LSP can check, trading the design file's compile-time
+  validation for a little less Go. `TestFillRebuildsFromTheTemplate` and
+  `TestFillNeedsATemplateChild` pin the behaviour.

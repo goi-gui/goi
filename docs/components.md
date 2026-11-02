@@ -107,6 +107,7 @@ These apply to every element and are not repeated on the component pages.
 | `borderColor, borderWidth` | color, number | outline around the box |
 | `radius` | number | corner radius |
 | `visible` | bool | removes the element from layout, painting and hit-testing |
+| `template` | bool | marks a hidden row prototype for `ui.Fill` |
 | `flex` | number | share of the parent's leftover main-axis space |
 | `alignSelf` | enum | `start`, `center`, `end`, `stretch`; overrides the parent's align |
 | `scroll` | bool | scroll when content overflows the box |
@@ -173,5 +174,6 @@ btn := ui.MustByID[*ui.Button](w, "save")    // panics; fine in Bind
 node, err := w.ByID("save")                  // untyped
 ```
 
-`ui.Instantiate[*ui.ListItem](w, "template", parent)` clones a hidden template
-into a container, which is how a list of unknown length is built.
+A list of unknown length is a row marked `template: true` plus `ui.Fill`, which
+replaces the container's rows from a slice in one call. `ui.Instantiate` and
+`ui.Remove` are the low-level clone and detach, for a row added one at a time.

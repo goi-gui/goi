@@ -34,6 +34,7 @@ func commonProps(b *NodeBase) []NamedProp {
 		NumberProp(b, "borderWidth", DirtyLayout, &b.borderW),
 		NumberProp(b, "radius", DirtyPaint, &b.radius),
 		BoolProp(b, "visible", DirtyLayout, &b.visible),
+		BoolProp(b, "template", DirtyLayout, &b.template),
 		BoolProp(b, "scroll", DirtyPaint, &b.scroll),
 		NumberProp(b, "flex", DirtyLayout, &b.flex),
 		EnumProp(b, "alignSelf", DirtyLayout, &b.alignSelf, "start", "center", "end", "stretch"),

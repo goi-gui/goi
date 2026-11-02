@@ -12,9 +12,10 @@ import (
 //	row, err := ui.Instantiate[*ui.ListItem](w, "rowTemplate", list)
 //	row.Headline.Set("Ada")
 //
-// The template stays in the .goi file with `visible: false`; every copy is
-// visible. Ids inside the copy are kept so Descendant can find them, but they
+// The template stays in the .goi file, usually as `template: true`; every copy
+// is visible. Ids inside the copy are kept so Descendant can find them, but they
 // are not registered, so copies never collide with each other or the template.
+// For a whole list, Fill does the clearing and cloning in one call.
 func Instantiate[T Node](w *Window, templateID string, parent Node) (T, error) {
 	var zero T
 	if w == nil || w.tree == nil {
@@ -36,6 +37,62 @@ func Instantiate[T Node](w *Window, templateID string, parent Node) (T, error) {
 		return zero, fmt.Errorf("ui: template %q is %s, not %T", templateID, n.Kind(), zero)
 	}
 	return t, nil
+}
+
+// Fill rebuilds parent from its template child: every other child is removed,
+// one copy of the template is instantiated per item, and fill writes the item
+// into the copy. The template is the child whose design says `template: true`;
+// it stays hidden and in place, so calling Fill again (a refresh, or Bind after
+// a hot reload) replaces the rows instead of stacking them:
+//
+//	ui.Fill(w, list, items, func(row *ui.ListItem, it item) {
+//		row.Label.Set(it.Title)
+//	})
+//
+// The copies are ordinary rows, not templates, so a second Fill starts from the
+// same prototype.
+func Fill[T Node, I any](w *Window, parent Node, items []I, fill func(T, I)) error {
+	var zero T
+	if w == nil || w.tree == nil {
+		return fmt.Errorf("ui: no window")
+	}
+	if parent == nil {
+		return fmt.Errorf("ui: fill needs a parent")
+	}
+	var tpl Node
+	for _, c := range parent.Base().Children() {
+		if !c.Base().Template() {
+			continue
+		}
+		if tpl != nil {
+			return fmt.Errorf("ui: %s has more than one template child", parent.Kind())
+		}
+		tpl = c
+	}
+	if tpl == nil {
+		return fmt.Errorf("ui: %s has no template child: mark the row element `template: true`", parent.Kind())
+	}
+	// Clear first, then build: the container ends up holding exactly one copy
+	// per item plus the hidden prototype.
+	for _, c := range parent.Base().Children() {
+		if c != tpl {
+			w.tree.Remove(c)
+		}
+	}
+	for _, it := range items {
+		n, err := w.tree.Instantiate(tpl, parent)
+		if err != nil {
+			return err
+		}
+		row, ok := n.(T)
+		if !ok {
+			return fmt.Errorf("ui: template is %s, not %T", n.Kind(), zero)
+		}
+		if fill != nil {
+			fill(row, it)
+		}
+	}
+	return nil
 }
 
 // Descendant finds an element by its .goi id inside a subtree, root included.

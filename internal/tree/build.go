@@ -159,6 +159,11 @@ func (t *Tree) build(el *syntax.Element, parent *NodeBase, hooks *Hooks) (Node, 
 			return nil, fmt.Errorf("%s.%s: value not valid for the property type", el.Name, p.Name)
 		}
 	}
+	// A template is hidden before its children are built, so it never joins
+	// layout. The flag stays on the node for ui.Fill to find.
+	if b.template.Get() {
+		b.SetVisible(false)
+	}
 	if len(b.responsive) > 0 {
 		t.responsive = append(t.responsive, b)
 	}
@@ -213,6 +218,7 @@ func newNode(name string) Node {
 	b := func() NodeBase {
 		return NodeBase{
 			visible:       newProp(nil, "visible", DirtyLayout, true),
+			template:      newProp(nil, "template", DirtyLayout, false),
 			margin:        newProp(nil, "margin", DirtyLayout, 0.0),
 			padding:       newProp(nil, "padding", DirtyLayout, 0.0),
 			marginTop:     newProp(nil, "marginTop", DirtyLayout, -1.0),

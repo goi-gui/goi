@@ -37,6 +37,11 @@ var pages = []page{
 // close the drawer.
 var navIDs = []string{"rail", "navbar"}
 
+// repeatItem is one row of the gallery's Fill demo.
+type repeatItem struct {
+	label, icon string
+}
+
 func main() {
 	app, err := ui.NewApp()
 	if err != nil {
@@ -219,17 +224,20 @@ func main() {
 			}
 		})
 
-		// The Layout page's repeat demo: one hidden template, three copies. A
-		// reload rebuilds the tree, so this runs again from Bind and the copies
-		// come back with the page.
+		// The Layout page's repeat demo: one template row, three copies. A
+		// reload rebuilds the tree, so this runs again from Bind and the rows
+		// come back with the page; Fill replaces them instead of stacking.
 		if list, err := ui.ByID[*ui.Column](w, "repeatList"); err == nil {
-			for i, name := range []string{"First copy", "Second copy", "Third copy"} {
-				item, err := ui.Instantiate[*ui.ListItem](w, "repeatTemplate", list)
-				if err != nil {
-					continue
-				}
-				item.Label.Set(name)
-				item.Icon.Set([]string{"person", "star", "photo"}[i])
+			items := []repeatItem{
+				{label: "First copy", icon: "person"},
+				{label: "Second copy", icon: "star"},
+				{label: "Third copy", icon: "photo"},
+			}
+			if err := ui.Fill(w, list, items, func(row *ui.ListItem, it repeatItem) {
+				row.Label.Set(it.label)
+				row.Icon.Set(it.icon)
+			}); err != nil {
+				return err
 			}
 		}
 

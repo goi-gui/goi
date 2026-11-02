@@ -15,6 +15,15 @@ List {
 }
 ```
 
+For rows that come from Go, keep one hidden prototype and fill from a slice:
+
+```goi
+List {
+	id: results
+	ListItem { template: true label: "Item" }
+}
+```
+
 ## Properties
 
 | Property | Type | Notes |
@@ -28,14 +37,12 @@ List {
 
 ```go
 list := ui.MustByID[*ui.List](w, "results")
-for _, r := range results {
-	item, err := ui.Instantiate[*ui.ListItem](w, "resultTemplate", list)
-	if err != nil {
-		continue
-	}
-	item.Label.Set(r.Title)
-	item.Supporting.Set(r.Subtitle)
-}
+err := ui.Fill(w, list, results, func(row *ui.ListItem, r result) {
+	row.Label.Set(r.Title)
+	row.Supporting.Set(r.Subtitle)
+})
 ```
+
+`Fill` removes the previous rows first, so a refresh cannot stack duplicates.
 
 Every element also accepts the [common properties](../components.md#common-properties).

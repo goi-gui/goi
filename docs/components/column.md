@@ -26,16 +26,25 @@ Column {
 
 ## From Go
 
-```go
-col := ui.MustByID[*ui.Column](w, "list")
-col.Spacing.Set(8)
-for i := 0; i < 3; i++ {
-	item, err := ui.Instantiate[*ui.ListItem](w, "itemTemplate", col)
-	if err != nil {
-		continue
-	}
-	item.Label.Set(fmt.Sprintf("Item %d", i+1))
+A column is also the usual list: mark one row `template: true` and let
+`ui.Fill` replace the rows from a slice.
+
+```goi
+Column {
+	id: list
+	spacing: 8
+	ListItem { template: true label: "Item" }
 }
 ```
+
+```go
+col := ui.MustByID[*ui.Column](w, "list")
+err := ui.Fill(w, col, items, func(row *ui.ListItem, it item) {
+	row.Label.Set(it.Label)
+})
+```
+
+`ui.Instantiate[*ui.ListItem](w, "template", parent)` clones the row once when
+you need to add a single item by hand.
 
 Every element also accepts the [common properties](../components.md#common-properties).
