@@ -150,6 +150,9 @@ var elements = func() []Element {
 		{Name: "Stack", Children: true, Attrs: withCommon(
 			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
 		)},
+		{Name: "ClipRRect", Children: true, Attrs: withCommon(
+			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
+		)},
 		{Name: "Positioned", Children: true, Attrs: withCommon(
 			Prop{Name: "left", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0}, // -1 = auto
 			Prop{Name: "top", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0},

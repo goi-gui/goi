@@ -109,6 +109,15 @@ type Stack struct{ Container }
 // Kind implements Node.
 func (*Stack) Kind() string { return "Stack" }
 
+// ClipRRect lays its children out like a Stack and cuts them to a rounded box,
+// which is what a photo in a circle or a scrolling row inside a pill needs. The
+// radius comes from the common `radius` property; a background painted on it is
+// rounded too.
+type ClipRRect struct{ Container }
+
+// Kind implements Node.
+func (*ClipRRect) Kind() string { return "ClipRRect" }
+
 // Positioned places itself inside a Stack. left/top are distances from the
 // Stack's content edges; right/bottom anchor the opposite edges. A negative
 // value means "auto", and an unanchored axis follows the Stack's align.

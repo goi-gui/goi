@@ -139,7 +139,7 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 	switch b.Node().Kind() {
 	case "Row", "TitleBar":
 		e.linear(b, kids, cw, ch, pe.Left+bw, true, pe.Top+bw)
-	case "Stack", "Positioned":
+	case "Stack", "ClipRRect", "Positioned":
 		e.stackChildren(b, w, h, pe.Left+bw, pe.Top+bw, pe.Right+bw, pe.Bottom+bw)
 	case "Wrap":
 		e.wrap(b, kids, cw, ch, pe.Left+bw, pe.Top+bw)

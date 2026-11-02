@@ -31,7 +31,8 @@ internal/tree ── instantiate ──▶ node tree + id index
 | `internal/m3` | — | theme tokens, type scale, component metrics |
 | `internal/tree` | syntax, schema, componentdef | live nodes, props, events, id index |
 | `internal/layout` | tree, m3 | flexbox-lite, measurement |
-| `internal/paint` | tree, m3 | display list, component visuals |
+| `internal/paint` | tree, m3, highlight | display list, component visuals |
+| `internal/highlight` | chroma | source text to colored spans |
 | `internal/text` | — | shaping, rasterization, glyph atlas |
 | `internal/render` | paint, text, gogpu/wgpu | GPU pipelines, texture upload |
 | `internal/platform` | SDL3 (cgo) | window, native handles, input |

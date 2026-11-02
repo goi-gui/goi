@@ -1,6 +1,11 @@
 package tree
 
-import "github.com/ksckaan1/goi/internal/componentdef"
+import (
+	"strings"
+
+	"github.com/ksckaan1/goi/internal/componentdef"
+	"github.com/ksckaan1/goi/internal/highlight"
+)
 
 // Component holds the state every Material 3 component shares. Concrete
 // components embed it and use props(kind) to expose only the properties their
@@ -27,8 +32,10 @@ type Component struct {
 	// means no icon in the thumb.
 	IconOn  Prop[string]
 	IconOff Prop[string]
-	// Language names the syntax a Code block highlights with.
+	// Language names the syntax a Code block highlights with, and ShowCopy adds
+	// the copy button to a Code block's corner.
 	Language Prop[string]
+	ShowCopy Prop[bool]
 
 	// Appearance.
 	Variant Prop[string]
@@ -108,6 +115,7 @@ func newComponent() Component {
 		IconOn:      newProp(nil, "iconOn", DirtyLayout, ""),
 		IconOff:     newProp(nil, "iconOff", DirtyLayout, ""),
 		Language:    newProp(nil, "language", DirtyPaint, ""),
+		ShowCopy:    newProp(nil, "showCopy", DirtyPaint, false),
 		Variant:     newProp(nil, "variant", DirtyPaint, ""),
 		Size:        newProp(nil, "size", DirtyLayout, ""),
 		Disabled:    newProp(nil, "disabled", DirtyPaint, false),
@@ -161,6 +169,8 @@ func (c *Component) one(name string) NamedProp {
 		return StringProp(b, "iconOff", &c.IconOff)
 	case "language":
 		return StringProp(b, "language", &c.Language)
+	case "showCopy":
+		return BoolProp(b, "showCopy", DirtyPaint, &c.ShowCopy)
 	case "variant":
 		// The accepted words live in componentdef, which the schema validates
 		// against. Repeating them here let the validator accept `vertical` on a
@@ -478,11 +488,50 @@ func (*TextArea) Kind() string              { return "TextArea" }
 func (c *TextArea) namedProps() []NamedProp { return c.props("TextArea") }
 
 // Code is a syntax-highlighted code block.
-type Code struct{ Component }
+type Code struct {
+	Component
+	// SelA and SelB are the reader's selection in the drawn text's byte
+	// offsets. A Code block is always selectable; only a Text node needs the
+	// property, since prose and code are read differently.
+	SelA, SelB int
+	// The highlight is recomputed only when the text or the language changes,
+	// so a still block costs a string compare per frame instead of a lexer run.
+	hlLang, hlText string
+	hlSrc          string
+	hlSpans        []highlight.Span
+}
 
 // Kind implements Node.
-func (*Code) Kind() string              { return "Code" }
+func (*Code) Kind() string { return "Code" }
+
 func (c *Code) namedProps() []NamedProp { return c.props("Code") }
+
+// Source is the text the block draws. Tabs are expanded here because the font
+// gives a tab no advance of its own, which would flatten all indentation; the
+// selection and the copy button use the same string, so what is highlighted is
+// what is copied.
+func (c *Code) Source() string {
+	src, _ := c.highlight()
+	return src
+}
+
+// Spans returns the highlighted runs for the current text and language,
+// recomputing them only when one of the two changed.
+func (c *Code) Spans() []highlight.Span {
+	_, spans := c.highlight()
+	return spans
+}
+
+func (c *Code) highlight() (string, []highlight.Span) {
+	raw, lang := c.Text.Get(), c.Language.Get()
+	if raw == c.hlText && lang == c.hlLang {
+		return c.hlSrc, c.hlSpans
+	}
+	c.hlText, c.hlLang = raw, lang
+	c.hlSrc = strings.ReplaceAll(raw, "\t", "    ")
+	c.hlSpans = highlight.Spans(c.hlSrc, lang)
+	return c.hlSrc, c.hlSpans
+}
 
 // Carousel shows a scrollable row of items.
 type Carousel struct{ Component }

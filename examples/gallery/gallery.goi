@@ -267,6 +267,7 @@ Window {
 							Text { text: "Code" role: "titleMedium" }
 							Code {
 								language: go
+								showCopy: true
 								width: { base: 300, md: 520 }
 								text: "// A highlighted block\nfunc bind(w *ui.Window) error {\n\tbtn := ui.MustByID[*ui.Button](w, \"go\")\n\tbtn.OnClick(func(ui.ClickEvent) {\n\t\tfmt.Println(\"clicked\")\n\t})\n\treturn nil\n}"
 							}
@@ -544,6 +545,41 @@ Window {
 								IconButton { icon: share }
 							}
 							Text { text: "A floating row of actions in one pill." role: "bodySmall" }
+						}
+
+						Column {
+							spacing: 12
+							Text { text: "ClipRRect" role: "titleMedium" }
+							Row {
+								spacing: 12
+								ClipRRect {
+									radius: 24
+									width: 96
+									height: 96
+									Rectangle { background: primary }
+									// The strip runs past the box and is cut at the
+									// rounded edge, which is the whole point.
+									Rectangle { width: 200 height: 20 marginTop: 60 background: tertiary }
+								}
+								ClipRRect {
+									radius: 8
+									width: 96
+									height: 96
+									Image { src: "sample.jpg" fit: cover }
+								}
+								ClipRRect {
+									radius: 48
+									width: 96
+									height: 96
+									Image { src: "sample.jpg" fit: cover }
+								}
+							}
+							Text {
+								text: "radius rounds the cut; a child wider than the box is clipped, not scaled."
+								role: "bodySmall"
+								wrap: true
+								width: { base: 280, md: 460 }
+							}
 						}
 
 						Column {

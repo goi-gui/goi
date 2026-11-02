@@ -113,7 +113,7 @@ var props = map[string][]string{
 	"Carousel":         {"variant"},
 	"Toolbar":          {"variant", "size"},
 	"TextArea":         {"label", "text", "placeholder", "supporting", "variant", "disabled"},
-	"Code":             {"text", "language", "variant"},
+	"Code":             {"text", "language", "variant", "showCopy"},
 }
 
 // Flow lists containers that accept the row/column layout properties.
@@ -152,7 +152,7 @@ const (
 // TypeOf returns the literal type of a component property.
 func TypeOf(name string) PropType {
 	switch name {
-	case "disabled", "checked", "selected", "expanded":
+	case "disabled", "checked", "selected", "expanded", "showCopy":
 		return Bool
 	case "value", "min", "max", "step", "spacing", "gap":
 		return Number

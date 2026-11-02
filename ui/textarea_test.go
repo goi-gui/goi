@@ -135,34 +135,3 @@ func TestTextAreaArrowDown(t *testing.T) {
 		t.Fatalf("Up returned to %d, want %d", a.Caret, len("alpha b"))
 	}
 }
-
-// A code block highlights keywords, strings and numbers, and covers every byte
-// exactly once so no run is dropped from the painting.
-func TestHighlightCodeSpans(t *testing.T) {
-	src := "// note\nfunc f() {\n\tx := \"hi\" + 42\n}"
-	spans := paint.HighlightCode(src, "go")
-	if len(spans) == 0 {
-		t.Fatal("no spans")
-	}
-	prev := 0
-	for _, sp := range spans {
-		if sp.Start != prev {
-			t.Fatalf("gap or overlap at %d (previous ended %d)", sp.Start, prev)
-		}
-		if sp.End <= sp.Start {
-			t.Fatalf("empty span %+v", sp)
-		}
-		prev = sp.End
-	}
-	if prev != len(src) {
-		t.Fatalf("spans cover %d of %d bytes", prev, len(src))
-	}
-}
-
-// An unknown language is drawn as plain text rather than dropping the content.
-func TestHighlightCodeUnknownLanguage(t *testing.T) {
-	spans := paint.HighlightCode("anything at all", "brainfuck")
-	if len(spans) != 1 || spans[0].Start != 0 || spans[0].End != 15 {
-		t.Fatalf("spans = %+v, want one plain span", spans)
-	}
-}

@@ -67,7 +67,7 @@ type interactor struct {
 	textClickAt    time.Time
 	textClickX     float64
 	textClickY     float64
-	textClickNode  *tree.Text
+	textClickNode  tree.Node
 
 	// Clipboard hooks; nil uses the platform clipboard.
 	getClipboard func() string
@@ -86,9 +86,9 @@ type interactor struct {
 
 	viewportW, viewportH float64
 
-	// textSel is the selectable Text the pointer last selected, so Ctrl+C can
+	// textSel is the selectable node the pointer last selected, so Ctrl+C can
 	// copy it after the pointer is released.
-	textSel *tree.Text
+	textSel tree.Node
 
 	// Fling keeps a wheel or touchpad scroll moving after the gesture ends.
 	flingNode tree.Node
@@ -154,7 +154,7 @@ func (i *interactor) chromeHitTest(x, y float64) platform.HitTest {
 	hit := i.hit(x, y)
 	// A real control wins over the frame: a window button parked in the corner
 	// is still a button.
-	if hit != nil && (clickable(hit) || fieldAt(hit) != nil || selectableTextAt(hit) != nil) {
+	if hit != nil && (clickable(hit) || fieldAt(hit) != nil || selectableAt(hit) != nil) {
 		return platform.HitTestNormal
 	}
 	if i.resizeEdges {
@@ -201,8 +201,8 @@ func (i *interactor) MouseMove(x, y float64) {
 	i.cursorX, i.cursorY = x, y
 	if i.selecting && i.textSel != nil {
 		i.pointer(platform.CursorText)
-		i.textSel.SelB = i.textIndexAt(i.textSel, x, y)
-		i.textSel.Base().MarkDirty(tree.DirtyPaint)
+		a, _ := selRange(i.textSel)
+		setSel(i.textSel, a, i.selIndexAt(i.textSel, x, y))
 		i.markDirty()
 		return
 	}
@@ -255,7 +255,11 @@ func (i *interactor) pointerAt(hit tree.Node) {
 		i.pointer(platform.CursorArrow)
 		return
 	}
-	if selectableTextAt(hit) != nil {
+	if codeCopyAt(hit, i.cursorX, i.cursorY) != nil {
+		i.pointer(platform.CursorPointer)
+		return
+	}
+	if selectableAt(hit) != nil {
 		i.pointer(platform.CursorText)
 		return
 	}
@@ -299,7 +303,18 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 	// A selectable Text starts a selection drag before any container click:
 	// reading a paragraph should not also press the card around it. The press
 	// consumes the gesture, so MouseUp has nothing to activate.
-	if t := selectableTextAt(hit); t != nil && button == 0 {
+	// A code block's copy button sits inside its selectable text, so it is
+	// checked before the selection starts: the press copies and stops.
+	if code := codeCopyAt(hit, x, y); code != nil && button == 0 {
+		i.textSel = nil
+		i.setFocus(nil)
+		i.setKbd(nil)
+		i.putClipboard(code.Source())
+		i.markDirty()
+		return
+	}
+
+	if t := selectableAt(hit); t != nil && button == 0 {
 		i.setFocus(nil)
 		i.setKbd(nil)
 		i.scrollNode = nil
@@ -344,7 +359,7 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 		return
 	}
 	// Tapping a container selects its nearest selectable child.
-	if sel := selectableAt(i.tree, hit); sel != nil {
+	if sel := selectableChildAt(i.tree, hit); sel != nil {
 		i.pressed = sel
 	}
 	_ = button
@@ -439,35 +454,35 @@ func (i *interactor) activate(n tree.Node, c *tree.Component, x, y float64) {
 // word selects the word and a third selects the paragraph, which is the desktop
 // convention; the drag after a multi-click extends from there instead of
 // collapsing to the caret.
-func (i *interactor) pressTextNode(t *tree.Text, x, y float64, shift bool) {
+func (i *interactor) pressTextNode(n tree.Node, x, y float64, shift bool) {
 	now := time.Now()
-	same := t == i.textClickNode && now.Sub(i.textClickAt) < 400*time.Millisecond &&
+	same := n == i.textClickNode && now.Sub(i.textClickAt) < 400*time.Millisecond &&
 		math.Abs(x-i.textClickX) <= 6 && math.Abs(y-i.textClickY) <= 6
 	if same {
 		i.textClickCount++
 	} else {
 		i.textClickCount = 1
 	}
-	i.textClickAt, i.textClickX, i.textClickY, i.textClickNode = now, x, y, t
+	i.textClickAt, i.textClickX, i.textClickY, i.textClickNode = now, x, y, n
 
-	idx := i.textIndexAt(t, x, y)
-	s := t.Text.Get()
-	i.textSel = t
+	idx := i.selIndexAt(n, x, y)
+	s := selText(n)
+	i.textSel = n
 	switch {
 	case same && i.textClickCount >= 3:
 		a, b := paragraphBounds(s, idx)
-		t.SelA, t.SelB = a, b
+		setSel(n, a, b)
 		i.selecting = false
 	case same && i.textClickCount == 2:
 		a, b := wordBounds(s, idx)
-		t.SelA, t.SelB = a, b
+		setSel(n, a, b)
 		i.selecting = false
 	default:
-		t.SelA, t.SelB = idx, idx
+		setSel(n, idx, idx)
 		i.selecting = true
 	}
 	_ = shift
-	t.Base().MarkDirty(tree.DirtyPaint)
+	n.Base().MarkDirty(tree.DirtyPaint)
 	i.markDirty()
 }
 
@@ -1296,8 +1311,8 @@ func fieldAt(n tree.Node) *tree.Component {
 	return nil
 }
 
-// selectableAt returns the nearest selectable child of a container hit.
-func selectableAt(t *tree.Tree, hit tree.Node) tree.Node {
+// selectableChildAt returns the nearest selectable child of a container hit.
+func selectableChildAt(t *tree.Tree, hit tree.Node) tree.Node {
 	for n := hit; n != nil; n = n.Base().Parent() {
 		switch n.Kind() {
 		case "Tab", "SegmentedButton", "MenuItem", "ListItem":

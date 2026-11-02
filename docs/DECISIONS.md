@@ -890,3 +890,25 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
 - **`m3.ComponentView` carries `Spacing` and `Align`.** A component keeps them in
   its own cells while `Container` keeps separate ones, so the layout engine was
   reading 0 spacing and "start" alignment for every Toolbar, List and Drawer.
+- **Code highlighting is Chroma's, not ours.** The hand-written tokenizer only
+  knew six languages and only the ones someone remembered to add. Chroma ships
+  ~300 lexers behind a stable `Tokenise` API, and this package only maps its
+  token types onto the theme's six color roles. Cost: `go build` grows by about
+  4MB, because the lexer registry embeds every grammar; that is the price of
+  "any language works" and it is paid once per binary. `internal/highlight` is a
+  new leaf package so `paint` never sees a Chroma type.
+- **A Code block's selection indexes the drawn text, tabs expanded.** The font
+  gives a tab no advance, so the block draws tabs as four spaces; the selection
+  and the copy button use that same string, which makes "what you see is what
+  you copy" true. `Code.Spans()` caches the lexer run and re-runs only when the
+  text or the language changes, because a still block is repainted every frame.
+- **Selection helpers take a `tree.Node`, not a `*tree.Text`.** Code needed the
+  same drag, double-click-word and Ctrl+C path as selectable prose, and the
+  alternative was a second copy of the geometry. `selectableAt`, `selText`,
+  `selRange`, `selIndexAt` are the seam; a new selectable kind only adds a case.
+- **ClipRRect clips by rounding the ops its subtree emitted.** The clip rect was
+  already narrowed by `ClipsChildren`; the corner radius is applied to the ops in
+  the subtree's range rather than threading a second rectangle through every
+  painter. A nested ClipRRect has already rounded its own range to its own
+  radius, so the outer pass overwrites it with the outer radius — which is what
+  a real clip stack would produce, since the outer cut is the smaller one.

@@ -16,6 +16,7 @@ They all share one property set and one way of being driven from Go.
 - [TitleBar](components/titlebar.md) — A Row that moves the window when dragged.
 - [Stack](components/stack.md) — Overlays children on top of each other, last child on top.
 - [Positioned](components/positioned.md) — Anchors a child inside a Stack.
+- [ClipRRect](components/cliprrect.md) — Cuts its children to a rounded box.
 - [Wrap](components/wrap.md) — Flows children left to right and starts a new run when the next child does not fit.
 - [Grid](components/grid.md) — Places children in a fixed number of equal-width columns.
 - [Rectangle](components/rectangle.md) — A plain colored box.

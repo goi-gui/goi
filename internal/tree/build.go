@@ -244,7 +244,7 @@ func newNode(name string) Node {
 			Theme:    newProp(nil, "theme", DirtyPaint, "light"),
 			TitleBar: newProp(nil, "titleBar", DirtyPaint, "system"),
 		}
-	case "Column", "Row", "Stack", "Wrap", "Grid", "TitleBar":
+	case "Column", "Row", "Stack", "ClipRRect", "Wrap", "Grid", "TitleBar":
 		c := Container{
 			NodeBase: b(),
 			Spacing:  newProp(nil, "spacing", DirtyLayout, 0.0),
@@ -253,6 +253,8 @@ func newNode(name string) Node {
 		switch name {
 		case "Column":
 			return &Column{Container: c}
+		case "ClipRRect":
+			return &ClipRRect{Container: c}
 		case "Row":
 			return &Row{Container: c}
 		case "TitleBar":

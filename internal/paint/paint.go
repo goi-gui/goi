@@ -164,6 +164,7 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 		childClip = intersect(clip, inner)
 	}
 	ox, oy := scrollShift(b)
+	from := len(l.Ops)
 	for _, k := range b.Kids() {
 		kb := k.Bounds()
 		kb.X += ox
@@ -171,6 +172,7 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 		l.walkOffset(k, x, y, kb, childClip)
 	}
 	l.paintScrollbar(b, r, inner, clip)
+	l.roundClip(b, from)
 }
 
 // walkOffset is walk with an explicit bounds override, used for scrolled lists.
@@ -205,6 +207,7 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 		childClip = intersect(clip, inner)
 	}
 	ox, oy := scrollShift(b)
+	from := len(l.Ops)
 	for _, k := range b.Kids() {
 		kb := k.Bounds()
 		kb.X += ox
@@ -212,6 +215,24 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 		l.walkOffset(k, x, y, kb, childClip)
 	}
 	l.paintScrollbar(b, r, inner, clip)
+	l.roundClip(b, from)
+}
+
+// roundClip rounds the clip of every op a subtree produced, which is what a
+// ClipRRect does: the clip rect was already narrowed to the box, so only the
+// corner radius has to travel down. Ops the subtree did not emit are untouched,
+// and a nested ClipRRect has already rounded its own range to a smaller radius.
+func (l *List) roundClip(b *tree.NodeBase, from int) {
+	if b.Node().Kind() != "ClipRRect" || from >= len(l.Ops) {
+		return
+	}
+	rad := float32(b.Radius())
+	if rad <= 0 {
+		return
+	}
+	for i := from; i < len(l.Ops); i++ {
+		l.Ops[i].ClipRadius = rad
+	}
 }
 
 // paintScrollbar draws the M3 thumb for a scrolling node: 4dp wide, rounded, 2dp

@@ -121,6 +121,7 @@ type (
 	DatePicker       = tree.DatePicker
 	TimePicker       = tree.TimePicker
 	TextArea         = tree.TextArea
+	ClipRRect        = tree.ClipRRect
 	Code             = tree.Code
 	Carousel         = tree.Carousel
 	Toolbar          = tree.Toolbar
