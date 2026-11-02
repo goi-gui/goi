@@ -40,6 +40,16 @@ func dumpElement(b *strings.Builder, e *Element, depth int) {
 
 func dumpBlock(b *strings.Builder, blk *Block, depth int) {
 	indent := strings.Repeat("  ", depth)
+	if blk.Kind == BlockEach {
+		fmt.Fprintf(b, "%seach data.%s as %s\n", indent, blk.Source, blk.Var)
+		for i, br := range blk.Branches {
+			if i == 1 {
+				fmt.Fprintf(b, "%s  else\n", indent)
+			}
+			dumpMembers(b, br.Members, depth+2)
+		}
+		return
+	}
 	for _, br := range blk.Branches {
 		switch {
 		case br.Cond == nil:

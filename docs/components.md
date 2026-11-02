@@ -174,9 +174,19 @@ btn := ui.MustByID[*ui.Button](w, "save")    // panics; fine in Bind
 node, err := w.ByID("save")                  // untyped
 ```
 
-A list of unknown length is a row marked `template: true` plus `ui.Fill`, which
-replaces the container's rows from a slice in one call. `ui.Instantiate` and
-`ui.Remove` are the low-level clone and detach, for a row added one at a time.
+A list of unknown length is usually a `{#each}` block the app feeds with
+`ui.SetData`; the row stays in the design and the shape it reads is declared, so
+`goicheck` and the editor check every field (see [SYNTAX](SYNTAX.md#data-and-repeated-rows)).
+
+```goi
+{#each data.tickets as ticket}
+    ListItem { label: ticket.title selected: ticket.unread }
+{/each}
+```
+
+`template: true` plus `ui.Fill` remains for a list built by hand — one row
+inserted, or a container that is not a `.goi` block. `ui.Instantiate` and
+`ui.Remove` are the low-level clone and detach.
 
 A fragment instance can be the template row too, which keeps the row's design in
 its own file: `Row { template: true supporting: "x" }` hides the expanded

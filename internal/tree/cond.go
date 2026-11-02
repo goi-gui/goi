@@ -15,7 +15,10 @@ type condBranch struct {
 	// parent is the arm of the enclosing block, if any: a nested {#if} only
 	// shows inside a shown outer arm.
 	parent *condBranch
-	nodes  []*NodeBase
+	// scope is the loop scope the arm was built in, so a condition can read
+	// its {#each} variable.
+	scope *scope
+	nodes []*NodeBase
 	// own is each node's own `visible` literal, so the toggling never loses a
 	// row that the design hid on purpose.
 	own []bool
@@ -32,7 +35,7 @@ func (t *Tree) buildBlock(blk *syntax.Block, parent *NodeBase, hooks *Hooks, out
 	}
 	arm := 0
 	for _, br := range blk.Branches {
-		cb := &condBranch{conds: conds, arm: -1, parent: outer}
+		cb := &condBranch{conds: conds, arm: -1, parent: outer, scope: t.scope}
 		if br.Cond != nil {
 			cb.arm = arm
 			arm++
@@ -81,7 +84,7 @@ func (t *Tree) branchOK(cb *condBranch, done map[*condBranch]bool) bool {
 func (t *Tree) chainOK(cb *condBranch) bool {
 	first := -1
 	for i, cond := range cb.conds {
-		c := evalCtx{tree: t, seen: map[refKey]bool{}}
+		c := evalCtx{tree: t, sc: cb.scope, seen: map[refKey]bool{}}
 		v, ok := c.eval(cond, 0)
 		if b, isBool := v.(bool); ok && isBool && b {
 			first = i

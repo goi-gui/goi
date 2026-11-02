@@ -1,0 +1,51 @@
+// Data: a list the app fills from Go.
+//
+// The `data` block declares the values the design reads: `count` and the
+// `tickets` list. Go sets them with ui.SetData; the `{#each}` block builds one
+// row per item and rebuilds when the list changes.
+data {
+	count: number
+	loading: bool
+	tickets: ticket[]
+}
+
+data ticket {
+	title: string
+	requester: string
+	unread: bool
+}
+
+Window {
+	id: main
+	title: "Data"
+	Column {
+		padding: 16
+		spacing: 12
+
+		Row {
+			spacing: 12
+			Text { text: "Tickets" role: "titleLarge" flex: 1 }
+			Button { id: reload label: "Refresh" variant: tonal }
+		}
+
+		{#if data.loading}
+			Row {
+				spacing: 12
+				CircularProgress { }
+				Text { text: "Loading…" color: onSurfaceVariant }
+			}
+		{:else}
+			Text { text: data.count role: "labelMedium" color: onSurfaceVariant }
+			{#each data.tickets as ticket}
+				ListItem {
+					label: ticket.title
+					supporting: ticket.requester
+					selected: ticket.unread
+					icon: mail
+				}
+			{:else}
+				Text { text: "Nothing here yet." color: onSurfaceVariant }
+			{/each}
+		{/if}
+	}
+}

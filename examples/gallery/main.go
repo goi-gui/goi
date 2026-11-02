@@ -37,6 +37,11 @@ var pages = []page{
 // close the drawer.
 var navIDs = []string{"rail", "navbar"}
 
+// galleryRow is one row of the gallery's {#each} demo.
+type galleryRow struct {
+	title, supporting string
+}
+
 // repeatItem is one row of the gallery's Fill demo.
 type repeatItem struct {
 	label, icon string
@@ -222,6 +227,13 @@ func main() {
 			if e.Key == ui.KeyEscape {
 				setDrawer(false)
 			}
+		})
+
+		// The data demo: the design's {#each} block builds one row per item, so
+		// Bind only supplies the slice.
+		ui.SetData(w, "rows", []galleryRow{
+			{title: "VPN will not connect", supporting: "Ada"},
+			{title: "Printer queue is stuck", supporting: "Grace"},
 		})
 
 		// The Layout page's repeat demo: one template row, three copies. A

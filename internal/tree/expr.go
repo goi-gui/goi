@@ -2,6 +2,7 @@ package tree
 
 import (
 	"runtime"
+	"strconv"
 
 	"github.com/ksckaan1/goi/internal/syntax"
 )
@@ -76,6 +77,15 @@ func (b *NodeBase) exprSpecFor(name string) (exprSpec, bool) {
 // marks the node for the work the property needs. A value that did not change
 // costs nothing, which is what keeps a per-frame re-evaluation cheap.
 func (b *NodeBase) writeExpr(name string, v any) {
+	// A number written into a string property is formatted, so `text: data.count`
+	// reads naturally instead of silently doing nothing.
+	if f, ok := v.(float64); ok {
+		if cur, ok := b.PropValue(name); ok {
+			if _, isString := cur.(string); isString {
+				v = strconv.FormatFloat(f, 'f', -1, 64)
+			}
+		}
+	}
 	var lit syntax.Value
 	switch x := v.(type) {
 	case float64:
@@ -182,7 +192,7 @@ func (b *NodeBase) applyExpressions() {
 		if hasPercent(spec.value) {
 			continue // ResolveSize needs the parent's content size
 		}
-		c := evalCtx{tree: b.tree, seen: map[refKey]bool{}}
+		c := evalCtx{tree: b.tree, sc: b.scope, seen: map[refKey]bool{}}
 		if v, ok := c.evalSpec(b, spec, 0); ok {
 			b.writeExpr(spec.name, v)
 		}
@@ -207,7 +217,7 @@ func (b *NodeBase) ResolveSize(availW, availH float64) {
 		if scale <= 0 {
 			continue
 		}
-		c := evalCtx{tree: b.tree, seen: map[refKey]bool{}}
+		c := evalCtx{tree: b.tree, sc: b.scope, seen: map[refKey]bool{}}
 		if v, ok := c.evalSpec(b, spec, scale); ok {
 			if f, ok := v.(float64); ok {
 				b.writeExpr(spec.name, f)
@@ -239,6 +249,9 @@ type refKey struct {
 
 type evalCtx struct {
 	tree *Tree
+	// sc is the loop scope of the node being evaluated, so `row.title` reads
+	// the {#each} item.
+	sc   *scope
 	seen map[refKey]bool
 }
 
@@ -454,6 +467,18 @@ func (c *evalCtx) evalRef(r *syntax.Ref) (any, bool) {
 			return c.tree.viewW, true
 		case "height":
 			return c.tree.viewH, true
+		}
+		return nil, false
+	}
+	// A loop variable and the `data` block are values, not nodes.
+	if c.sc != nil {
+		if v, ok := scopeValue(c.sc, r.ID, r.Prop); ok {
+			return v, true
+		}
+	}
+	if r.ID == "data" {
+		if v, ok := c.tree.vars[r.Prop]; ok {
+			return normalizeData(v)
 		}
 		return nil, false
 	}

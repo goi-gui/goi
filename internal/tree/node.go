@@ -84,6 +84,9 @@ type NodeBase struct {
 	// scheme changes.
 	colors      []colorSpec
 	colorListed bool
+	// scope binds the {#each} loop variables an expression inside this subtree
+	// may read.
+	scope *scope
 }
 
 // NodeBase returns the node's shared state.

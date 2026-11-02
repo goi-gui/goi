@@ -361,20 +361,84 @@ func TestIfBlockValidation(t *testing.T) {
 	}
 }
 
-// TestIfBlockSampleIsTheShippedDocs guard: the example in docs/SYNTAX.md must
-// stay valid, because it is what a reader copies.
-func TestIfBlockSampleIsTheShippedDocs(t *testing.T) {
+// TestBlockSamplesAreTheShippedDocs guards the examples in docs/SYNTAX.md: they
+// are what a reader copies, so they must validate. A snippet may be a fragment
+// of a file (the `data` block alone, a Window alone), so the page's own
+// declarations are read once and prepended when the snippet needs them.
+func TestBlockSamplesAreTheShippedDocs(t *testing.T) {
 	body, err := os.ReadFile("../../docs/SYNTAX.md")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, block := range regexp.MustCompile("(?s)```goi\n(.*?)```").FindAllStringSubmatch(string(body), -1) {
+	page := string(body)
+	blocks := regexp.MustCompile("(?s)```goi\n(.*?)```").FindAllStringSubmatch(page, -1)
+	// The declarations live in their own snippet; a Window snippet that uses
+	// them is checked with them prepended.
+	var prelude string
+	for _, b := range blocks {
+		if strings.HasPrefix(strings.TrimSpace(b[1]), "data {") {
+			prelude = b[1]
+			break
+		}
+	}
+	for _, block := range blocks {
 		src := block[1]
-		if !strings.Contains(src, "{#if") {
+		if !strings.Contains(src, "{#if") && !strings.Contains(src, "{#each") {
 			continue
 		}
+		if !strings.Contains(src, "Window") {
+			continue // a declaration snippet, checked below
+		}
+		full := prelude + src
+		if strings.Contains(src, "data ") {
+			full = src
+		}
+		if _, diag := validate(t, full); !diag.Empty() {
+			t.Errorf("docs/SYNTAX.md block:\n%s\n%v", src, diag.Format("doc", []byte(full)))
+		}
+	}
+}
+
+// TestDataValidation checks the declarations and the two references a design can
+// make: `data.name` and a loop variable's field.
+func TestDataValidation(t *testing.T) {
+	bad := map[string]string{
+		"data { rows: nope[] }\nWindow { }":                                   "unknown shape",
+		"data { rows: list }\nWindow { }":                                     "is not a type",
+		"data { data: bool }\nWindow { }":                                     "is a reserved name",
+		"data { rows: bool }\ndata { rows: number }\nWindow { }":              "duplicate data variable",
+		"data { rows: row[] }\ndata row { a: string, a: number }\nWindow { }": "repeats the field",
+		"data { rows: row[] }\ndata row { a: string }\nWindow {\n\tColumn {\n\t\t{#each data.rows as r}\n\t\t\tText { text: r.nope }\n\t\t{/each}\n\t}\n}":                                "has no field",
+		"data { rows: row[] }\ndata row { a: string }\nWindow {\n\tColumn {\n\t\t{#each data.rows as r}\n\t\t\tCheckbox { checked: r.a }\n\t\t{/each}\n\t}\n}":                            "is string, not bool",
+		"data { rows: row[] }\ndata row { a: string }\nWindow {\n\tColumn {\n\t\t{#each data.missing as r}\n\t\t\tText { text: r.a }\n\t\t{/each}\n\t}\n}":                                "no data variable",
+		"data { rows: bool }\nWindow {\n\tColumn {\n\t\t{#each data.rows as r}\n\t\t\tText { text: \"x\" }\n\t\t{/each}\n\t}\n}":                                                          "is not a list",
+		"data { rows: row[] }\ndata row { a: string }\nWindow {\n\tColumn {\n\t\tText { text: data.rows }\n\t}\n}":                                                                        "walk it with {#each}",
+		"data { flag: bool }\nWindow {\n\tColumn {\n\t\tText { text: data.flag }\n\t}\n}":                                                                                                 "is bool, not string",
+		"data { rows: row[] }\ndata row { a: string }\nWindow {\n\tColumn {\n\t\t{#each data.rows as r}\n\t\t\t{#if r.a}\n\t\t\t\tText { text: \"x\" }\n\t\t\t{/if}\n\t\t{/each}\n\t}\n}": "is string, not bool",
+	}
+	for src, want := range bad {
+		_, diag := validate(t, src)
+		if diag.Empty() {
+			t.Errorf("%q was accepted", src)
+			continue
+		}
+		if got := diag.Format("<src>", []byte(src)); !strings.Contains(got, want) {
+			t.Errorf("%q gave %s, want %q", src, got, want)
+		}
+	}
+
+	good := []string{
+		"data { rows: row[] }\ndata row { a: string }\nWindow {\n\tColumn {\n\t\t{#each data.rows as r}\n\t\t\tText { text: r.a }\n\t\t{/each}\n\t}\n}",
+		"data { rows: row[] }\ndata row { a: string }\nWindow {\n\tColumn {\n\t\t{#each data.rows as r}\n\t\t\tText { text: r.a }\n\t\t{:else}\n\t\t\tText { text: \"empty\" }\n\t\t{/each}\n\t}\n}",
+		// Nested loops: the inner variable resolves, and the outer one stays in
+		// scope for the inner arm.
+		"data { groups: group[] }\ndata group { name: string, items: item[] }\ndata item { label: string }\nWindow {\n\tColumn {\n\t\t{#each data.groups as g}\n\t\t\tText { text: g.name }\n\t\t{/each}\n\t}\n}",
+		// A number feeding a string property is formatted at runtime.
+		"data { count: number }\nWindow {\n\tText { text: data.count }\n}",
+	}
+	for _, src := range good {
 		if _, diag := validate(t, src); !diag.Empty() {
-			t.Errorf("docs/SYNTAX.md block:\n%s\n%v", src, diag.Format("doc", []byte(src)))
+			t.Errorf("%s: %v", src, diag.Format("<src>", []byte(src)))
 		}
 	}
 }

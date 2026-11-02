@@ -465,7 +465,7 @@ func TestParseIfBlockErrors(t *testing.T) {
 	cases := map[string]string{
 		"{#if app.dark}\n\t\tText { text: \"a\" }\n\t}": "expected {:else} or {/if}",
 		"{:else}": "expected '#'",
-		"{#each rows as r}\n\t\tText { text: \"a\" }\n\t{/each}": "not supported yet",
+		"{#each rows as r}\n\t\tText { text: \"a\" }\n\t{/each}": "expected '.' after the data namespace",
 		"{#when app.dark}\n\t{/when}":                            "only {#if} exists",
 		"{#if}\n\t{/if}":                                         "expected a value",
 	}
@@ -478,6 +478,81 @@ func TestParseIfBlockErrors(t *testing.T) {
 		}
 		if !strings.Contains(diag.Format("<src>", []byte(src)), want) {
 			t.Errorf("%q gave %v, want %q", body, diag.Format("<src>", []byte(src)), want)
+		}
+	}
+}
+
+func TestParseDataAndEach(t *testing.T) {
+	src := `data {
+	loading: bool
+	tickets: ticket[]
+}
+data ticket {
+	title: string
+	unread: bool
+}
+Window {
+	{#each data.tickets as t}
+		Text { text: t.title }
+	{:else}
+		Text { text: "none" }
+	{/each}
+}`
+	f, diag := Parse([]byte(src))
+	if !diag.Empty() {
+		t.Fatalf("unexpected diagnostics: %v", diag)
+	}
+	if len(f.Vars) != 2 || f.Vars[1].Name != "tickets" || !f.Vars[1].List || f.Vars[1].Elem != "ticket" {
+		t.Fatalf("vars = %+v", f.Vars)
+	}
+	if len(f.Shapes) != 1 || f.Shapes[0].Name != "ticket" || len(f.Shapes[0].Fields) != 2 {
+		t.Fatalf("shapes = %+v", f.Shapes)
+	}
+	blk, ok := f.Root.Members[0].(*Block)
+	if !ok || blk.Kind != BlockEach || blk.Source != "tickets" || blk.Var != "t" {
+		t.Fatalf("block = %+v", f.Root.Members[0])
+	}
+	if len(blk.Branches) != 2 || blk.Branches[1].Cond != nil {
+		t.Fatalf("branches = %+v", blk.Branches)
+	}
+}
+
+func TestParseEachErrors(t *testing.T) {
+	cases := map[string]string{
+		"{#each tickets as t}\n\t{/each}":                     "expected '.' after the data namespace",
+		"{#each data.tickets t}\n\t{/each}":                   "expected 'as'",
+		"{#each data.tickets as}\n\t{/each}":                  "expected a loop variable",
+		"{#each data.tickets as t}\n{/if}":                    "unexpected {/if}",
+		"{#each data.tickets as t}\n{:else if true}\n{/each}": "expected '}' after {:else}",
+	}
+	for body, want := range cases {
+		src := "Window {\n\tColumn {\n\t\t" + body + "\n\t}\n}\n"
+		_, diag := Parse([]byte(src))
+		if diag.Empty() {
+			t.Errorf("%q was accepted", body)
+			continue
+		}
+		if got := diag.Format("<src>", []byte(src)); !strings.Contains(got, want) {
+			t.Errorf("%q gave %s, want %q", body, got, want)
+		}
+	}
+}
+
+func TestParseDataErrors(t *testing.T) {
+	cases := map[string]string{
+		"data { rows [] }\nWindow { }":       "expected ':'",
+		"data { rows: [] }\nWindow { }":      "expected a type",
+		"data { rows: ticket[ }\nWindow { }": "expected ']'",
+		"data rows\nWindow { }":              "expected '{' after the shape name",
+	}
+	for src, want := range cases {
+		_, diag := Parse([]byte(src))
+		if diag.Empty() {
+			t.Errorf("%q was accepted", src)
+			continue
+		}
+		if got := diag.Format("<src>", []byte(src)); !strings.Contains(got, want) {
+			t.Errorf("%q gave %s, want %q", src, got, want)
 		}
 	}
 }

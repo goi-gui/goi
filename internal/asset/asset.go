@@ -177,9 +177,13 @@ func (l *loader) instantiateFile(f *syntax.File, name string, stack []string) (*
 	if !diag.Empty() {
 		return nil, diag
 	}
-	// Params are kept so callers can tell a fragment from an entry point, and
-	// so are the slot flag; the imports are consumed and deliberately dropped.
-	return &syntax.File{Src: name, Params: f.Params, Fragment: f.Fragment, Root: root}, nil
+	// Params, the data declarations and the slot flag are kept so callers can
+	// tell a fragment from an entry point; the imports are consumed and
+	// deliberately dropped.
+	return &syntax.File{
+		Src: name, Params: f.Params, Vars: f.Vars, Shapes: f.Shapes,
+		Fragment: f.Fragment, Root: root,
+	}, nil
 }
 
 // expand walks one element tree, replacing fragment instances with their
@@ -463,7 +467,10 @@ func copyElement(el *syntax.Element) *syntax.Element {
 // copyBlock deep-copies a control block, so two instances of one fragment do not
 // share arm slices.
 func copyBlock(b *syntax.Block) *syntax.Block {
-	out := &syntax.Block{Kind: b.Kind, At: b.At, Close: b.Close, Src: b.Src}
+	out := &syntax.Block{
+		Kind: b.Kind, At: b.At, Close: b.Close, Src: b.Src,
+		Source: b.Source, SourceAt: b.SourceAt, Var: b.Var, VarAt: b.VarAt,
+	}
 	out.Branches = make([]syntax.Branch, len(b.Branches))
 	for i, br := range b.Branches {
 		out.Branches[i] = syntax.Branch{

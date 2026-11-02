@@ -6,6 +6,15 @@
 // bar or rail is off screen.
 //
 // Every page is an independent scrolling column; Go shows one at a time.
+data {
+	rows: galleryRow[]
+}
+
+data galleryRow {
+	title: string
+	supporting: string
+}
+
 Window {
 	id: main
 	title: "Material 3 components"
@@ -699,6 +708,32 @@ Window {
 								role: "bodyMedium"
 								wrap: true
 								width: { base: 280, md: 420, lg: 560 }
+							}
+						}
+
+						// ---- data: one {#each} block, rows from Go.
+						Column {
+							spacing: 8
+							Text { text: "Data rows" role: "titleMedium" }
+							Column {
+								id: dataList
+								spacing: 6
+								width: { base: 280, md: 420 }
+								{#each data.rows as row}
+									ListItem {
+										label: row.title
+										supporting: row.supporting
+										icon: circle
+									}
+								{:else}
+									Text { text: "No rows." color: onSurfaceVariant }
+								{/each}
+							}
+							Text {
+								text: "ui.SetData fills {#each data.rows}; the else arm shows while the list is empty."
+								role: "bodySmall"
+								wrap: true
+								width: { base: 280, md: 420 }
 							}
 						}
 

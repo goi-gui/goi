@@ -32,6 +32,17 @@ type Tree struct {
 	// conds holds the arms of every {#if} block, in build order, so the frame
 	// loop can toggle their visibility.
 	conds []*condBranch
+	// vars holds the `data` values an app set with SetData.
+	vars map[string]any
+	// eachs lists the {#each} blocks, so setting a list rebuilds the blocks
+	// that walk it.
+	eachs []*eachBlock
+	// eachHooks lists the app callbacks that run for every built row.
+	eachHooks map[string][]func(Node, any)
+	// scope is the loop scope during a build, nil outside an {#each} arm.
+	scope *scope
+	// dataErr is the first error a data fill hit, reported to the app.
+	dataErr error
 }
 
 // ByID returns the node with the given id.
@@ -135,6 +146,7 @@ func (t *Tree) build(el *syntax.Element, parent *NodeBase, hooks *Hooks) (Node, 
 	b.node = n
 	b.parent = parent
 	b.tree = t
+	b.scope = t.scope
 	b.AST = el
 	b.properties() // wires every Prop cell to b before any value is written
 	applyDefaults(b, def)
@@ -195,6 +207,12 @@ func (t *Tree) buildMembers(members []syntax.Member, parent *NodeBase, hooks *Ho
 				arm.own = append(arm.own, n.Base().Visible())
 			}
 		case *syntax.Block:
+			if x.Kind == syntax.BlockEach {
+				if err := t.buildEach(x, parent, hooks); err != nil {
+					return err
+				}
+				continue
+			}
 			if err := t.buildBlock(x, parent, hooks, arm); err != nil {
 				return err
 			}

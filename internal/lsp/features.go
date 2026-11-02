@@ -199,7 +199,7 @@ func (s *Server) completion(raw json.RawMessage) any {
 		incomplete = cut
 	}
 	if ref := enclosingRef(before); ref != "" {
-		items = append(items, globalItems(ref)...)
+		items = append(items, refItems(file, d.text, off, ref)...)
 	}
 
 	// Member position: the line so far is only whitespace, or we are right
@@ -209,7 +209,7 @@ func (s *Server) completion(raw json.RawMessage) any {
 	case prop == "" && !inMap && strings.HasPrefix(prefix, "{"):
 		// A block tag: `{#if`, `{:else}`, `{/if}`. The prefix word includes the
 		// brace because isWordByte does not, so it is cut to the tag itself.
-		items = append(items, blockItems(openBlockAt(file, off) != nil)...)
+		items = append(items, blockItemsFor(openBlockAt(file, off) != nil, listVars(file))...)
 	case prop == "" && !inMap && strings.HasPrefix(prefix, "$"):
 		// `$` starts a slot here, not a param: a param is a value.
 		items = append(items, slotItems(file, d.text, off)...)
@@ -225,6 +225,16 @@ func (s *Server) completion(raw json.RawMessage) any {
 // a fresh block at member level, and the two tags that continue one already
 // open at the cursor.
 func blockItems(inside bool) []completionResult {
+	return blockItemsFor(inside, nil)
+}
+
+// blockItemsFor adds the design's list variables to the {#each} snippet, so the
+// tag completes into something that already names a real list.
+func blockItemsFor(inside bool, lists []string) []completionResult {
+	list := "rows"
+	if len(lists) > 0 {
+		list = lists[0]
+	}
 	out := []completionResult{{
 		Label:  "{#if}",
 		Kind:   kindKeyword,
@@ -233,6 +243,14 @@ func blockItems(inside bool) []completionResult {
 			"Shows the first arm whose condition holds. The arms are ordinary children " +
 			"of the enclosing element, so a block adds no box of its own."},
 	}}
+	out = append(out, completionResult{
+		Label:  "{#each}",
+		Kind:   kindKeyword,
+		Detail: "block",
+		Documentation: &doc{Kind: "markdown", Value: "**{#each data." + list + " as row} … {/each}**\n\n" +
+			"Repeats its body once per item of a list variable. Rows are rebuilt when " +
+			"`ui.SetData` changes the list."},
+	})
 	if !inside {
 		return out
 	}
@@ -299,6 +317,17 @@ const slotDoc = "**$children** — slot\n\n" +
 	"this takes children; passing children to one that does not is an error. " +
 	"With no children the slot draws nothing, so the fragment still previews on " +
 	"its own. A file that writes a slot is a fragment."
+
+// listVars lists the declared data variables that hold a list.
+func listVars(file *syntax.File) []string {
+	var out []string
+	for _, dv := range file.Vars {
+		if dv.List {
+			out = append(out, dv.Name)
+		}
+	}
+	return out
+}
 
 // slotItems offers `$children` inside an element body. Only a container can
 // hold it, and only once, since a second slot is almost always a typo.
@@ -374,12 +403,97 @@ func enclosingRef(before []byte) string {
 		for start > 0 && isWordByte(before[start-1]) {
 			start--
 		}
-		word := string(before[start:i])
-		if word == "app" || word == "window" {
-			return word
-		}
+		return string(before[start:i])
 	}
 	return ""
+}
+
+// refItems completes the member of a dotted reference: a reserved namespace
+// (`app.`, `window.`), the `data` block, or an {#each} loop variable.
+func refItems(file *syntax.File, src []byte, off int, ref string) []completionResult {
+	switch ref {
+	case "app", "window":
+		return globalItems(ref)
+	case "data":
+		out := make([]completionResult, 0, len(file.Vars))
+		for _, dv := range file.Vars {
+			typ := dv.Type
+			if dv.List {
+				typ = dv.Elem + "[]"
+			}
+			out = append(out, completionResult{
+				Label:  dv.Name,
+				Kind:   kindVariable,
+				Detail: "data." + dv.Name + " · " + typ,
+				Documentation: &doc{Kind: "markdown", Value: "**data." + dv.Name + "**\n\nType: `" +
+					typ + "`\n\nSet it from Go with `ui.SetData(w, \"" + dv.Name + "\", …)`."},
+			})
+		}
+		return out
+	}
+	sh := loopShapeAt(file, src, off, ref)
+	if sh == nil {
+		return nil
+	}
+	out := make([]completionResult, 0, len(sh.Fields))
+	for _, f := range sh.Fields {
+		typ := f.Type
+		if f.List {
+			typ = f.Elem + "[]"
+		}
+		out = append(out, completionResult{
+			Label:  f.Name,
+			Kind:   kindProperty,
+			Detail: ref + "." + f.Name + " · " + typ,
+			Documentation: &doc{Kind: "markdown", Value: "**" + ref + "." + f.Name + "**\n\nField of `" +
+				sh.Name + "`, type `" + typ + "`."},
+		})
+	}
+	return out
+}
+
+// loopShapeAt resolves a loop variable at off: the innermost {#each} whose arm
+// contains the cursor and whose variable is named ref.
+func loopShapeAt(file *syntax.File, src []byte, off int, ref string) *syntax.DataShape {
+	var found *syntax.DataShape
+	var walk func(blk *syntax.Block)
+	walk = func(blk *syntax.Block) {
+		if off <= int(blk.At) || off > int(blk.Close) {
+			return
+		}
+		if blk.Kind == syntax.BlockEach {
+			if dv := file.Var(blk.Source); dv != nil && dv.List && blk.Var == ref {
+				found = file.Shape(dv.Elem)
+			}
+		}
+		for _, br := range blk.Branches {
+			for _, m := range br.Members {
+				switch x := m.(type) {
+				case *syntax.Block:
+					walk(x)
+				case *syntax.Element:
+					walkElementsIn(x, walk)
+				}
+			}
+		}
+	}
+	syntax.WalkElements(file.Root, func(e *syntax.Element) {
+		for _, m := range e.Members {
+			if blk, ok := m.(*syntax.Block); ok {
+				walk(blk)
+			}
+		}
+	})
+	return found
+}
+
+// walkElementsIn visits the blocks directly inside an element.
+func walkElementsIn(e *syntax.Element, fn func(*syntax.Block)) {
+	for _, m := range e.Members {
+		if blk, ok := m.(*syntax.Block); ok {
+			fn(blk)
+		}
+	}
 }
 
 // valueItems offers the values a property accepts. The bool reports that the
@@ -578,7 +692,7 @@ func memberItems(file *syntax.File, src []byte, off int) []completionResult {
 	}
 	if el.Children {
 		out = append(out, elementItems()...)
-		out = append(out, blockItems(openBlockAt(file, off) != nil)...)
+		out = append(out, blockItemsFor(openBlockAt(file, off) != nil, listVars(file))...)
 	}
 	return out
 }
@@ -735,10 +849,11 @@ func symbolOf(idx lineIndex, e *syntax.Element, src []byte) symbol {
 // they have no kind of their own; the block is named after its first condition.
 func symbolOfBlock(idx lineIndex, blk *syntax.Block, src []byte) symbol {
 	name := "{#if}"
-	if len(blk.Branches) > 0 {
-		if cond := blk.Branches[0].Cond; cond != nil {
-			name = "{#if " + sourceSpan(src, int(cond.Pos())) + "}"
-		}
+	switch {
+	case blk.Kind == syntax.BlockEach:
+		name = "{#each data." + blk.Source + " as " + blk.Var + "}"
+	case len(blk.Branches) > 0 && blk.Branches[0].Cond != nil:
+		name = "{#if " + sourceSpan(src, int(blk.Branches[0].Cond.Pos())) + "}"
 	}
 	sym := symbol{
 		Name:           name,

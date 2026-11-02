@@ -138,6 +138,8 @@ func (p *parser) parseFile() *File {
 			if ok {
 				f.Params = append(f.Params, pr)
 			}
+		case t.text == "data":
+			p.parseData(f)
 		default:
 			// An element that happens to start the file.
 			root := p.parseElement()
@@ -242,6 +244,122 @@ func (p *parser) parseParam() (Param, bool) {
 	return pr, true
 }
 
+// parseData reads either the variables block (`data { loading: bool }`) or one
+// row shape (`data ticket { title: string }`).
+func (p *parser) parseData(f *File) {
+	p.next() // "data"
+	name := p.peek()
+	if name.kind == tokLBrace {
+		open := p.next()
+		for {
+			t := p.peek()
+			switch t.kind {
+			case tokEOF:
+				p.errorf(t, "unexpected end of file: missing '}'")
+				return
+			case tokRBrace:
+				p.next()
+				return
+			case tokComma, tokSemicolon:
+				p.next()
+			case tokIdent:
+				v, ok := p.parseDataField()
+				if !ok {
+					return
+				}
+				f.Vars = append(f.Vars, DataVar(v))
+			default:
+				_ = open
+				p.errorf(t, "expected a variable declaration")
+				if !p.recoverMember() {
+					p.next()
+				}
+			}
+		}
+	}
+	if name.kind != tokIdent {
+		p.errorf(name, "expected '{' or a shape name after 'data'")
+		p.sync()
+		return
+	}
+	p.next()
+	if p.peek().kind != tokLBrace {
+		p.errorf(p.peek(), "expected '{' after the shape name")
+		p.sync()
+		return
+	}
+	sh := DataShape{Name: name.text, NameAt: name.pos}
+	sh.At = p.next().pos
+	for {
+		t := p.peek()
+		switch t.kind {
+		case tokEOF:
+			p.errorf(t, "unexpected end of file: missing '}'")
+			return
+		case tokRBrace:
+			sh.Close = p.next().pos
+			f.Shapes = append(f.Shapes, sh)
+			return
+		case tokComma, tokSemicolon:
+			p.next()
+		case tokIdent:
+			fl, ok := p.parseDataField()
+			if !ok {
+				return
+			}
+			sh.Fields = append(sh.Fields, DataField(fl))
+		default:
+			p.errorf(t, "expected a field name")
+			if !p.recoverMember() {
+				p.next()
+			}
+		}
+	}
+}
+
+// dataField is one `name: type` declaration, shared by variables and shapes.
+type dataField struct {
+	Name   string
+	NameAt Pos
+	List   bool
+	Type   string
+	Elem   string
+	At     Pos
+}
+
+func (p *parser) parseDataField() (dataField, bool) {
+	name := p.next()
+	f := dataField{Name: name.text, NameAt: name.pos}
+	if p.peek().kind != tokColon {
+		p.errorf(p.peek(), "expected ':' after the name")
+		p.sync()
+		return f, false
+	}
+	p.next()
+	typ := p.peek()
+	if typ.kind != tokIdent {
+		p.errorf(typ, "expected a type: bool, string, number, color or shape[]")
+		p.sync()
+		return f, false
+	}
+	p.next()
+	f.Type, f.At = typ.text, typ.pos
+	if p.peek().kind == tokLBracket {
+		p.next()
+		if p.peek().kind != tokRBracket {
+			p.errorf(p.peek(), "expected ']' after '['")
+			p.sync()
+			return f, false
+		}
+		p.next()
+		f.List, f.Elem, f.Type = true, typ.text, "list"
+	}
+	if p.peek().kind == tokSemicolon {
+		p.next()
+	}
+	return f, true
+}
+
 func (p *parser) parseElement() *Element {
 	t := p.peek()
 	if t.kind != tokIdent {
@@ -261,7 +379,7 @@ func (p *parser) parseElement() *Element {
 	}
 	el.Open = p.next().pos
 
-	ml := p.parseMembers(false)
+	ml := p.parseMembers(false, nil)
 	el.Members = ml.members
 	el.Close = ml.close
 	return el
@@ -280,7 +398,7 @@ type memberList struct {
 
 // parseMembers reads members until the element's '}' (inBlock false) or until a
 // block terminator `{:else ...}` / `{/if}` (inBlock true).
-func (p *parser) parseMembers(inBlock bool) memberList {
+func (p *parser) parseMembers(inBlock bool, open *Block) memberList {
 	var out memberList
 	for {
 		t := p.peek()
@@ -302,7 +420,7 @@ func (p *parser) parseMembers(inBlock bool) memberList {
 			// Inside a block body, `{:` and `{/` end the arm instead of
 			// starting something.
 			if inBlock && (p.peek2().kind == tokColon || p.peek2().kind == tokSlash) {
-				out.end = p.parseBlockEnd()
+				out.end = p.parseBlockEnd(open)
 				return out
 			}
 			if blk := p.parseBlock(); blk != nil {
@@ -351,7 +469,7 @@ type blockEnd struct {
 }
 
 // parseBlockEnd reads the `{:else ...}` or `{/if}` that closes an arm.
-func (p *parser) parseBlockEnd() blockEnd {
+func (p *parser) parseBlockEnd(openBlk *Block) blockEnd {
 	open := p.next() // '{'
 	sep := p.next()  // ':' or '/'
 	name := p.peek()
@@ -362,8 +480,12 @@ func (p *parser) parseBlockEnd() blockEnd {
 	}
 	p.next()
 
+	want := "if"
+	if openBlk != nil && openBlk.Kind == BlockEach {
+		want = "each"
+	}
 	if sep.kind == tokSlash {
-		if name.text != "if" {
+		if name.text != want {
 			p.errorf(name, "unexpected {/"+name.text+"}: no {#"+name.text+"} is open")
 		}
 		if p.peek().kind == tokRBrace {
@@ -378,6 +500,16 @@ func (p *parser) parseBlockEnd() blockEnd {
 	if name.text != "else" {
 		p.errorf(name, "expected 'else', got "+name.text)
 		p.sync()
+		return end
+	}
+	if want == "each" {
+		// An each block has one empty arm; `{:else if}` would be a condition,
+		// which a list does not have.
+		if p.peek().kind != tokRBrace {
+			p.errorf(p.peek(), "expected '}' after {:else}")
+		} else {
+			p.next()
+		}
 		return end
 	}
 	if p.peek().kind == tokIdent && p.peek().text == "if" {
@@ -416,35 +548,83 @@ func (p *parser) parseBlock() *Block {
 		return nil
 	}
 	p.next()
+	blk := &Block{At: open.pos}
 	switch name.text {
 	case "if":
+		blk.Kind = BlockIf
 	case "each":
-		p.errorf(name, "{#each} is not supported yet: a list is filled from Go with ui.Fill")
-		p.sync()
-		return nil
+		blk.Kind = BlockEach
+		src := p.peek()
+		if src.kind != tokIdent {
+			p.errorf(src, "expected a list variable after {#each}")
+			p.sync()
+			return nil
+		}
+		p.next()
+		// The source is namespaced like any other app value: {#each data.rows as row}.
+		if p.peek().kind != tokDot {
+			p.errorf(p.peek(), "expected '.' after the data namespace: {#each data.rows as row}")
+			p.sync()
+			return nil
+		}
+		p.next()
+		name := p.peek()
+		if name.kind != tokIdent {
+			p.errorf(name, "expected a data name after 'data.'")
+			p.sync()
+			return nil
+		}
+		p.next()
+		if src.text != "data" {
+			p.errorf(src, "a list comes from 'data.'; "+src.text+"."+name.text+" is not a collection")
+			p.sync()
+			return nil
+		}
+		blk.Source, blk.SourceAt = name.text, name.pos
+		// `as row` names one item inside the arm.
+		kw := p.peek()
+		if kw.kind != tokIdent || kw.text != "as" {
+			p.errorf(kw, "expected 'as' after the {#each} list: {#each rows as row}")
+			p.sync()
+			return nil
+		}
+		p.next()
+		v := p.peek()
+		if v.kind != tokIdent {
+			p.errorf(v, "expected a loop variable after 'as'")
+			p.sync()
+			return nil
+		}
+		p.next()
+		blk.Var, blk.VarAt = v.text, v.pos
 	default:
 		p.errorf(name, "unknown block {#"+name.text+"}: only {#if} exists")
 		p.sync()
 		return nil
 	}
 
-	cond, ok := p.parseValue()
-	if !ok {
-		p.sync()
-		return nil
+	// An if block reads its condition here; an each block has none, because the
+	// list picks the rows.
+	var cond Value
+	if blk.Kind == BlockIf {
+		var ok bool
+		cond, ok = p.parseValue()
+		if !ok {
+			p.sync()
+			return nil
+		}
 	}
 	if p.peek().kind != tokRBrace {
-		p.errorf(p.peek(), "expected '}' after the {#if} condition")
+		p.errorf(p.peek(), "expected '}' after the block header")
 		p.sync()
 		return nil
 	}
 	p.next()
 
-	blk := &Block{Kind: BlockIf, At: open.pos}
 	arm := Branch{Cond: cond, At: open.pos}
 	sawElse := false
 	for {
-		ml := p.parseMembers(true)
+		ml := p.parseMembers(true, blk)
 		arm.Members = ml.members
 		blk.Branches = append(blk.Branches, arm)
 		if ml.end.kind == blockEndClose {

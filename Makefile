@@ -28,6 +28,9 @@ theme:
 titlebar:
 	go run -ldflags=-linkmode=internal ./examples/titlebar
 
+datalist:
+	go run -ldflags=-linkmode=internal ./examples/datalist
+
 test:
 	go test -race ./...
 
@@ -37,4 +40,4 @@ vet:
 bench:
 	go test -run XXX -bench . -benchmem ./internal/layout/ ./internal/syntax/ ./internal/paint/
 
-.PHONY: build spike counter gallery hello scroll typography composition theme titlebar test vet bench
+.PHONY: build spike counter gallery hello scroll typography composition theme titlebar datalist test vet bench

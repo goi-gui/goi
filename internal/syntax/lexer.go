@@ -41,6 +41,8 @@ const (
 	tokOrOr
 	tokQuestion
 	tokHash
+	tokLBracket
+	tokRBracket
 	tokError
 )
 
@@ -83,6 +85,12 @@ func (l *lexer) run() ([]token, Diagnostics) {
 		case c == ':':
 			l.off++
 			l.emit(token{kind: tokColon, pos: Pos(start), end: Pos(l.off)})
+		case c == '[':
+			l.off++
+			l.emit(token{kind: tokLBracket, pos: Pos(start), end: Pos(l.off)})
+		case c == ']':
+			l.off++
+			l.emit(token{kind: tokRBracket, pos: Pos(start), end: Pos(l.off)})
 		case c == ',':
 			l.off++
 			l.emit(token{kind: tokComma, pos: Pos(start), end: Pos(l.off)})

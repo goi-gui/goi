@@ -139,8 +139,15 @@ func collapsed(tr *tree.Tree) []string {
 			}
 		}
 		if kids == 0 {
-			// A leaf with something to draw but no room for it.
-			draws := b.Background() != 0 || b.BorderWidth() > 0 || n.Kind() == "Text"
+			// A leaf with something to draw but no room for it. An empty Text
+			// draws nothing: a label filled from data is empty until the app
+			// sets it.
+			draws := b.Background() != 0 || b.BorderWidth() > 0
+			if t, ok := n.(*tree.Text); ok {
+				draws = draws || t.Text.Get() != ""
+			} else if n.Kind() == "Text" {
+				draws = true
+			}
 			if c, ok := n.(interface{ M3() *tree.Component }); ok {
 				m := c.M3()
 				draws = draws || m.Label.Get() != "" || m.Text.Get() != "" || m.Icon.Get() != ""

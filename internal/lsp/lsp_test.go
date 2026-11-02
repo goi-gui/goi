@@ -879,3 +879,100 @@ func TestCompletionOffersBlockTags(t *testing.T) {
 		t.Fatal("a closing tag was offered with no block open")
 	}
 }
+
+// TestDataAndEachAreKnownToTheEditor covers the editor surface of the data
+// feature: `data.` completes the variables, a loop variable completes its
+// fields, hover explains both, and the outline names the each block.
+func TestDataAndEachAreKnownToTheEditor(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := `data {
+	rows: ticket[]
+	loading: bool
+}
+data ticket { title: string, unread: bool }
+Window {
+	Column {
+		{#each data.rows as r}
+			ListItem { label: r. }
+		{/each}
+		Text { text: data. }
+	}
+}
+`
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	labels := func(pos position) map[string]bool {
+		res := c.request("textDocument/completion", map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     pos,
+		})
+		var list completionList
+		if err := json.Unmarshal(res, &list); err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]bool{}
+		for _, it := range list.Items {
+			out[it.Label] = true
+		}
+		return out
+	}
+
+	// A loop variable completes the shape's fields and nothing else.
+	row := labels(at(t, src, "label: r. }", 9))
+	if !row["title"] || !row["unread"] {
+		t.Fatalf("row fields missing: %v", row)
+	}
+	if row["padding"] {
+		t.Fatal("a property was offered as a row field")
+	}
+
+	// `data.` completes the declared variables.
+	data := labels(at(t, src, "text: data. }", 11))
+	if !data["rows"] || !data["loading"] {
+		t.Fatalf("data variables missing: %v", data)
+	}
+
+	// The only problems are the two references left open with a dot; the data
+	// block, the loop variable and the block itself add none.
+	diags := c.diagnostics(uri)
+	if len(diags) != 2 || !strings.Contains(diags[0].Message, "after '.'") {
+		t.Fatalf("diagnostics = %v, want the two open references", diags)
+	}
+
+	// The outline names the block with its list and shows the arm's elements.
+	// The completion file above does not parse (open dots), and the outline is
+	// only built for a file that does, so a clean copy is used here.
+	clean := `data { rows: ticket[] }
+data ticket { title: string, unread: bool }
+Window {
+	Column {
+		{#each data.rows as r}
+			ListItem { label: r.title selected: r.unread }
+		{/each}
+	}
+}
+`
+	cleanURI := writeDesign(t, dir, "clean.goi", clean)
+	c.openDoc(cleanURI, clean)
+	res := c.request("textDocument/documentSymbol", map[string]any{
+		"textDocument": map[string]any{"uri": cleanURI},
+	})
+	var syms []symbol
+	if err := json.Unmarshal(res, &syms); err != nil {
+		t.Fatal(err)
+	}
+	var each *symbol
+	for i := range syms[0].Children[0].Children {
+		if strings.HasPrefix(syms[0].Children[0].Children[i].Name, "{#each") {
+			each = &syms[0].Children[0].Children[i]
+		}
+	}
+	if each == nil || !strings.Contains(each.Name, "rows") {
+		t.Fatalf("outline has no {#each data.rows}: %+v", syms[0].Children[0].Children)
+	}
+	if len(each.Children) != 1 || each.Children[0].Name != "ListItem" {
+		t.Fatalf("each arm children = %+v", each.Children)
+	}
+}

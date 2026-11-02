@@ -143,21 +143,103 @@ Window {
   `id.checked` is a fully reactive condition without any extra wiring.
 - Ids inside arms are registered like any other id, so two arms cannot declare
   the same one.
-- `{#each}` is not supported yet: for a list of unknown length, mark a row
-  `template: true` and fill it from Go with `ui.Fill`.
+- An `{#if}` inside an `{#each}` arm sees the loop variable, so a row can switch
+  part of itself on its own fields.
+
+### Data and repeated rows
+
+A design can read values the app holds. Declare them, then use them like any
+other value:
+
+```goi
+data {
+	loading: bool
+	error: string
+	count: number
+	tickets: ticket[]
+}
+
+// The shape of one row. A list names the shape it holds.
+data ticket {
+	title: string
+	requester: string
+	unread: bool
+}
+```
+
+```goi
+Window {
+	Column {
+		{#if data.loading}
+			Text { text: "Loading…" }
+		{:else}
+			Text { text: data.count }
+			{#each data.tickets as ticket}
+				ListItem {
+					label: ticket.title
+					supporting: ticket.requester
+					selected: ticket.unread
+				}
+			{:else}
+				Text { text: data.error }
+			{/each}
+		{/if}
+	}
+}
+```
+
+```go
+ui.SetData(w, "loading", true)
+ui.SetData(w, "count", "3 tickets")
+ui.SetData(w, "tickets", items)          // any slice
+ui.OnEach[*ui.ListItem](w, "tickets", func(row *ui.ListItem, it ticket) {
+	row.OnClick(func(ui.ClickEvent) { open(it) })
+})
+```
+
+- **Types.** A scalar is `bool`, `string`, `number` or `color`. A list is
+  `shape[]`, and the shape must be declared. A field of a shape may itself be a
+  list, so `data group { name: string, items: item[] }` works.
+- **Go values.** `ui.SetData` takes a slice of structs — matched by `json` tag,
+  then by the field name with a lower first letter — or a slice of
+  `map[string]any`. Numbers are converted, so an `int` field reads in a `number`
+  position. A `nil` slice is an empty list, which is what the first frame has
+  before the fetch returns.
+- **Rebuilding.** A list variable rebuilds only the `{#each}` blocks that walk
+  it, and only when it is set. A scalar keeps its nodes and just re-reads the
+  value, which is why `{#if data.loading}` costs one visibility toggle.
+- **The `{:else}` arm** shows when the list is empty or not yet set.
+- **Row ids** are not registered, exactly like an `ui.Instantiate` copy, because
+  every row would otherwise collide: reach a part of a row with `ui.Descendant`.
+  An id inside the `{:else}` arm is a normal, registered id.
+- **Hooks.** `ui.OnEach` runs for every row the block builds, including rebuilt
+  ones, and gets the item the row was built from. It must be safe to call twice.
+- **Validation.** `goicheck` and the language server check the declarations, the
+  list an `{#each}` walks, every `row.field` against its shape, and the type a
+  field feeds. `data.x` in a value position must not be a list; a list is only
+  valid as an `{#each}` source.
+- `ui.Fill` and `template: true` remain for a list built by hand — inserting one
+  row, or a container that is not a `.goi` block.
 
 ## Grammar
 
 ```
-File      = { Import | Param } Element EOF
+File      = { Import | Param | Data } Element EOF
 Import    = "import" String "as" Ident
 Param     = "param" Ident ":" Value [";"]
+Data      = "data" ( "{" { VarDecl } "}" | Ident "{" { FieldDecl } "}" )
+VarDecl   = Ident ":" Type [";"]
+FieldDecl = Ident ":" Type [";"]
+Type      = "bool" | "string" | "number" | "color" | Ident "[]"
 Element   = Ident "{" { Member } "}"
 Member    = Property | Element | Block | "$children"
 Block     = "{#" "if" Value "}" { Member }
             { "{:else if" Value "}" { Member } }
             [ "{:else}" { Member } ]
             "{/if}"
+          | "{#" "each" "data" "." Ident "as" Ident "}" { Member }
+            [ "{:else}" { Member } ]
+            "{/each}"
 Property  = Ident ":" Value [";"]
 Value     = String | Number | Bool | Color | Ident | Map | Expression | "$" Ident
 Map       = "{" [ MapEntry { "," MapEntry } [","] ] "}"

@@ -23,6 +23,11 @@ type File struct {
 	// Params declares the values a fragment expects. A file with params is a
 	// fragment: its root may be any element, not just Window.
 	Params []Param
+	// Vars is the `data { ... }` block: the app's variables, which Go sets and a
+	// design reads in conditions, values and {#each} sources.
+	Vars []DataVar
+	// Shapes is one `data Name { ... }` per row type an {#each} can walk.
+	Shapes []DataShape
 	// Fragment records a `$children` slot. A file that has one is a fragment
 	// too: it is opened on its own only to preview it, without children.
 	Fragment bool
@@ -42,6 +47,65 @@ type Import struct {
 	AliasAt Pos
 }
 
+// DataVar is one variable in `data { loading: bool }`.
+type DataVar struct {
+	Name   string
+	NameAt Pos
+	// List marks a collection: `tickets: ticket[]`. Elem is then the shape it
+	// holds; for a scalar, Type names the value type.
+	List bool
+	Type string
+	Elem string
+	// At is the type's position, for diagnostics.
+	At Pos
+}
+
+// DataShape is `data ticket { title: string, unread: bool }`, the row type an
+// {#each} walks.
+type DataShape struct {
+	Name   string
+	NameAt Pos
+	Fields []DataField
+	// At is the opening brace, Close the closing one.
+	At, Close Pos
+}
+
+// DataField is one field of a shape.
+type DataField struct {
+	Name   string
+	NameAt Pos
+	List   bool
+	Type   string
+	Elem   string
+	At     Pos
+}
+
+// Shape returns the named shape, or nil.
+func (f *File) Shape(name string) *DataShape {
+	if f == nil {
+		return nil
+	}
+	for i := range f.Shapes {
+		if f.Shapes[i].Name == name {
+			return &f.Shapes[i]
+		}
+	}
+	return nil
+}
+
+// Var returns the named variable, or nil.
+func (f *File) Var(name string) *DataVar {
+	if f == nil {
+		return nil
+	}
+	for i := range f.Vars {
+		if f.Vars[i].Name == name {
+			return &f.Vars[i]
+		}
+	}
+	return nil
+}
+
 // Param is `param title: "Mail"`. The default is required, so an instance never
 // has to handle a missing value.
 type Param struct {
@@ -58,6 +122,9 @@ type BlockKind int
 const (
 	// BlockIf is `{#if cond} ... {:else if cond} ... {:else} ... {/if}`.
 	BlockIf BlockKind = iota
+	// BlockEach is `{#each rows as row} ... {:else} ... {/each}`. Source names
+	// a declared list variable and Var is the loop variable.
+	BlockEach
 )
 
 // Block is a control block inside an element body. Its branches are built and
@@ -73,6 +140,12 @@ type Block struct {
 	// Branches holds the `{#if}`, `{:else if}` and `{:else}` arms in source
 	// order. Only the last one may have a nil Cond, which is the else arm.
 	Branches []Branch
+	// Source and Var belong to BlockEach: the list variable and the loop
+	// variable that names one row inside the arm.
+	Source   string
+	SourceAt Pos
+	Var      string
+	VarAt    Pos
 }
 
 // Branch is one arm of a block.

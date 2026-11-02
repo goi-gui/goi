@@ -120,3 +120,50 @@ func Remove(w *Window, n Node) {
 	}
 	w.tree.Remove(n)
 }
+
+// SetData sets an app value a design reads as `data.name`. A list variable
+// rebuilds every {#each} that walks it, and any condition or expression reading
+// the value updates on the next frame, so a fetch only has to post this call.
+//
+//	ui.SetData(w, "loading", true)
+//	ui.SetData(w, "tickets", items)
+//
+// A list element may be a struct, whose fields are matched by `json` tag and
+// then by name, or a map[string]any. Call it from Bind or App.Post: it touches
+// the tree.
+func SetData(w *Window, name string, v any) {
+	if w == nil || w.tree == nil {
+		return
+	}
+	w.tree.SetData(name, v)
+	if err := w.tree.Err(); err != nil {
+		w.app.reportError(err)
+	}
+	w.app.markDirty(tree.DirtyLayout)
+}
+
+// OnEach runs fn for every row a {#each} builds from `data.name`, with the row's
+// first element and the item itself. It is how a row gets a click handler:
+//
+//	ui.OnEach[*ui.ListItem](w, "tickets", func(row *ui.ListItem, it ticket) {
+//		row.OnClick(func(ui.ClickEvent) { open(it) })
+//	})
+//
+// The hook runs again for every rebuilt row, so it must be safe to call more
+// than once. Rows that already exist are hooked when the call is made.
+func OnEach[T Node, I any](w *Window, data string, fn func(T, I)) {
+	if w == nil || w.tree == nil || fn == nil {
+		return
+	}
+	w.tree.OnEach(data, func(n Node, item any) {
+		row, ok := n.(T)
+		if !ok {
+			return
+		}
+		it, ok := item.(I)
+		if !ok {
+			return
+		}
+		fn(row, it)
+	})
+}

@@ -1029,3 +1029,27 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   `TestIfBlockTogglesItsArm`, `TestNestedIfBlockNeedsItsOuterArm`,
   `TestIfBlockAddsNoContainerNode`, `TestParseIfBlockErrors` and
   `TestIfBlockValidation` pin it.
+
+- **`{#each}` repeats a design body from a declared list, and Go sets the
+  list.** A design could already borrow Go for a row (`template: true` plus
+  `ui.Fill`), but the row's markup lived in Go's head and the template id was a
+  string in two places. `{#each data.rows as row}` keeps the row in the design
+  and needs one call to fill it. The data is *declared* (`data ticket { … }`)
+  rather than inferred, because only a declaration keeps the design
+  self-checking: every `row.field` is verified against the shape, and every field
+  is verified against the property it feeds, at build time and in the editor.
+  Values reach the tree by `ui.SetData`, whose slice is read with reflection
+  (`json` tag, then field name) so an app passes its own structs unchanged; that
+  is the one place the framework guesses, and a mismatch shows up as an empty
+  value, not a crash. A list rebuild replaces the block's nodes only, and
+  registrations (`exprNodes`, `conds`, `eachs`, ids) are pruned with the nodes, so
+  a refresh cannot grow the tree or leave a loop pointing at a dead parent.
+  Row ids stay on the nodes but are not registered, like an `Instantiate` copy,
+  because every row would collide; the `{:else}` arm is built once and registers
+  normally. `{#each}` is deliberately not a general for-loop: no index range, no
+  filtering, no sorting — those belong in Go, which supplies the slice already in
+  the order the design shows. `TestEachBuildsOneRowPerItem`,
+  `TestEachRowsGetTheirOwnScope`, `TestEachOnEachHooksEveryRebuiltRow`,
+  `TestEachPrunesStaleRegistrations`, `TestNestedEachWalksTheInnerList`,
+  `TestDataValidation`, `TestParseDataAndEach` and
+  `TestDataAndEachAreKnownToTheEditor` pin it.
