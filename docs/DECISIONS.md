@@ -1000,3 +1000,13 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   the schema nor the LSP can check, trading the design file's compile-time
   validation for a little less Go. `TestFillRebuildsFromTheTemplate` and
   `TestFillNeedsATemplateChild` pin the behaviour.
+
+- **The language server documents both new pieces.** `$children` is offered
+  after `$` in a container body (not in a leaf, and not twice), hovers as a slot,
+  and `template` hovers with the `ui.Fill` explanation instead of the generic
+  common-property line. Since `$children` only survives parsing and is gone by
+  the time the schema sees the tree, none of this needed a new diagnostic path:
+  the editor reads the AST. A fragment instance marked `template: true` works as
+  a template row, so a row's design can live in its own `.goi` file.
+  `TestCompletionOffersChildrenSlot`, `TestHoverExplainsTheSlotAndTemplate` and
+  `TestFragmentInstanceCanBeATemplateRow` pin it.

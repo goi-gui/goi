@@ -177,3 +177,7 @@ node, err := w.ByID("save")                  // untyped
 A list of unknown length is a row marked `template: true` plus `ui.Fill`, which
 replaces the container's rows from a slice in one call. `ui.Instantiate` and
 `ui.Remove` are the low-level clone and detach, for a row added one at a time.
+
+A fragment instance can be the template row too, which keeps the row's design in
+its own file: `Row { template: true supporting: "x" }` hides the expanded
+fragment and `ui.Fill` copies it like any other template.

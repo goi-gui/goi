@@ -205,12 +205,53 @@ func (s *Server) completion(raw json.RawMessage) any {
 	// Member position: the line so far is only whitespace, or we are right
 	// after an opening brace.
 	trimmed := strings.TrimSpace(string(line))
-	if prop == "" && !inMap && (trimmed == "" || strings.HasSuffix(trimmed, "{")) {
+	switch {
+	case prop == "" && !inMap && strings.HasPrefix(prefix, "$"):
+		// `$` starts a slot here, not a param: a param is a value.
+		items = append(items, slotItems(file, d.text, off)...)
+	case prop == "" && !inMap && (trimmed == "" || strings.HasSuffix(trimmed, "{")):
 		items = append(items, memberItems(file, d.text, off)...)
-	} else if prop == "" && !inMap {
+	case prop == "" && !inMap:
 		items = append(items, elementItems()...)
 	}
 	return completionList{Items: dedupe(items, prefix), IsIncomplete: incomplete}
+}
+
+// slotDoc explains `$children`. It is a slot, so it has no properties and no
+// children of its own; the instance supplies the elements.
+const slotDoc = "**$children** — slot\n\n" +
+	"Where the children passed by an instance appear. A fragment that writes " +
+	"this takes children; passing children to one that does not is an error. " +
+	"With no children the slot draws nothing, so the fragment still previews on " +
+	"its own. A file that writes a slot is a fragment."
+
+// slotItems offers `$children` inside an element body. Only a container can
+// hold it, and only once, since a second slot is almost always a typo.
+func slotItems(file *syntax.File, src []byte, off int) []completionResult {
+	if el, ok := schema.Lookup(enclosingElementName(file, src, off)); ok {
+		if !el.Children || hasSlot(elementAt(file, off)) {
+			return nil
+		}
+	}
+	return []completionResult{{
+		Label:         "$children",
+		Kind:          kindKeyword,
+		Detail:        "slot",
+		Documentation: &doc{Kind: "markdown", Value: slotDoc},
+	}}
+}
+
+// hasSlot reports whether an element already writes `$children`.
+func hasSlot(el *syntax.Element) bool {
+	if el == nil {
+		return false
+	}
+	for _, k := range el.Children() {
+		if k.Name == "$children" {
+			return true
+		}
+	}
+	return false
 }
 
 // globalItems lists the members of a reserved namespace. A design can read
@@ -536,6 +577,12 @@ func (s *Server) hover(raw json.RawMessage) any {
 	}
 
 	if start, end, el := elementNameAt(file, off); el != nil {
+		if el.Name == "$children" {
+			return map[string]any{
+				"contents": doc{Kind: "markdown", Value: slotDoc},
+				"range":    idx.at(start, end),
+			}
+		}
 		if def, ok := schema.Lookup(el.Name); ok {
 			return map[string]any{
 				"contents": doc{Kind: "markdown", Value: elementDoc(def)},
@@ -1020,6 +1067,11 @@ func propDoc(el string, p schema.Prop) string {
 	}
 	if p.Common {
 		b.WriteString("\n\nAccepted by every element.")
+	}
+	if p.Name == "template" {
+		b.WriteString("\n\nMarks a hidden row prototype: it is hidden when the tree is built, " +
+			"takes no space, and `ui.Fill` builds the rows from it. Copies made from it " +
+			"are ordinary rows, so a second `Fill` starts from the same prototype.")
 	}
 	return b.String()
 }

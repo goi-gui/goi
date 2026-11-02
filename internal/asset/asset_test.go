@@ -411,3 +411,38 @@ func TestSlotWithoutChildrenDrawsNothing(t *testing.T) {
 		t.Fatalf("a fragment with a slot is not valid on its own: %v", diag)
 	}
 }
+
+// TestFragmentInstanceCanBeATemplateRow lets one .goi file hold the row design
+// and the list use it: the instance's `template: true` lands on the fragment
+// root, so the row is hidden and ui.Fill can copy it.
+func TestFragmentInstanceCanBeATemplateRow(t *testing.T) {
+	dir := design(t, map[string]string{
+		"Main.goi": `import "./Row.goi" as Row
+Window {
+	List {
+		id: list
+		Row { template: true supporting: "x" }
+	}
+}`,
+		"Row.goi": `param supporting: ""
+ListItem {
+	label: "Row"
+	supporting: $supporting
+}`,
+	})
+	tr, err := load(t, dir, "Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, ok := tr.ByID("list")
+	if !ok {
+		t.Fatal("no list")
+	}
+	var row tree.Node
+	for _, c := range list.Base().Children() {
+		row = c
+	}
+	if row == nil || !row.Base().Template() || row.Base().Visible() {
+		t.Fatalf("the fragment instance is not a hidden template row:\n%s", dump(tr))
+	}
+}

@@ -685,3 +685,90 @@ func TestChildrenSlotIsAFragment(t *testing.T) {
 		t.Fatalf("diagnostics = %v, want one unknown property", diags)
 	}
 }
+
+// TestCompletionOffersChildrenSlot keeps the slot discoverable where it is
+// valid: a container body, once, and never inside a leaf.
+func TestCompletionOffersChildrenSlot(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tColumn {\n\t\t$\n\t}\n}\n"
+	uri := writeDesign(t, dir, "Card.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "$\n", 1),
+	})
+	var list completionList
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	var slot bool
+	for _, it := range list.Items {
+		if it.Label == "$children" {
+			slot = true
+		}
+		if it.Label == "Text" {
+			t.Fatalf("an element was offered after '$': %v", list.Items)
+		}
+	}
+	if !slot {
+		t.Fatalf("$children missing: %v", list.Items)
+	}
+
+	// A leaf cannot hold the slot.
+	leaf := "Window {\n\tText {\n\t\t$\n\t}\n}\n"
+	leafURI := writeDesign(t, dir, "Leaf.goi", leaf)
+	c.openDoc(leafURI, leaf)
+	res = c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": leafURI},
+		"position":     at(t, leaf, "$\n", 1),
+	})
+	list = completionList{}
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range list.Items {
+		if it.Label == "$children" {
+			t.Fatal("$children was offered inside a leaf")
+		}
+	}
+}
+
+// TestHoverExplainsTheSlotAndTemplate documents both new pieces where they are
+// written, so neither needs the docs site to be understood.
+func TestHoverExplainsTheSlotAndTemplate(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Column {\n\t$children\n\tListItem { template: true label: \"x\" }\n}\n"
+	uri := writeDesign(t, dir, "Card.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/hover", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "$children", 2),
+	})
+	var h struct {
+		Contents doc `json:"contents"`
+	}
+	if err := json.Unmarshal(res, &h); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.Contents.Value, "slot") {
+		t.Fatalf("hover on $children = %q", h.Contents.Value)
+	}
+
+	res = c.request("textDocument/hover", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "template", 2),
+	})
+	h = struct {
+		Contents doc `json:"contents"`
+	}{}
+	if err := json.Unmarshal(res, &h); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.Contents.Value, "ui.Fill") {
+		t.Fatalf("hover on template = %q", h.Contents.Value)
+	}
+}
