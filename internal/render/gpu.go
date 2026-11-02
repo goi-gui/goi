@@ -30,8 +30,9 @@ struct Instance {
 	color: vec4f,
 	border: vec4f,  // rgb + width
 	clip: vec4f,    // x0, y0, x1, y1
+	clipbox: vec4f, // x0, y0, x1, y1 of the unclipped rounded box; empty = none
 	params: vec4f,  // kind, blur, startAngle, endAngle
-	misc: vec4f,    // thickness, unused...
+	misc: vec4f,    // thickness, uv far (glyphs, bitmaps), clip radius
 }
 
 struct Viewport {
@@ -57,6 +58,7 @@ struct VSOut {
 	@location(7) params: vec4f,
 	@location(8) misc: vec4f,
 	@location(9) uv: vec2f,
+	@location(10) clipbox: vec4f,
 }
 
 @vertex
@@ -79,6 +81,7 @@ fn vs_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
 	out.pos2 = p;
 	out.params = inst.params;
 	out.misc = inst.misc;
+	out.clipbox = inst.clipbox;
 	out.uv = mix(inst.params.zw, inst.misc.xy, c);
 	return out;
 }
@@ -109,12 +112,19 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 	if (in.pos2.x < in.clip.x || in.pos2.y < in.clip.y ||
 	    in.pos2.x > in.clip.z || in.pos2.y > in.clip.w) { discard; }
 
-	// Optional rounded clip, so a ripple stays inside a pill or a card.
-	let clipR = in.misc.y;
+	// Optional rounded clip, so a ripple stays inside a pill or a card. The
+	// rounded shape is the box the component declared, not the intersection
+	// with the visible area: a card scrolled half out of view has a straight
+	// cut at the viewport edge and rounded corners only where it really ends.
+	let clipR = in.misc.z;
 	if (clipR > 0.0) {
-		let csize = in.clip.zw - in.clip.xy;
-		let limit = min(csize.x, csize.y) * 0.5;
-		let d = sd_round_rect(in.pos2 - in.clip.xy, csize, min(clipR, limit));
+		var box = in.clip;
+		if (in.clipbox.z > in.clipbox.x && in.clipbox.w > in.clipbox.y) {
+			box = in.clipbox;
+		}
+		let bsize = box.zw - box.xy;
+		let limit = min(bsize.x, bsize.y) * 0.5;
+		let d = sd_round_rect(in.pos2 - box.xy, bsize, min(clipR, limit));
 		if (d > 0.0) { discard; }
 	}
 
@@ -220,8 +230,12 @@ type gpuInstance struct {
 	Color  [4]float32
 	Border [4]float32
 	Clip   [4]float32
-	Params [4]float32 // kind, blur, startAngle, endAngle
-	Misc   [4]float32 // thickness, ...
+	// ClipBox is the rounded shape's own bounds (x0, y0, x1, y1) when the clip
+	// is rounded. The clip rect may be a smaller intersection, so rounding it
+	// would put a corner wherever the visible area happens to cut the shape.
+	ClipBox [4]float32
+	Params  [4]float32 // kind, blur, startAngle, endAngle
+	Misc    [4]float32 // thickness, uv far (glyphs, bitmaps), clip radius
 }
 
 // GPU is the WebGPU renderer.
@@ -520,21 +534,23 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 		switch op.Kind {
 		case paint.Fill:
 			g.instances = append(g.instances, gpuInstance{
-				Rect:   snapRect(op.Rect, g.scale),
-				Radius: op.Radius,
-				Color:  rgba(op.Color),
-				Border: borderVec(op.BorderColor, op.BorderWidth),
-				Clip:   clipVec(op.Clip),
-				Params: [4]float32{shapeKind(op.Shape), 0, op.StartAngle, op.EndAngle},
-				Misc:   [4]float32{op.Thickness, op.ClipRadius, 0, 0},
+				Rect:    snapRect(op.Rect, g.scale),
+				Radius:  op.Radius,
+				Color:   rgba(op.Color),
+				Border:  borderVec(op.BorderColor, op.BorderWidth),
+				Clip:    clipVec(op.Clip),
+				ClipBox: clipVec(op.ClipBox),
+				Params:  [4]float32{shapeKind(op.Shape), 0, op.StartAngle, op.EndAngle},
+				Misc:    [4]float32{op.Thickness, 0, op.ClipRadius, 0},
 			})
 		case paint.Shadow:
 			g.instances = append(g.instances, gpuInstance{
-				Rect:   snapRect(op.Rect, g.scale),
-				Radius: op.Radius,
-				Color:  rgba(op.Color),
-				Clip:   clipVec(op.Clip),
-				Params: [4]float32{3, op.Blur, 0, 0},
+				Rect:    snapRect(op.Rect, g.scale),
+				Radius:  op.Radius,
+				Color:   rgba(op.Color),
+				Clip:    clipVec(op.Clip),
+				ClipBox: clipVec(op.ClipBox),
+				Params:  [4]float32{3, op.Blur, 0, 0},
 			})
 		case paint.Text:
 			if g.text != nil {

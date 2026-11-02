@@ -163,6 +163,54 @@ func TestClipRRectClipsChildren(t *testing.T) {
 	}
 }
 
+// A scrolled page cuts a ClipRRect with a straight edge. The corner radius must
+// follow the box the component declared, not the visible intersection, or a card
+// whose top is above the viewport still draws rounded top corners at the cut.
+func TestClipRRectRoundsItsOwnBoxWhenScrolled(t *testing.T) {
+	_, win, _ := inputFixture(t, `Window {
+		Column {
+			id: page
+			width: 200
+			height: 100
+			scroll: true
+			Column {
+				height: 400
+				ClipRRect {
+					id: clip
+					radius: 16
+					width: 100
+					height: 100
+					Rectangle { width: 300 height: 300 background: #FF0000FF }
+				}
+			}
+		}
+	}`, 200, 100)
+	page := MustByID[*Column](win, "page")
+	page.Base().SetScrollOffset(54) // the box top is 54px above the viewport
+
+	list := &paint.List{}
+	list.Build(win.tree, 200, 100)
+
+	found := false
+	for _, op := range list.Ops {
+		if op.Kind != paint.Fill || op.ClipRadius == 0 {
+			continue
+		}
+		found = true
+		// The rounded shape is the whole box...
+		if h := op.ClipBox[3] - op.ClipBox[1]; h < 99 {
+			t.Fatalf("clip box height = %v, want the full 100", h)
+		}
+		// ...while the visible area starts below its top edge.
+		if op.Clip[1] <= op.ClipBox[1] {
+			t.Fatalf("top cut %v did not narrow the box top %v", op.Clip[1], op.ClipBox[1])
+		}
+	}
+	if !found {
+		t.Fatal("no rounded op was painted")
+	}
+}
+
 // Without a radius a ClipRRect only narrows the clip, which still keeps a
 // shadow or a scrolled row inside its box.
 func TestClipRRectZeroRadius(t *testing.T) {

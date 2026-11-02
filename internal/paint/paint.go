@@ -79,6 +79,11 @@ type Op struct {
 	// ClipRadius rounds the corners of Clip, so an op can stay inside a pill or
 	// a rounded card. 0 means a plain rectangle.
 	ClipRadius float32
+	// ClipBox is the rounded shape's own box, as x, y, w, h. Clip is the
+	// intersection of every clip above the op, which a scrolled card makes
+	// smaller than the shape; rounding that would put corners at the viewport
+	// edge. Zero means "round Clip itself".
+	ClipBox [4]float32
 
 	// Bitmap fields. Src is the decoded image and UV is the crop inside it, in
 	// 0..1, so a cover or contain fit only changes the quad and the UVs.
@@ -172,7 +177,7 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 		l.walkOffset(k, x, y, kb, childClip)
 	}
 	l.paintScrollbar(b, r, inner, clip)
-	l.roundClip(b, from)
+	l.roundClip(b, r, from)
 }
 
 // walkOffset is walk with an explicit bounds override, used for scrolled lists.
@@ -215,14 +220,14 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 		l.walkOffset(k, x, y, kb, childClip)
 	}
 	l.paintScrollbar(b, r, inner, clip)
-	l.roundClip(b, from)
+	l.roundClip(b, r, from)
 }
 
 // roundClip rounds the clip of every op a subtree produced, which is what a
 // ClipRRect does: the clip rect was already narrowed to the box, so only the
 // corner radius has to travel down. Ops the subtree did not emit are untouched,
 // and a nested ClipRRect has already rounded its own range to a smaller radius.
-func (l *List) roundClip(b *tree.NodeBase, from int) {
+func (l *List) roundClip(b *tree.NodeBase, r tree.Rect, from int) {
 	if b.Node().Kind() != "ClipRRect" || from >= len(l.Ops) {
 		return
 	}
@@ -230,8 +235,10 @@ func (l *List) roundClip(b *tree.NodeBase, from int) {
 	if rad <= 0 {
 		return
 	}
+	box := [4]float32{float32(r.X), float32(r.Y), float32(r.W), float32(r.H)}
 	for i := from; i < len(l.Ops); i++ {
 		l.Ops[i].ClipRadius = rad
+		l.Ops[i].ClipBox = box
 	}
 }
 

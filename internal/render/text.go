@@ -40,10 +40,12 @@ type textRenderer struct {
 // glyphQuad is one rasterized glyph, ready to become an instance. The atlas
 // rect stays in pixels so the UVs can be computed after any growth.
 type glyphQuad struct {
-	rect  [4]float32
-	slot  image.Rectangle
-	color [4]float32
-	clip  [4]float32
+	rect    [4]float32
+	slot    image.Rectangle
+	color   [4]float32
+	clip    [4]float32
+	clipBox [4]float32
+	clipR   float32
 }
 
 // glyphSpan is a text op's range inside textRenderer.quads.
@@ -155,6 +157,7 @@ func (t *textRenderer) shapeOp(op paint.Op, atlas *text.Atlas) int {
 	penY := math.Round(float64(op.TextY) * scale)
 	col := rgba(op.Color)
 	clip := clipVec(op.Clip)
+	clipBox := clipVec(op.ClipBox)
 
 	n := 0
 	for _, gl := range out.Glyphs {
@@ -164,10 +167,12 @@ func (t *textRenderer) shapeOp(op paint.Op, atlas *text.Atlas) int {
 			w := float64(slot.Rect.Dx()) / scale
 			h := float64(slot.Rect.Dy()) / scale
 			t.quads = append(t.quads, glyphQuad{
-				rect:  [4]float32{float32(x), float32(y), float32(w), float32(h)},
-				slot:  slot.Rect,
-				color: col,
-				clip:  clip,
+				rect:    [4]float32{float32(x), float32(y), float32(w), float32(h)},
+				slot:    slot.Rect,
+				color:   col,
+				clip:    clip,
+				clipBox: clipBox,
+				clipR:   op.ClipRadius,
 			})
 			n++
 		}
@@ -185,17 +190,18 @@ func (t *textRenderer) emit(i int) {
 	g := t.gpu
 	for _, q := range t.quads[sp.start : sp.start+sp.n] {
 		g.instances = append(g.instances, gpuInstance{
-			Rect:  q.rect,
-			Color: q.color,
-			Clip:  q.clip,
-			// kind 4 is a glyph quad: params.zw is the UV origin and misc.xy is
-			// the UV far corner.
+			Rect:    q.rect,
+			Color:   q.color,
+			Clip:    q.clip,
+			ClipBox: q.clipBox,
+			// kind 4 is a glyph quad: params.zw is the UV origin, misc.xy is
+			// the UV far corner and misc.z the rounded clip.
 			Params: [4]float32{4, 0,
 				float32(q.slot.Min.X) / float32(t.atlasW),
 				float32(q.slot.Min.Y) / float32(t.atlasH)},
 			Misc: [4]float32{
 				float32(q.slot.Max.X) / float32(t.atlasW),
-				float32(q.slot.Max.Y) / float32(t.atlasH), 0, 0},
+				float32(q.slot.Max.Y) / float32(t.atlasH), q.clipR, 0},
 		})
 	}
 }

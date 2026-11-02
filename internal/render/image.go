@@ -114,13 +114,14 @@ func (t *imageRenderer) addOp(op paint.Op) {
 	cu1, cv1 := u1, v1
 	uv := op.UV
 	t.gpu.instances = append(t.gpu.instances, gpuInstance{
-		Rect:  op.Rect,
-		Color: [4]float32{1, 1, 1, 1},
-		Clip:  clipVec(op.Clip),
-		// params.y is the corner radius: the bitmap branch rounds its own
-		// crop, and misc.xy is already the UV far corner.
+		Rect:    op.Rect,
+		Color:   [4]float32{1, 1, 1, 1},
+		Clip:    clipVec(op.Clip),
+		ClipBox: clipVec(op.ClipBox),
+		// params.y rounds the bitmap's own crop; misc.xy is the UV far corner
+		// and misc.z the rounded clip, which the bitmap branch does not touch.
 		Params: [4]float32{5, op.ClipRadius, cu0 + uv[0]*(cu1-cu0), cv0 + uv[1]*(cv1-cv0)},
-		Misc:   [4]float32{cu0 + uv[2]*(cu1-cu0), cv0 + uv[3]*(cv1-cv0), 0, 0},
+		Misc:   [4]float32{cu0 + uv[2]*(cu1-cu0), cv0 + uv[3]*(cv1-cv0), op.ClipRadius, 0},
 	})
 }
 

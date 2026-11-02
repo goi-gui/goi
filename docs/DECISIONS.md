@@ -921,3 +921,22 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   `flingMaxSpeed/flingFriction` ≈ 430px, and a notch cancels a coast in progress.
   `TestWheelNotchDoesNotFling`, `TestWheelSpinStaysLinear` and
   `TestTouchpadFlingIsCapped` pin all three.
+- **A rounded clip follows the box, not the visible intersection.** The ops a
+  `ClipRRect` covers carry `ClipBox`, the box the component declared, next to
+  `Clip`, the intersection of every clip above it. Rounding `Clip` put a corner
+  wherever the viewport happened to cut the card: a `ClipRRect` scrolled half out
+  of its page still drew rounded top corners at the cut. The shader rounds
+  `ClipBox` and lets the hard clip cut the rest, so the only rounded corners are
+  the ones the component actually has. `TestClipRRectRoundsItsOwnBoxWhenScrolled`
+  pins it.
+- **The clip radius travels in `misc.z`, because `misc.y` is a UV.** Glyph and
+  bitmap instances store their atlas far corner in `misc.xy`, so reading the
+  radius from `misc.y` rounded every clipped glyph and bitmap by a sub-pixel
+  fraction of the atlas — harmless-looking, but it meant an image inside a
+  `ClipRRect` was clipped square. Shapes, glyphs and `image.go` now put the clip
+  radius in `misc.z`.
+- **`language` gets its own completion list.** It is a plain string in the schema
+  (an unknown lexer must still draw), so the editor had no values at all for it.
+  The list comes from `internal/highlight.Languages` plus the short aliases, is
+  filtered by prefix and capped, and quotes names such as `c++` that are not bare
+  `.goi` identifiers.

@@ -625,3 +625,46 @@ func TestPositionsUseUTF16(t *testing.T) {
 		t.Fatalf("round trip = %d, want %d", got, off)
 	}
 }
+
+// TestCompletionOffersCodeLanguages: `language` is a plain string in the
+// schema, so without a special case the editor would offer no values at all.
+func TestCompletionOffersCodeLanguages(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tCode {\n\t\tlanguage: g\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "language: g", len("language: g")),
+	})
+	var list completionList
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	var goLexer bool
+	for _, it := range list.Items {
+		if !strings.HasPrefix(it.Label, "g") {
+			t.Fatalf("unfiltered item %q", it.Label)
+		}
+		if it.Label == "go" {
+			goLexer = true
+		}
+	}
+	if !goLexer {
+		t.Fatalf("go missing from %d items", len(list.Items))
+	}
+}
+
+// TestLanguageItemsThatNeedQuotes: `c++` cannot be a bare .goi identifier, so
+// accepting the item must insert quotes or the file stops parsing.
+func TestLanguageItemsThatNeedQuotes(t *testing.T) {
+	out, _ := languageItems("c++", false)
+	if len(out) == 0 {
+		t.Fatal("no language matched c++")
+	}
+	if got := out[0].InsertText; got != `"c++"` {
+		t.Fatalf("insertText = %q, want a quoted name", got)
+	}
+}

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/ksckaan1/goi/internal/asset"
+	"github.com/ksckaan1/goi/internal/highlight"
 	"github.com/ksckaan1/goi/internal/m3"
 	"github.com/ksckaan1/goi/internal/schema"
 	"github.com/ksckaan1/goi/internal/syntax"
@@ -299,6 +300,11 @@ func valueItems(file *syntax.File, prop string, src []byte, off int, prefix stri
 						Value: "Theme role: follows the scheme. A `#rrggbb` literal stays fixed."},
 				})
 			}
+		case prop == "language" && elName == "Code":
+			// Code's language is a plain string in the schema, because an
+			// unknown one must still draw; the lexers the highlighter ships are
+			// what a reader wants to pick from here.
+			out, truncated = languageItems(prefix, inString)
 		case pd.Type == schema.TypeID:
 			for _, id := range fileIDs(file) {
 				out = append(out, completionResult{Label: id, Kind: kindConstant, Detail: "id"})
@@ -312,6 +318,70 @@ func valueItems(file *syntax.File, prop string, src []byte, off int, prefix stri
 		})
 	}
 	return out, truncated
+}
+
+// maxLanguageItems caps the code-language list. There are about three hundred
+// lexers; sending them all on every keystroke is a lot of JSON, so the list is
+// filtered by prefix and IsIncomplete asks the client for a longer one.
+const maxLanguageItems = 60
+
+// languageItems lists the languages a Code block can highlight, plus the short
+// spellings people reach for. The aliases come first because `go`, `ts` and `py`
+// are what a design actually writes.
+func languageItems(prefix string, inString bool) ([]completionResult, bool) {
+	prefix = strings.ToLower(prefix)
+	out := make([]completionResult, 0, maxLanguageItems)
+	add := func(name, detail string) bool {
+		if prefix != "" && !strings.HasPrefix(name, prefix) {
+			return true
+		}
+		if len(out) == maxLanguageItems {
+			return false
+		}
+		item := completionResult{Label: name, Kind: kindEnumMember, Detail: detail}
+		if !inString && !isIdentifier(name) {
+			// `c++` and `emacs-lisp` are not bare .goi identifiers.
+			item.InsertText = `"` + name + `"`
+		}
+		out = append(out, item)
+		return true
+	}
+	names := make([]string, 0, len(highlight.Aliases()))
+	for name := range highlight.Aliases() {
+		if name != "" {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if !add(name, "alias of "+highlight.Aliases()[name]) {
+			return out, true
+		}
+	}
+	for _, name := range highlight.Languages() {
+		if !add(strings.ToLower(name), "lexer") {
+			return out, true
+		}
+	}
+	return out, false
+}
+
+// isIdentifier reports whether s can be written as a bare .goi identifier.
+func isIdentifier(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' {
+			continue
+		}
+		if i > 0 && c >= '0' && c <= '9' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 // maxIconItems caps one icon list. The font names ~4300 icons; sending them all

@@ -85,6 +85,10 @@ func Languages() []string {
 	return lexers.Names(false)
 }
 
+// Aliases returns the short spellings Spans accepts, mapped to the lexer name
+// they resolve to. An empty target means "draw it as plain text".
+func Aliases() map[string]string { return langAlias }
+
 // lexerFor resolves a language name, its alias, or a file extension.
 func lexerFor(lang string) chroma.Lexer {
 	name := strings.ToLower(strings.TrimSpace(lang))
