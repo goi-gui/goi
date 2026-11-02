@@ -42,7 +42,7 @@ func (s *Server) validate(d *document) {
 		return
 	}
 	var vdiag syntax.Diagnostics
-	if len(bundle.File.Params) > 0 {
+	if bundle.File.IsFragment() {
 		_, vdiag = schema.Validate(bundle.File)
 	} else {
 		_, vdiag = schema.ValidateEntry(bundle.File)

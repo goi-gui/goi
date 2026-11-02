@@ -46,6 +46,8 @@ type parser struct {
 	toks []token
 	i    int
 	diag Diagnostics
+	// slot records a `$children` marker, which makes the file a fragment.
+	slot bool
 }
 
 func (p *parser) peek() token  { return p.toks[min(p.i, len(p.toks)-1)] }
@@ -122,6 +124,7 @@ func (p *parser) parseFile() *File {
 				return nil
 			}
 			f.Root = root
+			f.Fragment = p.slot
 			p.parseTrailer()
 			return f
 		}
@@ -131,6 +134,7 @@ func (p *parser) parseFile() *File {
 		return nil
 	}
 	f.Root = root
+	f.Fragment = p.slot
 	p.parseTrailer()
 	return f
 }
@@ -262,6 +266,10 @@ func (p *parser) parseElement() *Element {
 			if child != nil {
 				el.Members = append(el.Members, child)
 			}
+		case tokDollar:
+			if slot := p.parseSlot(); slot != nil {
+				el.Members = append(el.Members, slot)
+			}
 		default:
 			p.errorf(t, "expected a property or child element")
 			if !p.recoverMember() {
@@ -269,6 +277,24 @@ func (p *parser) parseElement() *Element {
 			}
 		}
 	}
+}
+
+// parseSlot reads `$children`, the marker for where an instance's children go.
+// It is the only name allowed after '$' as a member; `$param` is a value.
+func (p *parser) parseSlot() *Element {
+	dollar := p.next()
+	name := p.peek()
+	if name.kind != tokIdent {
+		p.errorf(name, "expected a name after '$'")
+		return nil
+	}
+	p.next()
+	if name.text != "children" {
+		p.errorf(dollar, "unknown slot $"+name.text+": only $children is a slot")
+		return nil
+	}
+	p.slot = true
+	return &Element{Name: "$children", NameAt: dollar.pos, Open: dollar.pos, Close: name.end}
 }
 
 // recoverMember advances past one broken member and reports whether it made

@@ -6,6 +6,7 @@
 //	go run -ldflags=-linkmode=internal ./examples/composition
 import "./Sidebar.goi" as Sidebar
 import "./StatCard.goi" as StatCard
+import "./Section.goi" as Section
 
 Window {
 	id: main
@@ -33,7 +34,7 @@ Window {
 
 			Text { text: "Fragments" role: "titleMedium" }
 			Text {
-				text: "Sidebar.goi and StatCard.goi are separate files. Main.goi imports them, passes params, and overrides ordinary properties such as width."
+				text: "Sidebar.goi, StatCard.goi and Section.goi are separate files. Main.goi imports them, passes params, overrides ordinary properties such as width, and gives Section its children."
 				wrap: true
 				width: 520
 			}
@@ -46,17 +47,21 @@ Window {
 				StatCard { label: "Drafts" value: "1" tone: #00658F }
 			}
 
-			Text { text: "Overrides" role: "titleMedium" }
-			Row {
-				spacing: 16
-				// A param is a value; width is the fragment root's own property.
-				StatCard { label: "Override" value: "300" width: 300 }
-			}
-			Text {
-				text: "The card above passes width: 300, which replaces the fragment's own width instead of duplicating it."
-				role: "bodySmall"
-				wrap: true
-				width: 520
+			// Section.goi takes children: its $children slot is where the Row
+			// and the Text below appear.
+			Section {
+				title: "Overrides"
+				Row {
+					spacing: 16
+					// A param is a value; width is the fragment root's own property.
+					StatCard { label: "Override" value: "300" width: 300 }
+				}
+				Text {
+					text: "The card above passes width: 300, which replaces the fragment's own width instead of duplicating it."
+					role: "bodySmall"
+					wrap: true
+					width: 520
+				}
 			}
 		}
 	}

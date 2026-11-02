@@ -60,9 +60,10 @@ func main() {
 			fail = true
 			continue
 		}
-		// A file with params is a fragment: it draws part of a design and gets
-		// its values from whoever imports it, so it has no window root.
-		if len(b.File.Params) > 0 {
+		// A file with params or a $children slot is a fragment: it draws part of
+		// a design and gets its values from whoever imports it, so it has no
+		// window root.
+		if b.File.IsFragment() {
 			if _, diag := schema.Validate(b.File); !diag.Empty() {
 				fmt.Fprintln(os.Stderr, diag.FormatFiles(name, b.Sources[name], b.Sources))
 				fail = true

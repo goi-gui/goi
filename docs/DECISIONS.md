@@ -966,3 +966,23 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   `TestTouchpadKeepsBothAxes`, `TestDragScrollChainsAndKeepsItsAxis`,
   `TestDragKeepsItsAxisOverAHorizontalRow` and `TestDragScrollsTheHorizontalRow`
   pin it.
+
+- **Fragment children are a `$children` slot, expanded in the caller's file.**
+  A fragment that takes children writes `$children` where they should appear;
+  an instance passes ordinary child elements. Expansion substitutes them before
+  validation, so the schema and the tree builder still see one plain tree. The
+  children are expanded with the *caller's* aliases, because their imports
+  belong to the file they were written in; passing children to a fragment with
+  no slot is an error reported in the caller. A file that writes a slot is a
+  fragment even without params (`File.IsFragment`), so opening it in the editor
+  does not demand a `Window` root and previewing it simply leaves the slot
+  empty. `TestChildrenLandAtTheSlot`, `TestChildrenWithoutASlotIsAnError`,
+  `TestSlotWithoutChildrenDrawsNothing` and `TestChildrenSlotIsAFragment` pin
+  it.
+- **Touchpad x is not the wheel's x.** SDL's wheel y is positive away from the
+  user while its x is already a scroll direction (positive to the right), so
+  the vertical delta flips and the horizontal does not: `panX = +dx`. A
+  notched wheel is vertical, and Shift swaps the axes as `dx, dy = -dy, dx`, so
+  Shift + wheel-up scrolls left, matching a browser. With the old `-dx`, a
+  two-finger horizontal swipe moved the content against the fingers, which is
+  what natural scrolling must not do. `TestTouchpadKeepsBothAxes` pins it.

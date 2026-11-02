@@ -331,3 +331,83 @@ func dump(tr *tree.Tree) string {
 	}
 	return b.String()
 }
+
+// TestChildrenLandAtTheSlot is the point of `$children`: the instance's child
+// elements replace the marker, and they resolve their own imports in the file
+// they were written in, not in the fragment.
+func TestChildrenLandAtTheSlot(t *testing.T) {
+	dir := design(t, map[string]string{
+		"Main.goi": `import "./Card.goi" as Card
+import "./Stripe.goi" as Stripe
+Window {
+	Card {
+		width: 300
+		Stripe { }
+	}
+}`,
+		"Card.goi": `Column {
+	$children
+}`,
+		"Stripe.goi": `Row {
+	height: 40
+}`,
+	})
+	tr, err := load(t, dir, "Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range tr.All() {
+		if n.Kind() != "Row" || n.Base().Height() != 40 {
+			continue
+		}
+		p := n.Base().Parent()
+		if p == nil || p.Kind() != "Column" || p.Base().Width() != 300 {
+			t.Fatalf("child was not placed inside the Card root:\n%s", dump(tr))
+		}
+		return
+	}
+	t.Fatalf("the child element did not land at the slot:\n%s", dump(tr))
+}
+
+// TestChildrenWithoutASlotIsAnError keeps a wrong call from being silently
+// dropped, and points at the children in the file that passed them.
+func TestChildrenWithoutASlotIsAnError(t *testing.T) {
+	dir := design(t, map[string]string{
+		"Main.goi": `import "./Card.goi" as Card
+Window {
+	Card { Text { text: "x" } }
+}`,
+		"Card.goi": `Column {
+	width: 100
+}`,
+	})
+	b, diag := Load(os.DirFS(dir), "Main.goi")
+	if diag.Empty() {
+		t.Fatalf("children were accepted by a fragment with no slot")
+	}
+	got := diag.FormatFiles("Main.goi", b.Sources["Main.goi"], b.Sources)
+	if !strings.Contains(got, "Card does not take children") || !strings.Contains(got, "Main.goi:3") {
+		t.Fatalf("diagnostic = %s", got)
+	}
+}
+
+// TestSlotWithoutChildrenDrawsNothing lets a fragment be previewed on its own:
+// the slot is a hole, not an error.
+func TestSlotWithoutChildrenDrawsNothing(t *testing.T) {
+	dir := design(t, map[string]string{
+		"Card.goi": `Column {
+	width: 100
+	$children
+}`,
+	})
+	b, diag := Load(os.DirFS(dir), "Card.goi")
+	if !diag.Empty() {
+		t.Fatalf("a fragment with a slot failed to load: %s", diag.FormatFiles("Card.goi", b.Sources["Card.goi"], b.Sources))
+	}
+	if !b.File.IsFragment() {
+		t.Fatal("a file with $children is not treated as a fragment")
+	}
+	if _, diag := schema.Validate(b.File); !diag.Empty() {
+		t.Fatalf("a fragment with a slot is not valid on its own: %v", diag)
+	}
+}

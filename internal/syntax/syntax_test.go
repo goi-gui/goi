@@ -382,3 +382,22 @@ func TestParseMapTrailingCommaAndSpaces(t *testing.T) {
 		t.Fatalf("height entries = %d", len(m.Entries))
 	}
 }
+
+func TestParseChildrenSlot(t *testing.T) {
+	f, diag := Parse([]byte("Column {\n\tgap: 5\n\t$children\n}\n"))
+	if !diag.Empty() {
+		t.Fatalf("unexpected diagnostics: %v", diag)
+	}
+	if !f.IsFragment() {
+		t.Fatal("a file with $children is not a fragment")
+	}
+	kids := f.Root.Children()
+	if len(kids) != 1 || kids[0].Name != "$children" {
+		t.Fatalf("children = %v", kids)
+	}
+
+	_, diag = Parse([]byte("Column {\n\t$params\n}\n"))
+	if diag.Empty() {
+		t.Fatal("$params was accepted as a slot")
+	}
+}

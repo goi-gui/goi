@@ -71,6 +71,45 @@ Window {
 - `$name` is only valid inside a file that declares that param. In the entry file
   nothing can fill it in, so it is an error.
 
+### Passing children into a fragment
+
+A fragment can take children, not just values. It marks where they go with
+`$children`, and an instance puts its own child elements there:
+
+```
+// Card.goi
+Column {
+    gap: 5
+    $children
+}
+```
+
+```
+// Main.goi
+import "./Card.goi" as Card
+
+Window {
+    Card {
+        width: 300
+        Text { text: "selam" }
+        Button { label: "Tamam" }
+    }
+}
+```
+
+- `$children` is a slot, not an element: it takes no properties and no children
+  of its own. A fragment may have more than one; each gets the same children.
+- Children may be anything, including other fragments. They resolve their
+  imports in the **file they were written in**, so a child can use an alias that
+  only `Main.goi` imports.
+- Passing children to a fragment that has no `$children` is an error, reported
+  where the children were written. A fragment with a slot but no children just
+  draws nothing there, so it can still be previewed on its own.
+- A slot may sit anywhere in the fragment body, including inside another
+  fragment call, which is how a fragment forwards its children.
+- Like a file with params, a file with `$children` is a fragment: `goicheck` and
+  the language server do not require it to be a `Window`.
+
 ## Grammar
 
 ```
@@ -78,7 +117,7 @@ File      = { Import | Param } Element EOF
 Import    = "import" String "as" Ident
 Param     = "param" Ident ":" Value [";"]
 Element   = Ident "{" { Member } "}"
-Member    = Property | Element
+Member    = Property | Element | "$children"
 Property  = Ident ":" Value [";"]
 Value     = String | Number | Bool | Color | Ident | Map | Expression | "$" Ident
 Map       = "{" [ MapEntry { "," MapEntry } [","] ] "}"

@@ -668,3 +668,20 @@ func TestLanguageItemsThatNeedQuotes(t *testing.T) {
 		t.Fatalf("insertText = %q, want a quoted name", got)
 	}
 }
+
+// TestChildrenSlotIsAFragment keeps the editor quiet on a fragment that only
+// takes children: like a file with params, it has no Window root.
+func TestChildrenSlotIsAFragment(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	// The bad property is the only expected error: if the file were treated as
+	// an entry point it would also complain that the root is not Window.
+	src := "Column {\n\tgap: 5\n\t$children\n\tText { nope: 1 }\n}\n"
+	uri := writeDesign(t, dir, "Card.goi", src)
+	c.openDoc(uri, src)
+
+	diags := c.diagnostics(uri)
+	if len(diags) != 1 || !strings.Contains(diags[0].Message, "unknown property") {
+		t.Fatalf("diagnostics = %v, want one unknown property", diags)
+	}
+}

@@ -23,8 +23,15 @@ type File struct {
 	// Params declares the values a fragment expects. A file with params is a
 	// fragment: its root may be any element, not just Window.
 	Params []Param
-	Root   *Element
+	// Fragment records a `$children` slot. A file that has one is a fragment
+	// too: it is opened on its own only to preview it, without children.
+	Fragment bool
+	Root     *Element
 }
+
+// IsFragment reports whether the file is meant to be imported rather than
+// opened as a window: it declares params or a `$children` slot.
+func (f *File) IsFragment() bool { return len(f.Params) > 0 || f.Fragment }
 
 // Import is `import "./Sidebar.goi" as Sidebar`.
 type Import struct {

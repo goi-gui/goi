@@ -177,14 +177,19 @@ func (l *loader) instantiateFile(f *syntax.File, name string, stack []string) (*
 	if !diag.Empty() {
 		return nil, diag
 	}
-	// Params are kept so callers can tell a fragment from an entry point; the
-	// imports are consumed and deliberately dropped.
-	return &syntax.File{Src: name, Params: f.Params, Root: root}, nil
+	// Params are kept so callers can tell a fragment from an entry point, and
+	// so are the slot flag; the imports are consumed and deliberately dropped.
+	return &syntax.File{Src: name, Params: f.Params, Fragment: f.Fragment, Root: root}, nil
 }
 
 // expand walks one element tree, replacing fragment instances with their
 // content. aliases belongs to the file el came from.
 func (l *loader) expand(el *syntax.Element, aliases map[string]string, stack []string) (*syntax.Element, syntax.Diagnostics) {
+	// A fragment can stand at the root of the expansion too: filling a slot
+	// expands each child on its own, and a fragment may wrap another one.
+	if target, ok := aliases[el.Name]; ok {
+		return l.instance(target, el, aliases, stack)
+	}
 	out := copyElement(el)
 	kids := make([]syntax.Member, 0, len(out.Members))
 	for _, m := range out.Members {
@@ -193,28 +198,27 @@ func (l *loader) expand(el *syntax.Element, aliases map[string]string, stack []s
 			kids = append(kids, m)
 			continue
 		}
-		target, isFragment := aliases[child.Name]
-		if !isFragment {
-			expanded, diag := l.expand(child, aliases, stack)
-			if !diag.Empty() {
-				return nil, diag
-			}
-			kids = append(kids, expanded)
+		if child.Name == "$children" {
+			// A slot with no caller: the fragment is being previewed on its
+			// own, so nothing goes there.
 			continue
 		}
-		instance, diag := l.instance(target, child, stack)
+		expanded, diag := l.expand(child, aliases, stack)
 		if !diag.Empty() {
 			return nil, diag
 		}
-		kids = append(kids, instance)
+		kids = append(kids, expanded)
 	}
 	out.Members = kids
 	return out, nil
 }
 
 // instance replaces one fragment instance with the fragment's root element,
-// substituting params and applying the instance's own properties.
-func (l *loader) instance(target string, call *syntax.Element, stack []string) (*syntax.Element, syntax.Diagnostics) {
+// substituting params, applying the instance's own properties and putting the
+// instance's children where the fragment wrote `$children`. callerAliases
+// belongs to the file the call was written in, so a child element that is
+// itself a fragment resolves against the right file.
+func (l *loader) instance(target string, call *syntax.Element, callerAliases map[string]string, stack []string) (*syntax.Element, syntax.Diagnostics) {
 	for _, s := range stack {
 		if s == target {
 			return nil, syntax.Diagnostics{{
@@ -257,11 +261,61 @@ func (l *loader) instance(target string, call *syntax.Element, stack []string) (
 	}
 	applyOverrides(body, overrides)
 
+	kids := call.Children()
+	filled, diag := l.fillSlot(body, kids, callerAliases, append(stack, target))
+	if !diag.Empty() {
+		return nil, diag
+	}
+	if !filled && len(kids) > 0 {
+		first := kids[0]
+		return nil, syntax.Diagnostics{{
+			Pos:     first.NameAt,
+			End:     first.NameAt + syntax.Pos(len(first.Name)),
+			Src:     first.Src,
+			Message: fmt.Sprintf("%s does not take children: add $children to %s where they should appear", call.Name, target),
+		}}
+	}
+
 	expanded, diag := l.expand(body, l.aliases(f), append(stack, target))
 	if !diag.Empty() {
 		return nil, diag
 	}
 	return expanded, nil
+}
+
+// fillSlot replaces every `$children` in el with the instance's child elements,
+// expanded in the caller's file so their own imports resolve there. A slot
+// anywhere in the fragment body counts, which lets a fragment forward its
+// children into another one. It reports whether a slot was found at all.
+func (l *loader) fillSlot(el *syntax.Element, kids []*syntax.Element, callerAliases map[string]string, stack []string) (bool, syntax.Diagnostics) {
+	found := false
+	members := make([]syntax.Member, 0, len(el.Members))
+	for _, m := range el.Members {
+		child, ok := m.(*syntax.Element)
+		if !ok {
+			members = append(members, m)
+			continue
+		}
+		if child.Name == "$children" {
+			found = true
+			for _, k := range kids {
+				expanded, diag := l.expand(copyElement(k), callerAliases, stack)
+				if !diag.Empty() {
+					return found, diag
+				}
+				members = append(members, expanded)
+			}
+			continue
+		}
+		nested, diag := l.fillSlot(child, kids, callerAliases, stack)
+		if !diag.Empty() {
+			return found, diag
+		}
+		found = found || nested
+		members = append(members, child)
+	}
+	el.Members = members
+	return found, nil
 }
 
 // substitute replaces `$name` values in place and reports a param the fragment
