@@ -51,6 +51,40 @@ type Param struct {
 	Default Value
 }
 
+// BlockKind identifies a control block.
+type BlockKind int
+
+// Block kinds.
+const (
+	// BlockIf is `{#if cond} ... {:else if cond} ... {:else} ... {/if}`.
+	BlockIf BlockKind = iota
+)
+
+// Block is a control block inside an element body. Its branches are built and
+// toggled at runtime; a design file declares no logic of its own.
+type Block struct {
+	Kind BlockKind
+	// At is the position of the opening '{', for diagnostics.
+	At Pos
+	// Close is the position of the '{' of the closing tag.
+	Close Pos
+	// Src names the file this block came from.
+	Src string
+	// Branches holds the `{#if}`, `{:else if}` and `{:else}` arms in source
+	// order. Only the last one may have a nil Cond, which is the else arm.
+	Branches []Branch
+}
+
+// Branch is one arm of a block.
+type Branch struct {
+	// Cond is the arm's condition, or nil for `{:else}`.
+	Cond Value
+	// At is the position of the '{' that opened the arm.
+	At Pos
+	// Members are the arm's properties and elements, in source order.
+	Members []Member
+}
+
 // Element is `Name { members... }`.
 type Element struct {
 	Name   string
@@ -87,6 +121,37 @@ func (e *Element) Children() []*Element {
 	return out
 }
 
+// WalkElements calls fn for e and every element below it, including the ones
+// inside block branches, parents before children.
+func WalkElements(e *Element, fn func(*Element)) {
+	if e == nil {
+		return
+	}
+	fn(e)
+	for _, m := range e.Members {
+		switch x := m.(type) {
+		case *Element:
+			WalkElements(x, fn)
+		case *Block:
+			walkBlockElements(x, fn)
+		}
+	}
+}
+
+// walkBlockElements is WalkElements for a block that is itself a member.
+func walkBlockElements(b *Block, fn func(*Element)) {
+	for _, br := range b.Branches {
+		for _, m := range br.Members {
+			switch x := m.(type) {
+			case *Element:
+				WalkElements(x, fn)
+			case *Block:
+				walkBlockElements(x, fn)
+			}
+		}
+	}
+}
+
 // Prop returns the last property with the given name, or nil.
 func (e *Element) Prop(name string) *Property {
 	var found *Property
@@ -98,11 +163,12 @@ func (e *Element) Prop(name string) *Property {
 	return found
 }
 
-// Member is a *Property or *Element.
+// Member is a *Property, an *Element or a *Block.
 type Member interface{ member() }
 
 func (*Property) member() {}
 func (*Element) member()  {}
+func (*Block) member()    {}
 
 // Property is `Name: Value`.
 type Property struct {

@@ -1,6 +1,8 @@
 package schema
 
 import (
+	"os"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -318,6 +320,61 @@ func TestCommonPropsOnEveryElement(t *testing.T) {
 			if e.Prop(want) == nil {
 				t.Errorf("%s is missing common property %s", name, want)
 			}
+		}
+	}
+}
+
+// TestIfBlockValidation keeps the block honest: a condition must be a bool, a
+// leaf cannot hold one, and an arm holds elements, not properties.
+func TestIfBlockValidation(t *testing.T) {
+	bad := map[string]string{
+		"Window {\n\tColumn {\n\t\t{#if 5}\n\t\t\tText { text: \"a\" }\n\t\t{/if}\n\t}\n}":                                              "must be a bool",
+		"Window {\n\tColumn {\n\t\t{#if \"x\"}\n\t\t\tText { text: \"a\" }\n\t\t{/if}\n\t}\n}":                                          "must be a bool",
+		"Window {\n\tColumn {\n\t\t{#if loading}\n\t\t\tText { text: \"a\" }\n\t\t{/if}\n\t}\n}":                                        "must be a bool",
+		"Window {\n\tText {\n\t\t{#if app.dark}\n\t\t\tText { text: \"a\" }\n\t\t{/if}\n\t}\n}":                                         "cannot contain child elements",
+		"Window {\n\tColumn {\n\t\t{#if app.dark}\n\t\t\ttext: \"a\"\n\t\t{/if}\n\t}\n}":                                                "cannot declare the property",
+		"Window {\n\tColumn {\n\t\t{#if box.checked}\n\t\t\tText { text: \"a\" }\n\t\t{/if}\n\t}\n}":                                    "references unknown id",
+		"Window {\n\tColumn {\n\t\tText { id: label text: \"x\" }\n\t\t{#if label.text}\n\t\t\tText { text: \"a\" }\n\t\t{/if}\n\t}\n}": "is string, not bool",
+	}
+	for src, want := range bad {
+		_, diag := validate(t, src)
+		if diag.Empty() {
+			t.Errorf("%q was accepted", src)
+			continue
+		}
+		if got := diag.Format("<src>", []byte(src)); !strings.Contains(got, want) {
+			t.Errorf("%q gave %s, want %q", src, got, want)
+		}
+	}
+
+	// The good cases: a reference to a bool property, a comparison, app.dark.
+	good := []string{
+		"Window {\n\tColumn {\n\t\t{#if app.dark}\n\t\t\tText { text: \"a\" }\n\t\t{/if}\n\t}\n}",
+		"Window {\n\tColumn {\n\t\t{#if window.width > 900}\n\t\t\tText { text: \"a\" }\n\t\t{/if}\n\t}\n}",
+		"Window {\n\tColumn {\n\t\tCheckbox { id: box checked: true }\n\t\t{#if box.checked}\n\t\t\tText { text: \"a\" }\n\t\t{/if}\n\t}\n}",
+		"Window {\n\tColumn {\n\t\t{#if app.dark}\n\t\t\tText { text: \"a\" }\n\t\t{:else}\n\t\t\tRow { }\n\t\t{/if}\n\t}\n}",
+	}
+	for _, src := range good {
+		if _, diag := validate(t, src); !diag.Empty() {
+			t.Errorf("%s: %v", src, diag.Format("<src>", []byte(src)))
+		}
+	}
+}
+
+// TestIfBlockSampleIsTheShippedDocs guard: the example in docs/SYNTAX.md must
+// stay valid, because it is what a reader copies.
+func TestIfBlockSampleIsTheShippedDocs(t *testing.T) {
+	body, err := os.ReadFile("../../docs/SYNTAX.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, block := range regexp.MustCompile("(?s)```goi\n(.*?)```").FindAllStringSubmatch(string(body), -1) {
+		src := block[1]
+		if !strings.Contains(src, "{#if") {
+			continue
+		}
+		if _, diag := validate(t, src); !diag.Empty() {
+			t.Errorf("docs/SYNTAX.md block:\n%s\n%v", src, diag.Format("doc", []byte(src)))
 		}
 	}
 }

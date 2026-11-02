@@ -1010,3 +1010,22 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   a template row, so a row's design can live in its own `.goi` file.
   `TestCompletionOffersChildrenSlot`, `TestHoverExplainsTheSlotAndTemplate` and
   `TestFragmentInstanceCanBeATemplateRow` pin it.
+
+- **`{#if}` is a visibility switch on flat arms, not a node.** `.goi` needed a
+  way to switch part of a design on the state the app already has. Two shapes
+  were possible: a container node wrapping each arm, or builds every arm as an
+  ordinary child of the enclosing element and toggles `visible`. The second
+  wins: layout already skips an invisible subtree, so a hidden arm costs nothing
+  after the build, and a `Row` keeps laying the shown arm out as a row item
+  instead of wrapping it in a foreign box. The chain semantics are Svelte's: an
+  arm shows when it is the first condition that holds, and the `{:else}` arm
+  shows when none does; nested blocks multiply with their outer arm. The
+  conditions ride the existing expression engine (`app.dark`,
+  `window.width > 900`, `id.checked`) and are re-evaluated in
+  `ApplyExpressions`, so a Go `Set` reaches them with no new mechanism. Cost of
+  the flat shape: every arm is built even when hidden, and the arms cannot
+  declare the same id. `{#each}` waits until the data story is designed; the
+  parser says so instead of failing to parse.
+  `TestIfBlockTogglesItsArm`, `TestNestedIfBlockNeedsItsOuterArm`,
+  `TestIfBlockAddsNoContainerNode`, `TestParseIfBlockErrors` and
+  `TestIfBlockValidation` pin it.

@@ -401,3 +401,83 @@ func TestParseChildrenSlot(t *testing.T) {
 		t.Fatal("$params was accepted as a slot")
 	}
 }
+
+func TestParseIfBlock(t *testing.T) {
+	src := `Window {
+	Column {
+		{#if app.dark}
+			Text { text: "a" }
+		{:else if window.width > 900}
+			Text { text: "b" }
+		{:else}
+			Text { text: "c" }
+		{/if}
+	}
+}`
+	f, diag := Parse([]byte(src))
+	if !diag.Empty() {
+		t.Fatalf("unexpected diagnostics: %v", diag)
+	}
+	blk, ok := f.Root.Children()[0].Members[0].(*Block)
+	if !ok {
+		t.Fatalf("first member is %T, want a block", f.Root.Children()[0].Members[0])
+	}
+	if len(blk.Branches) != 3 {
+		t.Fatalf("%d branches, want 3", len(blk.Branches))
+	}
+	if blk.Branches[0].Cond == nil || blk.Branches[1].Cond == nil {
+		t.Fatal("if/else-if lost their conditions")
+	}
+	if blk.Branches[2].Cond != nil {
+		t.Fatal("the else arm has a condition")
+	}
+	if len(blk.Branches[0].Members) != 1 || blk.Branches[0].Members[0].(*Element).Name != "Text" {
+		t.Fatalf("arm body = %v", blk.Branches[0].Members)
+	}
+	if blk.Close == 0 {
+		t.Fatal("block has no closing position")
+	}
+}
+
+func TestParseNestedIfBlocks(t *testing.T) {
+	src := `Window {
+	{#if app.dark}
+		{#if window.width > 900}
+			Text { text: "a" }
+		{/if}
+	{/if}
+}`
+	f, diag := Parse([]byte(src))
+	if !diag.Empty() {
+		t.Fatalf("unexpected diagnostics: %v", diag)
+	}
+	outer := f.Root.Members[0].(*Block)
+	inner, ok := outer.Branches[0].Members[0].(*Block)
+	if !ok {
+		t.Fatalf("nested member is %T, want a block", outer.Branches[0].Members[0])
+	}
+	if inner.Close == 0 || inner.Branches[0].Cond == nil {
+		t.Fatal("the inner block was not parsed")
+	}
+}
+
+func TestParseIfBlockErrors(t *testing.T) {
+	cases := map[string]string{
+		"{#if app.dark}\n\t\tText { text: \"a\" }\n\t}": "expected {:else} or {/if}",
+		"{:else}": "expected '#'",
+		"{#each rows as r}\n\t\tText { text: \"a\" }\n\t{/each}": "not supported yet",
+		"{#when app.dark}\n\t{/when}":                            "only {#if} exists",
+		"{#if}\n\t{/if}":                                         "expected a value",
+	}
+	for body, want := range cases {
+		src := "Window {\n\tColumn {\n\t\t" + body + "\n\t}\n}\n"
+		_, diag := Parse([]byte(src))
+		if diag.Empty() {
+			t.Errorf("%q was accepted", body)
+			continue
+		}
+		if !strings.Contains(diag.Format("<src>", []byte(src)), want) {
+			t.Errorf("%q gave %v, want %q", body, diag.Format("<src>", []byte(src)), want)
+		}
+	}
+}

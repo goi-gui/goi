@@ -141,13 +141,70 @@ func (v *validator) walk(e *syntax.Element, parent string) {
 		v.src = e.Src
 	}
 
-	if len(e.Children()) > 0 && !def.Children {
-		first := e.Children()[0]
-		v.add(first.NameAt, first.NameAt+2, fmt.Sprintf("%s cannot contain child elements", e.Name), "")
+	if first := firstChild(e); first != nil && !def.Children {
+		v.add(first.At, first.At+syntax.Pos(len(first.Name)), fmt.Sprintf("%s cannot contain child elements", e.Name), "")
 	}
 
-	for _, c := range e.Children() {
-		v.walk(c, e.Name)
+	for _, m := range e.Members {
+		switch x := m.(type) {
+		case *syntax.Element:
+			v.walk(x, e.Name)
+		case *syntax.Block:
+			v.walkBlock(x, e.Name)
+		}
+	}
+}
+
+// childStart is where a child member begins, for a diagnostic range.
+type childStart struct {
+	At   syntax.Pos
+	Name string
+}
+
+// firstChild returns the first child element or block of e, or nil.
+func firstChild(e *syntax.Element) *childStart {
+	for _, m := range e.Members {
+		switch x := m.(type) {
+		case *syntax.Element:
+			return &childStart{At: x.NameAt, Name: x.Name}
+		case *syntax.Block:
+			return &childStart{At: x.At, Name: "{#if}"}
+		}
+	}
+	return nil
+}
+
+// walkBlock checks one control block: the condition is a bool expression and the
+// arms hold only elements. A block adds no node of its own, so its arms are
+// validated as children of the enclosing element.
+func (v *validator) walkBlock(blk *syntax.Block, parent string) {
+	v.src = blk.Src
+	for _, br := range blk.Branches {
+		if br.Cond != nil {
+			v.checkCond(br)
+		}
+		for _, m := range br.Members {
+			switch x := m.(type) {
+			case *syntax.Element:
+				v.walk(x, parent)
+			case *syntax.Block:
+				v.walkBlock(x, parent)
+			case *syntax.Property:
+				v.addIn(x.Src, x.NameAt, x.NameAt+syntax.Pos(len(x.Name)),
+					fmt.Sprintf("a block cannot declare the property %q", x.Name), "")
+			}
+		}
+	}
+}
+
+// checkCond accepts the value types that can produce a bool. A bare identifier
+// or a string is a value, not a condition, and would silently never be true.
+func (v *validator) checkCond(br syntax.Branch) {
+	switch br.Cond.(type) {
+	case *syntax.Bool, *syntax.Unary, *syntax.Binary, *syntax.Ternary, *syntax.Ref:
+	case *syntax.Ident, *syntax.String, *syntax.Number, *syntax.Color, *syntax.Percent:
+		v.add(br.Cond.Pos(), br.Cond.Pos()+1,
+			"an {#if} condition must be a bool: a comparison, app.dark, or an id.prop that is a bool", "")
 	}
 }
 
@@ -404,8 +461,37 @@ func (v *validator) walkRefs(e *syntax.Element) {
 	for _, p := range e.Props() {
 		v.checkRefs(e, def.Prop(p.Name), p.Value)
 	}
-	for _, c := range e.Children() {
-		v.walkRefs(c)
+	for _, m := range e.Members {
+		switch x := m.(type) {
+		case *syntax.Element:
+			v.walkRefs(x)
+		case *syntax.Block:
+			v.walkBlockRefs(x)
+		}
+	}
+}
+
+// boolProp stands in for the property a block condition reads, so a reference
+// in `{#if id.prop}` is type-checked exactly like a bool property value.
+var boolProp = &Prop{Name: "condition", Type: TypeBool}
+
+// condElement names a block condition in diagnostics: "{#if}.condition: ...".
+var condElement = &syntax.Element{Name: "{#if}"}
+
+// walkBlockRefs checks the references inside block conditions and arms.
+func (v *validator) walkBlockRefs(blk *syntax.Block) {
+	for _, br := range blk.Branches {
+		if br.Cond != nil {
+			v.checkRefs(condElement, boolProp, br.Cond)
+		}
+		for _, m := range br.Members {
+			switch x := m.(type) {
+			case *syntax.Element:
+				v.walkRefs(x)
+			case *syntax.Block:
+				v.walkBlockRefs(x)
+			}
+		}
 	}
 }
 

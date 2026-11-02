@@ -702,6 +702,36 @@ Window {
 							}
 						}
 
+						// ---- conditional: a block switched by a Go-set bool.
+						Column {
+							spacing: 8
+							Text { text: "Conditional block" role: "titleMedium" }
+							Switch {
+								id: blockSwitch
+								label: "Show the wide layout"
+								checked: true
+							}
+							{#if blockSwitch.checked}
+								Card {
+									variant: filled
+									width: { base: 280, md: 420 }
+									Text { text: "The {#if} arm is shown." }
+								}
+							{:else}
+								Text {
+									id: blockElseLabel
+									text: "The {:else} arm is shown."
+									color: onSurfaceVariant
+								}
+							{/if}
+							Text {
+								text: "Both arms are built; only the matching one is laid out, and the condition re-reads the switch every frame."
+								role: "bodySmall"
+								wrap: true
+								width: { base: 280, md: 420 }
+							}
+						}
+
 						// ---- repeat: one hidden template, copies added from Go.
 						Column {
 							spacing: 8

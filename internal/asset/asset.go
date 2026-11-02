@@ -191,26 +191,44 @@ func (l *loader) expand(el *syntax.Element, aliases map[string]string, stack []s
 		return l.instance(target, el, aliases, stack)
 	}
 	out := copyElement(el)
-	kids := make([]syntax.Member, 0, len(out.Members))
-	for _, m := range out.Members {
-		child, ok := m.(*syntax.Element)
-		if !ok {
-			kids = append(kids, m)
-			continue
-		}
-		if child.Name == "$children" {
-			// A slot with no caller: the fragment is being previewed on its
-			// own, so nothing goes there.
-			continue
-		}
-		expanded, diag := l.expand(child, aliases, stack)
-		if !diag.Empty() {
-			return nil, diag
-		}
-		kids = append(kids, expanded)
+	kids, diag := l.expandMembers(out.Members, aliases, stack)
+	if !diag.Empty() {
+		return nil, diag
 	}
 	out.Members = kids
 	return out, nil
+}
+
+// expandMembers expands one member list, including the arms of a control block.
+func (l *loader) expandMembers(members []syntax.Member, aliases map[string]string, stack []string) ([]syntax.Member, syntax.Diagnostics) {
+	kids := make([]syntax.Member, 0, len(members))
+	for _, m := range members {
+		switch child := m.(type) {
+		case *syntax.Block:
+			for i := range child.Branches {
+				expanded, diag := l.expandMembers(child.Branches[i].Members, aliases, stack)
+				if !diag.Empty() {
+					return nil, diag
+				}
+				child.Branches[i].Members = expanded
+			}
+			kids = append(kids, child)
+		case *syntax.Element:
+			if child.Name == "$children" {
+				// A slot with no caller: the fragment is being previewed on
+				// its own, so nothing goes there.
+				continue
+			}
+			expanded, diag := l.expand(child, aliases, stack)
+			if !diag.Empty() {
+				return nil, diag
+			}
+			kids = append(kids, expanded)
+		default:
+			kids = append(kids, m)
+		}
+	}
+	return kids, nil
 }
 
 // instance replaces one fragment instance with the fragment's root element,
@@ -285,37 +303,58 @@ func (l *loader) instance(target string, call *syntax.Element, callerAliases map
 
 // fillSlot replaces every `$children` in el with the instance's child elements,
 // expanded in the caller's file so their own imports resolve there. A slot
-// anywhere in the fragment body counts, which lets a fragment forward its
-// children into another one. It reports whether a slot was found at all.
+// anywhere in the fragment body counts, inside a block arm too, which is how a
+// fragment forwards its children. It reports whether a slot was found at all.
 func (l *loader) fillSlot(el *syntax.Element, kids []*syntax.Element, callerAliases map[string]string, stack []string) (bool, syntax.Diagnostics) {
-	found := false
-	members := make([]syntax.Member, 0, len(el.Members))
-	for _, m := range el.Members {
-		child, ok := m.(*syntax.Element)
-		if !ok {
-			members = append(members, m)
-			continue
-		}
-		if child.Name == "$children" {
-			found = true
-			for _, k := range kids {
-				expanded, diag := l.expand(copyElement(k), callerAliases, stack)
-				if !diag.Empty() {
-					return found, diag
-				}
-				members = append(members, expanded)
-			}
-			continue
-		}
-		nested, diag := l.fillSlot(child, kids, callerAliases, stack)
-		if !diag.Empty() {
-			return found, diag
-		}
-		found = found || nested
-		members = append(members, child)
+	members, found, diag := l.fillMembers(el.Members, kids, callerAliases, stack)
+	if !diag.Empty() {
+		return found, diag
 	}
 	el.Members = members
 	return found, nil
+}
+
+// fillMembers fills the slots in one member list, recursing into blocks and
+// nested elements.
+func (l *loader) fillMembers(members []syntax.Member, kids []*syntax.Element, callerAliases map[string]string, stack []string) ([]syntax.Member, bool, syntax.Diagnostics) {
+	out := make([]syntax.Member, 0, len(members))
+	found := false
+	for _, m := range members {
+		switch x := m.(type) {
+		case *syntax.Block:
+			for i := range x.Branches {
+				arm, nested, diag := l.fillMembers(x.Branches[i].Members, kids, callerAliases, stack)
+				if !diag.Empty() {
+					return nil, found, diag
+				}
+				x.Branches[i].Members = arm
+				found = found || nested
+			}
+			out = append(out, x)
+		case *syntax.Element:
+			if x.Name == "$children" {
+				found = true
+				for _, k := range kids {
+					expanded, diag := l.expand(copyElement(k), callerAliases, stack)
+					if !diag.Empty() {
+						return nil, found, diag
+					}
+					out = append(out, expanded)
+				}
+				continue
+			}
+			nested, below, diag := l.fillMembers(x.Members, kids, callerAliases, stack)
+			if !diag.Empty() {
+				return nil, found, diag
+			}
+			x.Members = nested
+			found = found || below
+			out = append(out, x)
+		default:
+			out = append(out, m)
+		}
+	}
+	return out, found, nil
 }
 
 // substitute replaces `$name` values in place and reports a param the fragment
@@ -324,17 +363,30 @@ func substitute(el *syntax.Element, params map[string]syntax.Value, from string)
 	var diag syntax.Diagnostics
 	var walk func(*syntax.Element)
 	walk = func(e *syntax.Element) {
-		for _, m := range e.Members {
-			switch v := m.(type) {
-			case *syntax.Property:
-				v.Value, diag = substValue(v.Value, params, v.Src, from, diag)
-			case *syntax.Element:
-				walk(v)
-			}
-		}
+		walkMembers(e.Members, params, from, &diag, walk)
 	}
 	walk(el)
 	return diag
+}
+
+// walkMembers substitutes params in a member list, descending into block arms.
+func walkMembers(members []syntax.Member, params map[string]syntax.Value, from string, diag *syntax.Diagnostics, walk func(*syntax.Element)) {
+	for _, m := range members {
+		switch v := m.(type) {
+		case *syntax.Property:
+			v.Value, *diag = substValue(v.Value, params, v.Src, from, *diag)
+		case *syntax.Element:
+			walk(v)
+		case *syntax.Block:
+			for i := range v.Branches {
+				br := &v.Branches[i]
+				if br.Cond != nil {
+					br.Cond, *diag = substValue(br.Cond, params, v.Src, from, *diag)
+				}
+				walkMembers(br.Members, params, from, diag, walk)
+			}
+		}
+	}
 }
 
 // substValue returns a value with every param reference replaced.
@@ -403,16 +455,38 @@ func copyElement(el *syntax.Element) *syntax.Element {
 		Open:    el.Open,
 		Close:   el.Close,
 		Src:     el.Src,
-		Members: make([]syntax.Member, 0, len(el.Members)),
+		Members: copyMembers(el.Members),
 	}
-	for _, m := range el.Members {
+	return out
+}
+
+// copyBlock deep-copies a control block, so two instances of one fragment do not
+// share arm slices.
+func copyBlock(b *syntax.Block) *syntax.Block {
+	out := &syntax.Block{Kind: b.Kind, At: b.At, Close: b.Close, Src: b.Src}
+	out.Branches = make([]syntax.Branch, len(b.Branches))
+	for i, br := range b.Branches {
+		out.Branches[i] = syntax.Branch{
+			Cond:    copyValue(br.Cond),
+			At:      br.At,
+			Members: copyMembers(br.Members),
+		}
+	}
+	return out
+}
+
+func copyMembers(members []syntax.Member) []syntax.Member {
+	out := make([]syntax.Member, 0, len(members))
+	for _, m := range members {
 		switch v := m.(type) {
 		case *syntax.Property:
-			out.Members = append(out.Members, &syntax.Property{
+			out = append(out, &syntax.Property{
 				Name: v.Name, NameAt: v.NameAt, Value: copyValue(v.Value), Src: v.Src,
 			})
 		case *syntax.Element:
-			out.Members = append(out.Members, copyElement(v))
+			out = append(out, copyElement(v))
+		case *syntax.Block:
+			out = append(out, copyBlock(v))
 		}
 	}
 	return out

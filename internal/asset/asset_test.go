@@ -446,3 +446,54 @@ ListItem {
 		t.Fatalf("the fragment instance is not a hidden template row:\n%s", dump(tr))
 	}
 }
+
+// TestBlockSurvivesImportExpansion guards the copy path: a control block inside
+// a fragment must reach the tree, with its arms, params and slots intact.
+func TestBlockSurvivesImportExpansion(t *testing.T) {
+	dir := design(t, map[string]string{
+		"Main.goi": `import "./Card.goi" as Card
+Window {
+	Card {
+		mode: "fancy"
+		Text { id: passed text: "passed" }
+	}
+}`,
+		"Card.goi": `param mode: "dense"
+Column {
+	{#if $mode == "fancy"}
+		Text { id: fancy text: "fancy" }
+	{:else}
+		Column {
+			$children
+		}
+	{/if}
+}`,
+	})
+	tr, err := load(t, dir, "Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Both arms reach the tree; the param decides which one is shown.
+	fancy, ok := tr.ByID("fancy")
+	if !ok {
+		t.Fatalf("the if arm was dropped:\n%s", dump(tr))
+	}
+	passed, ok := tr.ByID("passed")
+	if !ok {
+		t.Fatalf("the slot inside the else arm was not filled:\n%s", dump(tr))
+	}
+	if !shown(fancy) || shown(passed) {
+		t.Fatal("the param did not pick the if arm")
+	}
+}
+
+// shown reports whether n is drawn: a hidden ancestor hides it too.
+func shown(n tree.Node) bool {
+	for n != nil {
+		if !n.Base().Visible() {
+			return false
+		}
+		n = n.Base().Parent()
+	}
+	return true
+}

@@ -772,3 +772,110 @@ func TestHoverExplainsTheSlotAndTemplate(t *testing.T) {
 		t.Fatalf("hover on template = %q", h.Contents.Value)
 	}
 }
+
+// TestIfBlockIsKnownToTheEditor covers the three things a design needs while
+// typing a block: the block adds no diagnostic of its own, the body is still a
+// normal element body, and the outline shows the arms' elements.
+func TestIfBlockIsKnownToTheEditor(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := `Window {
+	Column {
+		{#if app.dark}
+			Text { text: "dark" }
+		{:else}
+			Text { nope: 1 text: "light" }
+		{/if}
+	}
+}
+`
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	// Exactly one problem: the property inside the arm. The block itself is
+	// swallowed by the parser, not reported as unknown.
+	diags := c.diagnostics(uri)
+	if len(diags) != 1 || !strings.Contains(diags[0].Message, "unknown property") {
+		t.Fatalf("diagnostics = %v, want one unknown property", diags)
+	}
+
+	// Completion inside an arm offers the enclosing element's properties.
+	res := c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "\t\t{:else}", 2),
+	})
+	var list completionList
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	var sawSpacing bool
+	for _, it := range list.Items {
+		if it.Label == "spacing" {
+			sawSpacing = true
+		}
+	}
+	if !sawSpacing {
+		t.Fatalf("the arm body did not complete as a Column body: %v", list.Items)
+	}
+
+	// The outline shows both arms, so the block is navigable.
+	res = c.request("textDocument/documentSymbol", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+	})
+	var syms []symbol
+	if err := json.Unmarshal(res, &syms); err != nil {
+		t.Fatal(err)
+	}
+	var block *symbol
+	for i := range syms[0].Children[0].Children {
+		if strings.HasPrefix(syms[0].Children[0].Children[i].Name, "{#if") {
+			block = &syms[0].Children[0].Children[i]
+		}
+	}
+	if block == nil || len(block.Children) != 2 {
+		t.Fatalf("outline has no block with two arms: %+v", syms[0].Children[0].Children)
+	}
+	if !strings.Contains(block.Name, "app.dark") {
+		t.Fatalf("block label = %q, want the condition in it", block.Name)
+	}
+}
+
+// TestCompletionOffersBlockTags completes the tags themselves, including the
+// ones that only make sense inside an open block.
+func TestCompletionOffersBlockTags(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tColumn {\n\t\t{#if app.dark}\n\t\t\t\n\t\t{/if}\n\t\t\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	labels := func(pos position) map[string]bool {
+		res := c.request("textDocument/completion", map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     pos,
+		})
+		var list completionList
+		if err := json.Unmarshal(res, &list); err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]bool{}
+		for _, it := range list.Items {
+			out[it.Label] = true
+		}
+		return out
+	}
+
+	// Inside the block body, the closing tags are offered.
+	inner := labels(at(t, src, "\t\t\t\n\t\t{/if}", 3))
+	if !inner["{/if}"] || !inner["{:else}"] {
+		t.Fatalf("block tags missing inside the block: %v", inner)
+	}
+	// Outside a block, only a fresh {#if} makes sense.
+	outer := labels(at(t, src, "\t\t\n\t}\n}\n", 2))
+	if !outer["{#if}"] {
+		t.Fatalf("{#if} not offered at member level: %v", outer)
+	}
+	if outer["{/if}"] {
+		t.Fatal("a closing tag was offered with no block open")
+	}
+}

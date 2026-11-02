@@ -110,6 +110,42 @@ Window {
 - Like a file with params, a file with `$children` is a fragment: `goicheck` and
   the language server do not require it to be a `Window`.
 
+### Conditional blocks
+
+`{#if}` picks one arm of elements. The condition is an ordinary expression and
+must be a bool; every arm is built when the window loads and only the matching
+one is shown, so a block costs no layout for the arm it hides.
+
+```goi
+Window {
+    Column {
+        {#if app.dark}
+            IconButton { icon: dark_mode }
+        {:else if window.width > 900}
+            IconButton { icon: desktop }
+        {:else}
+            IconButton { icon: light_mode }
+        {/if}
+    }
+}
+```
+
+- The arms are ordinary children of the enclosing element: a block adds no box,
+  no spacing and no flex item of its own. In a `Row` the visible arm is laid out
+  as a row item, exactly as if it were written there directly.
+- Conditions may read `app.theme`, `app.dark`, `app.os`, `window.width`,
+  `window.height` and any `id.prop` that is a bool, and combine them with
+  comparisons, `&&`, `||`, `!` and `?:`.
+- An arm holds elements only. A `{#if}` inside a `Text` is an error, because a
+  leaf has no children to switch.
+- Blocks nest: an inner `{#if}` shows only where its outer arm also shows.
+- A Go-set bool property re-evaluates the condition on the next frame, so
+  `id.checked` is a fully reactive condition without any extra wiring.
+- Ids inside arms are registered like any other id, so two arms cannot declare
+  the same one.
+- `{#each}` is not supported yet: for a list of unknown length, mark a row
+  `template: true` and fill it from Go with `ui.Fill`.
+
 ## Grammar
 
 ```
@@ -117,7 +153,11 @@ File      = { Import | Param } Element EOF
 Import    = "import" String "as" Ident
 Param     = "param" Ident ":" Value [";"]
 Element   = Ident "{" { Member } "}"
-Member    = Property | Element | "$children"
+Member    = Property | Element | Block | "$children"
+Block     = "{#" "if" Value "}" { Member }
+            { "{:else if" Value "}" { Member } }
+            [ "{:else}" { Member } ]
+            "{/if}"
 Property  = Ident ":" Value [";"]
 Value     = String | Number | Bool | Color | Ident | Map | Expression | "$" Ident
 Map       = "{" [ MapEntry { "," MapEntry } [","] ] "}"

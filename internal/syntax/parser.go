@@ -32,12 +32,33 @@ func markSrc(e *Element, src string) {
 	}
 	e.Src = src
 	for i := range e.Members {
-		if p, ok := e.Members[i].(*Property); ok {
-			p.Src = src
-			continue
+		switch m := e.Members[i].(type) {
+		case *Property:
+			m.Src = src
+		case *Element:
+			markSrc(m, src)
+		case *Block:
+			m.Src = src
+			for j := range m.Branches {
+				markSrcIn(m.Branches[j].Members, src)
+			}
 		}
-		if c, ok := e.Members[i].(*Element); ok {
-			markSrc(c, src)
+	}
+}
+
+// markSrcIn records the source file on a block arm's members.
+func markSrcIn(members []Member, src string) {
+	for i := range members {
+		switch m := members[i].(type) {
+		case *Property:
+			m.Src = src
+		case *Element:
+			markSrc(m, src)
+		case *Block:
+			m.Src = src
+			for j := range m.Branches {
+				markSrcIn(m.Branches[j].Members, src)
+			}
 		}
 	}
 }
@@ -240,41 +261,212 @@ func (p *parser) parseElement() *Element {
 	}
 	el.Open = p.next().pos
 
+	ml := p.parseMembers(false)
+	el.Members = ml.members
+	el.Close = ml.close
+	return el
+}
+
+// memberList is one parsed run of members plus how it ended.
+type memberList struct {
+	members []Member
+	// end describes the `{:else}`/`{/if}` that stopped a block body.
+	end blockEnd
+	// close is the position of the '}' that closed an element body.
+	close Pos
+	// closed is true when the element's '}' was consumed.
+	closed bool
+}
+
+// parseMembers reads members until the element's '}' (inBlock false) or until a
+// block terminator `{:else ...}` / `{/if}` (inBlock true).
+func (p *parser) parseMembers(inBlock bool) memberList {
+	var out memberList
 	for {
 		t := p.peek()
 		switch t.kind {
 		case tokEOF:
 			p.errorf(t, "unexpected end of file: missing '}'")
-			el.Close = t.pos
-			return el
+			out.close = t.pos
+			return out
 		case tokRBrace:
-			el.Close = p.next().pos
-			return el
+			if inBlock {
+				p.errorf(t, "expected {:else} or {/if} before '}'")
+			}
+			out.close = p.next().pos
+			out.closed = true
+			return out
 		case tokSemicolon, tokComma:
 			p.next() // stray separators are harmless
-			continue
+		case tokLBrace:
+			// Inside a block body, `{:` and `{/` end the arm instead of
+			// starting something.
+			if inBlock && (p.peek2().kind == tokColon || p.peek2().kind == tokSlash) {
+				out.end = p.parseBlockEnd()
+				return out
+			}
+			if blk := p.parseBlock(); blk != nil {
+				out.members = append(out.members, blk)
+			}
 		case tokIdent:
 			// `Ident :` is a property, `Ident {` is a child element.
 			if p.peek2().kind == tokColon {
 				prop, ok := p.parseProperty()
 				if ok {
-					el.Members = append(el.Members, prop)
+					out.members = append(out.members, prop)
 				}
 				continue
 			}
 			child := p.parseElement()
 			if child != nil {
-				el.Members = append(el.Members, child)
+				out.members = append(out.members, child)
 			}
 		case tokDollar:
 			if slot := p.parseSlot(); slot != nil {
-				el.Members = append(el.Members, slot)
+				out.members = append(out.members, slot)
 			}
 		default:
 			p.errorf(t, "expected a property or child element")
 			if !p.recoverMember() {
 				p.next()
 			}
+		}
+	}
+}
+
+// blockEndKind is how a block arm ended.
+type blockEndKind int
+
+const (
+	blockEndClose blockEndKind = iota + 1
+	blockEndElse
+	blockEndElseIf
+)
+
+// blockEnd is a parsed `{:else}`, `{:else if cond}` or `{/if}`.
+type blockEnd struct {
+	kind blockEndKind
+	cond Value
+	at   Pos
+}
+
+// parseBlockEnd reads the `{:else ...}` or `{/if}` that closes an arm.
+func (p *parser) parseBlockEnd() blockEnd {
+	open := p.next() // '{'
+	sep := p.next()  // ':' or '/'
+	name := p.peek()
+	if name.kind != tokIdent {
+		p.errorf(name, "expected a block name after '{:' or '{/'")
+		p.sync()
+		return blockEnd{}
+	}
+	p.next()
+
+	if sep.kind == tokSlash {
+		if name.text != "if" {
+			p.errorf(name, "unexpected {/"+name.text+"}: no {#"+name.text+"} is open")
+		}
+		if p.peek().kind == tokRBrace {
+			p.next()
+		} else {
+			p.errorf(p.peek(), "expected '}' after {/"+name.text+"}")
+		}
+		return blockEnd{kind: blockEndClose, at: open.pos}
+	}
+
+	end := blockEnd{kind: blockEndElse, at: open.pos}
+	if name.text != "else" {
+		p.errorf(name, "expected 'else', got "+name.text)
+		p.sync()
+		return end
+	}
+	if p.peek().kind == tokIdent && p.peek().text == "if" {
+		p.next()
+		cond, ok := p.parseValue()
+		if !ok {
+			p.sync()
+			return end
+		}
+		end.kind = blockEndElseIf
+		end.cond = cond
+	}
+	if p.peek().kind != tokRBrace {
+		p.errorf(p.peek(), "expected '}' after {:else}")
+	} else {
+		p.next()
+	}
+	return end
+}
+
+// parseBlock reads `{#if cond} ... {/if}` with its else arms. Nested blocks are
+// ordinary members, so they recurse through parseMembers.
+func (p *parser) parseBlock() *Block {
+	open := p.next() // '{'
+	hash := p.peek()
+	if hash.kind != tokHash {
+		p.errorf(hash, "expected '#' after '{': a block is {#if ...}")
+		p.sync()
+		return nil
+	}
+	p.next()
+	name := p.peek()
+	if name.kind != tokIdent {
+		p.errorf(name, "expected a block name after '{#'")
+		p.sync()
+		return nil
+	}
+	p.next()
+	switch name.text {
+	case "if":
+	case "each":
+		p.errorf(name, "{#each} is not supported yet: a list is filled from Go with ui.Fill")
+		p.sync()
+		return nil
+	default:
+		p.errorf(name, "unknown block {#"+name.text+"}: only {#if} exists")
+		p.sync()
+		return nil
+	}
+
+	cond, ok := p.parseValue()
+	if !ok {
+		p.sync()
+		return nil
+	}
+	if p.peek().kind != tokRBrace {
+		p.errorf(p.peek(), "expected '}' after the {#if} condition")
+		p.sync()
+		return nil
+	}
+	p.next()
+
+	blk := &Block{Kind: BlockIf, At: open.pos}
+	arm := Branch{Cond: cond, At: open.pos}
+	sawElse := false
+	for {
+		ml := p.parseMembers(true)
+		arm.Members = ml.members
+		blk.Branches = append(blk.Branches, arm)
+		if ml.end.kind == blockEndClose {
+			blk.Close = ml.end.at
+			return blk
+		}
+		switch ml.end.kind {
+		case blockEndElse:
+			if sawElse {
+				p.errorf(p.peek(), "{:else} was already used")
+			}
+			sawElse = true
+			arm = Branch{At: ml.end.at}
+		case blockEndElseIf:
+			if sawElse {
+				p.errorf(p.peek(), "an {:else if} cannot follow {:else}")
+			}
+			arm = Branch{Cond: ml.end.cond, At: ml.end.at}
+		default:
+			// The file ended, or a '}' closed the arm's own element: either
+			// way the block cannot continue.
+			return blk
 		}
 	}
 }
@@ -355,14 +547,9 @@ func (p *parser) parseValue() (Value, bool) {
 	case tokLBrace:
 		return p.parseMap()
 	case tokDollar:
-		at := p.next().pos
-		name := p.peek()
-		if name.kind != tokIdent {
-			p.errorf(name, "expected a param name after '$'")
-			return nil, false
-		}
-		p.next()
-		return &ParamRef{At: at, Name: name.text}, true
+		// A param is an operand like any other, so `$mode == "fancy"` parses:
+		// an expression starts here, not just a bare reference.
+		return p.parseExpr()
 	case tokError:
 		// The lexer already reported this; stay quiet so the file does not
 		// produce two diagnostics for one typo.

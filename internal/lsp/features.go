@@ -206,6 +206,10 @@ func (s *Server) completion(raw json.RawMessage) any {
 	// after an opening brace.
 	trimmed := strings.TrimSpace(string(line))
 	switch {
+	case prop == "" && !inMap && strings.HasPrefix(prefix, "{"):
+		// A block tag: `{#if`, `{:else}`, `{/if}`. The prefix word includes the
+		// brace because isWordByte does not, so it is cut to the tag itself.
+		items = append(items, blockItems(openBlockAt(file, off) != nil)...)
 	case prop == "" && !inMap && strings.HasPrefix(prefix, "$"):
 		// `$` starts a slot here, not a param: a param is a value.
 		items = append(items, slotItems(file, d.text, off)...)
@@ -215,6 +219,77 @@ func (s *Server) completion(raw json.RawMessage) any {
 		items = append(items, elementItems()...)
 	}
 	return completionList{Items: dedupe(items, prefix), IsIncomplete: incomplete}
+}
+
+// blockItems offers the block tags. Only `{#if}` exists, so the list is short:
+// a fresh block at member level, and the two tags that continue one already
+// open at the cursor.
+func blockItems(inside bool) []completionResult {
+	out := []completionResult{{
+		Label:  "{#if}",
+		Kind:   kindKeyword,
+		Detail: "block",
+		Documentation: &doc{Kind: "markdown", Value: "**{#if cond} … {/if}**\n\n" +
+			"Shows the first arm whose condition holds. The arms are ordinary children " +
+			"of the enclosing element, so a block adds no box of its own."},
+	}}
+	if !inside {
+		return out
+	}
+	return append(out,
+		completionResult{
+			Label: "{:else}", Kind: kindKeyword, Detail: "block arm",
+			Documentation: &doc{Kind: "markdown", Value: "**{:else}** — the arm shown when no earlier condition holds."},
+		},
+		completionResult{
+			Label: "{:else if}", Kind: kindKeyword, Detail: "block arm",
+			Documentation: &doc{Kind: "markdown", Value: "**{:else if cond}** — another condition, tried in order."},
+		},
+		completionResult{
+			Label: "{/if}", Kind: kindKeyword, Detail: "block end",
+			Documentation: &doc{Kind: "markdown", Value: "**{/if}** — closes the `{#if}` block."},
+		},
+	)
+}
+
+// openBlockAt returns the innermost block whose body contains off.
+func openBlockAt(file *syntax.File, off int) *syntax.Block {
+	if file == nil || file.Root == nil {
+		return nil
+	}
+	var best *syntax.Block
+	walk := func(blk *syntax.Block) {
+		if off > int(blk.At) && off <= int(blk.Close) {
+			best = blk
+		}
+	}
+	syntax.WalkElements(file.Root, func(e *syntax.Element) {
+		for _, m := range e.Members {
+			if blk, ok := m.(*syntax.Block); ok {
+				blocksIn(blk, walk)
+			}
+		}
+	})
+	return best
+}
+
+// blocksIn visits blk and every block nested in its arms.
+func blocksIn(blk *syntax.Block, fn func(*syntax.Block)) {
+	fn(blk)
+	for _, br := range blk.Branches {
+		for _, m := range br.Members {
+			switch x := m.(type) {
+			case *syntax.Block:
+				blocksIn(x, fn)
+			case *syntax.Element:
+				for _, sm := range x.Members {
+					if nested, ok := sm.(*syntax.Block); ok {
+						blocksIn(nested, fn)
+					}
+				}
+			}
+		}
+	}
 }
 
 // slotDoc explains `$children`. It is a slot, so it has no properties and no
@@ -503,6 +578,7 @@ func memberItems(file *syntax.File, src []byte, off int) []completionResult {
 	}
 	if el.Children {
 		out = append(out, elementItems()...)
+		out = append(out, blockItems(openBlockAt(file, off) != nil)...)
 	}
 	return out
 }
@@ -634,10 +710,10 @@ func (s *Server) symbols(raw json.RawMessage) any {
 		return []symbol{}
 	}
 	idx := newLineIndex(d.text)
-	return []symbol{symbolOf(idx, file.Root)}
+	return []symbol{symbolOf(idx, file.Root, d.text)}
 }
 
-func symbolOf(idx lineIndex, e *syntax.Element) symbol {
+func symbolOf(idx lineIndex, e *syntax.Element, src []byte) symbol {
 	sym := symbol{
 		Name:           e.Name,
 		Kind:           19, // Object: a design element, not a language symbol
@@ -645,7 +721,40 @@ func symbolOf(idx lineIndex, e *syntax.Element) symbol {
 		SelectionRange: idx.at(int(e.NameAt), int(e.NameAt)+len(e.Name)),
 	}
 	for _, kid := range e.Children() {
-		sym.Children = append(sym.Children, symbolOf(idx, kid))
+		sym.Children = append(sym.Children, symbolOf(idx, kid, src))
+	}
+	for _, m := range e.Members {
+		if blk, ok := m.(*syntax.Block); ok {
+			sym.Children = append(sym.Children, symbolOfBlock(idx, blk, src))
+		}
+	}
+	return sym
+}
+
+// symbolOfBlock shows a control block in the outline. Its arms are not nodes, so
+// they have no kind of their own; the block is named after its first condition.
+func symbolOfBlock(idx lineIndex, blk *syntax.Block, src []byte) symbol {
+	name := "{#if}"
+	if len(blk.Branches) > 0 {
+		if cond := blk.Branches[0].Cond; cond != nil {
+			name = "{#if " + sourceSpan(src, int(cond.Pos())) + "}"
+		}
+	}
+	sym := symbol{
+		Name:           name,
+		Kind:           19,
+		Range:          idx.at(int(blk.At), int(blk.Close)+1),
+		SelectionRange: idx.at(int(blk.At), int(blk.Close)+1),
+	}
+	for _, br := range blk.Branches {
+		for _, m := range br.Members {
+			switch x := m.(type) {
+			case *syntax.Element:
+				sym.Children = append(sym.Children, symbolOf(idx, x, src))
+			case *syntax.Block:
+				sym.Children = append(sym.Children, symbolOfBlock(idx, x, src))
+			}
+		}
 	}
 	return sym
 }
@@ -679,9 +788,33 @@ func (s *Server) foldingRanges(raw json.RawMessage) any {
 		for _, kid := range e.Children() {
 			walk(kid)
 		}
+		for _, m := range e.Members {
+			if blk, ok := m.(*syntax.Block); ok {
+				walkBlockFold(blk, idx, &out, walk)
+			}
+		}
 	}
 	walk(file.Root)
 	return out
+}
+
+// walkBlockFold folds a block on its own and descends into its arms.
+func walkBlockFold(blk *syntax.Block, idx lineIndex, out *[]foldingRange, walk func(*syntax.Element)) {
+	start := idx.position(int(blk.At)).Line
+	end := idx.position(int(blk.Close)).Line
+	if end > start {
+		*out = append(*out, foldingRange{StartLine: start, EndLine: end, Kind: "region"})
+	}
+	for _, br := range blk.Branches {
+		for _, m := range br.Members {
+			switch x := m.(type) {
+			case *syntax.Element:
+				walk(x)
+			case *syntax.Block:
+				walkBlockFold(x, idx, out, walk)
+			}
+		}
+	}
 }
 
 // ---------------------------------------------------------------- definition
@@ -753,10 +886,39 @@ func elementAt(file *syntax.File, off int) *syntax.Element {
 			for _, kid := range e.Children() {
 				walk(kid)
 			}
+			for _, m := range e.Members {
+				if blk, ok := m.(*syntax.Block); ok {
+					walkBlockElements(blk, walk)
+				}
+			}
 		}
 	}
 	walk(file.Root)
 	return best
+}
+
+// sourceSpan reads a short expression from src up to the end of its line or the
+// closing brace, for an outline label.
+func sourceSpan(src []byte, from int) string {
+	end := from
+	for end < len(src) && src[end] != '}' && src[end] != '\n' {
+		end++
+	}
+	return strings.TrimSpace(string(src[from:end]))
+}
+
+// walkBlockElements visits the elements inside a block's arms.
+func walkBlockElements(blk *syntax.Block, walk func(*syntax.Element)) {
+	for _, br := range blk.Branches {
+		for _, m := range br.Members {
+			switch x := m.(type) {
+			case *syntax.Element:
+				walk(x)
+			case *syntax.Block:
+				walkBlockElements(x, walk)
+			}
+		}
+	}
 }
 
 // enclosingElementName is the element a completion request is inside. When the

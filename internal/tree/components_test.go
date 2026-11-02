@@ -81,3 +81,102 @@ func snapshot(props []NamedProp) map[string]string {
 	}
 	return out
 }
+
+// TestIfBlockTogglesItsArm keeps the block a pure visibility switch: every arm
+// is built, exactly one shows, and hiding a branch takes the whole subtree away
+// from layout.
+func TestIfBlockTogglesItsArm(t *testing.T) {
+	src := `Window {
+	Column {
+		{#if app.dark}
+			Text { id: darkArm text: "dark" }
+		{:else if window.width > 900}
+			Text { id: wideArm text: "wide" }
+		{:else}
+			Text { id: smallArm text: "small" }
+		{/if}
+	}
+}`
+	tr, diag := BuildSource([]byte(src), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	dark, _ := tr.ByID("darkArm")
+	wide, _ := tr.ByID("wideArm")
+	small, _ := tr.ByID("smallArm")
+	if dark == nil || wide == nil || small == nil {
+		t.Fatal("an arm was not built")
+	}
+
+	// Nothing set: light, narrow.
+	if dark.Base().Visible() || wide.Base().Visible() || !small.Base().Visible() {
+		t.Fatalf("initial arms: dark=%v wide=%v small=%v",
+			dark.Base().Visible(), wide.Base().Visible(), small.Base().Visible())
+	}
+	tr.SetViewport(1000, 800)
+	tr.ApplyExpressions()
+	if !wide.Base().Visible() || small.Base().Visible() {
+		t.Fatal("a wide window did not pick the else-if arm")
+	}
+	// Only the first matching arm shows, even when both conditions hold.
+	tr.SetDark(true)
+	tr.ApplyExpressions()
+	if !dark.Base().Visible() || wide.Base().Visible() {
+		t.Fatal("the first matching arm did not win")
+	}
+}
+
+// A nested block shows only inside a shown outer arm, and a hidden subtree is
+// skipped by layout, so it takes no space.
+func TestNestedIfBlockNeedsItsOuterArm(t *testing.T) {
+	src := `Window {
+	Column {
+		{#if app.dark}
+			{#if window.width > 900}
+				Text { id: inner text: "x" height: 40 }
+			{/if}
+		{/if}
+	}
+}`
+	tr, diag := BuildSource([]byte(src), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	inner, _ := tr.ByID("inner")
+	tr.SetViewport(1200, 800)
+	tr.ApplyExpressions()
+	if inner.Base().Visible() {
+		t.Fatal("the inner arm showed while the outer one was hidden")
+	}
+	tr.SetDark(true)
+	tr.ApplyExpressions()
+	if !inner.Base().Visible() {
+		t.Fatal("the inner arm did not show inside a shown outer arm")
+	}
+}
+
+// A block leaves the node tree flat: the arms are ordinary children of the
+// enclosing element, so a Row still lays them out as row items.
+func TestIfBlockAddsNoContainerNode(t *testing.T) {
+	tr, diag := BuildSource([]byte(`Window {
+	Row {
+		{#if app.dark}
+			Text { text: "a" }
+		{:else}
+			Text { text: "b" }
+		{/if}
+	}
+}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	row := tr.Root.Children()[0]
+	if got := len(row.Base().Children()); got != 2 {
+		t.Fatalf("%d children, want the two arm elements", got)
+	}
+	for _, c := range row.Base().Children() {
+		if c.Kind() != "Text" {
+			t.Fatalf("child is %s, want Text", c.Kind())
+		}
+	}
+}

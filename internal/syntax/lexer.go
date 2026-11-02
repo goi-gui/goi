@@ -40,6 +40,7 @@ const (
 	tokAndAnd
 	tokOrOr
 	tokQuestion
+	tokHash
 	tokError
 )
 
@@ -179,6 +180,13 @@ func (l *lexer) run() ([]token, Diagnostics) {
 		case c == '"':
 			l.lexString(start)
 		case c == '#':
+			// A '# right after '{' opens a block directive ({#if ...}); a value
+			// can never follow '{', because a map starts with a key.
+			if n := len(l.toks); n > 0 && l.toks[n-1].kind == tokLBrace {
+				l.off++
+				l.emit(token{kind: tokHash, pos: Pos(start), end: Pos(l.off)})
+				continue
+			}
 			l.lexColor(start)
 		case c >= '0' && c <= '9':
 			l.lexNumber(start)

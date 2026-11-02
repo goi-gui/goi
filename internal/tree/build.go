@@ -29,6 +29,9 @@ type Tree struct {
 	// an app can find them, but they are not registered, because a copy would
 	// otherwise collide with the template's own ids.
 	cloning bool
+	// conds holds the arms of every {#if} block, in build order, so the frame
+	// loop can toggle their visibility.
+	conds []*condBranch
 }
 
 // ByID returns the node with the given id.
@@ -88,6 +91,9 @@ func Build(f *syntax.File, hooks *Hooks) (*Tree, error) {
 		return nil, fmt.Errorf("tree: root must be Window, got %s", root.Kind())
 	}
 	t.Root = w
+	// Blocks show their first matching arm from the start, so a headless build
+	// and the first frame agree before any expression has run.
+	t.applyConds()
 	t.clearDirty()
 	return t, nil
 }
@@ -168,12 +174,33 @@ func (t *Tree) build(el *syntax.Element, parent *NodeBase, hooks *Hooks) (Node, 
 		t.responsive = append(t.responsive, b)
 	}
 
-	for _, c := range el.Children() {
-		if _, err := t.build(c, b, hooks); err != nil {
-			return nil, err
-		}
+	if err := t.buildMembers(el.Members, b, hooks, nil); err != nil {
+		return nil, err
 	}
 	return n, nil
+}
+
+// buildMembers builds one member list under parent. A block's arms are built as
+// ordinary children of the same parent, tagged with the arm that controls them.
+func (t *Tree) buildMembers(members []syntax.Member, parent *NodeBase, hooks *Hooks, arm *condBranch) error {
+	for _, m := range members {
+		switch x := m.(type) {
+		case *syntax.Element:
+			n, err := t.build(x, parent, hooks)
+			if err != nil {
+				return err
+			}
+			if arm != nil {
+				arm.nodes = append(arm.nodes, n.Base())
+				arm.own = append(arm.own, n.Base().Visible())
+			}
+		case *syntax.Block:
+			if err := t.buildBlock(x, parent, hooks, arm); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // applyDefaults seeds every property of the node from the schema.

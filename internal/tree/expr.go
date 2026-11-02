@@ -131,6 +131,9 @@ func (t *Tree) ApplyExpressions() {
 	for _, b := range t.exprNodes {
 		b.applyExpressions()
 	}
+	// Block conditions may read the same properties; both passes use the
+	// values as they are now, so they run together.
+	t.applyConds()
 }
 
 // ApplyExpressions is the layout entry point; it delegates to the owning tree.

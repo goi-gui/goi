@@ -32,6 +32,35 @@ func dumpElement(b *strings.Builder, e *Element, depth int) {
 			fmt.Fprintf(b, "%s  %s = %s\n", indent, v.Name, dumpValue(v.Value))
 		case *Element:
 			dumpElement(b, v, depth+1)
+		case *Block:
+			dumpBlock(b, v, depth+1)
+		}
+	}
+}
+
+func dumpBlock(b *strings.Builder, blk *Block, depth int) {
+	indent := strings.Repeat("  ", depth)
+	for _, br := range blk.Branches {
+		switch {
+		case br.Cond == nil:
+			fmt.Fprintf(b, "%selse\n", indent)
+		default:
+			fmt.Fprintf(b, "%sif %s\n", indent, dumpValue(br.Cond))
+		}
+		dumpMembers(b, br.Members, depth+1)
+	}
+}
+
+func dumpMembers(b *strings.Builder, members []Member, depth int) {
+	indent := strings.Repeat("  ", depth)
+	for _, m := range members {
+		switch v := m.(type) {
+		case *Property:
+			fmt.Fprintf(b, "%s  %s = %s\n", indent, v.Name, dumpValue(v.Value))
+		case *Element:
+			dumpElement(b, v, depth)
+		case *Block:
+			dumpBlock(b, v, depth)
 		}
 	}
 }
