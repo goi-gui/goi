@@ -666,16 +666,18 @@ const scrollStep = 48
 func (i *interactor) Scroll(dx, dy float64, shift bool) {
 	precise := preciseWheel(dx) || preciseWheel(dy)
 	if !precise {
-		// A notched wheel is one step on one axis. Shift swaps the axes, which
-		// is how a sideways area is reached without a touchpad and how a
-		// sideways wheel turns vertical.
+		// A notched wheel is one step on one axis. Shift turns the vertical
+		// wheel into a horizontal one, which is how a sideways area is reached
+		// without a touchpad, and a sideways wheel into a vertical one.
 		if shift {
-			dx, dy = dy, dx
+			dx, dy = -dy, dx
 		} else if dy != 0 {
 			dx = 0
 		}
 	}
-	panX, panY := -dx*scrollStep, -dy*scrollStep
+	// SDL's x is already a scroll direction (positive to the right), while its
+	// y is positive away from the user, so only y flips.
+	panX, panY := dx*scrollStep, -dy*scrollStep
 	if panX == 0 && panY == 0 {
 		return
 	}

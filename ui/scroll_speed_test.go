@@ -264,14 +264,14 @@ func TestShiftWheelScrollsTheHorizontalRow(t *testing.T) {
 func TestTouchpadKeepsBothAxes(t *testing.T) {
 	in, strip, page := horizontalFixture(t)
 	in.MouseMove(50, 50)
-	in.Scroll(-0.5, 0, false) // two fingers moving left
+	in.Scroll(0.5, 0, false) // fingers left; natural scrolling reports +dx
 	if got := strip.Base().ScrollOffset(); got != 24 {
 		t.Fatalf("row = %v after a sideways swipe, want 24", got)
 	}
 	if got := page.Base().ScrollOffset(); got != 0 {
 		t.Fatalf("page moved to %v on a sideways swipe", got)
 	}
-	in.Scroll(0, -0.5, false) // two fingers moving up
+	in.Scroll(0, -0.5, false) // fingers up
 	if got := strip.Base().ScrollOffset(); got != 24 {
 		t.Fatalf("the row moved to %v on a vertical swipe", got)
 	}
