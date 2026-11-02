@@ -697,7 +697,7 @@ Window {
 							Column {
 								spacing: 6
 								Text {
-									text: app.dark ? "Conditional: the dark scheme is active." : "Conditional: the light scheme is active."
+									text: "Conditional: the " + app.mode + " scheme is active."
 									role: "bodyMedium"
 								}
 								Rectangle {

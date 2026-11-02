@@ -1082,3 +1082,20 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   Generating the parser needs the CLI, which is not on this machine's PATH:
   `npx tree-sitter-cli` downloads its binary on install, and its `install.js`
   has to be run once (`node install.js`) before `tree-sitter generate` works.
+
+- **The theme mood is a `light`/`dark` value, not only a bool.** `app.dark` could
+  answer a yes/no question, but a design that wanted to *feed* the mood to a
+  property (an icon, a label, a scheme name) had no value to pass, and
+  `app.theme` reports the scheme's name, which for a registered `brand` theme
+  says nothing about light or dark. `app.mode` is that value, backed by
+  `tree.Mode` on the Go side (`ui.Mode`, `Window.Mode()`), and `app.dark` stays as
+  the bool shorthand so existing files keep working. The desktop preference is
+  `app.systemMode`, read through `SDL_GetSystemTheme` and refreshed on
+  `SDL_EVENT_SYSTEM_THEME_CHANGED`, which means `theme: app.systemMode` gives an
+  app that follows the OS with no Go code and no polling. `ModeUnknown` exists
+  only for that desktop value, because a platform may not report one; a window
+  always resolves to light or dark. The language server completes both globals
+  with the `light | dark` detail. `TestModeFollowsTheResolvedScheme`,
+  `TestModeFallsBackToTheThemeName`, `TestSystemModeIsWhatTheDesktopSaid`,
+  `TestWindowModeReachesGo`, `TestAppModeGlobals` and
+  `TestCompletionOffersModeGlobals` pin it.

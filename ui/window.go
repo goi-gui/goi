@@ -88,6 +88,33 @@ func (w *Window) ByID(id string) (Node, error) {
 // Tree returns the live tree for tests and debugging.
 func (w *Window) Tree() *tree.Tree { return w.tree }
 
+// Mode reports whether the window currently shows a light or a dark scheme.
+// It follows the resolved `theme`, so a registered dark theme reports ModeDark
+// too. The design side reads the same value as `app.mode`.
+//
+//	switch w.Mode() {
+//	case ui.ModeDark:
+//		icon.Icon.Set("dark_mode")
+//	}
+func (w *Window) Mode() Mode {
+	if w == nil || w.tree == nil {
+		return ModeLight
+	}
+	return w.tree.Mode()
+}
+
+// SystemMode reports the desktop's light/dark preference, or ModeUnknown when
+// the platform does not report one. A design can follow it without any Go code
+// by naming it as the theme:
+//
+//	Window { theme: app.systemMode }
+func (w *Window) SystemMode() Mode {
+	if w == nil || w.tree == nil {
+		return ModeUnknown
+	}
+	return w.tree.SystemMode()
+}
+
 // ByID returns the node with the given id, typed. The id must exist and must
 // name a node of type T (for example *ui.Button):
 //

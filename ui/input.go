@@ -1088,6 +1088,16 @@ func (i *interactor) Resize(width, height int, scale float32) {
 // buffer to finish an interactive resize, but nothing about the design changed.
 func (i *interactor) Expose() { i.app.needsFrame = true }
 
+// ThemeChanged follows the desktop switching between light and dark: the tree
+// re-reads the preference and a design that said `theme: app.systemMode` picks
+// the other scheme on the next frame.
+func (i *interactor) ThemeChanged() {
+	if i.tree != nil {
+		i.tree.SetSystemMode(systemMode())
+	}
+	i.app.needsFrame = true
+}
+
 func (i *interactor) Close() { i.app.Quit() }
 
 func (i *interactor) markDirty() {

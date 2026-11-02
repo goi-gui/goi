@@ -482,3 +482,27 @@ func TestAlignmentAxesAreSeparate(t *testing.T) {
 		}
 	}
 }
+
+// TestAppModeGlobals covers the two new reserved globals: `app.mode` is the
+// resolved mood and `app.systemMode` the desktop's, and both are strings so they
+// can feed a theme name or an enum.
+func TestAppModeGlobals(t *testing.T) {
+	good := []string{
+		`Window { theme: app.mode }`,
+		`Window { theme: app.systemMode }`,
+		`Window { Text { text: app.mode } }`,
+		`Window { IconButton { icon: app.mode == "dark" ? "light_mode" : "dark_mode" } }`,
+		`Window { Rectangle { visible: app.systemMode == "dark" } }`,
+		`Window { Text { text: app.dark ? "dark" : "light" } }`,
+	}
+	for _, src := range good {
+		if _, diag := validate(t, src); !diag.Empty() {
+			t.Errorf("%s: %v", src, diag.Format("<src>", []byte(src)))
+		}
+	}
+
+	_, diag := validate(t, `Window { Text { text: app.modes } }`)
+	if diag.Empty() || !strings.Contains(diag.Format("<src>", nil), "has no property") {
+		t.Fatalf("a typo in app.modes was accepted: %v", diag)
+	}
+}

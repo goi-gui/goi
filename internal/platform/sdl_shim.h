@@ -35,7 +35,8 @@ enum {
 	GOI_EV_KEY,
 	GOI_EV_TEXT,
 	GOI_EV_EDITING,
-	GOI_EV_USER
+	GOI_EV_USER,
+	GOI_EV_THEME
 };
 
 int goiPollEvent(goiEvent *o);
@@ -60,5 +61,9 @@ void goiInstallHitTest(SDL_Window *win);
 
 // goiClipboardText returns a copy the caller frees with SDL_free.
 char *goiClipboardText(void);
+
+// goiSystemTheme reports the desktop's light/dark preference as 1 (light),
+// 2 (dark), or 0 when the platform does not say.
+int goiSystemTheme(void);
 
 #endif

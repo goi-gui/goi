@@ -76,6 +76,9 @@ static int goiTranslate(SDL_Event *e, goiEvent *o) {
 	case SDL_EVENT_USER:
 		o->type = GOI_EV_USER;
 		return 1;
+	case SDL_EVENT_SYSTEM_THEME_CHANGED:
+		o->type = GOI_EV_THEME;
+		return 1;
 	}
 	return 0;
 }
@@ -182,4 +185,15 @@ int goiSetTextInputArea(SDL_Window *win, int x, int y, int w, int h) {
 
 char *goiClipboardText(void) {
 	return SDL_GetClipboardText();
+}
+
+int goiSystemTheme(void) {
+	switch (SDL_GetSystemTheme()) {
+	case SDL_SYSTEM_THEME_LIGHT:
+		return 1;
+	case SDL_SYSTEM_THEME_DARK:
+		return 2;
+	default:
+		return 0;
+	}
 }

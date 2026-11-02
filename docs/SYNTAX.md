@@ -412,8 +412,10 @@ Two namespaces are reserved for expressions:
 
 | Reference | Type | Meaning |
 |---|---|---|
-| `app.theme` | string | `"light"` or `"dark"` |
-| `app.dark` | bool | shorthand for the theme comparison |
+| `app.theme` | string | the resolved scheme's name: `light`, `dark` or a registered one |
+| `app.mode` | `light` \| `dark` | the resolved scheme's mood |
+| `app.systemMode` | `light` \| `dark` | the desktop's preference |
+| `app.dark` | bool | shorthand for `app.mode == "dark"` |
 | `app.os` | string | `runtime.GOOS`: `linux`, `darwin`, `windows`, … |
 | `window.width`, `window.height` | number | logical client size, updated on resize |
 
@@ -425,6 +427,28 @@ Text { text: app.dark ? "Dark scheme" : "Light scheme" color: app.dark ? onSurfa
 Rectangle { visible: window.width >= 640 width: window.width < 640 ? 240 : 320 }
 TitleBar { visible: app.os == "linux" }
 ```
+
+`app.mode` is a value, not a flag, so it can feed a property that expects an
+enum or a string, and it can be compared:
+
+```
+IconButton { icon: app.mode == "dark" ? "light_mode" : "dark_mode" }
+Text { text: app.mode == "dark" ? "Dark scheme" : "Light scheme" }
+```
+
+`app.systemMode` is what the desktop asked for. Naming it as the theme makes a
+design follow the system setting with no Go code, and the window switches as soon
+as the desktop does:
+
+```
+Window {
+    theme: app.systemMode
+}
+```
+
+A platform that does not report a preference reads as `light`. `app.theme` still
+reports the *name*, so `theme: brand` keeps `app.theme == "brand"` while
+`app.mode` says whether that scheme is light or dark.
 
 Because these expressions read live state, they are re-evaluated every frame;
 an unchanged result does not mark anything dirty, so an idle window stays idle.

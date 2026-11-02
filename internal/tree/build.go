@@ -20,11 +20,15 @@ type Tree struct {
 	// viewW and viewH are the last viewport in logical pixels, so an expression
 	// can read window.width and window.height.
 	viewW, viewH float64
-	// dark is the resolved scheme's mood, so `app.dark` is true for any
-	// registered dark theme, not only one literally named "dark". darkSet marks
-	// that the driver resolved it; before that a tree reads the name.
-	dark    bool
-	darkSet bool
+	// mode is the resolved scheme's light/dark mood, so `app.mode` and
+	// `app.dark` follow any registered theme, not only one literally named
+	// "dark". modeSet marks that the driver resolved it; before that a tree
+	// reads the theme's name.
+	mode    Mode
+	modeSet bool
+	// systemMode is the desktop's preference, or ModeUnknown when the platform
+	// does not report one. A design follows it with `theme: app.systemMode`.
+	systemMode Mode
 	// cloning is set while Instantiate builds a copy: ids stay on the nodes so
 	// an app can find them, but they are not registered, because a copy would
 	// otherwise collide with the template's own ids.

@@ -213,10 +213,13 @@ func (a *App) frame() {
 	logicalH := float64(d.pendingH) / float64(maxScale(d.pendingScale))
 	a.win.tree.SetViewport(logicalW, logicalH)
 	a.win.tree.ApplyBreakpoints(logicalW)
-	// `app.dark` has to be settled before expressions run, because a design's
-	// conditional may read it. It comes from the scheme name only, so it needs
-	// no expression pass first.
-	a.win.tree.SetDark(themeFor(a.win).Dark)
+	// The desktop preference is read before anything resolves, so a design that
+	// follows it with `theme: app.systemMode` switches on this frame.
+	a.win.tree.SetSystemMode(systemMode())
+	// `app.mode` and `app.dark` have to be settled before expressions run,
+	// because a design's conditional may read them. They come from the resolved
+	// scheme only, so they need no expression pass first.
+	a.win.tree.SetMode(modeFor(themeFor(a.win)))
 	// Expressions run before the theme resolver: a conditional can pick a role,
 	// and the role then resolves in the same frame. They also run before the
 	// frame check, because a Go property change may be what an expression reads.
@@ -300,6 +303,26 @@ func (d *gpuDriver) windowLogicalW() float64 {
 
 func (d *gpuDriver) windowLogicalH() float64 {
 	return float64(d.pendingH) / float64(maxScale(d.pendingScale))
+}
+
+// modeFor maps a resolved scheme to its light/dark mood.
+func modeFor(t *m3.Theme) tree.Mode {
+	if t.Dark {
+		return tree.ModeDark
+	}
+	return tree.ModeLight
+}
+
+// systemMode reads the desktop's preference. It runs on the UI goroutine, which
+// is where SDL may be called.
+func systemMode() tree.Mode {
+	switch platform.SystemTheme() {
+	case platform.ThemeDark:
+		return tree.ModeDark
+	case platform.ThemeLight:
+		return tree.ModeLight
+	}
+	return tree.ModeUnknown
 }
 
 // themeFor resolves the window's theme name against the app's registry.

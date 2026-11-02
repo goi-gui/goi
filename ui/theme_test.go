@@ -67,3 +67,37 @@ func TestUnknownThemeFallsBackAndReports(t *testing.T) {
 	}
 	_ = a
 }
+
+// TestWindowModeReachesGo is the Go half of the feature: the enum follows the
+// resolved scheme, and `app.mode` in the design reports the same value.
+func TestWindowModeReachesGo(t *testing.T) {
+	_, w := reloadApp(t, `Window {
+	theme: dark
+	Text { id: label text: app.mode }
+}`)
+	w.tree.SetDark(themeFor(w).Dark)
+	w.tree.ApplyExpressions()
+
+	if got := w.Mode(); got != ModeDark {
+		t.Fatalf("Mode() = %v, want ModeDark", got)
+	}
+	if got := MustByID[*Text](w, "label").Text.Get(); got != "dark" {
+		t.Fatalf("app.mode = %q, want dark", got)
+	}
+
+	if err := applyReloadSource(t, w.app, `Window {
+	theme: light
+	Text { id: label text: app.mode }
+}`); err != nil {
+		t.Fatal(err)
+	}
+	w = w.app.win
+	w.tree.SetMode(modeFor(themeFor(w)))
+	w.tree.ApplyExpressions()
+	if got := w.Mode(); got != ModeLight {
+		t.Fatalf("Mode() after the switch = %v, want ModeLight", got)
+	}
+	if got := MustByID[*Text](w, "label").Text.Get(); got != "light" {
+		t.Fatalf("app.mode = %q after the switch", got)
+	}
+}

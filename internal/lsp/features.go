@@ -370,6 +370,8 @@ func globalItems(ref string) []completionResult {
 	case "app":
 		names = []member{
 			{"theme", "string", "the resolved scheme: light, dark or a registered name"},
+			{"mode", "light | dark", "the resolved scheme's mood; feed an enum or compare it"},
+			{"systemMode", "light | dark", "the desktop's preference; `theme: app.systemMode` follows it"},
 			{"dark", "bool", "true when the resolved scheme is dark"},
 			{"os", "string", "runtime.GOOS: linux, darwin, windows, freebsd"},
 		}

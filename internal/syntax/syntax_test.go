@@ -556,3 +556,21 @@ func TestParseDataErrors(t *testing.T) {
 		}
 	}
 }
+
+// TestParseStringConcatenation keeps the documented `+` promise: two strings,
+// or a string and a reference, concatenate.
+func TestParseStringConcatenation(t *testing.T) {
+	src := `Window {
+	Column {
+		Text { text: "Conditional: the " + app.mode + " scheme is active." }
+	}
+}`
+	f, diag := Parse([]byte(src))
+	if !diag.Empty() {
+		t.Fatalf("unexpected diagnostics: %v", diag)
+	}
+	prop := f.Root.Children()[0].Children()[0].Prop("text")
+	if _, ok := prop.Value.(*Binary); !ok {
+		t.Fatalf("value = %T, want a binary expression", prop.Value)
+	}
+}

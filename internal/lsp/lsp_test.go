@@ -976,3 +976,37 @@ Window {
 		t.Fatalf("each arm children = %+v", each.Children)
 	}
 }
+
+// TestCompletionOffersModeGlobals keeps the two new app globals discoverable,
+// with the light/dark meaning in the detail line.
+func TestCompletionOffersModeGlobals(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\ttheme: app.\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "theme: app.", len("theme: app.")),
+	})
+	var list completionList
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	details := map[string]string{}
+	for _, it := range list.Items {
+		details[it.Label] = it.Detail
+	}
+	for _, want := range []string{"mode", "systemMode", "theme", "dark", "os"} {
+		if _, ok := details[want]; !ok {
+			t.Fatalf("app.%s missing: %v", want, details)
+		}
+	}
+	if !strings.Contains(details["mode"], "light | dark") {
+		t.Fatalf("app.mode detail = %q", details["mode"])
+	}
+	if !strings.Contains(details["systemMode"], "light | dark") {
+		t.Fatalf("app.systemMode detail = %q", details["systemMode"])
+	}
+}

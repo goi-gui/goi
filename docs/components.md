@@ -179,7 +179,12 @@ Window { theme: brand }
 
 `ui.LightTheme()`/`ui.DarkTheme()` return a copy you can edit; `ui.Theme` and
 `ui.Colors` are the exported types. An unknown name falls back to light and
-reports through `App.OnError`. `app.dark` follows the resolved scheme.
+reports through `App.OnError`.
+
+`app.mode` (design) and `Window.Mode()` (Go) report the resolved scheme's mood as
+`light` or `dark`, so a registered dark theme reads as dark. `theme: app.systemMode`
+follows the desktop setting, and `Window.SystemMode()` reports it from Go as a
+`ui.Mode` enum.
 
 ## Finding elements from Go
 

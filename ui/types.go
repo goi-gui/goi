@@ -55,6 +55,18 @@ func LightTheme() *Theme { return m3.Light() }
 // DarkTheme returns the baseline dark scheme.
 func DarkTheme() *Theme { return m3.Dark() }
 
+// Mode is a light or dark scheme: the mood a design shows, which
+// `Theme.Dark` on the resolved scheme decides.
+type Mode = tree.Mode
+
+// Mode values. ModeUnknown is only what SystemMode reports when the desktop
+// does not say; a window always resolves to light or dark.
+const (
+	ModeLight   = tree.ModeLight
+	ModeDark    = tree.ModeDark
+	ModeUnknown = tree.ModeUnknown
+)
+
 // DirtyKind says what a change affects.
 type DirtyKind = tree.DirtyKind
 

@@ -159,21 +159,70 @@ func (t *Tree) SetViewport(w, h float64) {
 	t.viewW, t.viewH = w, h
 }
 
-// Dark reports whether the resolved scheme is dark, which is what `app.dark`
-// exposes to a design. Until the driver resolves a named scheme, the tree falls
-// back to the convention that a theme called "dark" is dark.
-func (t *Tree) Dark() bool {
-	if t.darkSet {
-		return t.dark
+// Mode is a light or dark scheme, the value a design reads as `app.mode` and an
+// app reads from Window.Mode.
+type Mode uint8
+
+// Mode values. ModeUnknown is only reported for the desktop's preference when
+// the platform does not say what it is.
+const (
+	ModeLight Mode = iota
+	ModeDark
+	ModeUnknown
+)
+
+// String returns the design-side name: light, dark, or unknown.
+func (m Mode) String() string {
+	switch m {
+	case ModeDark:
+		return "dark"
+	case ModeUnknown:
+		return "unknown"
 	}
-	return t.Root != nil && t.Root.Theme.Get() == "dark"
+	return "light"
 }
 
-// SetDark records the mood of the resolved scheme. The driver sets it whenever
-// it picks a theme, so a custom dark theme is still `app.dark`.
-func (t *Tree) SetDark(dark bool) {
-	t.dark, t.darkSet = dark, true
+// Dark reports whether the mode is dark, which is what `app.dark` exposes.
+func (m Mode) Dark() bool { return m == ModeDark }
+
+// Mode reports the mood of the resolved scheme, which is what `app.mode`
+// exposes to a design. Until the driver resolves a registered scheme, the tree
+// falls back to the convention that a theme called "dark" is dark.
+func (t *Tree) Mode() Mode {
+	if t.modeSet {
+		return t.mode
+	}
+	if t.Root != nil && t.Root.Theme.Get() == "dark" {
+		return ModeDark
+	}
+	return ModeLight
 }
+
+// SetMode records the mood of the resolved scheme. The driver sets it whenever
+// it picks a theme, so a custom dark theme still reads as dark.
+func (t *Tree) SetMode(m Mode) {
+	t.mode, t.modeSet = m, true
+}
+
+// Dark reports whether the resolved scheme is dark.
+func (t *Tree) Dark() bool { return t.Mode().Dark() }
+
+// SetDark is SetMode as a bool, for callers that only know the polarity.
+func (t *Tree) SetDark(dark bool) {
+	if dark {
+		t.SetMode(ModeDark)
+		return
+	}
+	t.SetMode(ModeLight)
+}
+
+// SystemMode reports the desktop's light/dark preference, or ModeUnknown when
+// the platform does not report one.
+func (t *Tree) SystemMode() Mode { return t.systemMode }
+
+// SetSystemMode records the desktop preference, so a design can follow it with
+// `theme: app.systemMode`.
+func (t *Tree) SetSystemMode(m Mode) { t.systemMode = m }
 
 // OS returns the operating system the app runs on, which is what `app.os`
 // exposes to a design: linux, darwin, windows, freebsd.
@@ -455,6 +504,12 @@ func (c *evalCtx) evalRef(r *syntax.Ref) (any, bool) {
 		switch r.Prop {
 		case "theme":
 			return c.tree.Root.Theme.Get(), true
+		case "mode":
+			// The name, not the type: an enum or a color role can read it, the
+			// same way `app.theme` feeds a string property.
+			return c.tree.Mode().String(), true
+		case "systemMode":
+			return c.tree.SystemMode().String(), true
 		case "dark":
 			return c.tree.Dark(), true
 		case "os":

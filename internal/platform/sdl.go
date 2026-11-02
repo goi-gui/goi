@@ -28,6 +28,7 @@ const (
 	evText
 	evEditing
 	evUser
+	evTheme
 )
 
 // rawEvent is one translated SDL event.
@@ -176,6 +177,9 @@ func sdlSetTextInputArea(p unsafe.Pointer, x, y, w, h int) {
 }
 
 func sdlModState() int { return int(C.SDL_GetModState()) }
+
+// sdlSystemTheme reports the desktop preference: 0 unknown, 1 light, 2 dark.
+func sdlSystemTheme() int { return int(C.goiSystemTheme()) }
 
 func sdlClipboard() string {
 	p := C.goiClipboardText()

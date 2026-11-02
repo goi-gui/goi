@@ -31,6 +31,9 @@ type Input interface {
 	// during an interactive resize, where the compositor waits for a buffer
 	// before it applies the new size.
 	Expose()
+	// ThemeChanged reports that the desktop switched between light and dark.
+	// A design may follow it with `theme: app.systemMode`.
+	ThemeChanged()
 	Close()
 }
 
@@ -238,6 +241,10 @@ func (p *Window) dispatch(ev rawEvent) {
 		if p.input != nil {
 			p.input.Resize(p.width, p.height, p.contentScale())
 		}
+	case evTheme:
+		if p.input != nil {
+			p.input.ThemeChanged()
+		}
 	case evExpose:
 		// During an interactive resize Wayland holds an implicit grab: SDL
 		// defers the configure and its resize event to the next frame, and
@@ -278,7 +285,6 @@ func (p *Window) dispatch(ev rawEvent) {
 			p.input.Scroll(ev.wheelX, ev.wheelY, translateMods(sdlModState()).Shift)
 		}
 	case evKey:
-		println("DEBUG key scancode", ev.scancode, "key", translateKey(ev.scancode))
 		if p.input != nil {
 			p.input.Key(translateKey(ev.scancode), translateMods(ev.mod))
 		}
@@ -369,6 +375,29 @@ func (p *Window) Destroy() {
 
 // PostEmptyEvent wakes WaitEvents from another goroutine.
 func PostEmptyEvent() { sdlPushUserEvent() }
+
+// Theme is the desktop's light/dark preference.
+type Theme uint8
+
+// Theme values. ThemeUnknown means the platform does not report one.
+const (
+	ThemeUnknown Theme = iota
+	ThemeLight
+	ThemeDark
+)
+
+// SystemTheme returns the desktop's theme as last reported by the platform. It
+// is the value SDL caches and updates on SDL_EVENT_SYSTEM_THEME_CHANGED, so it
+// is cheap to read on every frame.
+func SystemTheme() Theme {
+	switch sdlSystemTheme() {
+	case 1:
+		return ThemeLight
+	case 2:
+		return ThemeDark
+	}
+	return ThemeUnknown
+}
 
 // SetTitle updates the window title.
 func (p *Window) SetTitle(title string) { sdlSetTitle(p.win, title) }

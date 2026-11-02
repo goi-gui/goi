@@ -707,8 +707,9 @@ func (p *parser) parseValue() (Value, bool) {
 	t := p.peek()
 	switch t.kind {
 	case tokString:
-		p.next()
-		return &String{At: t.pos, Val: t.text}, true
+		// A string is an operand too, so `"a" + "b"` concatenates as the
+		// syntax reference promises.
+		return p.parseExpr()
 	case tokNumber, tokLParen, tokBang, tokMinus:
 		return p.parseExpr()
 	case tokBool:
