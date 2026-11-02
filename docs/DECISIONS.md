@@ -940,3 +940,14 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   The list comes from `internal/highlight.Languages` plus the short aliases, is
   filtered by prefix and capped, and quotes names such as `c++` that are not bare
   `.goi` identifiers.
+- **A scroll gesture continues into the page when a child is at its end.**
+  `Scroll` used to move only the nearest scrollable ancestor, so a `TextArea`
+  that fits, or a list already at its end, swallowed the wheel and the page
+  behind it looked frozen under the pointer. The gesture is now applied in
+  pixels from the nearest scrollable node upwards: each node takes what it can
+  and passes the rest on. A touchpad coast that reaches an edge is handed on the
+  same way, so a flick does not die at the inner end. `scrollChain` is the one
+  implementation, shared by the wheel and `tickFling`;
+  `TestWheelChainsFromInnerToPage`,
+  `TestWheelPassesThroughAnInnerThatCannotScroll` and
+  `TestTouchpadFlingChainsToThePage` pin it.

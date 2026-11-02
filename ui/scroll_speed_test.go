@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"math"
 	"testing"
 
@@ -108,5 +109,91 @@ func TestTouchpadSlowScrollBarelyCoasts(t *testing.T) {
 	}
 	if math.Abs(coast) > math.Abs(gesture) {
 		t.Fatalf("a slow drag of %v px coasted %v px", gesture, coast)
+	}
+}
+
+// nestedScrollUI puts a scrollable column inside a scrollable page, so a wheel
+// over the inner one has two candidates.
+const nestedScrollUI = `Window {
+	Column {
+		id: page
+		scroll: true
+		width: 300
+		height: 300
+		Column {
+			id: inner
+			scroll: true
+			width: 300
+			height: 100
+			Column { height: %d width: 300 }
+		}
+		Column { height: 600 width: 300 }
+	}
+}`
+
+// nestedScrollFixture returns the interactor with the pointer over the inner
+// scroller, plus both nodes.
+func nestedScrollFixture(t *testing.T, innerContent int) (*interactor, tree.Node, tree.Node) {
+	t.Helper()
+	_, win, in := inputFixture(t, fmt.Sprintf(nestedScrollUI, innerContent), 300, 300)
+	in.MouseMove(50, 50)
+	page, ok := win.tree.ByID("page")
+	if !ok {
+		t.Fatal("no page")
+	}
+	inner, ok := win.tree.ByID("inner")
+	if !ok {
+		t.Fatal("no inner scroller")
+	}
+	return in, inner, page
+}
+
+// The inner scroller takes the wheels it can use, and the page gets the rest
+// once it is at its end: the pointer must never look stuck over a child.
+func TestWheelChainsFromInnerToPage(t *testing.T) {
+	in, inner, page := nestedScrollFixture(t, 200) // 100px of room
+	in.Scroll(0, -1)
+	if got := inner.Base().ScrollOffset(); got != 48 {
+		t.Fatalf("inner = %v after one notch, want 48", got)
+	}
+	if got := page.Base().ScrollOffset(); got != 0 {
+		t.Fatalf("page moved to %v while the inner had room", got)
+	}
+	in.Scroll(0, -1)
+	if got := inner.Base().ScrollOffset(); got != 96 {
+		t.Fatalf("inner = %v after two notches, want 96", got)
+	}
+	in.Scroll(0, -1) // 4px left inside, 44px for the page
+	if got := inner.Base().ScrollOffset(); got != 100 {
+		t.Fatalf("inner = %v, want its end at 100", got)
+	}
+	if got := page.Base().ScrollOffset(); got != 44 {
+		t.Fatalf("page = %v, want the leftover 44", got)
+	}
+}
+
+// A scrollable child that cannot scroll at all must not block the page: this
+// is what a short TextArea inside a long page looks like.
+func TestWheelPassesThroughAnInnerThatCannotScroll(t *testing.T) {
+	in, inner, page := nestedScrollFixture(t, 40)
+	in.Scroll(0, -1)
+	if got := inner.Base().ScrollOffset(); got != 0 {
+		t.Fatalf("a non-overflowing child scrolled to %v", got)
+	}
+	if got := page.Base().ScrollOffset(); got != 48 {
+		t.Fatalf("page = %v, want one notch 48", got)
+	}
+}
+
+// A coast that reaches the end of the inner scroller carries on into the page.
+func TestTouchpadFlingChainsToThePage(t *testing.T) {
+	in, inner, page := nestedScrollFixture(t, 200)
+	inner.Base().SetScrollOffset(100) // the inner is already at its end
+	in.flingNode, in.flingV = inner, 1000
+	if !in.tickFling(1.0 / 60) {
+		t.Fatal("the coast stopped at the inner end instead of moving the page")
+	}
+	if got := page.Base().ScrollOffset(); got == 0 {
+		t.Fatal("page did not move")
 	}
 }

@@ -655,36 +655,74 @@ func segmentRun(n tree.Node, kind string) []tree.Node {
 // usual desktop notch, so a list moves a few lines per click of the wheel.
 const scrollStep = 48
 
-// Scroll turns wheel and touchpad input into a scroll offset on the nearest
-// scrollable ancestor of the pointer.
+// Scroll turns wheel and touchpad input into a scroll offset. The step goes to
+// the nearest scrollable ancestor of the pointer, then to the next one up when
+// it has no room left. A short TextArea or a list at its end must not swallow
+// the wheel: the page behind it has to keep scrolling, or the pointer looks
+// stuck over that component.
 func (i *interactor) Scroll(dx, dy float64) {
-	n := scrollableAt(i.hit(i.cursorX, i.cursorY))
-	if n == nil {
+	start := scrollableAt(i.hit(i.cursorX, i.cursorY))
+	if start == nil {
 		return
 	}
-	b := n.Base()
-	delta := dy
-	if b.ScrollAxis() == tree.AxisX {
-		// Most mice only have a vertical wheel; use it for a horizontal area.
-		if dx == 0 {
-			dx = dy
-		}
-		delta = dx
+	moved := -scrollStep * scrollDelta(start, dx, dy)
+	if moved == 0 {
+		return
 	}
-	moved := -delta * scrollStep
-	b.SetScrollOffset(b.ScrollOffset() + moved)
-	b.MarkDirty(tree.DirtyPaint)
+	last, consumed := scrollChain(start, moved)
+	if last == nil {
+		return
+	}
 	// Only a touchpad coasts. A wheel notch is one deliberate step and must
 	// stop where it lands; letting it fling too made every click of the wheel
 	// travel several times as far as the notch.
-	if preciseWheel(delta) {
-		i.startFling(n, moved)
+	if preciseWheel(dx) || preciseWheel(dy) {
+		i.startFling(last, consumed)
 	} else {
 		i.flingNode, i.flingV = nil, 0
 	}
 	// The content moved under a stationary pointer, so the shape may be stale.
 	i.pointerAt(i.hit(i.cursorX, i.cursorY))
 	i.markDirty()
+}
+
+// scrollDelta picks the wheel delta that drives n: its own axis, with a
+// vertical wheel standing in for a horizontal one, because most mice have no
+// horizontal wheel at all.
+func scrollDelta(n tree.Node, dx, dy float64) float64 {
+	if n.Base().ScrollAxis() == tree.AxisX {
+		if dx == 0 {
+			return dy
+		}
+		return dx
+	}
+	return dy
+}
+
+// scrollChain moves px logical pixels of content, starting at start and walking
+// up the scrollable ancestors: each node takes what it can and the rest goes to
+// the next one, so a child at its end does not swallow the gesture. It returns
+// the outermost node that moved and the pixels absorbed.
+func scrollChain(start tree.Node, px float64) (tree.Node, float64) {
+	var last tree.Node
+	var consumed float64
+	for n := start; n != nil && px != 0; n = n.Base().Parent() {
+		b := n.Base()
+		if b.ScrollAxis() == tree.AxisNone {
+			continue
+		}
+		before := b.ScrollOffset()
+		after := min(max(before+px, 0), b.ScrollMax())
+		if after == before {
+			continue
+		}
+		b.SetScrollOffset(after)
+		b.MarkDirty(tree.DirtyPaint)
+		px -= after - before
+		consumed += after - before
+		last = n
+	}
+	return last, consumed
 }
 
 // preciseWheel reports whether a wheel delta comes from a touchpad or another
@@ -729,19 +767,17 @@ func (i *interactor) tickFling(dt float64) bool {
 	if i.flingNode == nil || i.flingV == 0 {
 		return false
 	}
-	b := i.flingNode.Base()
-	before := b.ScrollOffset()
-	b.SetScrollOffset(before + i.flingV*dt)
+	last, _ := scrollChain(i.flingNode, i.flingV*dt)
 	i.flingV *= math.Exp(-flingFriction * dt)
-	after := b.ScrollOffset()
 	// Hitting an edge kills the momentum; otherwise the offset would keep
-	// asking for frames while nothing moves.
-	if after == before || math.Abs(i.flingV) < 20 {
+	// asking for frames while nothing moves. The chain hands a coast that
+	// reaches the end of a child to the page above it.
+	if last == nil || math.Abs(i.flingV) < 20 {
 		i.flingNode = nil
 		i.flingV = 0
 		return false
 	}
-	b.MarkDirty(tree.DirtyPaint)
+	i.flingNode = last
 	i.markDirty()
 	return true
 }
