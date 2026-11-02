@@ -651,6 +651,10 @@ func segmentRun(n tree.Node, kind string) []tree.Node {
 	return run
 }
 
+// scrollStep is the distance one wheel notch moves, in logical pixels. It is the
+// usual desktop notch, so a list moves a few lines per click of the wheel.
+const scrollStep = 48
+
 // Scroll turns wheel and touchpad input into a scroll offset on the nearest
 // scrollable ancestor of the pointer.
 func (i *interactor) Scroll(dx, dy float64) {
@@ -667,41 +671,57 @@ func (i *interactor) Scroll(dx, dy float64) {
 		}
 		delta = dx
 	}
-	moved := -delta * 48
+	moved := -delta * scrollStep
 	b.SetScrollOffset(b.ScrollOffset() + moved)
 	b.MarkDirty(tree.DirtyPaint)
-	i.startFling(n, moved)
+	// Only a touchpad coasts. A wheel notch is one deliberate step and must
+	// stop where it lands; letting it fling too made every click of the wheel
+	// travel several times as far as the notch.
+	if preciseWheel(delta) {
+		i.startFling(n, moved)
+	} else {
+		i.flingNode, i.flingV = nil, 0
+	}
 	// The content moved under a stationary pointer, so the shape may be stale.
 	i.pointerAt(i.hit(i.cursorX, i.cursorY))
 	i.markDirty()
 }
 
-// startFling turns the last wheel step into a velocity, so a fast flick coasts.
-// A step that arrives after a pause starts a new gesture instead of adding to a
-// stale one.
+// preciseWheel reports whether a wheel delta comes from a touchpad or another
+// smooth-scrolling device instead of a notched wheel. libinput reports a notch
+// as a whole step and a touchpad as a fraction of one, so the fraction is what
+// separates them.
+func preciseWheel(delta float64) bool {
+	if delta == 0 {
+		return false
+	}
+	return math.Abs(delta) < 0.999 || math.Abs(delta-math.Round(delta)) > 0.001
+}
+
+// startFling turns the last touchpad step into a velocity, so a fast flick
+// coasts. A step that arrives after a pause starts a new gesture instead of
+// adding to a stale one.
 func (i *interactor) startFling(n tree.Node, moved float64) {
 	now := time.Now()
 	dt := now.Sub(i.lastWheel).Seconds()
 	i.lastWheel = now
 	if dt <= 0 || dt > 0.25 {
-		i.flingNode = n
-		i.flingV = moved / 0.05 // one step is about a 20 Hz gesture
-		return
+		dt = 0.05 // one step is about a 20 Hz gesture
 	}
 	i.flingNode = n
-	i.flingV = moved / dt
-	// A trackpad sends many tiny steps; cap what one tick can carry.
-	if i.flingV > 8000 {
-		i.flingV = 8000
-	}
-	if i.flingV < -8000 {
-		i.flingV = -8000
-	}
+	// A flick that is faster than this coasts further than the page is tall,
+	// which reads as the scroll running away from the finger.
+	i.flingV = min(max(moved/dt, -flingMaxSpeed), flingMaxSpeed)
 }
 
 // flingFriction is the exponential decay per second. 6 is a short M3-like
 // coast: about 400ms to a stop from a fast flick.
 const flingFriction = 6.0
+
+// flingMaxSpeed caps a coast at flingMaxSpeed/flingFriction logical pixels,
+// about 430, so a hard flick glides without throwing the content past what the
+// reader aimed at.
+const flingMaxSpeed = 2600.0
 
 // tickFling advances a coasting scroll and reports whether the loop must keep
 // drawing. It stops at the end of the content instead of bouncing.
@@ -716,7 +736,7 @@ func (i *interactor) tickFling(dt float64) bool {
 	after := b.ScrollOffset()
 	// Hitting an edge kills the momentum; otherwise the offset would keep
 	// asking for frames while nothing moves.
-	if after == before || math.Abs(i.flingV) < 8 {
+	if after == before || math.Abs(i.flingV) < 20 {
 		i.flingNode = nil
 		i.flingV = 0
 		return false

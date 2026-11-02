@@ -912,3 +912,12 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   painter. A nested ClipRRect has already rounded its own range to its own
   radius, so the outer pass overwrites it with the outer radius — which is what
   a real clip stack would produce, since the outer cut is the smaller one.
+- **A wheel notch scrolls one step; only a touchpad coasts.** `Scroll` used to
+  start a fling for every wheel event, so one click of the wheel travelled 48px
+  and then coasted: with the old 8000px/s cap and a friction of 6 that is another
+  1300px, which is why scrolling felt like it ran away. A touchpad and a notched
+  wheel are told apart by the delta itself (libinput reports a notch as a whole
+  step and a touchpad as a fraction of one), the coast is capped at
+  `flingMaxSpeed/flingFriction` ≈ 430px, and a notch cancels a coast in progress.
+  `TestWheelNotchDoesNotFling`, `TestWheelSpinStaysLinear` and
+  `TestTouchpadFlingIsCapped` pin all three.

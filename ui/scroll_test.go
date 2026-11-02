@@ -5,9 +5,10 @@ import (
 	"time"
 )
 
-// TestWheelFlingCoasts checks that a wheel gesture keeps scrolling for a moment
-// and then stops on its own, so the loop can sleep.
-func TestWheelFlingCoasts(t *testing.T) {
+// TestTouchpadFlingCoasts checks that a touchpad gesture keeps scrolling for a
+// moment and then stops on its own, so the loop can sleep. A wheel notch does
+// not coast; that is TestWheelNotchDoesNotFling.
+func TestTouchpadFlingCoasts(t *testing.T) {
 	_, _, in := inputFixture(t, `Window { Column {
 		scroll: true
 		width: 100
@@ -15,10 +16,10 @@ func TestWheelFlingCoasts(t *testing.T) {
 		Rectangle { width: 100 height: 600 background: #ff0000 }
 	} }`, 200, 200)
 	in.cursorX, in.cursorY = 10, 10
-	in.Scroll(0, -1)
+	in.Scroll(0, -0.4) // a fraction of a notch: a touchpad, not a wheel
 	n := in.flingNode
 	if n == nil {
-		t.Fatal("a wheel step did not start a fling")
+		t.Fatal("a touchpad step did not start a fling")
 	}
 	time.Sleep(10 * time.Millisecond)
 	before := n.Base().ScrollOffset()
