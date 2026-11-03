@@ -1099,3 +1099,20 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   `TestModeFallsBackToTheThemeName`, `TestSystemModeIsWhatTheDesktopSaid`,
   `TestWindowModeReachesGo`, `TestAppModeGlobals` and
   `TestCompletionOffersModeGlobals` pin it.
+
+- **A Go write takes the property back from its expression.** `theme: app.systemMode`
+  made the window follow the desktop, but the gallery's switch then did nothing:
+  `Prop.Set` changed the value and `ApplyExpressions` put `app.systemMode` back on
+  the next frame, because the expression owned the cell forever. The alternative
+  was a gallery-only workaround (drop the expression, copy `SystemMode` in Bind),
+  which leaves the trap for every app that documents the same pattern. Instead
+  `applyExpressions` skips a property with `GoSet` set, so the precedence is
+  "Go wins until reload", the same rule hot reload already carried Go-set values
+  by (`LiteralChanged`), with `CopyFrom` marking a carried value as Go's so a
+  reload without a file edit does not hand it back. It applies to every expression, which is what the rest
+  of the framework wants anyway: typing in a `TextField` whose `text` came from
+  an expression, or dragging a `Slider` whose `value` did, must not be reverted
+  either. Costs: the expression stays recorded but idle, and Go cannot hand the
+  property back without a reload (a changed .goi literal reclaims it). The gallery
+  tracks `themeChosen`, so a fresh run keeps following the desktop until the
+  switch is used; `TestGoSetTakesThePropertyFromItsExpression` pins both halves.

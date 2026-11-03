@@ -238,6 +238,12 @@ func (b *NodeBase) SetViewport(w, h float64) {
 func (b *NodeBase) applyExpressions() {
 	for i := range b.exprs {
 		spec := &b.exprs[i]
+		if b.GoSet(spec.name) {
+			// Go wrote this property, so the design no longer owns it: a theme
+			// switch or a typed-in text must not be reverted every frame. Hot
+			// reload keeps the same rule, and a changed .goi literal reclaims it.
+			continue
+		}
 		if hasPercent(spec.value) {
 			continue // ResolveSize needs the parent's content size
 		}

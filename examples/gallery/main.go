@@ -75,6 +75,9 @@ func main() {
 	active := 0
 	drawerOpen := false
 	dark := false
+	// Until someone uses a theme switch, `theme: app.systemMode` owns the
+	// scheme. The first switch takes it over, and a reload keeps that choice.
+	themeChosen := false
 
 	if err := win.Bind(func(w *ui.Window) error {
 		show := func(i int) {
@@ -171,6 +174,7 @@ func main() {
 		// Both theme controls drive this one function: the rail switch and the
 		// one on the Layout page stay in step because neither owns the state.
 		applyTheme := func(d bool) {
+			themeChosen = true
 			dark = d
 			theme := "light"
 			if d {
@@ -184,10 +188,13 @@ func main() {
 			}
 		}
 
-		// Restore the state a reload must not lose.
+		// Restore the state a reload must not lose. A still-unset theme is left
+		// to `app.systemMode`, so the switch starts on whatever the desktop uses.
 		show(active)
 		setDrawer(drawerOpen)
-		applyTheme(dark)
+		if themeChosen {
+			applyTheme(dark)
+		}
 
 		// Navigation: a click on a destination reports its index.
 		if rail, err := ui.ByID[*ui.NavigationRail](w, "rail"); err == nil {

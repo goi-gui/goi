@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ksckaan1/goi/internal/m3"
+	"github.com/ksckaan1/goi/internal/tree"
 )
 
 // brandTheme is Light with a distinctive primary, so a test can tell the
@@ -99,5 +100,67 @@ func TestWindowModeReachesGo(t *testing.T) {
 	}
 	if got := MustByID[*Text](w, "label").Text.Get(); got != "light" {
 		t.Fatalf("app.mode = %q after the switch", got)
+	}
+}
+
+// TestThemeSwitchOverridesSystemMode is the gallery bug: `theme: app.systemMode`
+// follows the desktop, but a click on a switch has to win and stay won across
+// the frame's expression pass.
+func TestThemeSwitchOverridesSystemMode(t *testing.T) {
+	const src = `Window {
+		theme: app.systemMode
+		Column {
+			Switch { id: sw checked: app.dark iconOn: dark_mode iconOff: light_mode }
+		}
+	}`
+	_, w, in := inputFixture(t, src, 480, 320)
+	w.tree.SetSystemMode(tree.ModeLight)
+	w.tree.ApplyExpressions()
+	if got := w.Root().Theme.Get(); got != "light" {
+		t.Fatalf("theme = %q, want the desktop's light", got)
+	}
+
+	sw := MustByID[*Switch](w, "sw")
+	sw.OnToggle(func(dark bool) {
+		name := "light"
+		if dark {
+			name = "dark"
+		}
+		w.Root().Theme.Set(name)
+		sw.Checked.Set(dark)
+	})
+	b := absoluteRect(sw)
+	in.MouseDown(b.X+b.W/2, b.Y+b.H/2, 0, false)
+	in.MouseUp(b.X+b.W/2, b.Y+b.H/2, 0)
+
+	// The frame loop re-evaluates `theme: app.systemMode`; it must not revert.
+	w.tree.ApplyExpressions()
+	if got := w.Root().Theme.Get(); got != "dark" {
+		t.Fatalf("theme = %q after the click, want dark", got)
+	}
+	if !sw.Checked.Get() {
+		t.Fatal("the switch did not stay checked")
+	}
+	if w.tree.Mode() != tree.ModeDark {
+		t.Fatalf("mode = %v", w.tree.Mode())
+	}
+
+	// A reload without a file edit keeps the choice: the value carried over is
+	// still Go's, so the expression must not reclaim it.
+	if err := applyReloadSource(t, w.app, src); err != nil {
+		t.Fatal(err)
+	}
+	w = w.app.win
+	if got := w.Root().Theme.Get(); got != "dark" {
+		t.Fatalf("theme = %q after a reload", got)
+	}
+
+	// Editing the theme line gives the property back to the design.
+	if err := applyReloadSource(t, w.app, strings.Replace(src, "theme: app.systemMode", "theme: light", 1)); err != nil {
+		t.Fatal(err)
+	}
+	w = w.app.win
+	if got := w.Root().Theme.Get(); got != "light" {
+		t.Fatalf("theme = %q after the literal changed", got)
 	}
 }

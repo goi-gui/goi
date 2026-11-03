@@ -18,7 +18,7 @@ data galleryRow {
 Window {
 	id: main
 	title: "Material 3 components"
-	theme: light
+	theme: app.systemMode
 
 	Stack {
 		Row {

@@ -453,6 +453,19 @@ reports the *name*, so `theme: brand` keeps `app.theme == "brand"` while
 Because these expressions read live state, they are re-evaluated every frame;
 an unchanged result does not mark anything dirty, so an idle window stays idle.
 
+A property starts out owned by its expression. The first time Go sets it, Go
+takes it over and the expression stops writing that property, so a scheme the
+user picked is not reverted by `theme: app.systemMode`. Hot reload keeps the
+rule, and editing that property's literal in the `.goi` file gives it back to
+the expression.
+
+```
+Window {
+    theme: app.systemMode          // follows the desktop until Go sets it
+    Switch { checked: app.dark }   // likewise: a click wins
+}
+```
+
 ```
 Row {
     Rectangle { id: side width: 200 height: 40 }

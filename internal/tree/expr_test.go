@@ -115,3 +115,58 @@ func TestStringConcat(t *testing.T) {
 		t.Fatalf("text = %v", got)
 	}
 }
+
+// TestGoSetTakesThePropertyFromItsExpression is the theme-switch case: a design
+// that starts on `app.systemMode` must still let Go pick a scheme, and the
+// frame loop must not put the expression's value back.
+func TestGoSetTakesThePropertyFromItsExpression(t *testing.T) {
+	tr, diag := BuildSource([]byte(`Window {
+		theme: app.systemMode
+		Text { id: label text: app.mode }
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	tr.SetSystemMode(ModeLight)
+	tr.ApplyExpressions()
+	label := tr.ids["label"].(*Text)
+	if got := tr.Root.Theme.Get(); got != "light" {
+		t.Fatalf("theme = %q, want the desktop's light", got)
+	}
+	if got := label.Text.Get(); got != "light" {
+		t.Fatalf("text = %q", got)
+	}
+
+	// Go takes both properties over, the way the gallery's switch does.
+	tr.Root.Theme.Set("dark")
+	tr.SetMode(ModeDark)
+	tr.ApplyExpressions()
+	label.Text.Set("manual")
+	tr.SetSystemMode(ModeLight)
+	tr.ApplyExpressions()
+
+	if got := tr.Root.Theme.Get(); got != "dark" {
+		t.Fatalf("theme = %q, the expression overwrote a Go value", got)
+	}
+	if got := label.Text.Get(); got != "manual" {
+		t.Fatalf("text = %q, the expression overwrote a Go value", got)
+	}
+
+	// The expression still owns a property Go never wrote.
+	tr, diag = BuildSource([]byte(`Window {
+		theme: app.systemMode
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	tr.SetSystemMode(ModeDark)
+	tr.ApplyExpressions()
+	if got := tr.Root.Theme.Get(); got != "dark" {
+		t.Fatalf("theme = %q, want it to follow the desktop", got)
+	}
+	tr.SetSystemMode(ModeLight)
+	tr.ApplyExpressions()
+	if got := tr.Root.Theme.Get(); got != "light" {
+		t.Fatalf("theme = %q after the desktop switched", got)
+	}
+}

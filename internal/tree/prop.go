@@ -122,6 +122,7 @@ func StringProp(b *NodeBase, name string, p *Prop[string]) NamedProp {
 				return false
 			}
 			p.val = v
+			p.goSet = true
 			return true
 		},
 		goSet: func() bool { return p.goSet },
@@ -149,6 +150,7 @@ func NumberProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[float64]) Nam
 				return false
 			}
 			p.val = v
+			p.goSet = true
 			return true
 		},
 		goSet: func() bool { return p.goSet },
@@ -176,6 +178,7 @@ func BoolProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[bool]) NamedPro
 				return false
 			}
 			p.val = v
+			p.goSet = true
 			return true
 		},
 		goSet: func() bool { return p.goSet },
@@ -218,6 +221,7 @@ func ColorProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[uint32]) Named
 				return false
 			}
 			p.val = v
+			p.goSet = true
 			return true
 		},
 		goSet: func() bool { return p.goSet },
@@ -257,6 +261,7 @@ func EnumProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[string], allowe
 			for _, a := range allowed {
 				if v == a {
 					p.val = v
+					p.goSet = true
 					return true
 				}
 			}
