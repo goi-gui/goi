@@ -54,6 +54,16 @@ func Load(fsys fs.FS, name string) (*Bundle, syntax.Diagnostics) {
 	if !diag.Empty() {
 		return b, diag
 	}
+	// Data declarations are design-wide: Go sets them by name and any file may
+	// read them, so a fragment's `data { ... }` and shapes merge into the one
+	// file the tree sees. The entry file's own declarations are already there.
+	for _, name := range l.order {
+		if name == entry {
+			continue
+		}
+		expanded.Vars = append(expanded.Vars, l.files[name].Vars...)
+		expanded.Shapes = append(expanded.Shapes, l.files[name].Shapes...)
+	}
 	b.File = expanded
 	return b, nil
 }
@@ -186,6 +196,26 @@ func (l *loader) instantiateFile(f *syntax.File, name string, stack []string) (*
 	}, nil
 }
 
+// Preview returns a copy of a fragment with its params replaced by their
+// defaults, so the file can be laid out on its own: goicheck wraps the result in
+// a Window. A file that is not a fragment comes back unchanged.
+func Preview(f *syntax.File) (*syntax.File, syntax.Diagnostics) {
+	if f == nil || f.Root == nil || len(f.Params) == 0 {
+		return f, nil
+	}
+	params := make(map[string]syntax.Value, len(f.Params))
+	for _, pr := range f.Params {
+		params[pr.Name] = pr.Default
+	}
+	root := copyElement(f.Root)
+	if diag := substitute(root, params, f.Src); !diag.Empty() {
+		return nil, diag
+	}
+	out := *f
+	out.Root = root
+	return &out, nil
+}
+
 // expand walks one element tree, replacing fragment instances with their
 // content. aliases belongs to the file el came from.
 func (l *loader) expand(el *syntax.Element, aliases map[string]string, stack []string) (*syntax.Element, syntax.Diagnostics) {
@@ -218,7 +248,7 @@ func (l *loader) expandMembers(members []syntax.Member, aliases map[string]strin
 			}
 			kids = append(kids, child)
 		case *syntax.Element:
-			if child.Name == "$children" {
+			if strings.HasPrefix(child.Name, "$") {
 				// A slot with no caller: the fragment is being previewed on
 				// its own, so nothing goes there.
 				continue
@@ -281,20 +311,56 @@ func (l *loader) instance(target string, call *syntax.Element, callerAliases map
 	if diag := substitute(body, params, target); !diag.Empty() {
 		return nil, diag
 	}
+	// Before the caller's children land in a slot, and before the caller's own
+	// properties are applied to the root: their ids and references belong to
+	// the caller, and only the fragment's own ids follow the instance id.
+	if id, ok := literalID(call); ok {
+		scopeIDs(body, id)
+	}
 	applyOverrides(body, overrides)
 
-	kids := call.Children()
-	filled, diag := l.fillSlot(body, kids, callerAliases, append(stack, target))
+	// Split the call's children: `$name { ... }` goes to that slot, everything
+	// else to the unnamed `$children` slot.
+	slots := map[string][]*syntax.Element{}
+	namedAt := map[string]syntax.Pos{}
+	var names []string
+	var unnamed []*syntax.Element
+	for _, k := range call.Children() {
+		if strings.HasPrefix(k.Name, "$") {
+			if _, ok := slots[k.Name]; !ok {
+				names = append(names, k.Name)
+				namedAt[k.Name] = k.NameAt
+			}
+			slots[k.Name] = append(slots[k.Name], k.Children()...)
+			continue
+		}
+		unnamed = append(unnamed, k)
+	}
+	slots["$children"] = append(slots["$children"], unnamed...)
+
+	found, diag := l.fillSlot(body, slots, callerAliases, append(stack, target))
 	if !diag.Empty() {
 		return nil, diag
 	}
-	if !filled && len(kids) > 0 {
-		first := kids[0]
+	if !found["$children"] && len(unnamed) > 0 {
+		first := unnamed[0]
 		return nil, syntax.Diagnostics{{
 			Pos:     first.NameAt,
 			End:     first.NameAt + syntax.Pos(len(first.Name)),
 			Src:     first.Src,
 			Message: fmt.Sprintf("%s does not take children: add $children to %s where they should appear", call.Name, target),
+		}}
+	}
+	for _, name := range names {
+		if found[name] {
+			continue
+		}
+		at := namedAt[name]
+		return nil, syntax.Diagnostics{{
+			Pos:     at,
+			End:     at + syntax.Pos(len(name)),
+			Src:     call.Src,
+			Message: fmt.Sprintf("%s has no slot %s: write %s in %s where its children should appear", call.Name, name, name, target),
 		}}
 	}
 
@@ -305,12 +371,13 @@ func (l *loader) instance(target string, call *syntax.Element, callerAliases map
 	return expanded, nil
 }
 
-// fillSlot replaces every `$children` in el with the instance's child elements,
-// expanded in the caller's file so their own imports resolve there. A slot
+// fillSlot replaces every `$name` in el with the instance's elements for that
+// slot, expanded in the caller's file so their own imports resolve there. A slot
 // anywhere in the fragment body counts, inside a block arm too, which is how a
-// fragment forwards its children. It reports whether a slot was found at all.
-func (l *loader) fillSlot(el *syntax.Element, kids []*syntax.Element, callerAliases map[string]string, stack []string) (bool, syntax.Diagnostics) {
-	members, found, diag := l.fillMembers(el.Members, kids, callerAliases, stack)
+// fragment forwards its children. It reports the slots it found.
+func (l *loader) fillSlot(el *syntax.Element, slots map[string][]*syntax.Element, callerAliases map[string]string, stack []string) (map[string]bool, syntax.Diagnostics) {
+	found := map[string]bool{}
+	members, diag := l.fillMembers(el.Members, slots, callerAliases, stack, found)
 	if !diag.Empty() {
 		return found, diag
 	}
@@ -320,45 +387,42 @@ func (l *loader) fillSlot(el *syntax.Element, kids []*syntax.Element, callerAlia
 
 // fillMembers fills the slots in one member list, recursing into blocks and
 // nested elements.
-func (l *loader) fillMembers(members []syntax.Member, kids []*syntax.Element, callerAliases map[string]string, stack []string) ([]syntax.Member, bool, syntax.Diagnostics) {
+func (l *loader) fillMembers(members []syntax.Member, slots map[string][]*syntax.Element, callerAliases map[string]string, stack []string, found map[string]bool) ([]syntax.Member, syntax.Diagnostics) {
 	out := make([]syntax.Member, 0, len(members))
-	found := false
 	for _, m := range members {
 		switch x := m.(type) {
 		case *syntax.Block:
 			for i := range x.Branches {
-				arm, nested, diag := l.fillMembers(x.Branches[i].Members, kids, callerAliases, stack)
+				arm, diag := l.fillMembers(x.Branches[i].Members, slots, callerAliases, stack, found)
 				if !diag.Empty() {
-					return nil, found, diag
+					return nil, diag
 				}
 				x.Branches[i].Members = arm
-				found = found || nested
 			}
 			out = append(out, x)
 		case *syntax.Element:
-			if x.Name == "$children" {
-				found = true
-				for _, k := range kids {
+			if strings.HasPrefix(x.Name, "$") {
+				found[x.Name] = true
+				for _, k := range slots[x.Name] {
 					expanded, diag := l.expand(copyElement(k), callerAliases, stack)
 					if !diag.Empty() {
-						return nil, found, diag
+						return nil, diag
 					}
 					out = append(out, expanded)
 				}
 				continue
 			}
-			nested, below, diag := l.fillMembers(x.Members, kids, callerAliases, stack)
+			nested, diag := l.fillMembers(x.Members, slots, callerAliases, stack, found)
 			if !diag.Empty() {
-				return nil, found, diag
+				return nil, diag
 			}
 			x.Members = nested
-			found = found || below
 			out = append(out, x)
 		default:
 			out = append(out, m)
 		}
 	}
-	return out, found, nil
+	return out, nil
 }
 
 // substitute replaces `$name` values in place and reports a param the fragment
@@ -407,7 +471,9 @@ func substValue(v syntax.Value, params map[string]syntax.Value, src, from string
 			})
 			return x, diag
 		}
-		return got, diag
+		// Copy: the value belongs to the caller (or to the fragment's default),
+		// and the expansion rewrites ids and references in place.
+		return copyValue(got), diag
 	case *syntax.Map:
 		out := &syntax.Map{At: x.At, Entries: make([]syntax.MapEntry, len(x.Entries))}
 		for i, entry := range x.Entries {
@@ -499,9 +565,16 @@ func copyMembers(members []syntax.Member) []syntax.Member {
 	return out
 }
 
-// copyValue clones the composite values; the leaves are immutable.
+// copyValue clones a value, leaves included: expansion rewrites ids and the
+// references that name them, and two instances must not share those pointers.
 func copyValue(v syntax.Value) syntax.Value {
 	switch x := v.(type) {
+	case *syntax.Ident:
+		return &syntax.Ident{At: x.At, Val: x.Val}
+	case *syntax.String:
+		return &syntax.String{At: x.At, Val: x.Val}
+	case *syntax.Ref:
+		return &syntax.Ref{At: x.At, ID: x.ID, Prop: x.Prop}
 	case *syntax.Map:
 		out := &syntax.Map{At: x.At, Entries: make([]syntax.MapEntry, len(x.Entries))}
 		for i, entry := range x.Entries {

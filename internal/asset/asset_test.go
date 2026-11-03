@@ -314,6 +314,47 @@ Column { Text { text: $label } }`,
 	}
 }
 
+// TestFragmentDataMergesIntoTheEntry lets a fragment own the `data` block and
+// the shape its {#each} walks; the app still sets it by name from the entry.
+func TestFragmentDataMergesIntoTheEntry(t *testing.T) {
+	dir := design(t, map[string]string{
+		"Main.goi": `import "./List.goi" as List
+Window {
+	List { }
+}`,
+		"List.goi": `data {
+	rows: row[]
+}
+
+data row {
+	title: string
+}
+
+Column {
+	{#each data.rows as row}
+		Text { text: row.title }
+	{:else}
+		Text { text: "empty" }
+	{/each}
+}`,
+	})
+	tr, err := load(t, dir, "Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr.SetData("rows", []map[string]any{{"title": "one"}, {"title": "two"}})
+	tr.ApplyExpressions()
+	var texts []string
+	for _, n := range tr.All() {
+		if tx, ok := n.(*tree.Text); ok {
+			texts = append(texts, tx.Text.Get())
+		}
+	}
+	if strings.Join(texts, ",") != "one,two" {
+		t.Fatalf("texts = %v, want [one two]", texts)
+	}
+}
+
 func textOf(tr *tree.Tree) string {
 	for _, n := range tr.All() {
 		if n.Kind() == "Text" {

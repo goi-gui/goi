@@ -11,6 +11,8 @@ Card {
 	Column {
 		spacing: 4
 		Text { text: $label role: "labelMedium" color: onSurfaceVariant }
-		Text { text: $value role: "headlineMedium" color: $tone }
+		// An id inside a fragment is scoped by the instance's id: with
+		// `StatCard { id: inbox }` this node is `inbox.value` from Go.
+		Text { id: value text: $value role: "headlineMedium" color: $tone }
 	}
 }

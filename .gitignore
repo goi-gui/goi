@@ -1,11 +1,3 @@
 /lib/
 goicheck
 *.test
-
-# Zed extension build output, and the grammar's own repo (Zed clones it with a
-# file:// URL for a dev install, so it must stay a repository, but its objects
-# are not part of this one).
-editors/zed/target/
-editors/zed/grammars/
-editors/zed/extension.wasm
-editors/zed/tree-sitter-goi/.git/

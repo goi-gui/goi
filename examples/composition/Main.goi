@@ -42,19 +42,23 @@ Window {
 			// The same fragment twice, with different params.
 			Row {
 				spacing: 16
-				StatCard { label: "Inbox" value: "12" tone: #6750A4 }
-				StatCard { label: "Starred" value: "3" tone: #7D5260 }
-				StatCard { label: "Drafts" value: "1" tone: #00658F }
+				StatCard { id: inbox label: "Inbox" value: "12" tone: #6750A4 }
+				StatCard { id: starred label: "Starred" value: "3" tone: #7D5260 }
+				StatCard { id: drafts label: "Drafts" value: "1" tone: #00658F }
 			}
 
 			// Section.goi takes children: its $children slot is where the Row
 			// and the Text below appear.
 			Section {
 				title: "Overrides"
+				// $actions is a named slot: only this instance fills it.
+				$actions {
+					Chip { label: "New" icon: add }
+				}
 				Row {
 					spacing: 16
 					// A param is a value; width is the fragment root's own property.
-					StatCard { label: "Override" value: "300" width: 300 }
+					StatCard { id: override label: "Override" value: "300" width: 300 }
 				}
 				Text {
 					text: "The card above passes width: 300, which replaces the fragment's own width instead of duplicating it."

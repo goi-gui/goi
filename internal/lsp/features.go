@@ -216,7 +216,7 @@ func (s *Server) completion(raw json.RawMessage) any {
 	case prop == "" && !inMap && (trimmed == "" || strings.HasSuffix(trimmed, "{")):
 		items = append(items, memberItems(file, d.text, off)...)
 	case prop == "" && !inMap:
-		items = append(items, elementItems()...)
+		items = append(items, elementItems(file)...)
 	}
 	return completionList{Items: dedupe(items, prefix), IsIncomplete: incomplete}
 }
@@ -310,13 +310,25 @@ func blocksIn(blk *syntax.Block, fn func(*syntax.Block)) {
 	}
 }
 
-// slotDoc explains `$children`. It is a slot, so it has no properties and no
-// children of its own; the instance supplies the elements.
+// slotDoc explains a slot marker. It takes no properties; the instance supplies
+// the elements, at `$children` for its plain children or `$name` for a named
+// slot it fills with `$name { ... }`.
 const slotDoc = "**$children** — slot\n\n" +
 	"Where the children passed by an instance appear. A fragment that writes " +
 	"this takes children; passing children to one that does not is an error. " +
 	"With no children the slot draws nothing, so the fragment still previews on " +
-	"its own. A file that writes a slot is a fragment."
+	"its own. A file that writes a slot is a fragment.\n\n" +
+	"A named slot works the same way: write `$header` in the fragment, and an " +
+	"instance fills it with `$header { ... }`."
+
+// namedSlotDoc explains `$name` at a hover position.
+func namedSlotDoc(name string) string {
+	return "**" + name + "** — named slot\n\n" +
+		"The instance passes elements here with `" + name + " { ... }`. A fragment " +
+		"that writes this takes that slot; passing one it does not declare is an " +
+		"error. With nothing passed the slot draws nothing, so the fragment still " +
+		"previews on its own."
+}
 
 // listVars lists the declared data variables that hold a list.
 func listVars(file *syntax.File) []string {
@@ -681,7 +693,7 @@ func memberItems(file *syntax.File, src []byte, off int) []completionResult {
 	name := enclosingElementName(file, src, off)
 	el, ok := schema.Lookup(name)
 	if !ok {
-		return elementItems()
+		return elementItems(file)
 	}
 	out := make([]completionResult, 0, len(el.Attrs)+8)
 	for _, p := range el.Attrs {
@@ -693,16 +705,27 @@ func memberItems(file *syntax.File, src []byte, off int) []completionResult {
 		})
 	}
 	if el.Children {
-		out = append(out, elementItems()...)
+		out = append(out, elementItems(file)...)
 		out = append(out, blockItemsFor(openBlockAt(file, off) != nil, listVars(file))...)
 	}
 	return out
 }
 
-// elementItems lists every element that can be written.
-func elementItems() []completionResult {
+// elementItems lists every element that can be written, plus the fragment
+// aliases this file imports, so a call site completes like any other element.
+func elementItems(file *syntax.File) []completionResult {
 	names := schema.ElementNames()
 	out := make([]completionResult, 0, len(names))
+	if file != nil {
+		for _, imp := range file.Imports {
+			out = append(out, completionResult{
+				Label:         imp.Alias,
+				Kind:          kindClass,
+				Detail:        "fragment",
+				Documentation: &doc{Kind: "markdown", Value: "**" + imp.Alias + "** — fragment\n\nImported from `" + imp.Path + "`. Its params are properties on the call; `$name { ... }` fills a named slot and plain children fill `$children`."},
+			})
+		}
+	}
 	for _, n := range names {
 		el, ok := schema.Lookup(n)
 		if !ok {
@@ -769,9 +792,13 @@ func (s *Server) hover(raw json.RawMessage) any {
 	}
 
 	if start, end, el := elementNameAt(file, off); el != nil {
-		if el.Name == "$children" {
+		if strings.HasPrefix(el.Name, "$") {
+			value := slotDoc
+			if el.Name != "$children" {
+				value = namedSlotDoc(el.Name)
+			}
 			return map[string]any{
-				"contents": doc{Kind: "markdown", Value: slotDoc},
+				"contents": doc{Kind: "markdown", Value: value},
 				"range":    idx.at(start, end),
 			}
 		}
@@ -961,6 +988,14 @@ func (s *Server) definition(raw json.RawMessage) any {
 		// The path itself: find the quoted token that follows `import`.
 		if start, end, ok := importPathRange(d.text, int(imp.At)); ok && off >= start && off <= end {
 			return []location{{URI: pathToURI(filepath.Join(dir, filepath.FromSlash(imp.Path)))}}
+		}
+	}
+	// A call site jumps to the fragment it instantiates.
+	if _, _, el := elementNameAt(file, off); el != nil {
+		for _, imp := range file.Imports {
+			if imp.Alias == el.Name {
+				return []location{{URI: pathToURI(filepath.Join(dir, filepath.FromSlash(imp.Path)))}}
+			}
 		}
 	}
 	return nil

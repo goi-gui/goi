@@ -396,9 +396,27 @@ func TestParseChildrenSlot(t *testing.T) {
 		t.Fatalf("children = %v", kids)
 	}
 
-	_, diag = Parse([]byte("Column {\n\t$params\n}\n"))
-	if diag.Empty() {
-		t.Fatal("$params was accepted as a slot")
+	// Any name is a slot; a bare one marks the file as a fragment.
+	f, diag = Parse([]byte("Column {\n\t$header\n}\n"))
+	if !diag.Empty() {
+		t.Fatalf("$header was rejected as a slot: %v", diag)
+	}
+	if !f.IsFragment() || f.Root.Children()[0].Name != "$header" {
+		t.Fatalf("$header = %v, fragment = %v", f.Root.Children(), f.Fragment)
+	}
+
+	// With a body it is how a caller passes elements, so the file is not a
+	// fragment by itself.
+	f, diag = Parse([]byte("Card {\n\t$header {\n\t\tText { text: \"x\" }\n\t}\n}\n"))
+	if !diag.Empty() {
+		t.Fatalf("a named slot body was rejected: %v", diag)
+	}
+	if f.IsFragment() {
+		t.Fatal("a call that fills a slot makes the caller a fragment")
+	}
+	slot := f.Root.Children()[0]
+	if slot.Name != "$header" || len(slot.Children()) != 1 {
+		t.Fatalf("slot = %+v", slot)
 	}
 }
 

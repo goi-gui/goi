@@ -10,7 +10,8 @@
 // values, colour roles and params, hover docs, a document outline, folding and
 // go-to-definition for imports.
 //
-// The Zed extension in editors/zed starts it automatically when it is on PATH:
+// The Zed extension (github.com/goi-gui/zed-goi) starts it automatically when
+// it is on PATH:
 //
 //	go install github.com/ksckaan1/goi/cmd/goipls@latest
 package main

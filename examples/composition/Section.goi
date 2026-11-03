@@ -1,9 +1,16 @@
 // Section: a titled block whose body comes from whoever instantiates it.
-// `$children` is the slot; the caller's elements are placed there.
+// `$children` is the unnamed slot; `$actions` is a named one, next to the title.
 param title: "Section"
 
 Column {
 	spacing: 8
-	Text { text: $title role: "titleMedium" }
+
+	Row {
+		spacing: 8
+		Text { text: $title role: "titleMedium" }
+		Rectangle { flex: 1 }
+		$actions
+	}
+
 	$children
 }

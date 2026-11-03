@@ -10,7 +10,9 @@ import (
 	"github.com/ksckaan1/goi/internal/syntax"
 )
 
-var idPattern = regexp.MustCompile(`^[a-z][A-Za-z0-9_]*$`)
+// idPattern accepts a scoped id: an instance prefixes the ids it owns with its
+// own name, so `card1.title` is a normal id after expansion.
+var idPattern = regexp.MustCompile(`^[a-z][A-Za-z0-9_]*(\.[a-z][A-Za-z0-9_]*)*$`)
 
 // Result is what validation learned that instantiation cannot recompute cheaply.
 type Result struct {
@@ -476,11 +478,15 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 			return
 		}
 		if !idPattern.MatchString(txt) {
-			v.add(at, end, fmt.Sprintf("invalid id %q: must match [a-z][A-Za-z0-9_]*", txt), "")
+			v.add(at, end, fmt.Sprintf("invalid id %q: must match [a-z][A-Za-z0-9_]* (or a.b, the form an instance gives its fragment's ids)", txt), "")
 			return
 		}
 		if _, dup := v.seen[txt]; dup {
-			v.add(at, end, fmt.Sprintf("duplicate id %q", txt), "")
+			msg := fmt.Sprintf("duplicate id %q", txt)
+			if !strings.Contains(txt, ".") {
+				msg += ": two fragment instances declare it; give each instance an id to scope them"
+			}
+			v.add(at, end, msg, "")
 			return
 		}
 		v.seen[txt] = at

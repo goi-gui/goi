@@ -233,6 +233,30 @@ func TestDiagnosticsLandInTheFragment(t *testing.T) {
 	}
 }
 
+func TestCompletionOffersImportedFragments(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	writeDesign(t, dir, "Side.goi", "param title: \"\"\nColumn { }\n")
+	src := "import \"./Side.goi\" as Side\nWindow {\n\t\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "\t\n", 1),
+	})
+	var list completionList
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range list.Items {
+		if it.Label == "Side" && it.Detail == "fragment" {
+			return
+		}
+	}
+	t.Fatalf("the imported fragment is missing from completion: %v", list.Items)
+}
+
 func TestCompletionOffersPropertiesAndChildren(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()
@@ -574,6 +598,27 @@ func TestDefinitionFollowsAnImport(t *testing.T) {
 	res := c.request("textDocument/definition", map[string]any{
 		"textDocument": map[string]any{"uri": uri},
 		"position":     at(t, src, "Side.goi", 3),
+	})
+	var locs []location
+	if err := json.Unmarshal(res, &locs); err != nil {
+		t.Fatal(err)
+	}
+	if len(locs) != 1 || locs[0].URI != fragURI {
+		t.Fatalf("locations = %+v, want %s", locs, fragURI)
+	}
+}
+
+func TestDefinitionFollowsAFragmentCall(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	fragURI := writeDesign(t, dir, "Side.goi", "param title: \"\"\nColumn { }\n")
+	src := "import \"./Side.goi\" as Side\nWindow {\n\tSide { }\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/definition", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "\tSide { }", 2),
 	})
 	var locs []location
 	if err := json.Unmarshal(res, &locs); err != nil {

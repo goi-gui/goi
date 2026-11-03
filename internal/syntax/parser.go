@@ -651,8 +651,10 @@ func (p *parser) parseBlock() *Block {
 	}
 }
 
-// parseSlot reads `$children`, the marker for where an instance's children go.
-// It is the only name allowed after '$' as a member; `$param` is a value.
+// parseSlot reads `$name`, the marker for where an instance's children go.
+// `$children` is the unnamed slot; any other name is a named one. A bare marker
+// is what a fragment body writes, and it makes the file a fragment. The same
+// name with a body is how the caller passes elements to that slot.
 func (p *parser) parseSlot() *Element {
 	dollar := p.next()
 	name := p.peek()
@@ -661,12 +663,16 @@ func (p *parser) parseSlot() *Element {
 		return nil
 	}
 	p.next()
-	if name.text != "children" {
-		p.errorf(dollar, "unknown slot $"+name.text+": only $children is a slot")
-		return nil
+	el := &Element{Name: "$" + name.text, NameAt: dollar.pos, Open: dollar.pos, Close: name.end}
+	if p.peek().kind != tokLBrace {
+		p.slot = true
+		return el
 	}
-	p.slot = true
-	return &Element{Name: "$children", NameAt: dollar.pos, Open: dollar.pos, Close: name.end}
+	el.Open = p.next().pos
+	ml := p.parseMembers(false, nil)
+	el.Members = ml.members
+	el.Close = ml.close
+	return el
 }
 
 // recoverMember advances past one broken member and reports whether it made

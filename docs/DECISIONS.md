@@ -1116,3 +1116,47 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   property back without a reload (a changed .goi literal reclaims it). The gallery
   tracks `themeChosen`, so a fresh run keeps following the desktop until the
   switch is used; `TestGoSetTakesThePropertyFromItsExpression` pins both halves.
+
+## Phase 13 — fragments as components
+
+- **An instance's id namespaces the ids its fragment declares.** A fragment with
+  an id inside it used to be usable once: two instances collided, so a design
+  with behaviour could not reuse its own part. `Card { id: first }` now makes
+  `Card.goi`'s `title` id `first.title`; the pattern allows dotted segments, the
+  tree registers the full name, and `ui.ByID` needs no new syntax. References
+  inside the fragment are rewritten with the same prefix, so `side.width` points
+  at that copy's `side`. Scoping runs before the caller's children land in a slot
+  and before the caller's properties are written onto the root, because those
+  belong to the caller's file. An instance without an `id` scopes nothing, so the
+  old behaviour (and the old duplicate-id error) stands. Two side effects:
+  `copyValue` now clones leaves, since rewriting an `*Ident` or `*Ref` in place
+  would edit the cached fragment file and double a prefix on the second
+  instance; and `ui.Descendant` inside a scoped instance needs the prefixed name.
+
+- **Any `$name` in member position is a slot.** `$children` was hard-coded in the
+  parser and the expansion, so a card could not have a header and a body. A bare
+  `$header` in a fragment body is a slot marker and still makes the file a
+  fragment; the same name with a body is how an instance fills it:
+  `Card { $header { Text { ... } } }`. Plain children keep going to `$children`.
+  Passing a slot the fragment does not declare is a diagnostic in the caller, and
+  an empty `$header { }` counts as filled, which is how a conditional header is
+  written. The cost is that the parser can no longer reject `$params`, so a typo
+  in a slot name now shows up as "unknown slot" from the expansion instead.
+
+- **`data` declarations merge across the design.** A fragment's `data { ... }`
+  block and its shapes used to be parsed and dropped: `instantiateFile` copied
+  only the entry file's declarations, so a fragment that drew its own `{#each}`
+  failed validation and could not be fed. `Load` now appends every imported
+  file's declarations after the entry's, which matches how `SetData` works (one
+  name, app-wide) and lets a fragment own the shape it repeats. A name declared
+  in two files is a duplicate-variable error from the validator, not silent
+  shadowing.
+
+- **`goicheck -layout` previews a fragment with its param defaults.** A fragment
+  has no Window root, so the checker used to validate it and stop, which left
+  the one class of bug it exists for — a component that collapses to zero size —
+  untested in exactly the files a design reuses. `asset.Preview` fills the
+  params with their defaults (the same replacement an import does) and the
+  checker wraps the root in a synthetic Window. It is deliberately not part of
+  `Load`: the validator still sees `$param` and can point a wrong param type at
+  the param line.

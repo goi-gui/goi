@@ -20,6 +20,7 @@ import (
 	"github.com/ksckaan1/goi/internal/m3"
 	"github.com/ksckaan1/goi/internal/paint"
 	"github.com/ksckaan1/goi/internal/schema"
+	"github.com/ksckaan1/goi/internal/syntax"
 	"github.com/ksckaan1/goi/internal/text"
 	"github.com/ksckaan1/goi/internal/tree"
 )
@@ -60,19 +61,32 @@ func main() {
 			fail = true
 			continue
 		}
-		// A file with params or a $children slot is a fragment: it draws part of
-		// a design and gets its values from whoever imports it, so it has no
-		// window root.
-		if b.File.IsFragment() {
+		// A file with params or a slot is a fragment: it draws part of a design
+		// and gets its values from whoever imports it, so it has no window root.
+		fragment := b.File.IsFragment()
+		if fragment {
 			if _, diag := schema.Validate(b.File); !diag.Empty() {
 				fmt.Fprintln(os.Stderr, diag.FormatFiles(name, b.Sources[name], b.Sources))
 				fail = true
 				continue
 			}
-			fmt.Printf("%s: ok (fragment, %d params, %d files)\n", file, len(b.File.Params), len(b.Files))
-			continue
-		}
-		if _, diag := schema.ValidateEntry(b.File); !diag.Empty() {
+			if !*checkLayout && !*ops {
+				fmt.Printf("%s: ok (fragment, %d params, %d files)\n", file, len(b.File.Params), len(b.Files))
+				continue
+			}
+			// Preview it on its own: fill the params with their defaults, then
+			// wrap the root in a Window so it sizes the way the window would.
+			body, pdiag := asset.Preview(b.File)
+			if !pdiag.Empty() {
+				fmt.Fprintln(os.Stderr, pdiag.FormatFiles(name, b.Sources[name], b.Sources))
+				fail = true
+				continue
+			}
+			preview := *body
+			preview.Root = &syntax.Element{Name: "Window", Src: body.Src,
+				Members: []syntax.Member{body.Root}}
+			b.File = &preview
+		} else if _, diag := schema.ValidateEntry(b.File); !diag.Empty() {
 			fmt.Fprintln(os.Stderr, diag.FormatFiles(name, b.Sources[name], b.Sources))
 			fail = true
 			continue

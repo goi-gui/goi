@@ -110,6 +110,61 @@ Window {
 - Like a file with params, a file with `$children` is a fragment: `goicheck` and
   the language server do not require it to be a `Window`.
 
+### Named slots
+
+A fragment can take more than one group of children, one per slot. Any
+`$name` in member position is a slot; `$children` is the unnamed one that
+plain children go to:
+
+```
+// Card.goi
+Column {
+    $header
+    $children
+    $footer
+}
+```
+
+```
+// Main.goi
+Card {
+    $header { Text { text: "Inbox" } }
+    Text { text: "The body" }        // goes to $children
+    $footer { Button { label: "OK" } }
+}
+```
+
+- A bare `$header` in a fragment body is a slot marker; `$header { ... }` in an
+  instance call passes the elements that land there.
+- Passing a slot the fragment does not declare is an error, reported in the
+  caller. An empty `$header { }` still counts as filling the slot.
+- As with `$children`, a slot with nothing passed draws nothing, so the fragment
+  previews on its own.
+
+### Ids and instances
+
+An instance that sets `id` namespaces every id inside the fragment, so one
+fragment can be used any number of times and each copy still carries its own
+behaviour:
+
+```
+Column {
+    Card { id: first }
+    Card { id: second }
+}
+```
+
+`Card.goi`'s `Text { id: title }` is `first.title` in the first copy and
+`second.title` in the second, and `ui.ByID[*ui.Text](w, "first.title")` finds
+them. References inside the fragment follow the instance, so `side.width` still
+points at that copy's own `side`. Ids written in the caller — its own children,
+including the ones it passes to a slot — are not scoped, because they belong to
+the caller. An instance without an `id` scopes nothing, so two such instances
+still collide.
+
+An id in an `{#each}` row is scoped too, so `ui.Descendant` needs the prefixed
+name inside a scoped instance.
+
 ### Conditional blocks
 
 `{#if}` picks one arm of elements. The condition is an ordinary expression and
@@ -200,6 +255,9 @@ ui.OnEach[*ui.ListItem](w, "tickets", func(row *ui.ListItem, it ticket) {
 - **Types.** A scalar is `bool`, `string`, `number` or `color`. A list is
   `shape[]`, and the shape must be declared. A field of a shape may itself be a
   list, so `data group { name: string, items: item[] }` works.
+- **Any file may declare them.** A fragment owns its own `data { ... }` block and
+  the shapes its `{#each}` walks; the declarations merge into the one design the
+  app sees, so `ui.SetData(w, "rows", …)` feeds a list a fragment drew.
 - **Go values.** `ui.SetData` takes a slice of structs — matched by `json` tag,
   then by the field name with a lower first letter — or a slice of
   `map[string]any`. Numbers are converted, so an `int` field reads in a `number`

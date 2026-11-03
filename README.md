@@ -111,7 +111,10 @@ go run ./cmd/goicheck -layout examples/*/*.goi  # syntax plus a headless layout 
 - `.goi` files: literals only, no scripting. Elements, properties, ids, with
   diagnostics that point at `file:line:col`.
 - Composable designs: `import "./Sidebar.goi" as Sidebar` plus `param`/`$param`,
-  loaded from an `io/fs.FS` so `embed.FS` and `os.DirFS` both work.
+  named slots (`$header`) and `$children`, loaded from an `io/fs.FS` so
+  `embed.FS` and `os.DirFS` both work. An instance's `id` scopes the fragment's
+  own ids (`first.title`), so one fragment can be used many times with behaviour
+  attached to each copy.
 - Typed Go API: `Prop[T]` cells, `Event[E]`, `ByID[T]`.
 - Material 3 components as core elements: buttons, FABs, chips, selection
   controls, sliders, text fields, cards, dialogs, sheets, lists, menus,
@@ -165,18 +168,19 @@ go run ./cmd/goicheck -layout examples/*/*.goi  # syntax plus a headless layout 
 
 ## Editor support
 
-`editors/zed` is a Zed extension for `.goi`: syntax highlighting, brackets,
-indentation and an element outline. It starts `goipls`, the language server in
-`cmd/goipls`, which adds diagnostics (including errors inside an imported
-fragment), completion for elements, properties, values, icon names, ids and the
-`app.`/`window.` globals, hover docs, a document outline and go-to-definition
-for imports:
+The Zed extension lives in [goi-gui/zed-goi](https://github.com/goi-gui/zed-goi):
+syntax highlighting, brackets, indentation and an element outline. It starts
+`goipls`, the language server in `cmd/goipls`, which adds diagnostics (including
+errors inside an imported fragment), completion for elements, properties,
+values, icon names, ids and the `app.`/`window.` globals, hover docs, a document
+outline and go-to-definition for imports:
 
 ```sh
 go install github.com/ksckaan1/goi/cmd/goipls@latest
 ```
 
-See [editors/zed/README.md](editors/zed/README.md) for the local install steps.
+See [goi-gui/zed-goi](https://github.com/goi-gui/zed-goi) for the local install
+steps.
 
 See [docs/components.md](docs/components.md) for every element with its
 properties and Go examples, and [docs/SYNTAX.md](docs/SYNTAX.md),
@@ -188,10 +192,12 @@ reasoning.
 
 Bindings that push Go state back into `.goi` values (the file is evaluated, not
 observed), dynamic color and custom themes, an accessibility tree, multiple
-windows, drag and drop, custom components in `.goi`, drag-to-fling (the wheel does
+windows, drag and drop, typed/required fragment params, state and styles declared
+inside a fragment, drag-to-fling (the wheel does
 coast), and caret mapping inside right-to-left text. IME composition shows as underlined preedit on
 Wayland. `go run ./cmd/goicheck -layout` lays a design out headlessly and reports
-nodes that cannot draw.
+nodes that cannot draw; a fragment is previewed on its own by filling its params
+with their defaults.
 
 ## Tests
 
