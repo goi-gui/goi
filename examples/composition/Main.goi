@@ -1,7 +1,7 @@
 // Composition: one design split across files.
 //
 // Main.goi is the entry point; it imports two fragments and instantiates them
-// with params. Run with:
+// with props. Run with:
 //
 //	go run -ldflags=-linkmode=internal ./examples/composition
 import "./Sidebar.goi" as Sidebar
@@ -34,12 +34,12 @@ Window {
 
 			Text { text: "Fragments" role: "titleMedium" }
 			Text {
-				text: "Sidebar.goi, StatCard.goi and Section.goi are separate files. Main.goi imports them, passes params, overrides ordinary properties such as width, and gives Section its children."
+				text: "Sidebar.goi, StatCard.goi and Section.goi are separate files. Main.goi imports them, passes props, overrides ordinary properties such as width, and gives Section its children."
 				wrap: true
 				width: 520
 			}
 
-			// The same fragment twice, with different params.
+			// The same fragment twice, with different props.
 			Row {
 				spacing: 16
 				StatCard { id: inbox label: "Inbox" value: "12" tone: #6750A4 }
@@ -57,7 +57,7 @@ Window {
 				}
 				Row {
 					spacing: 16
-					// A param is a value; width is the fragment root's own property.
+					// A prop is a value; width is the fragment root's own property.
 					StatCard { id: override label: "Override" value: "300" width: 300 }
 				}
 				Text {

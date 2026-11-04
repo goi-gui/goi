@@ -6,10 +6,10 @@
 //
 //	Window { Row { Sidebar { title: "Mail" } } }
 //
-// A fragment declares the values it expects and marks where they go:
+// A fragment declares the typed values it expects and reads them by name:
 //
-//	param title: ""
-//	Column { Text { text: $title } }
+//	props { title: string }
+//	Column { Text { text: props.title } }
 //
 // Expansion happens before validation, so the schema, validator and tree builder
 // see one ordinary tree and need no notion of fragments.
@@ -187,33 +187,62 @@ func (l *loader) instantiateFile(f *syntax.File, name string, stack []string) (*
 	if !diag.Empty() {
 		return nil, diag
 	}
-	// Params, the data declarations and the slot flag are kept so callers can
+	// Props, the data declarations and the slot flag are kept so callers can
 	// tell a fragment from an entry point; the imports are consumed and
 	// deliberately dropped.
 	return &syntax.File{
-		Src: name, Params: f.Params, Vars: f.Vars, Shapes: f.Shapes,
+		Src: name, Props: f.Props, Vars: f.Vars, Shapes: f.Shapes,
 		Fragment: f.Fragment, Root: root,
 	}, nil
 }
 
-// Preview returns a copy of a fragment with its params replaced by their
+// Preview returns a copy of a fragment with its props replaced by their
 // defaults, so the file can be laid out on its own: goicheck wraps the result in
-// a Window. A file that is not a fragment comes back unchanged.
+// a Window. A prop with no default gets its type's zero value. A file that is
+// not a fragment comes back unchanged.
 func Preview(f *syntax.File) (*syntax.File, syntax.Diagnostics) {
-	if f == nil || f.Root == nil || len(f.Params) == 0 {
+	if f == nil || f.Root == nil || len(f.Props) == 0 {
 		return f, nil
 	}
-	params := make(map[string]syntax.Value, len(f.Params))
-	for _, pr := range f.Params {
-		params[pr.Name] = pr.Default
-	}
+	props := propValues(f, nil)
 	root := copyElement(f.Root)
-	if diag := substitute(root, params, f.Src); !diag.Empty() {
+	if diag := substitute(root, props, f.Src); !diag.Empty() {
 		return nil, diag
 	}
 	out := *f
 	out.Root = root
 	return &out, nil
+}
+
+// propValues is what each declared prop holds: the instance's value when it
+// passed one, else the declaration's default, else the type's zero value.
+func propValues(f *syntax.File, passed map[string]syntax.Value) map[string]syntax.Value {
+	out := make(map[string]syntax.Value, len(f.Props))
+	for _, pr := range f.Props {
+		if v, ok := passed[pr.Name]; ok {
+			out[pr.Name] = v
+			continue
+		}
+		if pr.Default != nil {
+			out[pr.Name] = pr.Default
+			continue
+		}
+		out[pr.Name] = zeroValue(pr.Type)
+	}
+	return out
+}
+
+// zeroValue is Go's zero value for a prop type, as a literal the tree can read.
+func zeroValue(typ string) syntax.Value {
+	switch typ {
+	case "bool":
+		return &syntax.Bool{Val: false}
+	case "number":
+		return &syntax.Number{Val: 0}
+	case "color":
+		return &syntax.Color{RGBA: 0}
+	}
+	return &syntax.String{Val: ""}
 }
 
 // expand walks one element tree, replacing fragment instances with their
@@ -266,7 +295,7 @@ func (l *loader) expandMembers(members []syntax.Member, aliases map[string]strin
 }
 
 // instance replaces one fragment instance with the fragment's root element,
-// substituting params, applying the instance's own properties and putting the
+// substituting props, applying the instance's own properties and putting the
 // instance's children where the fragment wrote `$children`. callerAliases
 // belongs to the file the call was written in, so a child element that is
 // itself a fragment resolves against the right file.
@@ -291,24 +320,25 @@ func (l *loader) instance(target string, call *syntax.Element, callerAliases map
 		}}
 	}
 
-	// Params start at their defaults and take whatever the instance passed.
-	params := make(map[string]syntax.Value, len(f.Params))
-	declared := make(map[string]bool, len(f.Params))
-	for _, pr := range f.Params {
-		params[pr.Name] = pr.Default
+	// Props start at their defaults and take whatever the instance passed. A
+	// prop the instance left out gets its default, or the type's zero value.
+	passed := make(map[string]syntax.Value, len(f.Props))
+	declared := make(map[string]bool, len(f.Props))
+	for _, pr := range f.Props {
 		declared[pr.Name] = true
 	}
 	var overrides []*syntax.Property
 	for _, p := range call.Props() {
 		if declared[p.Name] {
-			params[p.Name] = p.Value
+			passed[p.Name] = p.Value
 			continue
 		}
 		overrides = append(overrides, p)
 	}
+	props := propValues(f, passed)
 
 	body := copyElement(f.Root)
-	if diag := substitute(body, params, target); !diag.Empty() {
+	if diag := substitute(body, props, target); !diag.Empty() {
 		return nil, diag
 	}
 	// Before the caller's children land in a slot, and before the caller's own
@@ -425,49 +455,52 @@ func (l *loader) fillMembers(members []syntax.Member, slots map[string][]*syntax
 	return out, nil
 }
 
-// substitute replaces `$name` values in place and reports a param the fragment
-// never declared.
-func substitute(el *syntax.Element, params map[string]syntax.Value, from string) syntax.Diagnostics {
+// substitute replaces `props.name` values in place and reports a prop the
+// fragment never declared.
+func substitute(el *syntax.Element, props map[string]syntax.Value, from string) syntax.Diagnostics {
 	var diag syntax.Diagnostics
 	var walk func(*syntax.Element)
 	walk = func(e *syntax.Element) {
-		walkMembers(e.Members, params, from, &diag, walk)
+		walkMembers(e.Members, props, from, &diag, walk)
 	}
 	walk(el)
 	return diag
 }
 
-// walkMembers substitutes params in a member list, descending into block arms.
-func walkMembers(members []syntax.Member, params map[string]syntax.Value, from string, diag *syntax.Diagnostics, walk func(*syntax.Element)) {
+// walkMembers substitutes props in a member list, descending into block arms.
+func walkMembers(members []syntax.Member, props map[string]syntax.Value, from string, diag *syntax.Diagnostics, walk func(*syntax.Element)) {
 	for _, m := range members {
 		switch v := m.(type) {
 		case *syntax.Property:
-			v.Value, *diag = substValue(v.Value, params, v.Src, from, *diag)
+			v.Value, *diag = substValue(v.Value, props, v.Src, from, *diag)
 		case *syntax.Element:
 			walk(v)
 		case *syntax.Block:
 			for i := range v.Branches {
 				br := &v.Branches[i]
 				if br.Cond != nil {
-					br.Cond, *diag = substValue(br.Cond, params, v.Src, from, *diag)
+					br.Cond, *diag = substValue(br.Cond, props, v.Src, from, *diag)
 				}
-				walkMembers(br.Members, params, from, diag, walk)
+				walkMembers(br.Members, props, from, diag, walk)
 			}
 		}
 	}
 }
 
-// substValue returns a value with every param reference replaced.
-func substValue(v syntax.Value, params map[string]syntax.Value, src, from string, diag syntax.Diagnostics) (syntax.Value, syntax.Diagnostics) {
+// substValue returns a value with every `props.name` reference replaced.
+func substValue(v syntax.Value, props map[string]syntax.Value, src, from string, diag syntax.Diagnostics) (syntax.Value, syntax.Diagnostics) {
 	switch x := v.(type) {
-	case *syntax.ParamRef:
-		got, ok := params[x.Name]
+	case *syntax.Ref:
+		if x.ID != "props" {
+			return x, diag
+		}
+		got, ok := props[x.Prop]
 		if !ok {
 			diag = append(diag, syntax.Diagnostic{
 				Pos:     x.At,
-				End:     x.At + syntax.Pos(len(x.Name)+1),
+				End:     x.At + syntax.Pos(len(x.ID)+1+len(x.Prop)),
 				Src:     src,
-				Message: fmt.Sprintf("%s has no param %q", from, x.Name),
+				Message: fmt.Sprintf("%s has no prop %q", from, x.Prop),
 			})
 			return x, diag
 		}
@@ -477,27 +510,27 @@ func substValue(v syntax.Value, params map[string]syntax.Value, src, from string
 	case *syntax.Call:
 		out := &syntax.Call{At: x.At, Callee: x.Callee, Args: make([]syntax.Value, len(x.Args))}
 		for i, a := range x.Args {
-			out.Args[i], diag = substValue(a, params, src, from, diag)
+			out.Args[i], diag = substValue(a, props, src, from, diag)
 		}
 		return out, diag
 	case *syntax.Map:
 		out := &syntax.Map{At: x.At, Entries: make([]syntax.MapEntry, len(x.Entries))}
 		for i, entry := range x.Entries {
-			entry.Value, diag = substValue(entry.Value, params, src, from, diag)
+			entry.Value, diag = substValue(entry.Value, props, src, from, diag)
 			out.Entries[i] = entry
 		}
 		return out, diag
 	case *syntax.Binary:
-		left, diag := substValue(x.Left, params, src, from, diag)
-		right, diag := substValue(x.Right, params, src, from, diag)
+		left, diag := substValue(x.Left, props, src, from, diag)
+		right, diag := substValue(x.Right, props, src, from, diag)
 		return &syntax.Binary{At: x.At, Op: x.Op, Left: left, Right: right}, diag
 	case *syntax.Unary:
-		xv, diag := substValue(x.X, params, src, from, diag)
+		xv, diag := substValue(x.X, props, src, from, diag)
 		return &syntax.Unary{At: x.At, Op: x.Op, X: xv}, diag
 	case *syntax.Ternary:
-		cond, diag := substValue(x.Cond, params, src, from, diag)
-		then, diag := substValue(x.Then, params, src, from, diag)
-		els, diag := substValue(x.Else, params, src, from, diag)
+		cond, diag := substValue(x.Cond, props, src, from, diag)
+		then, diag := substValue(x.Then, props, src, from, diag)
+		els, diag := substValue(x.Else, props, src, from, diag)
 		return &syntax.Ternary{At: x.At, Cond: cond, Then: then, Else: els}, diag
 	}
 	return v, diag

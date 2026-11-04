@@ -248,10 +248,13 @@ func TestSuggest(t *testing.T) {
 func TestParsePreamble(t *testing.T) {
 	f, diag := Parse([]byte(`import "./Sidebar.goi" as Sidebar
 import "parts/Card.goi" as Card
-param title: "Mail"
-param accent: #123456
+props {
+	title: string = "Mail"
+	accent: color = #123456
+	count: number
+}
 
-Column { Text { text: $title } }`))
+Column { Text { text: props.title } }`))
 	if !diag.Empty() {
 		t.Fatalf("%v", diag)
 	}
@@ -261,23 +264,28 @@ Column { Text { text: $title } }`))
 	if f.Imports[0].Path != "./Sidebar.goi" || f.Imports[0].Alias != "Sidebar" {
 		t.Fatalf("first import = %+v", f.Imports[0])
 	}
-	if len(f.Params) != 2 {
-		t.Fatalf("params = %d, want 2", len(f.Params))
+	if len(f.Props) != 3 {
+		t.Fatalf("props = %d, want 3", len(f.Props))
 	}
-	if f.Params[0].Name != "title" {
-		t.Fatalf("first param = %+v", f.Params[0])
+	if f.Props[0].Name != "title" || f.Props[0].Type != "string" {
+		t.Fatalf("first prop = %+v", f.Props[0])
 	}
-	if s, ok := f.Params[0].Default.(*String); !ok || s.Val != "Mail" {
-		t.Fatalf("param default = %#v", f.Params[0].Default)
+	if s, ok := f.Props[0].Default.(*String); !ok || s.Val != "Mail" {
+		t.Fatalf("prop default = %#v", f.Props[0].Default)
+	}
+	// A prop with no default is left at the type's zero value when the
+	// instance passes nothing.
+	if f.Props[2].Name != "count" || f.Props[2].Type != "number" || f.Props[2].Default != nil {
+		t.Fatalf("defaultless prop = %+v", f.Props[2])
 	}
 	// A fragment's root need not be a Window.
 	if f.Root.Name != "Column" {
 		t.Fatalf("root = %s", f.Root.Name)
 	}
-	// $title survives parsing; asset expansion is what replaces it.
-	ref, ok := f.Root.Children()[0].Prop("text").Value.(*ParamRef)
-	if !ok || ref.Name != "title" {
-		t.Fatalf("value = %#v, want a ParamRef", f.Root.Children()[0].Prop("text").Value)
+	// `props.title` is an ordinary reference; asset expansion substitutes it.
+	ref, ok := f.Root.Children()[0].Prop("text").Value.(*Ref)
+	if !ok || ref.ID != "props" || ref.Prop != "title" {
+		t.Fatalf("value = %#v, want a props reference", f.Root.Children()[0].Prop("text").Value)
 	}
 }
 
@@ -287,9 +295,10 @@ func TestParsePreambleErrors(t *testing.T) {
 Window { }`, `expected "as"`},
 		{"missing alias", `import "./a.goi" as
 Window { }`, "expected an alias"},
-		{"missing param name", "param : 1\nWindow { }", "expected a param name"},
-		{"missing colon", "param x 1\nWindow { }\n", "expected ':'"},
-		{"dollar without name", "Window { Text { text: $ } }", "expected a param name"},
+		{"missing brace", "props title: string\nWindow { }", "expected '{' after props"},
+		{"missing colon", "props { x string }\nWindow { }", "expected ':' after the prop name"},
+		{"missing type", "props { x: }\nWindow { }", "expected a prop type"},
+		{"dollar in a value", "Window { Text { text: $ } }", "unexpected '$' in a value"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -306,14 +315,19 @@ Window { }`, "expected an alias"},
 
 func TestParseDumpKeepsPreamble(t *testing.T) {
 	f, diag := Parse([]byte(`import "./S.goi" as S
-param n: 4
+props {
+	n: number = 4
+	label: string
+}
 Column { }`))
 	if !diag.Empty() {
 		t.Fatalf("%v", diag)
 	}
 	got := Dump(f)
-	if !strings.Contains(got, `import "./S.goi" as S`) || !strings.Contains(got, "param n = 4") {
-		t.Fatalf("dump:\n%s", got)
+	for _, want := range []string{`import "./S.goi" as S`, "props n: number = 4", "props label: string"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("dump is missing %q:\n%s", want, got)
+		}
 	}
 }
 

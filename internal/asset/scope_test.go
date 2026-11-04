@@ -20,9 +20,9 @@ Window {
 		Card { id: second label: "two" }
 	}
 }`,
-		"Card.goi": `param label: ""
+		"Card.goi": `props { label: string }
 Column {
-	Text { id: title text: $label }
+	Text { id: title text: props.label }
 }`,
 	})
 	tr, err := load(t, dir, "Main.goi")

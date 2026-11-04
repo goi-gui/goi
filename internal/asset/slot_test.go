@@ -10,13 +10,13 @@ import (
 	"github.com/ksckaan1/goi/internal/tree"
 )
 
-// TestPreviewFillsParamsWithDefaults is what goicheck uses to lay a fragment
-// out on its own: `$title` becomes the default before the tree is built.
-func TestPreviewFillsParamsWithDefaults(t *testing.T) {
+// TestPreviewFillsPropsWithDefaults is what goicheck uses to lay a fragment out
+// on its own: `props.title` becomes the default before the tree is built.
+func TestPreviewFillsPropsWithDefaults(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Card.goi": `param title: "default"
+		"Card.goi": `props { title: string = "default" }
 Column {
-	Text { text: $title }
+	Text { text: props.title }
 }`,
 	})
 	b, diag := Load(os.DirFS(dir), "Card.goi")

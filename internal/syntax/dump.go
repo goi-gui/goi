@@ -16,8 +16,12 @@ func Dump(f *File) string {
 	for _, imp := range f.Imports {
 		fmt.Fprintf(&b, "import %q as %s\n", imp.Path, imp.Alias)
 	}
-	for _, pr := range f.Params {
-		fmt.Fprintf(&b, "param %s = %s\n", pr.Name, dumpValue(pr.Default))
+	for _, pr := range f.Props {
+		if pr.Default == nil {
+			fmt.Fprintf(&b, "props %s: %s\n", pr.Name, pr.Type)
+			continue
+		}
+		fmt.Fprintf(&b, "props %s: %s = %s\n", pr.Name, pr.Type, dumpValue(pr.Default))
 	}
 	dumpElement(&b, f.Root, 0)
 	return b.String()
@@ -103,8 +107,6 @@ func dumpValue(v Value) string {
 		return v.Op + dumpValue(v.X)
 	case *Ternary:
 		return "(" + dumpValue(v.Cond) + " ? " + dumpValue(v.Then) + " : " + dumpValue(v.Else) + ")"
-	case *ParamRef:
-		return "$" + v.Name
 	case *Map:
 		parts := make([]string, len(v.Entries))
 		for i, e := range v.Entries {

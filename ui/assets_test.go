@@ -19,8 +19,8 @@ Window {
 		Header { heading: "Hello" }
 	}
 }`)},
-		"ui/parts/Header.goi": &fstest.MapFile{Data: []byte(`param heading: ""
-Text { text: $heading role: "headlineSmall" }`)},
+		"ui/parts/Header.goi": &fstest.MapFile{Data: []byte(`props { heading: string }
+Text { text: props.heading role: "headlineSmall" }`)},
 	}
 	a := newHeadlessApp()
 	// LoadWindow needs a platform window, so exercise the loading path the same
@@ -43,7 +43,7 @@ Text { text: $heading role: "headlineSmall" }`)},
 		}
 	}
 	if got != "Hello" {
-		t.Fatalf("fragment text = %q, want the param value", got)
+		t.Fatalf("fragment text = %q, want the prop value", got)
 	}
 }
 

@@ -73,15 +73,15 @@ Window {
 
 // TestImportPassesParams is the core feature: values flow from the instance into
 // the fragment.
-func TestImportPassesParams(t *testing.T) {
+func TestImportPassesProps(t *testing.T) {
 	dir := design(t, map[string]string{
 		"Main.goi": `import "./Sidebar.goi" as Sidebar
 Window {
 	Sidebar { title: "Inbox" }
 }`,
-		"Sidebar.goi": `param title: "none"
+		"Sidebar.goi": `props { title: string = "none" }
 Column {
-	Text { text: $title }
+	Text { text: props.title }
 }`,
 	})
 	tr, err := load(t, dir, "Main.goi")
@@ -90,7 +90,7 @@ Column {
 	}
 	got := textOf(tr)
 	if got != "Inbox" {
-		t.Fatalf("text = %q, want the param value", got)
+		t.Fatalf("text = %q, want the prop value", got)
 	}
 }
 
@@ -100,8 +100,8 @@ func TestParamDefaultApplies(t *testing.T) {
 Window {
 	Sidebar { }
 }`,
-		"Sidebar.goi": `param title: "default"
-Column { Text { text: $title } }`,
+		"Sidebar.goi": `props { title: string = "default" }
+Column { Text { text: props.title } }`,
 	})
 	tr, err := load(t, dir, "Main.goi")
 	if err != nil {
@@ -109,6 +109,50 @@ Column { Text { text: $title } }`,
 	}
 	if got := textOf(tr); got != "default" {
 		t.Fatalf("text = %q, want the default", got)
+	}
+}
+
+// TestPropWithoutDefaultGetsZeroValue is the contract for a prop the instance
+// leaves out: Go's zero value for the declared type, so the fragment never has
+// to guard for a missing value.
+func TestPropWithoutDefaultGetsZeroValue(t *testing.T) {
+	dir := design(t, map[string]string{
+		"Main.goi": `import "./Part.goi" as Part
+Window {
+	Column {
+		Part { id: one label: "set" show: true }
+		Part { id: none }
+	}
+}`,
+		"Part.goi": `props {
+	label: string
+	show: bool
+}
+Column {
+	Text { id: t text: props.label }
+	Rectangle { id: box visible: props.show }
+}`,
+	})
+	tr, err := load(t, dir, "Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[string]string{"one.t": "set", "none.t": ""} {
+		n, ok := tr.ByID(id)
+		if !ok {
+			t.Fatalf("%q is not registered:\n%s", id, dump(tr))
+		}
+		if got := n.(*tree.Text).Text.Get(); got != want {
+			t.Fatalf("%s text = %q, want %q", id, got, want)
+		}
+	}
+	one, _ := tr.ByID("one.box")
+	none, _ := tr.ByID("none.box")
+	if !shown(one) {
+		t.Fatal("the passed bool was not used")
+	}
+	if shown(none) {
+		t.Fatal("the missing bool prop is not the zero value")
 	}
 }
 
@@ -138,9 +182,9 @@ func TestParamInsideResponsiveMap(t *testing.T) {
 Window {
 	Sidebar { accent: #FF0000 }
 }`,
-		"Sidebar.goi": `param accent: #00FF00
+		"Sidebar.goi": `props { accent: color = #00FF00 }
 Column {
-	Text { text: "x" color: { base: $accent, md: $accent } }
+	Text { text: "x" color: { base: props.accent, md: props.accent } }
 }`,
 	})
 	tr, err := load(t, dir, "Main.goi")
@@ -150,7 +194,7 @@ Column {
 	for _, n := range tr.All() {
 		if n.Kind() == "Text" {
 			if got := n.(*tree.Text).Color.Get(); got != 0xFF0000FF {
-				t.Fatalf("color = %08x, want the param value", got)
+				t.Fatalf("color = %08x, want the prop value", got)
 			}
 			return
 		}
@@ -167,8 +211,8 @@ Window {
 		Part { label: "two" }
 	}
 }`,
-		"Part.goi": `param label: ""
-Text { text: $label }`,
+		"Part.goi": `props { label: string }
+Text { text: props.label }`,
 	})
 	tr, err := load(t, dir, "Main.goi")
 	if err != nil {
@@ -249,15 +293,15 @@ Window { Evil { } }`,
 	}
 }
 
-func TestUnknownParamIsReported(t *testing.T) {
+func TestUnknownPropIsReported(t *testing.T) {
 	dir := design(t, map[string]string{
 		"Main.goi": `import "./Part.goi" as Part
 Window { Part { } }`,
-		"Part.goi": `Column { Text { text: $nope } }`,
+		"Part.goi": `Column { Text { text: props.nope } }`,
 	})
 	_, err := load(t, dir, "Main.goi")
-	if err == nil || !strings.Contains(err.Error(), "has no param") {
-		t.Fatalf("err = %v, want an unknown param", err)
+	if err == nil || !strings.Contains(err.Error(), "has no prop") {
+		t.Fatalf("err = %v, want an unknown prop", err)
 	}
 }
 
@@ -300,10 +344,10 @@ func TestDataOnlyValuesInFragment(t *testing.T) {
 	dir := design(t, map[string]string{
 		"Main.goi": `import "./Part.goi" as Part
 Window { Part { label: "x" } }`,
-		"Part.goi": `param label: ""
-Column { Text { text: $label } }`,
+		"Part.goi": `props { label: string }
+Column { Text { text: props.label } }`,
 	})
-	// A bare word param value must work as a string, like every other string
+	// A bare word prop value must work as a string, like every other string
 	// property.
 	tr, err := load(t, dir, "Main.goi")
 	if err != nil {
@@ -465,10 +509,10 @@ Window {
 		Row { template: true supporting: "x" }
 	}
 }`,
-		"Row.goi": `param supporting: ""
+		"Row.goi": `props { supporting: string }
 ListItem {
 	label: "Row"
-	supporting: $supporting
+	supporting: props.supporting
 }`,
 	})
 	tr, err := load(t, dir, "Main.goi")
@@ -489,7 +533,7 @@ ListItem {
 }
 
 // TestBlockSurvivesImportExpansion guards the copy path: a control block inside
-// a fragment must reach the tree, with its arms, params and slots intact.
+// a fragment must reach the tree, with its arms, props and slots intact.
 func TestBlockSurvivesImportExpansion(t *testing.T) {
 	dir := design(t, map[string]string{
 		"Main.goi": `import "./Card.goi" as Card
@@ -499,9 +543,9 @@ Window {
 		Text { id: passed text: "passed" }
 	}
 }`,
-		"Card.goi": `param mode: "dense"
+		"Card.goi": `props { mode: string = "dense" }
 Column {
-	{#if $mode == "fancy"}
+	{#if props.mode == "fancy"}
 		Text { id: fancy text: "fancy" }
 	{:else}
 		Column {
@@ -514,7 +558,7 @@ Column {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Both arms reach the tree; the param decides which one is shown.
+	// Both arms reach the tree; the prop decides which one is shown.
 	fancy, ok := tr.ByID("fancy")
 	if !ok {
 		t.Fatalf("the if arm was dropped:\n%s", dump(tr))
@@ -524,7 +568,7 @@ Column {
 		t.Fatalf("the slot inside the else arm was not filled:\n%s", dump(tr))
 	}
 	if !shown(fancy) || shown(passed) {
-		t.Fatal("the param did not pick the if arm")
+		t.Fatal("the prop did not pick the if arm")
 	}
 }
 

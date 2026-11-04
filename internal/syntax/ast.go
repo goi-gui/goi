@@ -13,16 +13,16 @@ type Pos int
 func (p Pos) Pos() Pos { return p }
 
 // File is a parsed .goi file. Exactly one root element, after an optional
-// preamble of `import` and `param` lines.
+// preamble of `import`, `props`, `bridge` and `type` declarations.
 type File struct {
 	// Src is the path the file was read from, for diagnostics. Empty for a file
 	// parsed from memory.
 	Src string
 	// Imports lists the fragments this file pulls in, in source order.
 	Imports []Import
-	// Params declares the values a fragment expects. A file with params is a
-	// fragment: its root may be any element, not just Window.
-	Params []Param
+	// Props declares the values a fragment expects from its instance. A file
+	// with props is a fragment: its root may be any element, not just Window.
+	Props []Prop
 	// Vars is the `data { ... }` block: the app's variables, which Go sets and a
 	// design reads in conditions, values and {#each} sources.
 	Vars []DataVar
@@ -35,8 +35,8 @@ type File struct {
 }
 
 // IsFragment reports whether the file is meant to be imported rather than
-// opened as a window: it declares params or a `$children` slot.
-func (f *File) IsFragment() bool { return len(f.Params) > 0 || f.Fragment }
+// opened as a window: it declares props or a `$children` slot.
+func (f *File) IsFragment() bool { return len(f.Props) > 0 || f.Fragment }
 
 // Import is `import "./Sidebar.goi" as Sidebar`.
 type Import struct {
@@ -112,13 +112,32 @@ func (f *File) Var(name string) *DataVar {
 	return nil
 }
 
-// Param is `param title: "Mail"`. The default is required, so an instance never
-// has to handle a missing value.
-type Param struct {
+// Prop is one entry of a fragment's `props { ... }` block: a typed value the
+// instance passes, with an optional default. The fragment reads it as
+// `props.name`; a prop the instance leaves out is its default, or the type's
+// zero value when it declares none.
+type Prop struct {
 	Name   string
 	NameAt Pos
-	// Default is used when the instance does not pass the param.
+	// Type is one of bool, string, number, color.
+	Type string
+	// Default, when the declaration wrote `= value`.
 	Default Value
+	// At is the type's position, for diagnostics.
+	At Pos
+}
+
+// Prop returns the named prop, or nil.
+func (f *File) Prop(name string) *Prop {
+	if f == nil {
+		return nil
+	}
+	for i := range f.Props {
+		if f.Props[i].Name == name {
+			return &f.Props[i]
+		}
+	}
+	return nil
 }
 
 // BlockKind identifies a control block.
@@ -275,7 +294,6 @@ const (
 	BinaryKind
 	UnaryKind
 	TernaryKind
-	ParamRefKind
 	CallKind
 )
 
@@ -352,13 +370,6 @@ type Call struct {
 	Args   []Value
 }
 
-// ParamRef is `$name`, the value an instance passed for a fragment param. It is
-// replaced while the fragment is expanded, so nothing downstream sees it.
-type ParamRef struct {
-	At   Pos
-	Name string
-}
-
 // Binary is an expression: Left Op Right. Op is one of "+", "-", "*", "/",
 // "==", "!=", "<", "<=", ">", ">=", "&&", "||".
 type Binary struct {
@@ -384,32 +395,30 @@ type Ternary struct {
 
 // Kind implementations.
 
-func (s *String) Kind() ValueKind   { return StringKind }
-func (n *Number) Kind() ValueKind   { return NumberKind }
-func (b *Bool) Kind() ValueKind     { return BoolKind }
-func (c *Color) Kind() ValueKind    { return ColorKind }
-func (i *Ident) Kind() ValueKind    { return IdentKind }
-func (m *Map) Kind() ValueKind      { return MapKind }
-func (p *Percent) Kind() ValueKind  { return PercentKind }
-func (r *Ref) Kind() ValueKind      { return RefKind }
-func (b *Binary) Kind() ValueKind   { return BinaryKind }
-func (u *Unary) Kind() ValueKind    { return UnaryKind }
-func (t *Ternary) Kind() ValueKind  { return TernaryKind }
-func (p *ParamRef) Kind() ValueKind { return ParamRefKind }
-func (c *Call) Kind() ValueKind     { return CallKind }
+func (s *String) Kind() ValueKind  { return StringKind }
+func (n *Number) Kind() ValueKind  { return NumberKind }
+func (b *Bool) Kind() ValueKind    { return BoolKind }
+func (c *Color) Kind() ValueKind   { return ColorKind }
+func (i *Ident) Kind() ValueKind   { return IdentKind }
+func (m *Map) Kind() ValueKind     { return MapKind }
+func (p *Percent) Kind() ValueKind { return PercentKind }
+func (r *Ref) Kind() ValueKind     { return RefKind }
+func (b *Binary) Kind() ValueKind  { return BinaryKind }
+func (u *Unary) Kind() ValueKind   { return UnaryKind }
+func (t *Ternary) Kind() ValueKind { return TernaryKind }
+func (c *Call) Kind() ValueKind    { return CallKind }
 
 // Pos implementations.
 
-func (s *String) Pos() Pos   { return s.At }
-func (n *Number) Pos() Pos   { return n.At }
-func (b *Bool) Pos() Pos     { return b.At }
-func (c *Color) Pos() Pos    { return c.At }
-func (i *Ident) Pos() Pos    { return i.At }
-func (m *Map) Pos() Pos      { return m.At }
-func (p *Percent) Pos() Pos  { return p.At }
-func (r *Ref) Pos() Pos      { return r.At }
-func (b *Binary) Pos() Pos   { return b.At }
-func (u *Unary) Pos() Pos    { return u.At }
-func (t *Ternary) Pos() Pos  { return t.At }
-func (p *ParamRef) Pos() Pos { return p.At }
-func (c *Call) Pos() Pos     { return c.At }
+func (s *String) Pos() Pos  { return s.At }
+func (n *Number) Pos() Pos  { return n.At }
+func (b *Bool) Pos() Pos    { return b.At }
+func (c *Color) Pos() Pos   { return c.At }
+func (i *Ident) Pos() Pos   { return i.At }
+func (m *Map) Pos() Pos     { return m.At }
+func (p *Percent) Pos() Pos { return p.At }
+func (r *Ref) Pos() Pos     { return r.At }
+func (b *Binary) Pos() Pos  { return b.At }
+func (u *Unary) Pos() Pos   { return u.At }
+func (t *Ternary) Pos() Pos { return t.At }
+func (c *Call) Pos() Pos    { return c.At }

@@ -433,14 +433,13 @@ batch. This is what the display list will feed.
   an `embed.FS` gives a single executable. Expansion happens in `internal/asset`
   *before* the schema, validator and tree builder run, so none of them knows what
   a fragment is — they see one ordinary tree.
-- **Imports are structural, params are values.** `import "./x.goi" as X` replaces
+- **Imports are structural, props are values.** `import "./x.goi" as X` replaces
   `X { ... }` with the fragment's root element, so the fragment owns its layout and
-  the instance places it like any child. A param always has a default, so an
-  instance never has to pass one; `$name` is replaced before validation. A value
-  the instance passes for a param is checked against the property that consumes
-  it, using the default as the type witness, so `color: $tone` fails on the param
-  line rather than producing a broken node.
-- **An instance property is a param or an override.** Params win by name; every
+  the instance places it like any child. A prop always has a default or the type's
+  zero value, so an instance never has to pass one; `props.name` is replaced
+  before validation. (This entry predates the rename: it used `param`/`$name`; see
+  the props entry at the end for why the spelling changed.)
+- **An instance property is a prop or an override.** Props win by name; every
   other property is written onto the fragment root, replacing its own value
   instead of duplicating it, which is what makes `Sidebar { width: 300 }` work.
 - **Fragments may share nothing.** Two instances of one fragment get separate AST
@@ -448,9 +447,9 @@ batch. This is what the display list will feed.
   and the error names the duplicate. Namespacing by instance id was considered and
   left out: it needs every `ByID` to learn a new path syntax.
 - **Only an entry point must be a Window.** `schema.Validate` accepts any root;
-  `ValidateEntry` adds the Window rule and rejects unbound `$param` (nothing can
-  fill it in the file a program opens). A file with params is a fragment, which is
-  how `goicheck` reports it.
+  `ValidateEntry` adds the Window rule and rejects an unbound `props.name` (nothing
+  can fill it in the file a program opens). A file with props is a fragment, which
+  is how `goicheck` reports it.
 - **Hot reload watches directories, not the entry file.** A design is several
   files, so any `.goi` write in any directory the design used reloads the whole
   tree; the import graph is recomputed, and the watch set is rebuilt in case a
@@ -1184,3 +1183,18 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   element that carries the `id:`, not a guess, so the member list cannot offer a
   property that node does not have. Ids inside a block arm are offered too: the
   design still writes the bare name there.
+
+- **`props` replaces `param`, and a prop is typed.** A fragment used to declare
+  `param title: ""` and write `$title`; both are gone. One `props { title: string
+  = "Mail" }` block declares the inputs and the fragment reads `props.title`,
+  which is an ordinary reference like `bridge.count`. Three things follow: the
+  type is stated once and checked against every property the prop feeds (instead
+  of being inferred from a default literal); a prop the instance leaves out is
+  its default or, with none, the type's zero value (`""`, `0`, `false`,
+  transparent black), so a fragment never guards for a missing value; and the
+  reference reuses the path the parser, validator, expander and editor already
+  handle, so completion and hover come for free and `$` stops meaning two
+  different things in value and member position. Props stay scalars, because a
+  prop is substituted as a literal and a list has no literal to substitute. The
+  lexer now emits a lone `=` for the default; only the props block accepts it, so
+  a stray `=` elsewhere still fails at the same edit.

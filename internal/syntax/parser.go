@@ -118,8 +118,8 @@ func (p *parser) sync() {
 
 func (p *parser) parseFile() *File {
 	f := &File{}
-	// The preamble: `import ... as ...` and `param name: default` may appear in
-	// any order before the root element.
+	// The preamble: `import ... as ...`, the `props` block, `bridge` and `type`
+	// may appear in any order before the root element.
 	for {
 		t := p.peek()
 		if t.kind != tokIdent {
@@ -133,11 +133,8 @@ func (p *parser) parseFile() *File {
 			if ok {
 				f.Imports = append(f.Imports, imp)
 			}
-		case t.text == "param":
-			pr, ok := p.parseParam()
-			if ok {
-				f.Params = append(f.Params, pr)
-			}
+		case t.text == "props":
+			p.parseProps(f)
 		case t.text == "data", t.text == "bridge":
 			// `data` is the original name; `bridge` says what the block is:
 			// the contract between Go and the design. Both parse alike.
@@ -218,30 +215,74 @@ func (p *parser) parseImport() (Import, bool) {
 	return imp, true
 }
 
-// parseParam reads `param name: default`.
-func (p *parser) parseParam() (Param, bool) {
-	kw := p.next() // param
-	pr := Param{NameAt: kw.pos}
-	name := p.peek()
-	if name.kind != tokIdent {
-		p.errorf(name, "expected a param name")
+// parseProps reads a fragment's input block, the typed values an instance
+// passes and the fragment reads as `props.name`:
+//
+//	props {
+//		id: string
+//		title: string = "untitled"
+//	}
+func (p *parser) parseProps(f *File) {
+	p.next() // props
+	if p.peek().kind != tokLBrace {
+		p.errorf(p.peek(), "expected '{' after props")
 		p.sync()
-		return pr, false
+		return
 	}
 	p.next()
-	pr.Name, pr.NameAt = name.text, name.pos
+	for {
+		t := p.peek()
+		switch t.kind {
+		case tokEOF:
+			p.errorf(t, "unexpected end of file: missing '}'")
+			return
+		case tokRBrace:
+			p.next()
+			return
+		case tokComma, tokSemicolon:
+			p.next()
+		case tokIdent:
+			pr, ok := p.parseProp()
+			if !ok {
+				return
+			}
+			f.Props = append(f.Props, pr)
+		default:
+			p.errorf(t, "expected a prop declaration")
+			if !p.recoverMember() {
+				p.next()
+			}
+		}
+	}
+}
+
+// parseProp reads `name: type` or `name: type = default`.
+func (p *parser) parseProp() (Prop, bool) {
+	name := p.next()
+	pr := Prop{Name: name.text, NameAt: name.pos}
 	if p.peek().kind != tokColon {
-		p.errorf(p.peek(), "expected ':' after the param name")
+		p.errorf(p.peek(), "expected ':' after the prop name")
 		p.sync()
 		return pr, false
 	}
 	p.next()
-	v, ok := p.parseValue()
-	if !ok {
+	t := p.peek()
+	if t.kind != tokIdent {
+		p.errorf(t, "expected a prop type: bool, string, number or color")
 		p.sync()
 		return pr, false
 	}
-	pr.Default = v
+	p.next()
+	pr.Type, pr.At = t.text, t.pos
+	if p.peek().kind == tokAssign {
+		p.next()
+		v, ok := p.parseValue()
+		if !ok {
+			p.sync()
+			return pr, false
+		}
+		pr.Default = v
+	}
 	if p.peek().kind == tokSemicolon {
 		p.next()
 	}
@@ -815,8 +856,8 @@ func (p *parser) parseValue() (Value, bool) {
 	case tokLBrace:
 		return p.parseMap()
 	case tokDollar:
-		// A param is an operand like any other, so `$mode == "fancy"` parses:
-		// an expression starts here, not just a bare reference.
+		// A `$` starts an expression only for the diagnostic parseTerm gives;
+		// going through the expression path keeps one message per '$'.
 		return p.parseExpr()
 	case tokError:
 		// The lexer already reported this; stay quiet so the file does not
@@ -1037,14 +1078,11 @@ func (p *parser) parseTerm() (Value, bool) {
 		p.next()
 		return &Color{At: t.pos, RGBA: t.rgba}, true
 	case tokDollar:
-		at := p.next().pos
-		name := p.peek()
-		if name.kind != tokIdent {
-			p.errorf(name, "expected a param name after '$'")
-			return nil, false
-		}
-		p.next()
-		return &ParamRef{At: at, Name: name.text}, true
+		// `$name` marks a slot, and a slot is an element, not a value. A
+		// fragment reads its inputs as `props.name`.
+		t := p.next()
+		p.errorf(t, "unexpected '$' in a value: a fragment reads its inputs as props.name")
+		return nil, false
 	case tokLParen:
 		p.next()
 		v, ok := p.parseExpr()

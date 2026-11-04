@@ -61,19 +61,19 @@ func TestQuotedColor(t *testing.T) {
 // of a design, so its root is whatever element it draws. Only an entry point must
 // be a Window.
 func TestFragmentRootCanBeAnyElement(t *testing.T) {
-	f, diag := syntax.Parse([]byte(`param title: ""
+	f, diag := syntax.Parse([]byte(`props { title: string }
 Column {
-	Text { text: $title }
+	Text { text: props.title }
 }`))
 	if !diag.Empty() {
 		t.Fatalf("%v", diag)
 	}
-	// A `$param` is legal in a fragment: the default is the type witness.
+	// `props.name` is legal in a fragment: the declaration is the type witness.
 	if _, diag := Validate(f); !diag.Empty() {
-		t.Fatalf("fragment param rejected: %v", diag)
+		t.Fatalf("fragment prop rejected: %v", diag)
 	}
 	if _, diag := ValidateEntry(f); diag.Empty() {
-		t.Fatal("an entry point cannot have unbound params")
+		t.Fatal("an entry point cannot read unbound props")
 	}
 
 	f, diag = syntax.Parse([]byte(`Column { Text { text: "x" } }`))
@@ -546,5 +546,56 @@ func TestBridgeEvents(t *testing.T) {
 		if got := diag.Format("<src>", []byte(src)); !strings.Contains(got, want) {
 			t.Errorf("%q gave %s, want %q", src, got, want)
 		}
+	}
+}
+
+// TestPropsAreTyped is the contract of the props block: the declared type is
+// what the reference is checked against, a default must fit that type, and an
+// undeclared prop is a typo, not a silent zero value.
+func TestPropsAreTyped(t *testing.T) {
+	ok := `props {
+	title: string = "x"
+	width: number
+	accent: color = #112233
+	on: bool = false
+}
+Column {
+	spacing: props.width
+	Text { text: props.title color: props.accent visible: props.on }
+}`
+	f, diag := syntax.Parse([]byte(ok))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	if _, diag := Validate(f); !diag.Empty() {
+		t.Fatalf("a well-typed fragment was rejected: %v", diag)
+	}
+
+	cases := []struct{ name, src, want string }{
+		{"wrong consuming type", `props { count: number }
+Column { Text { visible: props.count } }`, `prop "count" is number, not bool`},
+		{"default does not fit", `props { title: number = "x" }
+Column { }`, "props.title expects a number"},
+		{"not a type", `props { title: text }
+Column { }`, `"text" is not a type`},
+		{"undeclared", `props { a: string }
+Column { Text { text: props.b } }`, `no prop "b"`},
+		{"duplicate", `props { a: string, a: number }
+Column { }`, `duplicate prop "a"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, diag := syntax.Parse([]byte(tc.src))
+			if !diag.Empty() {
+				t.Fatalf("parse: %v", diag)
+			}
+			_, diag = Validate(f)
+			if diag.Empty() {
+				t.Fatal("expected a diagnostic")
+			}
+			if !strings.Contains(diag[0].Message, tc.want) {
+				t.Fatalf("message = %q, want %q", diag[0].Message, tc.want)
+			}
+		})
 	}
 }

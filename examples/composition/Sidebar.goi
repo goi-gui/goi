@@ -1,9 +1,11 @@
-// Sidebar: a navigation panel. The three params let each instance say what it
+// Sidebar: a navigation panel. The three props let each instance say what it
 // shows; everything else (width, visible, ...) is an ordinary property the
 // instance can override.
-param title: "Mail"
-param subtitle: ""
-param active: "inbox"
+props {
+	title: string = "Mail"
+	subtitle: string
+	active: string = "inbox"
+}
 
 Column {
 	width: 280
@@ -12,12 +14,12 @@ Column {
 	background: surfaceContainer
 
 	Text {
-		text: $title
+		text: props.title
 		role: "titleLarge"
 	}
 
 	Text {
-		text: $subtitle
+		text: props.subtitle
 		role: "bodySmall"
 		color: onSurfaceVariant
 	}
@@ -34,5 +36,5 @@ Column {
 	Divider { }
 
 	Text { text: "Active: " role: "labelSmall" color: onSurfaceVariant }
-	Text { text: $active role: "labelMedium" }
+	Text { text: props.active role: "labelMedium" }
 }

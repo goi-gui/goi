@@ -51,9 +51,9 @@ Window {
 
 ```go
 // Sidebar.goi
-param title: ""
+props { title: string }
 Column {
-    Text { text: $title role: "titleLarge" }
+    Text { text: props.title role: "titleLarge" }
 }
 ```
 
@@ -113,7 +113,8 @@ go run ./cmd/goicheck -layout examples/*/*.goi  # syntax plus a headless layout 
 
 - `.goi` files: literals only, no scripting. Elements, properties, ids, with
   diagnostics that point at `file:line:col`.
-- Composable designs: `import "./Sidebar.goi" as Sidebar` plus `param`/`$param`,
+- Composable designs: `import "./Sidebar.goi" as Sidebar`, a typed `props`
+  block the instance fills (`props.title`, zero value when it passes nothing),
   named slots (`$header`) and `$children`, loaded from an `io/fs.FS` so
   `embed.FS` and `os.DirFS` both work. An instance's `id` scopes the fragment's
   own ids (`first.title`), so one fragment can be used many times with behaviour
@@ -202,12 +203,13 @@ reasoning.
 
 Bindings that push Go state back into `.goi` values (the file is evaluated, not
 observed), dynamic color and custom themes, an accessibility tree, multiple
-windows, drag and drop, typed/required fragment params, state and styles declared
-inside a fragment, drag-to-fling (the wheel does
-coast), and caret mapping inside right-to-left text. IME composition shows as underlined preedit on
-Wayland. `go run ./cmd/goicheck -layout` lays a design out headlessly and reports
-nodes that cannot draw; a fragment is previewed on its own by filling its params
-with their defaults.
+windows, drag and drop, required fragment props (a prop always has a default or
+the type's zero value), state and styles declared inside a fragment,
+drag-to-fling (the wheel does coast), and caret mapping inside right-to-left
+text. IME composition shows as underlined preedit on Wayland.
+`go run ./cmd/goicheck -layout` lays a design out headlessly and reports nodes
+that cannot draw; a fragment is previewed on its own by filling its props with
+their defaults.
 
 ## Tests
 

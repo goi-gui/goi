@@ -61,7 +61,7 @@ func main() {
 			fail = true
 			continue
 		}
-		// A file with params or a slot is a fragment: it draws part of a design
+		// A file with props or a slot is a fragment: it draws part of a design
 		// and gets its values from whoever imports it, so it has no window root.
 		fragment := b.File.IsFragment()
 		if fragment {
@@ -71,10 +71,10 @@ func main() {
 				continue
 			}
 			if !*checkLayout && !*ops {
-				fmt.Printf("%s: ok (fragment, %d params, %d files)\n", file, len(b.File.Params), len(b.Files))
+				fmt.Printf("%s: ok (fragment, %d props, %d files)\n", file, len(b.File.Props), len(b.Files))
 				continue
 			}
-			// Preview it on its own: fill the params with their defaults, then
+			// Preview it on its own: fill the props with their defaults, then
 			// wrap the root in a Window so it sizes the way the window would.
 			body, pdiag := asset.Preview(b.File)
 			if !pdiag.Empty() {

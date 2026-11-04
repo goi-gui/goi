@@ -30,6 +30,7 @@ const (
 	tokLParen
 	tokRParen
 	tokDollar
+	tokAssign
 	tokEqEq
 	tokBang
 	tokBangEq
@@ -107,8 +108,8 @@ func (l *lexer) run() ([]token, Diagnostics) {
 				l.emit(token{kind: tokEqEq, pos: Pos(start), end: Pos(l.off)})
 				continue
 			}
-			l.fail(start, l.off, "unexpected '='; comparison is '=='")
-			l.emit(token{kind: tokError, pos: Pos(start), end: Pos(l.off)})
+			// A lone '=' is a prop default; a comparison is '=='.
+			l.emit(token{kind: tokAssign, pos: Pos(start), end: Pos(l.off)})
 		case c == '!':
 			l.off++
 			if l.off < len(l.src) && l.src[l.off] == '=' {

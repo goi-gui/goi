@@ -190,11 +190,14 @@ func (s *Server) completion(raw json.RawMessage) any {
 	file, _ := syntax.Parse(d.text)
 	prop, inMap := enclosingProperty(file, d.text, off)
 
-	// A responsive map key, the value of a property, or a member of one of the
-	// reserved global namespaces (`app.`, `window.`).
+	// A responsive map key, a prop declaration inside the `props` block, the
+	// value of a property, or a member of a reserved namespace (`app.`,
+	// `window.`).
 	switch {
 	case inMap:
 		items = append(items, breakpointItems()...)
+	case inPropsBlock(d.text, off):
+		items = append(items, propDeclItems(d.text, off, prefix)...)
 	case prop != "":
 		values, cut := valueItems(file, prop, d.text, off, prefix, insideString(d.text, off))
 		items = append(items, values...)
@@ -213,7 +216,7 @@ func (s *Server) completion(raw json.RawMessage) any {
 		// brace because isWordByte does not, so it is cut to the tag itself.
 		items = append(items, blockItemsFor(openBlockAt(file, off) != nil, listVars(file))...)
 	case prop == "" && !inMap && strings.HasPrefix(prefix, "$"):
-		// `$` starts a slot here, not a param: a param is a value.
+		// `$` starts a slot here: a slot is an element, a prop is a value.
 		items = append(items, slotItems(file, d.text, off)...)
 	case prop == "" && !inMap && (trimmed == "" || strings.HasSuffix(trimmed, "{")):
 		items = append(items, memberItems(file, d.text, off)...)
@@ -222,6 +225,65 @@ func (s *Server) completion(raw json.RawMessage) any {
 	}
 	return completionList{Items: dedupe(items, prefix), IsIncomplete: incomplete}
 }
+
+// inPropsBlock reports whether off sits inside a top-level `props { ... }`
+// block, tracked by braces so an element body that happens to contain the word
+// does not count.
+func inPropsBlock(src []byte, off int) bool {
+	depth := 0
+	for i := off - 1; i >= 0; i-- {
+		switch src[i] {
+		case '}':
+			depth++
+		case '{':
+			if depth > 0 {
+				depth--
+				continue
+			}
+			j := i - 1
+			for j >= 0 && (src[j] == ' ' || src[j] == '\t' || src[j] == '\n' || src[j] == '\r') {
+				j--
+			}
+			end := j + 1
+			for j >= 0 && isWordByte(src[j]) {
+				j--
+			}
+			return string(src[j+1:end]) == "props"
+		}
+	}
+	return false
+}
+
+// propDeclItems offers the scalar types after a prop's colon. Nothing else in a
+// `props` block is a choice: the name is the fragment's own.
+func propDeclItems(src []byte, off int, prefix string) []completionResult {
+	line := off
+	for line > 0 && src[line-1] != '\n' {
+		line--
+	}
+	colon := false
+	for i := line; i < off && i < len(src); i++ {
+		if src[i] == ':' {
+			colon = true
+		}
+	}
+	if !colon {
+		return nil
+	}
+	out := make([]completionResult, 0, len(propTypes))
+	for _, t := range propTypes {
+		out = append(out, completionResult{
+			Label: t, Kind: kindKeyword, Detail: "prop type",
+			Documentation: &doc{Kind: "markdown", Value: "**" + t + "**\n\nThe fragment reads the prop as `" + t +
+				"`; an instance passes it as a property on the call. Without one the fragment gets the default, or the type's zero value."},
+		})
+	}
+	return out
+}
+
+// propTypes are the types a prop may declare: a prop becomes a value in the
+// design, so a list or a row shape has no place here.
+var propTypes = []string{"bool", "string", "number", "color"}
 
 // blockItems offers the block tags. Only `{#if}` exists, so the list is short:
 // a fresh block at member level, and the two tags that continue one already
@@ -425,12 +487,31 @@ func enclosingRef(before []byte) string {
 }
 
 // refItems completes the member of a dotted reference: a reserved namespace
-// (`app.`, `window.`), the `bridge` block (also spelled `data`), or an {#each}
-// loop variable.
+// (`app.`, `window.`), the `props` block, the `bridge` block (also spelled
+// `data`), an {#each} loop variable or an element id.
 func refItems(file *syntax.File, src []byte, off int, ref string) []completionResult {
 	switch ref {
 	case "app", "window":
 		return globalItems(ref)
+	case "props":
+		out := make([]completionResult, 0, len(file.Props))
+		for _, pr := range file.Props {
+			detail := "props." + pr.Name + " · " + pr.Type
+			docu := "**props." + pr.Name + "**\n\nType: `" + pr.Type + "`\n\n"
+			if pr.Default != nil {
+				docu += "Default: `" + sourceSpan(src, int(pr.Default.Pos())) + "`. "
+			} else {
+				docu += "No default: an instance that leaves it out passes the type's zero value. "
+			}
+			docu += "An instance sets it as a property on the call."
+			out = append(out, completionResult{
+				Label:         pr.Name,
+				Kind:          kindProperty,
+				Detail:        detail,
+				Documentation: &doc{Kind: "markdown", Value: docu},
+			})
+		}
+		return out
 	case "data", "bridge":
 		out := make([]completionResult, 0, len(file.Vars))
 		for _, dv := range file.Vars {
@@ -625,12 +706,6 @@ func valueItems(file *syntax.File, prop string, src []byte, off int, prefix stri
 			})
 		}
 	}
-	// A fragment may only use the params it declared.
-	for _, p := range file.Params {
-		out = append(out, completionResult{
-			Label: "$" + p.Name, Kind: kindVariable, Detail: "param",
-		})
-	}
 	return out, truncated
 }
 
@@ -800,7 +875,7 @@ func elementItems(file *syntax.File) []completionResult {
 				Label:         imp.Alias,
 				Kind:          kindClass,
 				Detail:        "fragment",
-				Documentation: &doc{Kind: "markdown", Value: "**" + imp.Alias + "** — fragment\n\nImported from `" + imp.Path + "`. Its params are properties on the call; `$name { ... }` fills a named slot and plain children fill `$children`."},
+				Documentation: &doc{Kind: "markdown", Value: "**" + imp.Alias + "** — fragment\n\nImported from `" + imp.Path + "`. Its props are properties on the call; `$name { ... }` fills a named slot and plain children fill `$children`."},
 			})
 		}
 	}
@@ -869,6 +944,23 @@ func (s *Server) hover(raw json.RawMessage) any {
 		return nil
 	}
 
+	// A prop declaration explains itself, so the block is readable without the
+	// docs: the name, its type and its default.
+	for _, pr := range file.Props {
+		if start, end := int(pr.NameAt), int(pr.NameAt)+len(pr.Name); off >= start && off <= end {
+			return map[string]any{
+				"contents": doc{Kind: "markdown", Value: declaredPropDoc(pr, d.text)},
+				"range":    idx.at(start, end),
+			}
+		}
+		if start, end := int(pr.At), int(pr.At)+len(pr.Type); off >= start && off <= end {
+			return map[string]any{
+				"contents": doc{Kind: "markdown", Value: "**" + pr.Type + "**\n\nA prop type. The fragment reads `props." +
+					pr.Name + "` as a `" + pr.Type + "`."},
+				"range": idx.at(start, end),
+			}
+		}
+	}
 	if start, end, el := elementNameAt(file, off); el != nil {
 		if strings.HasPrefix(el.Name, "$") {
 			value := slotDoc
@@ -901,6 +993,15 @@ func (s *Server) hover(raw json.RawMessage) any {
 	// element it names or the property it reads.
 	if r := refAt(file, off); r != nil {
 		propStart := int(r.At) + len(r.ID) + 1
+		if r.ID == "props" {
+			if pr := file.Prop(r.Prop); pr != nil && off >= propStart {
+				return map[string]any{
+					"contents": doc{Kind: "markdown", Value: declaredPropDoc(*pr, d.text)},
+					"range":    idx.at(propStart, propStart+len(r.Prop)),
+				}
+			}
+			return nil
+		}
 		if off >= propStart {
 			if kind, ok := idElementAt(file, r.ID); ok {
 				if el, ok := schema.Lookup(kind); ok {
@@ -1524,6 +1625,17 @@ func refAt(file *syntax.File, off int) *syntax.Ref {
 		members(file.Root.Members)
 	}
 	return found
+}
+
+// declaredPropDoc explains one `props` declaration.
+func declaredPropDoc(pr syntax.Prop, src []byte) string {
+	value := "**props." + pr.Name + "**\n\nType: `" + pr.Type + "`\n\n"
+	if pr.Default != nil {
+		value += "Default: `" + sourceSpan(src, int(pr.Default.Pos())) + "`. An instance sets it as a property on the call."
+	} else {
+		value += "No default: an instance that leaves it out passes the type's zero value."
+	}
+	return value
 }
 
 // ---------------------------------------------------------------- docs

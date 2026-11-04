@@ -28,17 +28,21 @@ Window {
 
 ## Splitting a design across files
 
-A file may start with `import` and `param` lines, before its root element:
+A file may start with `import` lines and one `props` block, before its root
+element. `props` declares the typed values the fragment expects; the fragment
+reads them as `props.name`:
 
 ```
 // Sidebar.goi
-param title: "Mail"
-param subtitle: ""
+props {
+    title: string = "Mail"
+    subtitle: string
+}
 
 Column {
     width: 280
-    Text { text: $title role: "titleLarge" }
-    Text { text: $subtitle role: "bodySmall" }
+    Text { text: props.title role: "titleLarge" }
+    Text { text: props.subtitle role: "bodySmall" }
 }
 ```
 
@@ -60,16 +64,23 @@ Window {
   asset container. Fragments may import fragments; a cycle is an error.
 - `Sidebar { }` is replaced by the fragment's root element, so the fragment
   decides its own layout and the instance places it like any other child.
-- `param` always has a default, so an instance never has to think about a value
-  it does not care about. `$name` in the fragment is replaced by whatever the
-  instance passed, or by the default.
-- An instance property whose name is a param sets that param. Any other property
+- A prop is `name: type`, with an optional `= default`. The type is `bool`,
+  `string`, `number` or `color`: a prop becomes a value in the design, so a list
+  or a row shape has no place here.
+- A prop the instance leaves out is its default; with no default it is the
+  **type's zero value** (`""`, `0`, `false`, `#00000000`), so a fragment never
+  has to guard for a missing value.
+- An instance property whose name is a prop sets that prop. Any other property
   is applied to the fragment root, replacing the fragment's own value of the same
   name. So `Sidebar { width: 300 }` overrides the fragment's width.
 - A fragment's root may be any element; only the file a program loads must be a
-  `Window`. A file that declares params is reported as a fragment by `goicheck`.
-- `$name` is only valid inside a file that declares that param. In the entry file
-  nothing can fill it in, so it is an error.
+  `Window`. A file that declares props is reported as a fragment by `goicheck`.
+- `props.name` is only valid inside the file that declares it. The entry file has
+  nothing to fill it in, so it is an error there; a name the block does not
+  declare is an error too, with a "did you mean" hint.
+- A prop's declared type is checked against every property it feeds. The value an
+  instance passes is checked against that property, exactly like any other
+  literal, so `Sidebar { title: 5 }` is an error where `title` needs a string.
 
 ### Passing children into a fragment
 
@@ -107,7 +118,7 @@ Window {
   draws nothing there, so it can still be previewed on its own.
 - A slot may sit anywhere in the fragment body, including inside another
   fragment call, which is how a fragment forwards its children.
-- Like a file with params, a file with `$children` is a fragment: `goicheck` and
+- Like a file with props, a file with `$children` is a fragment: `goicheck` and
   the language server do not require it to be a `Window`.
 
 ### Named slots
@@ -323,9 +334,11 @@ converted from the design's values: a number may feed an `int`, a `float64` or a
 ## Grammar
 
 ```
-File      = { Import | Param | Bridge | Shape } Element EOF
+File      = { Import | Props | Bridge | Shape } Element EOF
 Import    = "import" String "as" Ident
-Param     = "param" Ident ":" Value [";"]
+Props     = "props" "{" { PropDecl } "}"
+PropDecl  = Ident ":" ScalarType [ "=" Value ] [";"]
+ScalarType = "bool" | "string" | "number" | "color"
 Bridge    = ("bridge" | "data") "{" { VarDecl } "}"
 Shape     = ("type" | "data") Ident "{" { FieldDecl } "}"
 VarDecl   = Ident ":" Type [";"]
@@ -525,10 +538,12 @@ Two namespaces are reserved for expressions:
 | `app.os` | string | `runtime.GOOS`: `linux`, `darwin`, `windows`, … |
 | `window.width`, `window.height` | number | logical client size, updated on resize |
 
-Any other name before the dot is read in order as an `{#each}` loop variable, a
-`bridge` (or `data`) variable, or an element id declared in the same file:
+Any other name before the dot is read in order as a `props` entry, an `{#each}`
+loop variable, a `bridge` (or `data`) variable, or an element id declared in the
+same file:
 
 ```
+Text { text: props.title }
 Text { text: bridge.count }
 Text { text: searchField.text }
 Rectangle { width: panel.width / 2 }
@@ -641,7 +656,7 @@ set from Go with `Prop.Set` is replaced on the next frame.
 ## Rules and diagnostics
 
 - Exactly one root element, and it must be `Window` — unless the file declares
-  `param`s, which makes it a fragment that an `import` pulls in.
+  `props`, which makes it a fragment that an `import` pulls in.
 - `id` must match `[a-z][A-Za-z0-9_]*` and be unique within the file.
 - `Positioned` must be a direct child of `Stack`.
 - Unknown element, unknown property, wrong literal type, unknown enum value,

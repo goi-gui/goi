@@ -218,7 +218,7 @@ func TestDiagnosticsClearWhenFixed(t *testing.T) {
 func TestDiagnosticsLandInTheFragment(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()
-	frag := "param title: \"\"\nColumn {\n\tbogus: 1\n}\n"
+	frag := "props { title: string }\nColumn {\n\tbogus: 1\n}\n"
 	fragURI := writeDesign(t, dir, "Side.goi", frag)
 	src := "import \"./Side.goi\" as Side\nWindow {\n\tid: main\n\tSide { title: \"x\" }\n}\n"
 	uri := writeDesign(t, dir, "main.goi", src)
@@ -236,7 +236,7 @@ func TestDiagnosticsLandInTheFragment(t *testing.T) {
 func TestCompletionOffersImportedFragments(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()
-	writeDesign(t, dir, "Side.goi", "param title: \"\"\nColumn { }\n")
+	writeDesign(t, dir, "Side.goi", "props { title: string }\nColumn { }\n")
 	src := "import \"./Side.goi\" as Side\nWindow {\n\t\n}\n"
 	uri := writeDesign(t, dir, "main.goi", src)
 	c.openDoc(uri, src)
@@ -590,7 +590,7 @@ func TestSymbolsMirrorTheElementTree(t *testing.T) {
 func TestDefinitionFollowsAnImport(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()
-	fragURI := writeDesign(t, dir, "Side.goi", "param title: \"\"\nColumn { }\n")
+	fragURI := writeDesign(t, dir, "Side.goi", "props { title: string }\nColumn { }\n")
 	src := "import \"./Side.goi\" as Side\nWindow {\n\tid: main\n}\n"
 	uri := writeDesign(t, dir, "main.goi", src)
 	c.openDoc(uri, src)
@@ -611,7 +611,7 @@ func TestDefinitionFollowsAnImport(t *testing.T) {
 func TestDefinitionFollowsAFragmentCall(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()
-	fragURI := writeDesign(t, dir, "Side.goi", "param title: \"\"\nColumn { }\n")
+	fragURI := writeDesign(t, dir, "Side.goi", "props { title: string }\nColumn { }\n")
 	src := "import \"./Side.goi\" as Side\nWindow {\n\tSide { }\n}\n"
 	uri := writeDesign(t, dir, "main.goi", src)
 	c.openDoc(uri, src)
@@ -715,7 +715,7 @@ func TestLanguageItemsThatNeedQuotes(t *testing.T) {
 }
 
 // TestChildrenSlotIsAFragment keeps the editor quiet on a fragment that only
-// takes children: like a file with params, it has no Window root.
+// takes children: like a file with props, it has no Window root.
 func TestChildrenSlotIsAFragment(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()
@@ -1201,5 +1201,77 @@ func TestIDReferencesAreKnownToTheEditor(t *testing.T) {
 	}
 	if want := pos(clean, strings.Index(clean, "id: abc")+len("id: ")); locs[0].Range.Start != want {
 		t.Fatalf("definition = %+v, want the id at %+v", locs[0].Range.Start, want)
+	}
+}
+
+// TestPropsAreKnownToTheEditor covers a fragment's input block: `props.`
+// completes the declared props with their types, the type position completes the
+// four scalar types, and hover explains the declaration.
+func TestPropsAreKnownToTheEditor(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := `props {
+	title: string = "untitled"
+	count: number
+}
+Column {
+	Text { text: props. }
+}
+`
+	uri := writeDesign(t, dir, "Card.goi", src)
+	c.openDoc(uri, src)
+
+	items := func(p position) map[string]completionResult {
+		res := c.request("textDocument/completion", map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     p,
+		})
+		var list completionList
+		if err := json.Unmarshal(res, &list); err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]completionResult{}
+		for _, it := range list.Items {
+			out[it.Label] = it
+		}
+		return out
+	}
+
+	member := items(at(t, src, "text: props. }", len("text: props.")))
+	if !strings.Contains(member["title"].Detail, "string") || !strings.Contains(member["count"].Detail, "number") {
+		t.Fatalf("props members = %v", member)
+	}
+
+	// After a prop's colon the four scalar types are the whole vocabulary.
+	decl := items(at(t, src, "count: number", len("count: ")))
+	for _, want := range []string{"bool", "string", "number", "color"} {
+		if _, ok := decl[want]; !ok {
+			t.Fatalf("type %q missing from %v", want, decl)
+		}
+	}
+
+	// Hover works off the AST, so it needs a file that parses.
+	clean := `props {
+	title: string = "untitled"
+	count: number
+}
+Column {
+	Text { text: props.title }
+}
+`
+	cleanURI := writeDesign(t, dir, "Clean.goi", clean)
+	c.openDoc(cleanURI, clean)
+	res := c.request("textDocument/hover", map[string]any{
+		"textDocument": map[string]any{"uri": cleanURI},
+		"position":     at(t, clean, "title: string", 2),
+	})
+	var h struct {
+		Contents doc `json:"contents"`
+	}
+	if err := json.Unmarshal(res, &h); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.Contents.Value, "props.title") || !strings.Contains(h.Contents.Value, "untitled") {
+		t.Fatalf("hover on the declaration = %q", h.Contents.Value)
 	}
 }

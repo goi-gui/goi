@@ -30,26 +30,23 @@ func Validate(f *syntax.File) (*Result, syntax.Diagnostics) {
 }
 
 // validateFile is the shared body. entry adds the rules that only hold for the file
-// a program opens: a Window root, and no unbound `$param`.
+// a program opens: a Window root, and no `props.name` left unexpanded.
 func validateFile(f *syntax.File, entry bool) (*Result, syntax.Diagnostics) {
 	if f == nil || f.Root == nil {
 		return nil, syntax.Diagnostics{{Message: "the file has no root element"}}
 	}
 	v := &validator{
-		file:   f,
-		ids:    map[*syntax.Element]string{},
-		elems:  map[string]*syntax.Element{},
-		seen:   map[string]syntax.Pos{},
-		entry:  entry,
-		params: make(map[string]syntax.Value, len(f.Params)),
-	}
-	for _, pr := range f.Params {
-		v.params[pr.Name] = pr.Default
+		file:  f,
+		ids:   map[*syntax.Element]string{},
+		elems: map[string]*syntax.Element{},
+		seen:  map[string]syntax.Pos{},
+		entry: entry,
 	}
 	if _, ok := Lookup(f.Root.Name); !ok {
 		v.elementUnknown(f.Root)
 	}
 	v.checkData()
+	v.checkProps()
 	v.walk(f.Root, "")
 	if v.diag.Empty() {
 		v.walkRefs(f.Root)
@@ -87,11 +84,8 @@ type validator struct {
 	// src is the file the element being validated came from, so a diagnostic
 	// lands in the right file after imports are expanded.
 	src string
-	// entry reports unbound `$param` refs, which are legal in a fragment.
+	// entry reports `props.name` refs, which are legal only in a fragment.
 	entry bool
-	// params holds the declared defaults of a fragment, so a `$param` value can
-	// be checked against the property it feeds.
-	params map[string]syntax.Value
 	// file supplies the data declarations an {#each} walks.
 	file *syntax.File
 	// scopes is the stack of loop variables in scope, innermost last.
@@ -140,7 +134,7 @@ func (v *validator) checkData() {
 			continue
 		}
 		seenVar[dv.Name] = dv.NameAt
-		if dv.Name == "data" || dv.Name == "bridge" || dv.Name == "app" || dv.Name == "window" {
+		if dv.Name == "data" || dv.Name == "bridge" || dv.Name == "props" || dv.Name == "app" || dv.Name == "window" {
 			v.add(dv.NameAt, dv.NameAt+syntax.Pos(len(dv.Name)), fmt.Sprintf("%q is a reserved name", dv.Name), "")
 		}
 		if dv.Fn {
@@ -400,13 +394,6 @@ func propNames(def *Element) []string {
 // the responsive form: one ordinary literal per breakpoint.
 func (v *validator) checkValue(e *syntax.Element, p *syntax.Property, pd *Prop) {
 	val := p.Value
-	// Expansion replaces every `$param` before validation. One that is still here
-	// was written in the fragment itself, so it is checked against the param's
-	// declared default: the default decides the type the instance must pass.
-	if ref, ok := val.(*syntax.ParamRef); ok {
-		v.checkParamValue(e, pd, ref)
-		return
-	}
 	if m, ok := val.(*syntax.Map); ok {
 		v.checkMap(e, pd, m)
 		return
@@ -414,34 +401,72 @@ func (v *validator) checkValue(e *syntax.Element, p *syntax.Property, pd *Prop) 
 	v.checkLiteral(e, pd, val)
 }
 
-// checkParamValue validates a `$param` in a fragment against the property it
-// feeds, using the param's default as the type witness. Anything the type check
-// reports is re-pointed at the reference and prefixed with the param name, so the
-// message says which value is wrong.
-func (v *validator) checkParamValue(e *syntax.Element, pd *Prop, ref *syntax.ParamRef) {
+// checkProps validates a fragment's input block: unique names, a scalar type,
+// and a default that fits the declared type.
+func (v *validator) checkProps() {
+	v.src = ""
+	seen := map[string]syntax.Pos{}
+	for i := range v.file.Props {
+		pr := &v.file.Props[i]
+		at := pr.NameAt
+		if _, dup := seen[pr.Name]; dup {
+			v.add(at, at+syntax.Pos(len(pr.Name)), fmt.Sprintf("duplicate prop %q", pr.Name), "")
+			continue
+		}
+		seen[pr.Name] = at
+		ft, ok := fieldType(false, pr.Type)
+		if !ok {
+			v.add(pr.At, pr.At+syntax.Pos(len(pr.Type)),
+				fmt.Sprintf("prop %q: %q is not a type; use bool, string, number or color", pr.Name, pr.Type),
+				syntax.Suggest(pr.Type, scalarTypes))
+			continue
+		}
+		if pr.Default != nil {
+			v.checkLiteral(propsElement, &Prop{Name: pr.Name, Type: ft}, pr.Default)
+		}
+	}
+}
+
+// propsElement names the `props` block in diagnostics: "props.title expects …".
+var propsElement = &syntax.Element{Name: "props"}
+
+// declaredPropNames lists the props a fragment declares, for suggestions.
+func declaredPropNames(f *syntax.File) []string {
+	out := make([]string, 0, len(f.Props))
+	for _, pr := range f.Props {
+		out = append(out, pr.Name)
+	}
+	return out
+}
+
+// checkPropRef validates `props.name` in a fragment against the property it
+// feeds, using the prop's declared type. Expansion replaces every reference
+// before a design is loaded, so one that is still here was written in the
+// fragment itself.
+func (v *validator) checkPropRef(e *syntax.Element, pd *Prop, x *syntax.Ref, at, end syntax.Pos, free bool) {
 	if v.entry {
-		v.add(ref.At, ref.At+syntax.Pos(len(ref.Name)+1),
-			fmt.Sprintf("$%s has no value: a param is only filled in when the file is imported", ref.Name), "")
+		v.add(at, end, fmt.Sprintf("%s.%s has no value: only an imported fragment receives props", x.ID, x.Prop), "")
 		return
 	}
-	def, ok := v.params[ref.Name]
-	if !ok {
-		v.add(ref.At, ref.At+syntax.Pos(len(ref.Name)+1),
-			fmt.Sprintf("%s has no param %q", e.Src, ref.Name), "")
+	pr := v.file.Prop(x.Prop)
+	if pr == nil {
+		v.add(at, end,
+			fmt.Sprintf("%s.%s: no prop %q", e.Name, pd.Name, x.Prop),
+			syntax.Suggest(x.Prop, declaredPropNames(v.file)))
 		return
 	}
 	if pd.Type == TypeID {
-		v.add(ref.At, ref.At+syntax.Pos(len(ref.Name)+1),
-			fmt.Sprintf("%s.%s cannot come from a param: an id names a node once", e.Name, pd.Name), "")
+		v.add(at, end,
+			fmt.Sprintf("%s.%s cannot come from a prop: an id names a node once", e.Name, pd.Name), "")
 		return
 	}
-	before := len(v.diag)
-	v.checkLiteral(e, pd, def)
-	for i := before; i < len(v.diag); i++ {
-		v.diag[i].Pos = ref.At
-		v.diag[i].End = ref.At + syntax.Pos(len(ref.Name)+1)
-		v.diag[i].Src = v.src
-		v.diag[i].Message = fmt.Sprintf("param %q: %s", ref.Name, v.diag[i].Message)
+	ft, ok := fieldType(false, pr.Type)
+	if !ok || free {
+		return
+	}
+	if !typesFit(ft, pd.Type) {
+		v.add(at, end,
+			fmt.Sprintf("%s.%s: prop %q is %s, not %s", e.Name, pd.Name, x.Prop, typeName(ft), typeName(pd.Type)), "")
 	}
 }
 
@@ -724,6 +749,10 @@ func (v *validator) checkRefs(e *syntax.Element, pd *Prop, val syntax.Value) {
 		at := x.At
 		end := at + syntax.Pos(len(x.ID)+1+len(x.Prop))
 		free := pd == anyProp
+		if x.ID == "props" {
+			v.checkPropRef(e, pd, x, at, end, free)
+			return
+		}
 		if x.ID == "data" || x.ID == "bridge" {
 			v.checkDataRef(e, pd, x, at, end, free)
 			return
@@ -980,8 +1009,6 @@ func kindName(val syntax.Value) string {
 		return "a reference"
 	case syntax.BinaryKind, syntax.UnaryKind, syntax.TernaryKind:
 		return "an expression"
-	case syntax.ParamRefKind:
-		return "a param reference"
 	case syntax.CallKind:
 		return "a handler call"
 	}

@@ -1,8 +1,10 @@
 // StatCard: one number with a caption. A fragment can be instantiated any
-// number of times, and each instance passes its own params.
-param label: "Label"
-param value: "0"
-param tone: #6750A4
+// number of times, and each instance passes its own props.
+props {
+	label: string = "Label"
+	value: string = "0"
+	tone: color = #6750A4
+}
 
 Card {
 	variant: filled
@@ -10,9 +12,9 @@ Card {
 	height: 96
 	Column {
 		spacing: 4
-		Text { text: $label role: "labelMedium" color: onSurfaceVariant }
+		Text { text: props.label role: "labelMedium" color: onSurfaceVariant }
 		// An id inside a fragment is scoped by the instance's id: with
 		// `StatCard { id: inbox }` this node is `inbox.value` from Go.
-		Text { id: value text: $value role: "headlineMedium" color: $tone }
+		Text { id: value text: props.value role: "headlineMedium" color: props.tone }
 	}
 }
