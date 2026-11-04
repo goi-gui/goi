@@ -192,8 +192,9 @@ syntax highlighting, brackets, indentation and an element outline. It starts
 `goipls`, the language server in `cmd/goipls`, which adds diagnostics (including
 errors inside an imported fragment), completion for elements, properties,
 values, icon names, ids, declaration types, `bridge.`/`props.` values, handler
-calls, `if`/`for` statements and the `formatf` builtin, hover docs for every
-declaration, a document outline and go-to-definition for imports and id
+calls, `if`/`for` statements, the `formatf` builtin and a fragment instance's
+props (read from the imported file), hover docs for every declaration and
+fragment, a document outline and go-to-definition for imports and id
 references:
 
 ```sh

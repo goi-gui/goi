@@ -3,6 +3,7 @@ package lsp
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -199,7 +200,7 @@ func (s *Server) completion(raw json.RawMessage) any {
 	case inDeclBlock(d.text, off):
 		items = append(items, declTypeItems(file, d.text, off)...)
 	case prop != "":
-		values, cut := valueItems(file, prop, d.text, off, prefix, insideString(d.text, off))
+		values, cut := valueItems(file, prop, d.text, off, prefix, insideString(d.text, off), s.fragmentProp(d, file, d.text, off, prop))
 		items = append(items, values...)
 		incomplete = cut
 	}
@@ -221,8 +222,15 @@ func (s *Server) completion(raw json.RawMessage) any {
 		// `$` starts a slot here: a slot is an element, a prop is a value.
 		items = append(items, slotItems(file, d.text, off)...)
 	case prop == "" && !inMap && (trimmed == "" || strings.HasSuffix(trimmed, "{")):
-		items = append(items, memberItems(file, d.text, off)...)
-		items = append(items, blockItems(file)...)
+		if imp, ok := s.fragmentAt(d, file, d.text, off); ok {
+			// A fragment instance body: its props, the root's overridable
+			// properties and the slots it fills.
+			items = append(items, s.fragmentMemberItems(d, imp)...)
+			items = append(items, elementItems(file)...)
+		} else {
+			items = append(items, memberItems(file, d.text, off)...)
+			items = append(items, blockItems(file)...)
+		}
 	case prop == "" && !inMap:
 		items = append(items, elementItems(file)...)
 	}
@@ -704,14 +712,16 @@ func walkElementsIn(e *syntax.Element, fn func(*syntax.Block)) {
 
 // valueItems offers the values a property accepts. The bool reports that the
 // list was cut short, so the client asks again as the user types.
-func valueItems(file *syntax.File, prop string, src []byte, off int, prefix string, inString bool) ([]completionResult, bool) {
+func valueItems(file *syntax.File, prop string, src []byte, off int, prefix string, inString bool, frag *syntax.Prop) ([]completionResult, bool) {
 	elName := enclosingElementName(file, src, off)
 	el, ok := schema.Lookup(elName)
-	if !ok {
-		return nil, false
-	}
 	var out []completionResult
 	var truncated bool
+	if !ok {
+		// A fragment instance: its props are not in the schema, so the values
+		// offered are the ones any value position has.
+		return fragmentValueItems(file, prop, frag, prefix), false
+	}
 	if pd := el.Prop(prop); pd != nil {
 		switch {
 		case isIconProp(prop) && pd.Type == schema.TypeString:
@@ -1085,8 +1095,25 @@ func (s *Server) hover(raw json.RawMessage) any {
 				"range":    idx.at(start, end),
 			}
 		}
+		// An instance of a fragment: say what it takes.
+		if imp, ok := s.fragmentAt(d, file, d.text, off); ok && imp.Alias == el.Name {
+			if frag := s.importFile(d, imp); frag != nil {
+				return map[string]any{
+					"contents": doc{Kind: "markdown", Value: fragmentDoc(imp, frag)},
+					"range":    idx.at(start, end),
+				}
+			}
+		}
 		return map[string]any{
 			"contents": doc{Kind: "markdown", Value: "**" + el.Name + "**"},
+			"range":    idx.at(start, end),
+		}
+	}
+	// A fragment instance's property is not in the schema, but the fragment
+	// declares it.
+	if start, end, pr, ok := s.fragmentPropertyAt(d, file, off); ok {
+		return map[string]any{
+			"contents": doc{Kind: "markdown", Value: "**" + pr.Name + "** on `" + fragmentAliasAt(file, off) + "`\n\n" + declDoc(*pr, "props")},
 			"range":    idx.at(start, end),
 		}
 	}
@@ -1450,8 +1477,11 @@ func braceElementName(src []byte, off int) string {
 func enclosingProperty(file *syntax.File, src []byte, off int) (string, bool) {
 	el := elementAt(file, off)
 	// Mid-typing the AST drops the broken property, so the line is the more
-	// reliable witness when it names a property this element really has.
-	if name, inMap := braceProperty(src, off); inMap || isElementMember(el, name) {
+	// reliable witness when it names a property this element really has. A
+	// fragment instance is not in the schema, so for it the line is the only
+	// witness: every `name:` there is a prop or a root override.
+	if name, inMap := braceProperty(src, off); inMap || isElementMember(el, name) ||
+		(name != "" && el != nil && !isSchemaElement(el.Name)) {
 		return name, inMap
 	}
 	if el != nil {
@@ -1474,6 +1504,12 @@ func enclosingProperty(file *syntax.File, src []byte, off int) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// isSchemaElement reports whether the element name is a core element.
+func isSchemaElement(name string) bool {
+	_, ok := schema.Lookup(name)
+	return ok
 }
 
 // isElementMember reports whether name is a property or event the element
@@ -1942,6 +1978,255 @@ func codeList(values []string) string {
 		quoted[i] = "`" + v + "`"
 	}
 	return strings.Join(quoted, ", ")
+}
+
+// ---------------------------------------------------------------- fragments
+
+// fragmentAt reports the import whose alias is the element the cursor sits in,
+// so a fragment instance body completes with that fragment's props.
+func (s *Server) fragmentAt(d *document, file *syntax.File, src []byte, off int) (syntax.Import, bool) {
+	if file == nil {
+		return syntax.Import{}, false
+	}
+	name := enclosingElementName(file, src, off)
+	if name == "" {
+		return syntax.Import{}, false
+	}
+	for _, imp := range file.Imports {
+		if imp.Alias == name {
+			return imp, true
+		}
+	}
+	return syntax.Import{}, false
+}
+
+// importFile parses the file an import points at: the editor's buffer when it
+// has one open, the file on disk otherwise. A broken or missing fragment gives
+// nil, and completion falls back to the schema only.
+func (s *Server) importFile(d *document, imp syntax.Import) *syntax.File {
+	target := filepath.Clean(filepath.Join(filepath.Dir(d.path), filepath.FromSlash(imp.Path)))
+	if open, ok := s.docs[pathToURI(target)]; ok {
+		f, diag := syntax.Parse(open.text)
+		if diag.Empty() {
+			return f
+		}
+		return nil
+	}
+	src, err := os.ReadFile(target)
+	if err != nil {
+		return nil
+	}
+	f, diag := syntax.ParseNamed(src, target)
+	if !diag.Empty() {
+		return nil
+	}
+	return f
+}
+
+// fragmentMemberItems lists what an instance can write inside a fragment: the
+// props the fragment declares, the properties its root lets the instance
+// override, and the slots it fills.
+func (s *Server) fragmentMemberItems(d *document, imp syntax.Import) []completionResult {
+	frag := s.importFile(d, imp)
+	if frag == nil || frag.Root == nil {
+		return nil
+	}
+	out := make([]completionResult, 0, len(frag.Props)+8)
+	for _, pr := range frag.Props {
+		out = append(out, completionResult{
+			Label:         pr.Name,
+			Kind:          kindProperty,
+			Detail:        imp.Alias + "." + pr.Name + " · " + pr.Type.String(),
+			Documentation: &doc{Kind: "markdown", Value: "**" + pr.Name + "** on `" + imp.Alias + "`\n\n" + declDoc(pr, "props")},
+		})
+	}
+	// An instance property the fragment does not declare replaces the root's
+	// own value, so those names work here too.
+	if def, ok := schema.Lookup(frag.Root.Name); ok {
+		for _, p := range def.Attrs {
+			out = append(out, completionResult{
+				Label:         p.Name,
+				Kind:          kindProperty,
+				Detail:        propDetail(frag.Root.Name+" root", p),
+				Documentation: &doc{Kind: "markdown", Value: propDoc(frag.Root.Name, p)},
+			})
+		}
+	}
+	for _, slot := range fragmentSlots(frag) {
+		out = append(out, completionResult{
+			Label:         slot,
+			Kind:          kindKeyword,
+			Detail:        "slot",
+			Documentation: &doc{Kind: "markdown", Value: "**" + slot + " { … }**\n\nElements written here appear where `" + imp.Alias + "` writes `" + slot + "`."},
+		})
+	}
+	return out
+}
+
+// fragmentProp resolves the prop a fragment instance property names, so the
+// value after it completes like the declared type.
+func (s *Server) fragmentProp(d *document, file *syntax.File, src []byte, off int, prop string) *syntax.Prop {
+	imp, ok := s.fragmentAt(d, file, src, off)
+	if !ok {
+		return nil
+	}
+	frag := s.importFile(d, imp)
+	if frag == nil {
+		return nil
+	}
+	return frag.Prop(prop)
+}
+
+// fragmentValueItems offers the values a fragment-instance property accepts: the
+// declared type's own values when the prop exists, plus what any value position
+// has.
+func fragmentValueItems(file *syntax.File, prop string, frag *syntax.Prop, prefix string) []completionResult {
+	var out []completionResult
+	if frag != nil {
+		switch frag.Type.Kind {
+		case syntax.TypeFunc:
+			for _, f := range file.Vars {
+				if f.Type.Kind == syntax.TypeFunc {
+					out = append(out, handlerCallItem("bridge", f.Name, f.Type.String()))
+				}
+			}
+			return out
+		case syntax.TypeSlice, syntax.TypeMap:
+			for _, l := range listVars(file) {
+				out = append(out, completionResult{Label: l, Kind: kindVariable, Detail: "list · " + frag.Type.String()})
+			}
+			return out
+		case syntax.TypeScalar:
+			switch typeNameOf(frag.Type.Name) {
+			case "bool":
+				return []completionResult{
+					{Label: "true", Kind: kindKeyword, Detail: "bool"},
+					{Label: "false", Kind: kindKeyword, Detail: "bool"},
+				}
+			case "color":
+				for _, v := range m3.ColorRoles() {
+					out = append(out, completionResult{Label: v, Kind: kindColor, Detail: "colour role"})
+				}
+				return out
+			}
+		}
+	}
+	for _, f := range file.Vars {
+		out = append(out, completionResult{
+			Label:         "bridge." + f.Name,
+			InsertText:    "bridge." + f.Name,
+			Kind:          kindVariable,
+			Detail:        "bridge." + f.Name + " · " + f.Type.String(),
+			Documentation: &doc{Kind: "markdown", Value: "**bridge." + f.Name + "**\n\n" + declDoc(f, "bridge")},
+		})
+	}
+	if frag == nil || frag.Type.Kind == syntax.TypeScalar {
+		out = append(out, completionResult{
+			Label:      "formatf",
+			InsertText: `formatf("", )`,
+			Kind:       kindFunction,
+			Detail:     "builtin",
+			Documentation: &doc{Kind: "markdown", Value: "**formatf(\"Count is %d\", bridge.Count)**\n\n" +
+				"Builds a string with Go's `fmt` verbs: `%d` counts, `%s` text, `%v` any value, `%0.2f` money."},
+		})
+	}
+	for _, id := range fileIDElements(file) {
+		out = append(out, completionResult{Label: id.name, Kind: kindVariable, Detail: "id · " + id.kind})
+	}
+	return out
+}
+
+// fragmentSlots lists the slots a fragment takes, as the call writes them.
+func fragmentSlots(frag *syntax.File) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(name string) {
+		if strings.HasPrefix(name, "$") && !seen[name] {
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	if frag == nil || frag.Root == nil {
+		return nil
+	}
+	syntax.WalkElements(frag.Root, func(e *syntax.Element) {
+		for _, kid := range e.Children() {
+			add(kid.Name)
+		}
+	})
+	sort.Strings(out)
+	return out
+}
+
+// handlerCallItem is the completion item for calling a bridge handler.
+func handlerCallItem(ns, name, sig string) completionResult {
+	detail := "handler call"
+	if sig != "" {
+		detail += " · " + sig
+	}
+	return completionResult{
+		Label:         ns + "." + name + "(…)",
+		InsertText:    ns + "." + name + "(",
+		Kind:          kindFunction,
+		Detail:        detail,
+		Documentation: &doc{Kind: "markdown", Value: "**" + ns + "." + name + "**\n\nHandler call; its arguments are evaluated when the event fires."},
+	}
+}
+
+// fragmentPropertyAt returns the property of a fragment instance under off and
+// the prop the fragment declares for it.
+func (s *Server) fragmentPropertyAt(d *document, file *syntax.File, off int) (int, int, *syntax.Prop, bool) {
+	el := elementAt(file, off)
+	if el == nil {
+		return 0, 0, nil, false
+	}
+	imp, ok := s.fragmentAt(d, file, d.text, off)
+	if !ok || imp.Alias != el.Name {
+		return 0, 0, nil, false
+	}
+	for _, p := range el.Props() {
+		start, end := int(p.NameAt), int(p.NameAt)+len(p.Name)
+		if off < start || off > end {
+			continue
+		}
+		frag := s.importFile(d, imp)
+		if frag == nil {
+			return 0, 0, nil, false
+		}
+		pr := frag.Prop(p.Name)
+		if pr == nil {
+			return 0, 0, nil, false
+		}
+		return start, end, pr, true
+	}
+	return 0, 0, nil, false
+}
+
+// fragmentAliasAt names the fragment instance the cursor is inside.
+func fragmentAliasAt(file *syntax.File, off int) string {
+	if el := elementAt(file, off); el != nil {
+		return el.Name
+	}
+	return ""
+}
+
+// fragmentDoc explains a fragment alias: what the instance can pass and fill.
+func fragmentDoc(imp syntax.Import, frag *syntax.File) string {
+	var b strings.Builder
+	b.WriteString("**" + imp.Alias + "** — fragment\n\nImported from `" + imp.Path + "`.")
+	if len(frag.Props) > 0 {
+		b.WriteString("\n\nProps: ")
+		for i, pr := range frag.Props {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString("`" + pr.Name + " " + pr.Type.String() + "`")
+		}
+	}
+	if slots := fragmentSlots(frag); len(slots) > 0 {
+		b.WriteString("\n\nSlots: " + strings.Join(slots, ", "))
+	}
+	return b.String()
 }
 
 // ---------------------------------------------------------------- small utils

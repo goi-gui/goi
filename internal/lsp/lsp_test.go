@@ -1469,3 +1469,140 @@ Window {
 		t.Fatalf("hover on a shape field = %q", h.Contents.Value)
 	}
 }
+
+// TestFragmentInstanceCompletesItsProps covers writing a call site: the body of
+// `Counter { }` completes the props the fragment declares (with their Go types),
+// the root's overridable properties and the slots, the value after a prop
+// completes like its declared type, and hover explains both the alias and the
+// prop. The fragment is read from disk, and an open buffer wins over disk.
+func TestFragmentInstanceCompletesItsProps(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	frag := `props {
+	Label  string
+	Count  int
+	OnStep func(delta int)
+	Rows   []Row
+}
+type Row { title string }
+Column {
+	spacing: 4
+	$header
+	$children
+}
+`
+	fragURI := writeDesign(t, dir, "Counter.goi", frag)
+	src := `import "./Counter.goi" as Counter
+bridge { Step int }
+Window {
+	Column {
+		Counter {
+			
+		}
+		Counter { Count:  }
+	}
+}
+`
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	items := func(p position) map[string]completionResult {
+		res := c.request("textDocument/completion", map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     p,
+		})
+		var list completionList
+		if err := json.Unmarshal(res, &list); err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]completionResult{}
+		for _, it := range list.Items {
+			out[it.Label] = it
+		}
+		return out
+	}
+
+	body := items(at(t, src, "\t\t\t\n", 3))
+	for _, want := range []string{"Label", "Count", "OnStep", "Rows"} {
+		if _, ok := body[want]; !ok {
+			t.Fatalf("fragment prop %q missing from the instance body: %v", want, body)
+		}
+	}
+	if !strings.Contains(body["Rows"].Detail, "[]Row") {
+		t.Fatalf("Rows detail = %q", body["Rows"].Detail)
+	}
+	// The root's own properties are overridable on the call.
+	if _, ok := body["spacing"]; !ok {
+		t.Fatalf("the fragment root's property is missing: %v", body)
+	}
+	// The slots it fills are offered too.
+	for _, want := range []string{"$children", "$header"} {
+		if _, ok := body[want]; !ok {
+			t.Fatalf("slot %q missing: %v", want, body)
+		}
+	}
+
+	// A scalar prop offers the bridge values and formatf, so the instance can
+	// write `Count: bridge.Step`.
+	value := items(at(t, src, "Count:  }", len("Count: ")))
+	if _, ok := value["bridge.Step"]; !ok {
+		t.Fatalf("bridge values missing after a prop: %v", value)
+	}
+	if _, ok := value["formatf"]; !ok {
+		t.Fatalf("formatf missing after a prop: %v", value)
+	}
+
+	// Hover explains the instance and the prop. It works off the AST, so it
+	// needs a file that parses; the completion file above does not.
+	clean := `import "./Counter.goi" as Counter
+bridge { Step int }
+Window {
+	Column {
+		Counter { Count: bridge.Step }
+	}
+}
+`
+	cleanURI := writeDesign(t, dir, "Clean.goi", clean)
+	c.openDoc(cleanURI, clean)
+	res := c.request("textDocument/hover", map[string]any{
+		"textDocument": map[string]any{"uri": cleanURI},
+		"position":     at(t, clean, "Counter { Count", 2),
+	})
+	var h struct {
+		Contents doc `json:"contents"`
+	}
+	if err := json.Unmarshal(res, &h); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.Contents.Value, "fragment") || !strings.Contains(h.Contents.Value, "Label") {
+		t.Fatalf("hover on the alias = %q", h.Contents.Value)
+	}
+	res = c.request("textDocument/hover", map[string]any{
+		"textDocument": map[string]any{"uri": cleanURI},
+		"position":     at(t, clean, "Count: bridge.Step", 2),
+	})
+	h = struct {
+		Contents doc `json:"contents"`
+	}{}
+	if err := json.Unmarshal(res, &h); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.Contents.Value, "Count") || !strings.Contains(h.Contents.Value, "int") {
+		t.Fatalf("hover on a prop = %q", h.Contents.Value)
+	}
+
+	// An open buffer wins: editing the fragment updates the call site.
+	changed := `props {
+	Title string
+}
+Column { }
+`
+	c.openDoc(fragURI, changed)
+	body = items(at(t, src, "\t\t\t\n", 3))
+	if _, ok := body["Title"]; !ok {
+		t.Fatalf("the edited fragment's prop is missing: %v", body)
+	}
+	if _, ok := body["Label"]; ok {
+		t.Fatal("a prop the buffer removed is still offered")
+	}
+}
