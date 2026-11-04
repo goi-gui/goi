@@ -111,14 +111,15 @@ func (v *validator) addIn(src string, at, end syntax.Pos, msg, hint string) {
 // scalarTypes are the value types a data field may use.
 var scalarTypes = []string{"bool", "string", "number", "color"}
 
-// checkData validates the `data` block and the row shapes it names.
+// checkData validates the `bridge` block (still spelled `data` in older files)
+// and the row types it names.
 func (v *validator) checkData() {
 	v.src = ""
 	seenShape := map[string]syntax.Pos{}
 	for _, sh := range v.file.Shapes {
 		if at, dup := seenShape[sh.Name]; dup {
 			_ = at
-			v.add(sh.NameAt, sh.NameAt+syntax.Pos(len(sh.Name)), fmt.Sprintf("duplicate data shape %q", sh.Name), "")
+			v.add(sh.NameAt, sh.NameAt+syntax.Pos(len(sh.Name)), fmt.Sprintf("duplicate type %q", sh.Name), "")
 			continue
 		}
 		seenShape[sh.Name] = sh.NameAt
@@ -135,15 +136,36 @@ func (v *validator) checkData() {
 	seenVar := map[string]syntax.Pos{}
 	for _, dv := range v.file.Vars {
 		if _, dup := seenVar[dv.Name]; dup {
-			v.add(dv.NameAt, dv.NameAt+syntax.Pos(len(dv.Name)), fmt.Sprintf("duplicate data variable %q", dv.Name), "")
+			v.add(dv.NameAt, dv.NameAt+syntax.Pos(len(dv.Name)), fmt.Sprintf("duplicate bridge variable %q", dv.Name), "")
 			continue
 		}
 		seenVar[dv.Name] = dv.NameAt
-		if dv.Name == "data" || dv.Name == "app" || dv.Name == "window" {
+		if dv.Name == "data" || dv.Name == "bridge" || dv.Name == "app" || dv.Name == "window" {
 			v.add(dv.NameAt, dv.NameAt+syntax.Pos(len(dv.Name)), fmt.Sprintf("%q is a reserved name", dv.Name), "")
 		}
-		v.checkDataType(dv.At, dv.List, dv.Type, dv.Elem, "data "+dv.Name)
+		if dv.Fn {
+			for _, a := range dv.Args {
+				v.checkFuncArg(a)
+			}
+			continue
+		}
+		v.checkDataType(dv.At, dv.List, dv.Type, dv.Elem, "bridge "+dv.Name)
 	}
+}
+
+// checkFuncArg accepts the scalar types a handler parameter may declare. A
+// handler is a Go function, so a list or a shape would have no Go value to
+// receive.
+func (v *validator) checkFuncArg(a syntax.DataField) {
+	v.src = ""
+	for _, ok := range scalarTypes {
+		if a.Type == ok {
+			return
+		}
+	}
+	v.add(a.At, a.At+syntax.Pos(len(a.Type)),
+		fmt.Sprintf("handler parameter %q: %q is not a type; use bool, string, number or color", a.Name, a.Type),
+		syntax.Suggest(a.Type, scalarTypes))
 }
 
 // checkDataType accepts a scalar type or a declared shape for a list.
@@ -162,7 +184,7 @@ func (v *validator) checkDataType(at syntax.Pos, list bool, typ, elem, what stri
 			return
 		}
 	}
-	v.add(at, end, fmt.Sprintf("%s: %q is not a type; use bool, string, number, color or shape[]", what, typ),
+	v.add(at, end, fmt.Sprintf("%s: %q is not a type; use bool, string, number, color, [shape] or shape[]", what, typ),
 		syntax.Suggest(typ, scalarTypes))
 }
 
@@ -245,6 +267,14 @@ func (v *validator) walk(e *syntax.Element, parent string) {
 
 		pd := def.Prop(p.Name)
 		if pd == nil {
+			if _, ok := Event(p.Name); ok && def.HasEvent(p.Name) {
+				if _, ok := p.Value.(*syntax.Call); !ok {
+					v.add(at, at+syntax.Pos(len(p.Name)),
+						fmt.Sprintf("%s.%s expects a handler call such as %s: bridge.onOpen(...)", e.Name, p.Name, p.Name),
+						"declare the handler in `bridge { ... }` and call it here; it runs only when the event fires")
+				}
+				continue
+			}
 			v.add(at, at+syntax.Pos(len(p.Name)),
 				fmt.Sprintf("unknown property %q on %s", p.Name, e.Name), syntax.Suggest(p.Name, propNames(def)))
 			continue
@@ -333,11 +363,11 @@ func (v *validator) checkEachSource(blk *syntax.Block) *syntax.DataShape {
 	end := at + syntax.Pos(len(blk.Source))
 	dv := v.file.Var(blk.Source)
 	if dv == nil {
-		v.add(at, end, fmt.Sprintf("no data variable %q", blk.Source), syntax.Suggest(blk.Source, varNames(v.file)))
+		v.add(at, end, fmt.Sprintf("no bridge variable %q", blk.Source), syntax.Suggest(blk.Source, varNames(v.file)))
 		return nil
 	}
 	if !dv.List {
-		v.add(at, end, fmt.Sprintf("data.%s is not a list: declare it as %s: shape[]", dv.Name, dv.Name), "")
+		v.add(at, end, fmt.Sprintf("bridge.%s is not a list: declare it as %s: [shape]", dv.Name, dv.Name), "")
 		return nil
 	}
 	sh := v.file.Shape(dv.Elem)
@@ -354,16 +384,16 @@ func (v *validator) checkCond(br syntax.Branch) {
 	case *syntax.Bool, *syntax.Unary, *syntax.Binary, *syntax.Ternary, *syntax.Ref:
 	case *syntax.Ident, *syntax.String, *syntax.Number, *syntax.Color, *syntax.Percent:
 		v.add(br.Cond.Pos(), br.Cond.Pos()+1,
-			"an {#if} condition must be a bool: a comparison, app.dark, data.loading or an id.prop that is a bool", "")
+			"an {#if} condition must be a bool: a comparison, app.dark, bridge.loading or an id.prop that is a bool", "")
 	}
 }
 
 func propNames(def *Element) []string {
-	out := make([]string, len(def.Attrs))
+	out := make([]string, len(def.Attrs), len(def.Attrs)+len(def.Events))
 	for i, a := range def.Attrs {
 		out[i] = a.Name
 	}
-	return out
+	return append(out, def.Events...)
 }
 
 // checkValue verifies the literal kind and records the element's id. A map is
@@ -613,6 +643,10 @@ func (v *validator) walkRefs(e *syntax.Element) {
 		return
 	}
 	for _, p := range e.Props() {
+		if ev, ok := Event(p.Name); ok && def.HasEvent(p.Name) {
+			v.checkEventCall(e, ev, p)
+			continue
+		}
 		v.checkRefs(e, def.Prop(p.Name), p.Value)
 	}
 	for _, m := range e.Members {
@@ -690,7 +724,7 @@ func (v *validator) checkRefs(e *syntax.Element, pd *Prop, val syntax.Value) {
 		at := x.At
 		end := at + syntax.Pos(len(x.ID)+1+len(x.Prop))
 		free := pd == anyProp
-		if x.ID == "data" {
+		if x.ID == "data" || x.ID == "bridge" {
 			v.checkDataRef(e, pd, x, at, end, free)
 			return
 		}
@@ -733,6 +767,76 @@ func (v *validator) checkRefs(e *syntax.Element, pd *Prop, val syntax.Value) {
 	}
 }
 
+// handlerNames lists the bridge handlers, for suggestions.
+func handlerNames(f *syntax.File) []string {
+	out := make([]string, 0, len(f.Vars))
+	for _, dv := range f.Vars {
+		if dv.Fn {
+			out = append(out, dv.Name)
+		}
+	}
+	return out
+}
+
+// checkEventCall validates `onClick: bridge.onOpen(post.id)` against the handler
+// the bridge declared. Arguments are values, and their types must match; the
+// special identifier `event` is the event's own payload.
+func (v *validator) checkEventCall(e *syntax.Element, ev EventDef, p *syntax.Property) {
+	call, ok := p.Value.(*syntax.Call)
+	if !ok {
+		return // already reported where the property was read
+	}
+	at := call.Callee.At
+	end := at + syntax.Pos(len(call.Callee.ID)+1+len(call.Callee.Prop))
+	if call.Callee.ID != "bridge" && call.Callee.ID != "data" {
+		v.add(at, end,
+			fmt.Sprintf("%s.%s: a handler call starts with bridge., not %s.", e.Name, p.Name, call.Callee.ID), "")
+		return
+	}
+	dv := v.file.Var(call.Callee.Prop)
+	if dv == nil {
+		v.add(at, end, fmt.Sprintf("%s.%s: no handler %q", e.Name, p.Name, call.Callee.Prop),
+			syntax.Suggest(call.Callee.Prop, handlerNames(v.file)))
+		return
+	}
+	if !dv.Fn {
+		v.add(at, end,
+			fmt.Sprintf("%s.%s: %s.%s is a value, not a handler; declare it as %s: func(...)",
+				e.Name, p.Name, call.Callee.ID, call.Callee.Prop, call.Callee.Prop), "")
+		return
+	}
+	if len(call.Args) != len(dv.Args) {
+		v.add(call.At, end,
+			fmt.Sprintf("%s.%s: %s takes %d argument(s), got %d",
+				e.Name, p.Name, call.Callee.Prop, len(dv.Args), len(call.Args)), "")
+		return
+	}
+	for i, a := range call.Args {
+		pa := dv.Args[i]
+		ft, _ := fieldType(false, pa.Type)
+		prop := &Prop{Name: p.Name, Type: ft}
+		if id, ok := a.(*syntax.Ident); ok && id.Val == "event" {
+			switch {
+			case !ev.HasValue:
+				v.add(a.Pos(), a.Pos()+1,
+					fmt.Sprintf("%s.%s: %s carries no value, so event cannot be passed", e.Name, p.Name, p.Name), "")
+			case !typesFit(ev.Type, ft):
+				v.add(a.Pos(), a.Pos()+1,
+					fmt.Sprintf("%s.%s: %s carries %s, which cannot feed %s",
+						e.Name, p.Name, p.Name, typeName(ev.Type), typeName(ft)), "")
+			}
+			continue
+		}
+		if _, nested := a.(*syntax.Call); nested {
+			v.add(a.Pos(), a.Pos()+1,
+				fmt.Sprintf("%s.%s: a handler argument cannot be another call", e.Name, p.Name), "")
+			continue
+		}
+		v.checkLiteral(e, prop, a)
+		v.checkRefs(e, prop, a)
+	}
+}
+
 // checkDataRef validates `data.name` against the declared variable and the
 // property it feeds.
 func (v *validator) checkDataRef(e *syntax.Element, pd *Prop, x *syntax.Ref, at, end syntax.Pos, free bool) {
@@ -741,6 +845,12 @@ func (v *validator) checkDataRef(e *syntax.Element, pd *Prop, x *syntax.Ref, at,
 		v.add(at, end,
 			fmt.Sprintf("%s.%s: no data variable %q", e.Name, pd.Name, x.Prop),
 			syntax.Suggest(x.Prop, varNames(v.file)))
+		return
+	}
+	if dv.Fn {
+		v.add(at, end,
+			fmt.Sprintf("%s.%s: %s.%s is a handler; call it in an event such as onClick: bridge.%s(...)",
+				e.Name, pd.Name, x.ID, x.Prop, x.Prop), "")
 		return
 	}
 	ft, ok := fieldType(dv.List, dv.Type)
@@ -872,6 +982,8 @@ func kindName(val syntax.Value) string {
 		return "an expression"
 	case syntax.ParamRefKind:
 		return "a param reference"
+	case syntax.CallKind:
+		return "a handler call"
 	}
 	return "an unknown value"
 }

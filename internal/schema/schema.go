@@ -67,6 +67,9 @@ type Element struct {
 	Name     string
 	Children bool // may contain child elements
 	Attrs    []Prop
+	// Events lists the event properties the element accepts. A value is always
+	// a bridge handler call, never a literal.
+	Events []string
 }
 
 // Prop returns the named property, or nil.
@@ -77,6 +80,48 @@ func (e *Element) Prop(name string) *Prop {
 		}
 	}
 	return nil
+}
+
+// HasEvent reports whether the element accepts the named event property.
+func (e *Element) HasEvent(name string) bool {
+	for _, n := range e.Events {
+		if n == name {
+			return true
+		}
+	}
+	return false
+}
+
+// EventDef is one event property and the value it carries.
+type EventDef struct {
+	Name string
+	// Type and HasValue describe the event's own payload: onToggle carries a
+	// bool, onChange a number, onEdit and onSubmit a string, onSelect an index.
+	// A click carries a ClickEvent, which no scalar type names.
+	Type     ValueType
+	HasValue bool
+	// Component marks the events only a component has; onClick is on every
+	// element because every node is a hit area.
+	Component bool
+}
+
+// Event returns the definition of an event property.
+func Event(name string) (EventDef, bool) {
+	for _, e := range eventDefs {
+		if e.Name == name {
+			return e, true
+		}
+	}
+	return EventDef{}, false
+}
+
+var eventDefs = []EventDef{
+	{Name: "onClick", Type: TypeString},
+	{Name: "onToggle", Type: TypeBool, HasValue: true, Component: true},
+	{Name: "onChange", Type: TypeNumber, HasValue: true, Component: true},
+	{Name: "onEdit", Type: TypeString, HasValue: true, Component: true},
+	{Name: "onSubmit", Type: TypeString, HasValue: true, Component: true},
+	{Name: "onSelect", Type: TypeNumber, HasValue: true, Component: true},
 }
 
 var common = []Prop{
@@ -228,6 +273,19 @@ var elements = func() []Element {
 			attrs = append(attrs, p)
 		}
 		out = append(out, Element{Name: k.Name, Children: k.Container, Attrs: withCommon(attrs...)})
+	}
+	// Every element is a hit area; only components have the value-carrying
+	// events. The list stays in one place so the validator, the builder and the
+	// language server cannot drift apart.
+	for i := range out {
+		out[i].Events = append(out[i].Events, "onClick")
+		if _, ok := componentdef.Lookup(out[i].Name); ok {
+			for _, ev := range eventDefs {
+				if ev.Component {
+					out[i].Events = append(out[i].Events, ev.Name)
+				}
+			}
+		}
 	}
 	return out
 }()

@@ -158,6 +158,8 @@ const (
 	kindValue      = 12
 	kindEnumMember = 20
 	kindConstant   = 21
+	kindEvent      = 23
+	kindFunction   = 3
 )
 
 func (s *Server) completion(raw json.RawMessage) any {
@@ -247,7 +249,7 @@ func blockItemsFor(inside bool, lists []string) []completionResult {
 		Label:  "{#each}",
 		Kind:   kindKeyword,
 		Detail: "block",
-		Documentation: &doc{Kind: "markdown", Value: "**{#each data." + list + " as row} … {/each}**\n\n" +
+		Documentation: &doc{Kind: "markdown", Value: "**{#each bridge." + list + " as row} … {/each}**\n\n" +
 			"Repeats its body once per item of a list variable. Rows are rebuilt when " +
 			"`ui.SetData` changes the list."},
 	})
@@ -330,7 +332,7 @@ func namedSlotDoc(name string) string {
 		"previews on its own."
 }
 
-// listVars lists the declared data variables that hold a list.
+// listVars lists the declared bridge variables that hold a list.
 func listVars(file *syntax.File) []string {
 	var out []string
 	for _, dv := range file.Vars {
@@ -423,14 +425,32 @@ func enclosingRef(before []byte) string {
 }
 
 // refItems completes the member of a dotted reference: a reserved namespace
-// (`app.`, `window.`), the `data` block, or an {#each} loop variable.
+// (`app.`, `window.`), the `bridge` block (also spelled `data`), or an {#each}
+// loop variable.
 func refItems(file *syntax.File, src []byte, off int, ref string) []completionResult {
 	switch ref {
 	case "app", "window":
 		return globalItems(ref)
-	case "data":
+	case "data", "bridge":
 		out := make([]completionResult, 0, len(file.Vars))
 		for _, dv := range file.Vars {
+			if dv.Fn {
+				sig := "func("
+				for i, a := range dv.Args {
+					if i > 0 {
+						sig += ", "
+					}
+					sig += a.Name + ": " + a.Type
+				}
+				out = append(out, completionResult{
+					Label:  dv.Name,
+					Kind:   kindFunction,
+					Detail: ref + "." + dv.Name + " · " + sig + ")",
+					Documentation: &doc{Kind: "markdown", Value: "**" + ref + "." + dv.Name + "**\n\nHandler, `" +
+						sig + ")`.\n\nRegister it from Go with `ui.SetHandler(w, \"" + dv.Name + "\", …)`."},
+				})
+				continue
+			}
 			typ := dv.Type
 			if dv.List {
 				typ = dv.Elem + "[]"
@@ -438,8 +458,8 @@ func refItems(file *syntax.File, src []byte, off int, ref string) []completionRe
 			out = append(out, completionResult{
 				Label:  dv.Name,
 				Kind:   kindVariable,
-				Detail: "data." + dv.Name + " · " + typ,
-				Documentation: &doc{Kind: "markdown", Value: "**data." + dv.Name + "**\n\nType: `" +
+				Detail: ref + "." + dv.Name + " · " + typ,
+				Documentation: &doc{Kind: "markdown", Value: "**" + ref + "." + dv.Name + "**\n\nType: `" +
 					typ + "`\n\nSet it from Go with `ui.SetData(w, \"" + dv.Name + "\", …)`."},
 			})
 		}
@@ -447,7 +467,7 @@ func refItems(file *syntax.File, src []byte, off int, ref string) []completionRe
 	}
 	sh := loopShapeAt(file, src, off, ref)
 	if sh == nil {
-		return nil
+		return idMemberItems(file, ref)
 	}
 	out := make([]completionResult, 0, len(sh.Fields))
 	for _, f := range sh.Fields {
@@ -461,6 +481,30 @@ func refItems(file *syntax.File, src []byte, off int, ref string) []completionRe
 			Detail: ref + "." + f.Name + " · " + typ,
 			Documentation: &doc{Kind: "markdown", Value: "**" + ref + "." + f.Name + "**\n\nField of `" +
 				sh.Name + "`, type `" + typ + "`."},
+		})
+	}
+	return out
+}
+
+// idMemberItems completes `abc.width`, where `abc` is an id declared in the
+// file. It offers the element's properties (the schema already merges the
+// common ones into Attrs), so an id reference reads like the node it names.
+func idMemberItems(file *syntax.File, ref string) []completionResult {
+	kind, ok := idElementAt(file, ref)
+	if !ok {
+		return nil
+	}
+	el, ok := schema.Lookup(kind)
+	if !ok {
+		return nil
+	}
+	out := make([]completionResult, 0, len(el.Attrs))
+	for _, p := range el.Attrs {
+		out = append(out, completionResult{
+			Label:         p.Name,
+			Kind:          kindProperty,
+			Detail:        ref + "." + p.Name + " · " + p.Type.String(),
+			Documentation: &doc{Kind: "markdown", Value: propDoc(el.Name, p)},
 		})
 	}
 	return out
@@ -550,9 +594,35 @@ func valueItems(file *syntax.File, prop string, src []byte, off int, prefix stri
 			// what a reader wants to pick from here.
 			out, truncated = languageItems(prefix, inString)
 		case pd.Type == schema.TypeID:
-			for _, id := range fileIDs(file) {
-				out = append(out, completionResult{Label: id, Kind: kindConstant, Detail: "id"})
+			for _, id := range fileIDElements(file) {
+				out = append(out, completionResult{Label: id.name, Kind: kindConstant, Detail: "id · " + id.kind})
 			}
+		}
+	}
+	// An expression may read a node by its id: `width: abc.width` reads
+	// property `width` of the element whose `id: abc`. Offer the ids
+	// wherever a value goes, next to the property's own values.
+	for _, id := range fileIDElements(file) {
+		out = append(out, completionResult{
+			Label:         id.name,
+			Kind:          kindVariable,
+			Detail:        "id · " + id.kind,
+			Documentation: &doc{Kind: "markdown", Value: "**" + id.name + "**\n\n`" + id.kind + "` element declared with `id: " + id.name + "`.\n\nRead its properties with `" + id.name + ".width`, `" + id.name + ".visible`, and so on."},
+		})
+	}
+	if _, ok := schema.Event(prop); ok && el.HasEvent(prop) {
+		for _, dv := range file.Vars {
+			if !dv.Fn {
+				continue
+			}
+			out = append(out, completionResult{
+				Label:      "bridge." + dv.Name + "(…)",
+				InsertText: "bridge." + dv.Name + "(",
+				Kind:       kindFunction,
+				Detail:     "handler call",
+				Documentation: &doc{Kind: "markdown", Value: "**bridge." + dv.Name + "**\n\nRuns the Go handler registered with `ui.SetHandler(w, \"" +
+					dv.Name + "\", …)` when this event fires."},
+			})
 		}
 	}
 	// A fragment may only use the params it declared.
@@ -695,13 +765,21 @@ func memberItems(file *syntax.File, src []byte, off int) []completionResult {
 	if !ok {
 		return elementItems(file)
 	}
-	out := make([]completionResult, 0, len(el.Attrs)+8)
+	out := make([]completionResult, 0, len(el.Attrs)+len(el.Events)+8)
 	for _, p := range el.Attrs {
 		out = append(out, completionResult{
 			Label:         p.Name,
 			Kind:          kindProperty,
 			Detail:        propDetail(el.Name, p),
 			Documentation: &doc{Kind: "markdown", Value: propDoc(el.Name, p)},
+		})
+	}
+	for _, name := range el.Events {
+		out = append(out, completionResult{
+			Label:         name,
+			Kind:          kindEvent,
+			Detail:        name + " · handler call",
+			Documentation: &doc{Kind: "markdown", Value: "**" + name + "** on `" + el.Name + "`\n\nBridge handler call, for example `" + name + ": bridge.onOpen(...)`. It runs only when the event fires."},
 		})
 	}
 	if el.Children {
@@ -819,6 +897,33 @@ func (s *Server) hover(raw json.RawMessage) any {
 			"range":    idx.at(start, end),
 		}
 	}
+	// A reference reads another element by id: `abc.width` explains either the
+	// element it names or the property it reads.
+	if r := refAt(file, off); r != nil {
+		propStart := int(r.At) + len(r.ID) + 1
+		if off >= propStart {
+			if kind, ok := idElementAt(file, r.ID); ok {
+				if el, ok := schema.Lookup(kind); ok {
+					if pd := el.Prop(r.Prop); pd != nil {
+						return map[string]any{
+							"contents": doc{Kind: "markdown", Value: propDoc(el.Name, *pd)},
+							"range":    idx.at(propStart, propStart+len(r.Prop)),
+						}
+					}
+				}
+			}
+			return nil
+		}
+		if kind, ok := idElementAt(file, r.ID); ok {
+			if el, ok := schema.Lookup(kind); ok {
+				return map[string]any{
+					"contents": doc{Kind: "markdown", Value: "**" + r.ID + "**\n\n" + elementDoc(el)},
+					"range":    idx.at(int(r.At), int(r.At)+len(r.ID)),
+				}
+			}
+		}
+		return nil
+	}
 	// A value in an enum, icon or colour position explains itself.
 	if start, end, prop, value := valueAt(file, off); value != "" {
 		summary := fmt.Sprintf("`%s` for `%s`", value, prop.Name)
@@ -880,7 +985,7 @@ func symbolOfBlock(idx lineIndex, blk *syntax.Block, src []byte) symbol {
 	name := "{#if}"
 	switch {
 	case blk.Kind == syntax.BlockEach:
-		name = "{#each data." + blk.Source + " as " + blk.Var + "}"
+		name = "{#each " + blk.Source + " as " + blk.Var + "}"
 	case len(blk.Branches) > 0 && blk.Branches[0].Cond != nil:
 		name = "{#if " + sourceSpan(src, int(blk.Branches[0].Cond.Pos())) + "}"
 	}
@@ -988,6 +1093,14 @@ func (s *Server) definition(raw json.RawMessage) any {
 		// The path itself: find the quoted token that follows `import`.
 		if start, end, ok := importPathRange(d.text, int(imp.At)); ok && off >= start && off <= end {
 			return []location{{URI: pathToURI(filepath.Join(dir, filepath.FromSlash(imp.Path)))}}
+		}
+	}
+	// A reference jumps to the element that declares the id.
+	if r := refAt(file, off); r != nil && off < int(r.At)+len(r.ID) {
+		for _, id := range fileIDElements(file) {
+			if id.name == r.ID {
+				return []location{{URI: d.uri, Range: newLineIndex(d.text).at(id.at, id.at+len(id.name))}}
+			}
 		}
 	}
 	// A call site jumps to the fragment it instantiates.
@@ -1318,25 +1431,99 @@ func valueAt(file *syntax.File, off int) (int, int, *schema.Prop, string) {
 	return 0, 0, nil, ""
 }
 
-// fileIDs lists the ids a design declares, for `id:` completion targets.
-func fileIDs(file *syntax.File) []string {
-	var out []string
-	var walk func(e *syntax.Element)
-	walk = func(e *syntax.Element) {
+// idElement pairs a declared id with the kind of element that carries it,
+// so an expression `abc.width` can complete from the schema alone.
+type idElement struct {
+	name string
+	kind string
+	// at is the byte offset of the id's value, for go-to-definition.
+	at int
+}
+
+// fileIDElements lists the ids a design declares, with their element kind,
+// for `id:` values and for `abc.property` references.
+func fileIDElements(file *syntax.File) []idElement {
+	var out []idElement
+	if file == nil || file.Root == nil {
+		return nil
+	}
+	syntax.WalkElements(file.Root, func(e *syntax.Element) {
 		if p := e.Prop("id"); p != nil {
-			if id, ok := p.Value.(*syntax.Ident); ok {
-				out = append(out, id.Val)
+			switch v := p.Value.(type) {
+			case *syntax.Ident:
+				out = append(out, idElement{name: v.Val, kind: e.Name, at: int(v.At)})
+			case *syntax.String:
+				out = append(out, idElement{name: v.Val, kind: e.Name, at: int(v.At) + 1})
 			}
 		}
-		for _, kid := range e.Children() {
-			walk(kid)
+	})
+	sort.Slice(out, func(i, j int) bool { return out[i].name < out[j].name })
+	return out
+}
+
+// idElementAt finds the id ref names in the file, for `abc.` completion.
+func idElementAt(file *syntax.File, ref string) (string, bool) {
+	for _, id := range fileIDElements(file) {
+		if id.name == ref {
+			return id.kind, true
+		}
+	}
+	return "", false
+}
+
+// refAt finds the reference under off, for hover and go-to-definition.
+func refAt(file *syntax.File, off int) *syntax.Ref {
+	var found *syntax.Ref
+	var val func(syntax.Value)
+	val = func(v syntax.Value) {
+		switch x := v.(type) {
+		case *syntax.Ref:
+			start := int(x.At)
+			end := start + len(x.ID) + 1 + len(x.Prop)
+			if off >= start && off <= end && found == nil {
+				found = x
+			}
+		case *syntax.Call:
+			for _, a := range x.Args {
+				val(a)
+			}
+		case *syntax.Map:
+			for i := range x.Entries {
+				val(x.Entries[i].Value)
+			}
+		case *syntax.Binary:
+			val(x.Left)
+			val(x.Right)
+		case *syntax.Unary:
+			val(x.X)
+		case *syntax.Ternary:
+			val(x.Cond)
+			val(x.Then)
+			val(x.Else)
+		}
+	}
+	var members func([]syntax.Member)
+	members = func(ms []syntax.Member) {
+		for _, m := range ms {
+			switch x := m.(type) {
+			case *syntax.Property:
+				val(x.Value)
+			case *syntax.Element:
+				members(x.Members)
+			case *syntax.Block:
+				for i := range x.Branches {
+					if x.Branches[i].Cond != nil {
+						val(x.Branches[i].Cond)
+					}
+					members(x.Branches[i].Members)
+				}
+			}
 		}
 	}
 	if file != nil && file.Root != nil {
-		walk(file.Root)
+		members(file.Root.Members)
 	}
-	sort.Strings(out)
-	return out
+	return found
 }
 
 // ---------------------------------------------------------------- docs

@@ -140,6 +140,10 @@ go run ./cmd/goicheck -layout examples/*/*.goi  # syntax plus a headless layout 
   roles you need; `app.dark` follows the resolved scheme's mood, not its name.
 - Images: `Image { src: "photo.png" fit: cover }` decodes PNG, JPEG or GIF once
   and packs every bitmap into one GPU atlas.
+- Bridge: `bridge { onOpen: func(id: string) }` declares the handlers a design
+  calls from any event property (`onClick: bridge.onOpen(row.id)`), with the
+  arguments evaluated when the event fires; `ui.SetHandler` supplies the body.
+  `examples/bridge` (`make bridge`) runs every event.
 - Lists from Go: a hidden template in the `.goi` file plus `ui.Instantiate` makes
   N rows without hand-building nodes; `ui.Remove` takes one away.
 - Motion: `app.Tween` and `app.Animate` ease a function or a `Prop` over time,
@@ -172,8 +176,9 @@ The Zed extension lives in [goi-gui/zed-goi](https://github.com/goi-gui/zed-goi)
 syntax highlighting, brackets, indentation and an element outline. It starts
 `goipls`, the language server in `cmd/goipls`, which adds diagnostics (including
 errors inside an imported fragment), completion for elements, properties,
-values, icon names, ids and the `app.`/`window.` globals, hover docs, a document
-outline and go-to-definition for imports:
+values, icon names, ids, `bridge.` handlers, event calls and the
+`app.`/`window.` globals, hover docs, a document outline and go-to-definition for
+imports:
 
 ```sh
 go install github.com/ksckaan1/goi/cmd/goipls@latest

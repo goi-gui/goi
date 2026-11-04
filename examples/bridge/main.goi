@@ -1,0 +1,64 @@
+// Bridge: every event property calls a Go handler.
+//
+// The `bridge` block declares the handlers; Go supplies the bodies with
+// ui.SetHandler. A handler call's arguments are evaluated when the event fires,
+// and `event` is the event's own payload.
+bridge {
+	onClick: func(name: string)
+	onToggle: func(on: bool)
+	onVolume: func(v: number)
+	onEdit: func(text: string)
+	onSubmit: func(text: string)
+	onSelect: func(index: number)
+}
+
+Window {
+	id: main
+	title: "Bridge"
+	width: 560
+	height: 720
+
+	Column {
+		padding: 16
+		spacing: 12
+
+		Text {
+			text: "Every control below calls a handler declared in `bridge`."
+			role: "bodyMedium"
+			color: onSurfaceVariant
+		}
+
+		Row {
+			spacing: 12
+			Button { label: "Click" icon: touch_app onClick: bridge.onClick("button") }
+			IconButton { icon: favorite onClick: bridge.onClick("icon") }
+		}
+
+		Switch { label: "Toggle me" onToggle: bridge.onToggle(event) }
+
+		Column {
+			spacing: 4
+			Text { text: "Volume" role: "labelLarge" }
+			Slider { value: 0.4 onChange: bridge.onVolume(event) }
+		}
+
+		TextField {
+			label: "Type, then press Enter"
+			onEdit: bridge.onEdit(event)
+			onSubmit: bridge.onSubmit(event)
+		}
+
+		Column {
+			spacing: 4
+			Text { text: "Pick a tab" role: "labelLarge" }
+			Tabs {
+				onSelect: bridge.onSelect(event)
+				Tab { label: "One" selected: true }
+				Tab { label: "Two" }
+				Tab { label: "Three" }
+			}
+		}
+
+		Text { id: log text: "No events yet." role: "bodyMedium" color: onSurfaceVariant }
+	}
+}

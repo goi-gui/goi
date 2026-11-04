@@ -12,7 +12,7 @@ Window {
 		spacing: 0
 
 		TitleBar {
-			visible: app.os == "linux"
+			visible: app.os == "linux" || app.os == "windows"
 			height: 44
 			paddingLeft: 12
 			paddingRight: 4

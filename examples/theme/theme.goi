@@ -4,6 +4,7 @@ Window {
 	title: "Theme"
 	width: 560
 	height: 740
+	theme: app.systemMode
 
 	Column {
 		spacing: 0

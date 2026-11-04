@@ -1055,3 +1055,151 @@ func TestCompletionOffersModeGlobals(t *testing.T) {
 		t.Fatalf("app.systemMode detail = %q", details["systemMode"])
 	}
 }
+
+// TestBridgeIsKnownToTheEditor covers the two new completion paths: the
+// `bridge.` members are the declared handlers, and an event property offers a
+// handler call rather than a literal.
+func TestBridgeIsKnownToTheEditor(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := `bridge {
+	onOpen: func(id: string)
+}
+Window {
+	Column {
+		Button { onClick:  }
+		Button { onClick: bridge. }
+	}
+}
+`
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	labels := func(pos position) map[string]bool {
+		res := c.request("textDocument/completion", map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     pos,
+		})
+		var list completionList
+		if err := json.Unmarshal(res, &list); err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]bool{}
+		for _, it := range list.Items {
+			out[it.Label] = true
+		}
+		return out
+	}
+
+	call := labels(at(t, src, "onClick:  }", 9))
+	if !call["bridge.onOpen(…)"] {
+		t.Fatalf("handler call missing: %v", call)
+	}
+	if call["true"] {
+		t.Fatal("a literal was offered for an event")
+	}
+
+	member := labels(at(t, src, "onClick: bridge. ", 16))
+	if !member["onOpen"] {
+		t.Fatalf("bridge members missing: %v", member)
+	}
+}
+
+// TestIDReferencesAreKnownToTheEditor covers reading another node by its id:
+// `width: abc.width` completes the id while it is typed, then the element's
+// properties after the dot, explains either half on hover, and jumps to the
+// `id:` that declares it.
+func TestIDReferencesAreKnownToTheEditor(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	// The completion file leaves two values open mid-typing, which is what the
+	// editor sees on every keystroke, so it need not parse.
+	src := `Window {
+	Rectangle {
+		id: abc
+		width: 200
+	}
+	Rectangle {
+		width: ab
+		height: abc.
+	}
+}
+`
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	labels := func(pos position) map[string]bool {
+		res := c.request("textDocument/completion", map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     pos,
+		})
+		var list completionList
+		if err := json.Unmarshal(res, &list); err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]bool{}
+		for _, it := range list.Items {
+			out[it.Label] = true
+		}
+		return out
+	}
+
+	// A value position offers the ids the file declares, beside its own values.
+	value := labels(at(t, src, "width: ab\n", len("width: ab")))
+	if !value["abc"] {
+		t.Fatalf("id missing from a value position: %v", value)
+	}
+
+	// `abc.` offers the element's properties, common ones included.
+	member := labels(at(t, src, "height: abc.\n", len("height: abc.")))
+	if !member["width"] || !member["visible"] {
+		t.Fatalf("id members missing: %v", member)
+	}
+	if member["spacing"] {
+		t.Fatal("a Column property leaked into a Rectangle member list")
+	}
+
+	// Hover and go-to-definition need a file that parses, since they work off
+	// the AST. The reference reads `abc.width` there.
+	clean := `Window {
+	Rectangle {
+		id: abc
+		width: 200
+	}
+	Rectangle {
+		height: abc.width
+	}
+}
+`
+	cleanURI := writeDesign(t, dir, "clean.goi", clean)
+	c.openDoc(cleanURI, clean)
+
+	hres := c.request("textDocument/hover", map[string]any{
+		"textDocument": map[string]any{"uri": cleanURI},
+		"position":     at(t, clean, "abc.width", 1),
+	})
+	var h struct {
+		Contents doc `json:"contents"`
+	}
+	if err := json.Unmarshal(hres, &h); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.Contents.Value, "width") || !strings.Contains(h.Contents.Value, "Rectangle") {
+		t.Fatalf("hover on abc. = %q", h.Contents.Value)
+	}
+
+	dres := c.request("textDocument/definition", map[string]any{
+		"textDocument": map[string]any{"uri": cleanURI},
+		"position":     at(t, clean, "abc.width", 1),
+	})
+	var locs []location
+	if err := json.Unmarshal(dres, &locs); err != nil {
+		t.Fatal(err)
+	}
+	if len(locs) != 1 {
+		t.Fatalf("locations = %+v, want one", locs)
+	}
+	if want := pos(clean, strings.Index(clean, "id: abc")+len("id: ")); locs[0].Range.Start != want {
+		t.Fatalf("definition = %+v, want the id at %+v", locs[0].Range.Start, want)
+	}
+}

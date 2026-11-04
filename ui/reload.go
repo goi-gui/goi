@@ -45,7 +45,7 @@ func (a *App) reloadNow() error {
 // applyReload builds a parsed file and swaps it in. It also gives tests a way to
 // reload without touching the file system.
 func (a *App) applyReload(f *syntax.File) error {
-	tr, err := tree.Build(f, &tree.Hooks{Marked: a.markDirty})
+	tr, err := tree.Build(f, &tree.Hooks{Marked: a.markDirty, Error: a.reportError})
 	if err != nil {
 		return fmt.Errorf("goi: reload: %w", err)
 	}

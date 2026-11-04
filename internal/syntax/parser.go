@@ -138,7 +138,11 @@ func (p *parser) parseFile() *File {
 			if ok {
 				f.Params = append(f.Params, pr)
 			}
-		case t.text == "data":
+		case t.text == "data", t.text == "bridge":
+			// `data` is the original name; `bridge` says what the block is:
+			// the contract between Go and the design. Both parse alike.
+			p.parseData(f)
+		case t.text == "type":
 			p.parseData(f)
 		default:
 			// An element that happens to start the file.
@@ -244,10 +248,11 @@ func (p *parser) parseParam() (Param, bool) {
 	return pr, true
 }
 
-// parseData reads either the variables block (`data { loading: bool }`) or one
-// row shape (`data ticket { title: string }`).
+// parseData reads either the variables block (`bridge { loading: bool }`, also
+// spelled `data { ... }`) or one row shape (`type ticket { title: string }`,
+// also spelled `data ticket { ... }`).
 func (p *parser) parseData(f *File) {
-	p.next() // "data"
+	kw := p.next() // "data", "bridge" or "type"
 	name := p.peek()
 	if name.kind == tokLBrace {
 		open := p.next()
@@ -278,7 +283,7 @@ func (p *parser) parseData(f *File) {
 		}
 	}
 	if name.kind != tokIdent {
-		p.errorf(name, "expected '{' or a shape name after 'data'")
+		p.errorf(name, "expected '{' or a shape name after '"+kw.text+"'")
 		p.sync()
 		return
 	}
@@ -324,6 +329,8 @@ type dataField struct {
 	List   bool
 	Type   string
 	Elem   string
+	Fn     bool
+	Args   []DataField
 	At     Pos
 }
 
@@ -336,28 +343,102 @@ func (p *parser) parseDataField() (dataField, bool) {
 		return f, false
 	}
 	p.next()
-	typ := p.peek()
-	if typ.kind != tokIdent {
-		p.errorf(typ, "expected a type: bool, string, number, color or shape[]")
-		p.sync()
-		return f, false
-	}
-	p.next()
-	f.Type, f.At = typ.text, typ.pos
-	if p.peek().kind == tokLBracket {
+	t := p.peek()
+	switch t.kind {
+	case tokLBracket:
+		// [shape] is the list form; shape[] below is the original spelling.
 		p.next()
-		if p.peek().kind != tokRBracket {
-			p.errorf(p.peek(), "expected ']' after '['")
+		elem := p.peek()
+		if elem.kind != tokIdent {
+			p.errorf(elem, "expected a shape name inside '['")
 			p.sync()
 			return f, false
 		}
 		p.next()
-		f.List, f.Elem, f.Type = true, typ.text, "list"
+		if p.peek().kind != tokRBracket {
+			p.errorf(p.peek(), "expected ']' after the shape name")
+			p.sync()
+			return f, false
+		}
+		p.next()
+		f.List, f.Elem, f.Type, f.At = true, elem.text, "list", elem.pos
+	case tokIdent:
+		p.next()
+		if t.text == "func" {
+			if p.peek().kind != tokLParen {
+				p.errorf(p.peek(), "expected '(' after func")
+				p.sync()
+				return f, false
+			}
+			p.next()
+			args, ok := p.parseFuncArgs()
+			if !ok {
+				p.sync()
+				return f, false
+			}
+			f.Fn, f.Type, f.At, f.Args = true, "func", t.pos, args
+			break
+		}
+		f.Type, f.At = t.text, t.pos
+		if p.peek().kind == tokLBracket {
+			p.next()
+			if p.peek().kind != tokRBracket {
+				p.errorf(p.peek(), "expected ']' after '['")
+				p.sync()
+				return f, false
+			}
+			p.next()
+			f.List, f.Elem, f.Type = true, t.text, "list"
+		}
+	default:
+		p.errorf(t, "expected a type: bool, string, number, color, [shape], shape[] or func(...)")
+		p.sync()
+		return f, false
 	}
 	if p.peek().kind == tokSemicolon {
 		p.next()
 	}
 	return f, true
+}
+
+// parseFuncArgs reads `(id: string, count: number)`, the parameters of a bridge
+// handler.
+func (p *parser) parseFuncArgs() ([]DataField, bool) {
+	var out []DataField
+	for {
+		if p.peek().kind == tokRParen {
+			p.next()
+			return out, true
+		}
+		name := p.peek()
+		if name.kind != tokIdent {
+			p.errorf(name, "expected a handler parameter name")
+			return nil, false
+		}
+		p.next()
+		if p.peek().kind != tokColon {
+			p.errorf(p.peek(), "expected ':' after the parameter name")
+			return nil, false
+		}
+		p.next()
+		typ := p.peek()
+		if typ.kind != tokIdent {
+			p.errorf(typ, "expected a parameter type: bool, string, number or color")
+			return nil, false
+		}
+		p.next()
+		out = append(out, DataField{Name: name.text, NameAt: name.pos, Type: typ.text, At: typ.pos})
+		switch p.peek().kind {
+		case tokComma, tokSemicolon:
+			p.next()
+		case tokRParen:
+			p.next()
+			return out, true
+		default:
+			p.errorf(p.peek(), "expected ',' or ')' after a handler parameter")
+			return nil, false
+		}
+	}
 }
 
 func (p *parser) parseElement() *Element {
@@ -561,22 +642,22 @@ func (p *parser) parseBlock() *Block {
 			return nil
 		}
 		p.next()
-		// The source is namespaced like any other app value: {#each data.rows as row}.
+		// The source is namespaced like any other app value: {#each bridge.rows as row}.
 		if p.peek().kind != tokDot {
-			p.errorf(p.peek(), "expected '.' after the data namespace: {#each data.rows as row}")
+			p.errorf(p.peek(), "expected '.' after the bridge namespace: {#each bridge.rows as row}")
 			p.sync()
 			return nil
 		}
 		p.next()
 		name := p.peek()
 		if name.kind != tokIdent {
-			p.errorf(name, "expected a data name after 'data.'")
+			p.errorf(name, "expected a list name after 'bridge.'")
 			p.sync()
 			return nil
 		}
 		p.next()
-		if src.text != "data" {
-			p.errorf(src, "a list comes from 'data.'; "+src.text+"."+name.text+" is not a collection")
+		if src.text != "data" && src.text != "bridge" {
+			p.errorf(src, "a list comes from 'bridge.' or 'data.'; "+src.text+"."+name.text+" is not a collection")
 			p.sync()
 			return nil
 		}
@@ -988,11 +1069,40 @@ func (p *parser) parseTerm() (Value, bool) {
 			return nil, false
 		}
 		p.next()
-		return &Ref{At: id.pos, ID: id.text, Prop: prop.text}, true
+		ref := &Ref{At: id.pos, ID: id.text, Prop: prop.text}
+		if p.peek().kind == tokLParen {
+			return p.parseCall(ref)
+		}
+		return ref, true
 	default:
 		p.errorf(t, "expected a value or reference")
 		return nil, false
 	}
+}
+
+// parseCall reads `bridge.onOpen(post.id, "now")`, the value of an event
+// property.
+func (p *parser) parseCall(ref *Ref) (Value, bool) {
+	p.next() // '('
+	call := &Call{At: ref.At, Callee: ref}
+	for p.peek().kind != tokRParen {
+		v, ok := p.parseValue()
+		if !ok {
+			p.sync()
+			return nil, false
+		}
+		call.Args = append(call.Args, v)
+		switch p.peek().kind {
+		case tokComma, tokSemicolon:
+			p.next()
+		case tokRParen:
+		default:
+			p.errorf(p.peek(), "expected ',' or ')' after a handler argument")
+			return nil, false
+		}
+	}
+	p.next() // ')'
+	return call, true
 }
 
 // parseMap parses `{ key: value, ... }`, the responsive form of a value.

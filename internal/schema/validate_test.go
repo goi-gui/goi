@@ -376,7 +376,7 @@ func TestBlockSamplesAreTheShippedDocs(t *testing.T) {
 	// them is checked with them prepended.
 	var prelude string
 	for _, b := range blocks {
-		if strings.HasPrefix(strings.TrimSpace(b[1]), "data {") {
+		if strings.HasPrefix(strings.TrimSpace(b[1]), "bridge {") || strings.HasPrefix(strings.TrimSpace(b[1]), "data {") {
 			prelude = b[1]
 			break
 		}
@@ -390,7 +390,7 @@ func TestBlockSamplesAreTheShippedDocs(t *testing.T) {
 			continue // a declaration snippet, checked below
 		}
 		full := prelude + src
-		if strings.Contains(src, "data ") {
+		if strings.Contains(src, "bridge ") || strings.Contains(src, "data ") {
 			full = src
 		}
 		if _, diag := validate(t, full); !diag.Empty() {
@@ -406,11 +406,11 @@ func TestDataValidation(t *testing.T) {
 		"data { rows: nope[] }\nWindow { }":                                   "unknown shape",
 		"data { rows: list }\nWindow { }":                                     "is not a type",
 		"data { data: bool }\nWindow { }":                                     "is a reserved name",
-		"data { rows: bool }\ndata { rows: number }\nWindow { }":              "duplicate data variable",
+		"data { rows: bool }\ndata { rows: number }\nWindow { }":              "duplicate bridge variable",
 		"data { rows: row[] }\ndata row { a: string, a: number }\nWindow { }": "repeats the field",
 		"data { rows: row[] }\ndata row { a: string }\nWindow {\n\tColumn {\n\t\t{#each data.rows as r}\n\t\t\tText { text: r.nope }\n\t\t{/each}\n\t}\n}":                                "has no field",
 		"data { rows: row[] }\ndata row { a: string }\nWindow {\n\tColumn {\n\t\t{#each data.rows as r}\n\t\t\tCheckbox { checked: r.a }\n\t\t{/each}\n\t}\n}":                            "is string, not bool",
-		"data { rows: row[] }\ndata row { a: string }\nWindow {\n\tColumn {\n\t\t{#each data.missing as r}\n\t\t\tText { text: r.a }\n\t\t{/each}\n\t}\n}":                                "no data variable",
+		"data { rows: row[] }\ndata row { a: string }\nWindow {\n\tColumn {\n\t\t{#each data.missing as r}\n\t\t\tText { text: r.a }\n\t\t{/each}\n\t}\n}":                                "no bridge variable",
 		"data { rows: bool }\nWindow {\n\tColumn {\n\t\t{#each data.rows as r}\n\t\t\tText { text: \"x\" }\n\t\t{/each}\n\t}\n}":                                                          "is not a list",
 		"data { rows: row[] }\ndata row { a: string }\nWindow {\n\tColumn {\n\t\tText { text: data.rows }\n\t}\n}":                                                                        "walk it with {#each}",
 		"data { flag: bool }\nWindow {\n\tColumn {\n\t\tText { text: data.flag }\n\t}\n}":                                                                                                 "is bool, not string",
@@ -504,5 +504,47 @@ func TestAppModeGlobals(t *testing.T) {
 	_, diag := validate(t, `Window { Text { text: app.modes } }`)
 	if diag.Empty() || !strings.Contains(diag.Format("<src>", nil), "has no property") {
 		t.Fatalf("a typo in app.modes was accepted: %v", diag)
+	}
+}
+
+// TestBridgeEvents checks the contract between the design's bridge block and
+// the handler calls an event property accepts.
+func TestBridgeEvents(t *testing.T) {
+	good := []string{
+		"bridge { rows: [row], onOpen: func(id: string) }\ntype row { id: string }\nWindow {\n\tColumn {\n\t\t{#each bridge.rows as row}\n\t\t\tButton { label: \"x\" onClick: bridge.onOpen(row.id) }\n\t\t{/each}\n\t}\n}",
+		"bridge { onToggle: func(on: bool) }\nWindow {\n\tColumn {\n\t\tCheckbox { label: \"x\" onToggle: bridge.onToggle(event) }\n\t}\n}",
+		"bridge { onVolume: func(v: number) }\nWindow {\n\tColumn {\n\t\tSlider { onChange: bridge.onVolume(event) }\n\t}\n}",
+		"bridge { onEdit: func(text: string) }\nWindow {\n\tColumn {\n\t\tTextField { onEdit: bridge.onEdit(event) }\n\t}\n}",
+		// `data` is the original spelling and keeps working, handlers included.
+		"data { rows: row[], onOpen: func(id: string) }\ndata row { id: string }\nWindow {\n\tColumn {\n\t\t{#each data.rows as row}\n\t\t\tButton { label: \"x\" onClick: data.onOpen(row.id) }\n\t\t{/each}\n\t}\n}",
+	}
+	for _, src := range good {
+		if _, diag := validate(t, src); !diag.Empty() {
+			t.Errorf("valid source rejected:\n%s\n%v", src, diag.Format("<src>", []byte(src)))
+		}
+	}
+
+	bad := map[string]string{
+		"bridge { onOpen: func(id: string) }\nWindow {\n\tColumn {\n\t\tButton { label: \"x\" onClick: bridge.nope(\"1\") }\n\t}\n}":          "no handler",
+		"bridge { onOpen: func(id: string) }\nWindow {\n\tColumn {\n\t\tButton { label: \"x\" onClick: bridge.onOpen }\n\t}\n}":               "expects a handler call",
+		"bridge { onOpen: func(id: string) }\nWindow {\n\tColumn {\n\t\tText { id: label text: bridge.onOpen }\n\t}\n}":                       "is a handler",
+		"bridge { onOpen: func(id: string) }\nWindow {\n\tColumn {\n\t\tButton { label: \"x\" onClick: bridge.onOpen() }\n\t}\n}":             "takes 1 argument",
+		"bridge { onOpen: func(id: string) }\nWindow {\n\tColumn {\n\t\tButton { label: \"x\" onClick: bridge.onOpen(true) }\n\t}\n}":         "expects a string, got a bool",
+		"bridge { onToggle: func(on: bool) }\nWindow {\n\tColumn {\n\t\tCheckbox { label: \"x\" onToggle: bridge.onToggle(\"yes\") }\n\t}\n}": "expects true or false, got a string",
+		"bridge { onOpen: func(id: string) }\nWindow {\n\tColumn {\n\t\tButton { label: \"x\" onClick: bridge.onOpen(event) }\n\t}\n}":        "carries no value",
+		"bridge { onOpen: func(id: string) }\nWindow {\n\tColumn {\n\t\tButton { id: card label: \"x\" onClick: card.onOpen(\"1\") }\n\t}\n}": "starts with bridge",
+		"bridge { onOpen: func(id: nope) }\nWindow { }":                                                                                               "is not a type",
+		"bridge { onToggle: func(on: bool) }\nWindow {\n\tColumn {\n\t\tText { onToggle: bridge.onToggle(event) }\n\t}\n}":                            "unknown property",
+		"bridge { onOpen: func(id: string) }\nWindow {\n\tColumn {\n\t\tButton { label: \"x\" onClick: bridge.onOpen(bridge.onOpen(\"1\")) }\n\t}\n}": "cannot be another call",
+	}
+	for src, want := range bad {
+		_, diag := validate(t, src)
+		if diag.Empty() {
+			t.Errorf("%q was accepted", src)
+			continue
+		}
+		if got := diag.Format("<src>", []byte(src)); !strings.Contains(got, want) {
+			t.Errorf("%q gave %s, want %q", src, got, want)
+		}
 	}
 }

@@ -91,6 +91,12 @@ func dumpValue(v Value) string {
 		return strconv.FormatFloat(v.Val, 'g', -1, 64) + "%"
 	case *Ref:
 		return v.ID + "." + v.Prop
+	case *Call:
+		parts := make([]string, len(v.Args))
+		for i, a := range v.Args {
+			parts[i] = dumpValue(a)
+		}
+		return v.Callee.ID + "." + v.Callee.Prop + "(" + strings.Join(parts, ", ") + ")"
 	case *Binary:
 		return "(" + dumpValue(v.Left) + " " + v.Op + " " + dumpValue(v.Right) + ")"
 	case *Unary:

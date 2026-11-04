@@ -537,7 +537,7 @@ func (c *evalCtx) evalRef(r *syntax.Ref) (any, bool) {
 			return v, true
 		}
 	}
-	if r.ID == "data" {
+	if r.ID == "data" || r.ID == "bridge" {
 		if v, ok := c.tree.vars[r.Prop]; ok {
 			return normalizeData(v)
 		}

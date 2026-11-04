@@ -47,6 +47,10 @@ type Tree struct {
 	scope *scope
 	// dataErr is the first error a data fill hit, reported to the app.
 	dataErr error
+	// bridge holds the Go handlers a design's bridge block declares.
+	bridge *Bridge
+	// report receives runtime errors, when the app supplied Hooks.Error.
+	report func(error)
 }
 
 // ByID returns the node with the given id.
@@ -96,7 +100,10 @@ func Build(f *syntax.File, hooks *Hooks) (*Tree, error) {
 	if f == nil || f.Root == nil {
 		return nil, fmt.Errorf("tree: no root element")
 	}
-	t := &Tree{ids: map[string]Node{}}
+	t := &Tree{ids: map[string]Node{}, bridge: &Bridge{}}
+	if hooks != nil {
+		t.report = hooks.Error
+	}
 	root, err := t.build(f.Root, nil, hooks)
 	if err != nil {
 		return nil, err
@@ -168,6 +175,12 @@ func (t *Tree) build(el *syntax.Element, parent *NodeBase, hooks *Hooks) (Node, 
 					return nil, fmt.Errorf("duplicate id %q", id)
 				}
 				t.ids[id] = n
+			}
+			continue
+		}
+		if _, ok := schema.Event(p.Name); ok {
+			if err := t.bindEvent(b, p.Name, p.Value); err != nil {
+				return nil, fmt.Errorf("%s: %w", el.Name, err)
 			}
 			continue
 		}

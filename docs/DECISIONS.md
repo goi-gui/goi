@@ -1160,3 +1160,17 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   checker wraps the root in a synthetic Window. It is deliberately not part of
   `Load`: the validator still sees `$param` and can point a wrong param type at
   the param line.
+
+- **`bridge` is `data` plus handlers.** A design can now declare handlers next
+  to its values (`bridge { onOpen: func(id: string) }`) and call them from event
+  properties (`onClick: bridge.onOpen(row.id)`). `bridge` and `type` parse into
+  the same structures as `data <name>`, so every existing file keeps working and
+  the validator, tree and language server share one path. The call is deliberately
+  not an expression: it is only legal as the whole value of an event property,
+  because its arguments must be evaluated when the event fires, not every frame;
+  that is what makes `row.id` read the row that exists at click time. Handlers
+  live on `tree.Tree` rather than on each node, so `Bind` can register them again
+  after a hot reload without leaking subscriptions. The event list and payload
+  types live in `schema` so the validator, the builder and the LSP cannot drift;
+  a missing handler or a bad argument surfaces through the app's error hook
+  rather than panicking inside an input callback.

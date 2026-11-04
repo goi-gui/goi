@@ -22,6 +22,9 @@ func (r Rect) Contains(x, y float64) bool {
 type Hooks struct {
 	// Marked is called when a node becomes dirty, with the strongest kind.
 	Marked func(DirtyKind)
+	// Error receives a problem that only shows up while running, such as a
+	// bridge handler that was never registered. The frame keeps going.
+	Error func(error)
 }
 
 // NodeBase holds the state every node shares: identity, tree links, layout result

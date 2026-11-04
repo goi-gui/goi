@@ -474,6 +474,12 @@ func substValue(v syntax.Value, params map[string]syntax.Value, src, from string
 		// Copy: the value belongs to the caller (or to the fragment's default),
 		// and the expansion rewrites ids and references in place.
 		return copyValue(got), diag
+	case *syntax.Call:
+		out := &syntax.Call{At: x.At, Callee: x.Callee, Args: make([]syntax.Value, len(x.Args))}
+		for i, a := range x.Args {
+			out.Args[i], diag = substValue(a, params, src, from, diag)
+		}
+		return out, diag
 	case *syntax.Map:
 		out := &syntax.Map{At: x.At, Entries: make([]syntax.MapEntry, len(x.Entries))}
 		for i, entry := range x.Entries {
@@ -575,6 +581,12 @@ func copyValue(v syntax.Value) syntax.Value {
 		return &syntax.String{At: x.At, Val: x.Val}
 	case *syntax.Ref:
 		return &syntax.Ref{At: x.At, ID: x.ID, Prop: x.Prop}
+	case *syntax.Call:
+		args := make([]syntax.Value, len(x.Args))
+		for i, a := range x.Args {
+			args[i] = copyValue(a)
+		}
+		return &syntax.Call{At: x.At, Callee: &syntax.Ref{At: x.Callee.At, ID: x.Callee.ID, Prop: x.Callee.Prop}, Args: args}
 	case *syntax.Map:
 		out := &syntax.Map{At: x.At, Entries: make([]syntax.MapEntry, len(x.Entries))}
 		for i, entry := range x.Entries {

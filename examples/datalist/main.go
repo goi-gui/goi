@@ -1,6 +1,7 @@
 // Command datalist shows a list a design draws from data the app holds.
 //
-// The design declares the shape in a `data` block; Go fills it with ui.SetData.
+// The design declares its values and handlers in a `bridge` block; Go fills the
+// values with ui.SetData and the handlers with ui.SetHandler.
 // Run with: go run -ldflags=-linkmode=internal ./examples/datalist
 package main
 
@@ -55,16 +56,14 @@ func main() {
 	}
 
 	err = win.Bind(func(w *ui.Window) error {
-		if _, err := ui.ByID[*ui.Button](w, "reload"); err == nil {
-			ui.MustByID[*ui.Button](w, "reload").OnClick(func(ui.ClickEvent) { fetch() })
+		if err := ui.SetHandler(w, "onReload", fetch); err != nil {
+			return err
 		}
-		// Every rebuilt row is handed to this hook, so the click reads the item
-		// the row was built from.
-		ui.OnEach[*ui.ListItem](w, "tickets", func(row *ui.ListItem, it ticket) {
-			row.OnClick(func(ui.ClickEvent) {
-				fmt.Println("open:", it.Title)
-			})
-		})
+		if err := ui.SetHandler(w, "onOpen", func(title string) {
+			fmt.Println("open:", title)
+		}); err != nil {
+			return err
+		}
 		// Bind runs again on every reload; re-applying is cheap and idempotent.
 		ui.SetData(w, "loading", false)
 		ui.SetData(w, "tickets", tickets)

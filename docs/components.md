@@ -152,14 +152,26 @@ values. `alignSelf` overrides the parent's `crossAxisAlign` for one child.
 
 ## Events
 
-| Go call | Emitted by |
-|---|---|
-| `OnClick(func(ui.ClickEvent))` | every element; `ClickEvent` has `X`, `Y`, `Button` |
-| `OnToggle(func(bool))` | Checkbox, RadioButton, Switch, Chip |
-| `OnChangeValue(func(float64))` | Slider |
-| `OnEdit(func(string))` | TextField, SearchBar (every keystroke) |
-| `OnSubmit(func(string))` | TextField, SearchBar (Enter) |
-| `OnSelect(func(int))` | Tabs, NavigationBar, NavigationRail, List, Menu |
+A design declares its handlers in a `bridge` block and calls them from an event
+property; Go registers the body with `ui.SetHandler`:
+
+```goi
+bridge { onOpen: func(id: string) }
+Button { label: "Open" onClick: bridge.onOpen("42") }
+```
+
+| Design property | Go call | Emitted by |
+|---|---|---|
+| `onClick: bridge.handler(...)` | `OnClick(func(ui.ClickEvent))` | every element; `ClickEvent` has `X`, `Y`, `Button` |
+| `onToggle: bridge.handler(event)` | `OnToggle(func(bool))` | Checkbox, RadioButton, Switch, Chip |
+| `onChange: bridge.handler(event)` | `OnChangeValue(func(float64))` | Slider |
+| `onEdit: bridge.handler(event)` | `OnEdit(func(string))` | TextField, SearchBar (every keystroke) |
+| `onSubmit: bridge.handler(event)` | `OnSubmit(func(string))` | TextField, SearchBar (Enter) |
+| `onSelect: bridge.handler(event)` | `OnSelect(func(int))` | Tabs, NavigationBar, NavigationRail, List, Menu |
+
+The value of an event property is always a handler call. Its arguments are
+evaluated when the event fires; `event` is the event's own payload. See
+`docs/SYNTAX.md` for the bridge block, handler types and runtime errors.
 
 ## Themes
 
@@ -196,7 +208,7 @@ node, err := w.ByID("save")                  // untyped
 
 A list of unknown length is usually a `{#each}` block the app feeds with
 `ui.SetData`; the row stays in the design and the shape it reads is declared, so
-`goicheck` and the editor check every field (see [SYNTAX](SYNTAX.md#data-and-repeated-rows)).
+`goicheck` and the editor check every field (see [SYNTAX](SYNTAX.md#bridge-values-and-handlers)).
 
 ```goi
 {#each data.tickets as ticket}

@@ -47,15 +47,19 @@ type Import struct {
 	AliasAt Pos
 }
 
-// DataVar is one variable in `data { loading: bool }`.
+// DataVar is one variable in `bridge { loading: bool }`.
 type DataVar struct {
 	Name   string
 	NameAt Pos
-	// List marks a collection: `tickets: ticket[]`. Elem is then the shape it
+	// List marks a collection: `tickets: [ticket]`. Elem is then the shape it
 	// holds; for a scalar, Type names the value type.
 	List bool
 	Type string
 	Elem string
+	// Fn marks a handler: `onOpen: func(id: string)`. Args are its parameters,
+	// in order, and Type is "func".
+	Fn   bool
+	Args []DataField
 	// At is the type's position, for diagnostics.
 	At Pos
 }
@@ -77,6 +81,8 @@ type DataField struct {
 	List   bool
 	Type   string
 	Elem   string
+	Fn     bool
+	Args   []DataField
 	At     Pos
 }
 
@@ -270,6 +276,7 @@ const (
 	UnaryKind
 	TernaryKind
 	ParamRefKind
+	CallKind
 )
 
 // Value is a property literal. The concrete type is one of *String,
@@ -337,6 +344,14 @@ type Ref struct {
 	Prop string
 }
 
+// Call is `bridge.onOpen(post.id)`, the whole value of an event property. The
+// arguments are evaluated when the event fires, not every frame.
+type Call struct {
+	At     Pos
+	Callee *Ref
+	Args   []Value
+}
+
 // ParamRef is `$name`, the value an instance passed for a fragment param. It is
 // replaced while the fragment is expanded, so nothing downstream sees it.
 type ParamRef struct {
@@ -381,6 +396,7 @@ func (b *Binary) Kind() ValueKind   { return BinaryKind }
 func (u *Unary) Kind() ValueKind    { return UnaryKind }
 func (t *Ternary) Kind() ValueKind  { return TernaryKind }
 func (p *ParamRef) Kind() ValueKind { return ParamRefKind }
+func (c *Call) Kind() ValueKind     { return CallKind }
 
 // Pos implementations.
 
@@ -396,3 +412,4 @@ func (b *Binary) Pos() Pos   { return b.At }
 func (u *Unary) Pos() Pos    { return u.At }
 func (t *Ternary) Pos() Pos  { return t.At }
 func (p *ParamRef) Pos() Pos { return p.At }
+func (c *Call) Pos() Pos     { return c.At }

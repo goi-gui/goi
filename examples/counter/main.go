@@ -36,7 +36,6 @@ func main() {
 		inc := ui.MustByID[*ui.IconButton](w, "inc")
 		dec := ui.MustByID[*ui.IconButton](w, "dec")
 		reset := ui.MustByID[*ui.Button](w, "reset")
-		name := ui.MustByID[*ui.TextField](w, "name")
 
 		// render writes the count and keeps the minus disabled at the floor,
 		// so the control never offers an action the state refuses.
@@ -60,12 +59,6 @@ func main() {
 		reset.OnClick(func(ui.ClickEvent) {
 			c.n = 0
 			render()
-		})
-		name.OnEdit(func(s string) {
-			fmt.Println("name:", s)
-		})
-		name.OnSubmit(func(s string) {
-			fmt.Println("submitted:", s)
 		})
 		return nil
 	})

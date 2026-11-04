@@ -128,7 +128,7 @@ func (a *App) LoadWindow(fsys fs.FS, path string, opts ...Option) (*Window, erro
 	if err != nil {
 		return nil, err
 	}
-	tr, err := tree.Build(b.File, &tree.Hooks{Marked: a.markDirty})
+	tr, err := tree.Build(b.File, &tree.Hooks{Marked: a.markDirty, Error: a.reportError})
 	if err != nil {
 		return nil, fmt.Errorf("goi: %s: %w", name, err)
 	}

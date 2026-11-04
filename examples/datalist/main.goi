@@ -1,15 +1,18 @@
-// Data: a list the app fills from Go.
+// Data: a list the app fills from Go, and handlers the design calls.
 //
-// The `data` block declares the values the design reads: `count` and the
-// `tickets` list. Go sets them with ui.SetData; the `{#each}` block builds one
-// row per item and rebuilds when the list changes.
-data {
+// The `bridge` block declares the values the design reads (`count`, `loading`,
+// `tickets`) and the handlers Go supplies (`onReload`, `onOpen`). Go sets the
+// values with ui.SetData and the handlers with ui.SetHandler; the `{#each}`
+// block builds one row per item and rebuilds when the list changes.
+bridge {
 	count: number
 	loading: bool
-	tickets: ticket[]
+	tickets: [ticket]
+	onReload: func()
+	onOpen: func(title: string)
 }
 
-data ticket {
+type ticket {
 	title: string
 	requester: string
 	unread: bool
@@ -25,7 +28,7 @@ Window {
 		Row {
 			spacing: 12
 			Text { text: "Tickets" role: "titleLarge" flex: 1 }
-			Button { id: reload label: "Refresh" variant: tonal }
+			Button { id: reload label: "Refresh" variant: tonal onClick: bridge.onReload() }
 		}
 
 		{#if data.loading}
@@ -43,6 +46,7 @@ Window {
 					supporting: ticket.requester
 					selected: ticket.unread
 					icon: mail
+					onClick: bridge.onOpen(ticket.title)
 				}
 			{:else}
 				Text { text: "Nothing here yet." color: onSurfaceVariant }

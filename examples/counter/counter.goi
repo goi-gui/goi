@@ -64,24 +64,6 @@ Window {
 					}
 				}
 			}
-
-			Card {
-				variant: outlined
-				width: 360
-
-				Column {
-					spacing: 12
-
-					Text { text: "Notes" role: "titleSmall" }
-					TextField {
-						id: name
-						label: "Your name"
-						placeholder: "Type here"
-						supporting: "Every keystroke goes to the log."
-						variant: outlined
-					}
-				}
-			}
 		}
 	}
 }

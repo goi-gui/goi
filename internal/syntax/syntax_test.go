@@ -483,7 +483,7 @@ func TestParseIfBlockErrors(t *testing.T) {
 	cases := map[string]string{
 		"{#if app.dark}\n\t\tText { text: \"a\" }\n\t}": "expected {:else} or {/if}",
 		"{:else}": "expected '#'",
-		"{#each rows as r}\n\t\tText { text: \"a\" }\n\t{/each}": "expected '.' after the data namespace",
+		"{#each rows as r}\n\t\tText { text: \"a\" }\n\t{/each}": "expected '.' after the bridge namespace",
 		"{#when app.dark}\n\t{/when}":                            "only {#if} exists",
 		"{#if}\n\t{/if}":                                         "expected a value",
 	}
@@ -537,7 +537,7 @@ Window {
 
 func TestParseEachErrors(t *testing.T) {
 	cases := map[string]string{
-		"{#each tickets as t}\n\t{/each}":                     "expected '.' after the data namespace",
+		"{#each tickets as t}\n\t{/each}":                     "expected '.' after the bridge namespace",
 		"{#each data.tickets t}\n\t{/each}":                   "expected 'as'",
 		"{#each data.tickets as}\n\t{/each}":                  "expected a loop variable",
 		"{#each data.tickets as t}\n{/if}":                    "unexpected {/if}",
@@ -559,7 +559,7 @@ func TestParseEachErrors(t *testing.T) {
 func TestParseDataErrors(t *testing.T) {
 	cases := map[string]string{
 		"data { rows [] }\nWindow { }":       "expected ':'",
-		"data { rows: [] }\nWindow { }":      "expected a type",
+		"data { rows: [] }\nWindow { }":      "expected a shape name",
 		"data { rows: ticket[ }\nWindow { }": "expected ']'",
 		"data rows\nWindow { }":              "expected '{' after the shape name",
 	}
@@ -590,5 +590,71 @@ func TestParseStringConcatenation(t *testing.T) {
 	prop := f.Root.Children()[0].Children()[0].Prop("text")
 	if _, ok := prop.Value.(*Binary); !ok {
 		t.Fatalf("value = %T, want a binary expression", prop.Value)
+	}
+}
+
+func TestParseBridge(t *testing.T) {
+	src := `bridge {
+	posts: [post]
+	onOpen: func(id: string)
+	onSave: func(title: string, count: number)
+}
+type post { id: string, title: string }
+Window {
+	Column {
+		{#each bridge.posts as post}
+			Button { label: post.title onClick: bridge.onOpen(post.id) }
+		{/each}
+		Slider { onChange: bridge.onSave("x", event) }
+	}
+}`
+	f, diag := Parse([]byte(src))
+	if !diag.Empty() {
+		t.Fatalf("unexpected diagnostics: %v", diag)
+	}
+	if len(f.Vars) != 3 {
+		t.Fatalf("vars = %+v", f.Vars)
+	}
+	posts := f.Vars[0]
+	if !posts.List || posts.Elem != "post" {
+		t.Fatalf("posts = %+v", posts)
+	}
+	open := f.Vars[1]
+	if !open.Fn || len(open.Args) != 1 || open.Args[0].Name != "id" || open.Args[0].Type != "string" {
+		t.Fatalf("onOpen = %+v", open)
+	}
+	save := f.Vars[2]
+	if len(save.Args) != 2 || save.Args[1].Name != "count" || save.Args[1].Type != "number" {
+		t.Fatalf("onSave = %+v", save)
+	}
+	if len(f.Shapes) != 1 || f.Shapes[0].Name != "post" || len(f.Shapes[0].Fields) != 2 {
+		t.Fatalf("shapes = %+v", f.Shapes)
+	}
+	each := f.Root.Members[0].(*Element).Members[0].(*Block)
+	if each.Source != "posts" || each.Var != "post" {
+		t.Fatalf("each = %+v", each)
+	}
+	btn := each.Branches[0].Members[0].(*Element)
+	call, ok := btn.Prop("onClick").Value.(*Call)
+	if !ok || call.Callee.ID != "bridge" || call.Callee.Prop != "onOpen" || len(call.Args) != 1 {
+		t.Fatalf("onClick = %#v", btn.Prop("onClick").Value)
+	}
+}
+
+func TestParseBridgeErrors(t *testing.T) {
+	cases := map[string]string{
+		"bridge { onOpen: func }\nWindow { }":     "expected '(' after func",
+		"bridge { onOpen: func(id) }\nWindow { }": "expected ':' after the parameter name",
+		"bridge { rows: [ ] }\nWindow { }":        "expected a shape name",
+	}
+	for src, want := range cases {
+		_, diag := Parse([]byte(src))
+		if diag.Empty() {
+			t.Errorf("%q was accepted", src)
+			continue
+		}
+		if got := diag.Format("<src>", []byte(src)); !strings.Contains(got, want) {
+			t.Errorf("%q gave %s, want %q", src, got, want)
+		}
 	}
 }

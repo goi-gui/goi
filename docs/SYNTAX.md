@@ -165,6 +165,14 @@ still collide.
 An id in an `{#each}` row is scoped too, so `ui.Descendant` needs the prefixed
 name inside a scoped instance.
 
+A design reads another node by its id, the same way it reads `window.width`:
+`width: panel.width`. The id must be declared in the same file, and the
+reference reads the property at the time the value is evaluated.
+
+The language server knows these ids: typing a value offers them, `panel.` lists
+the element's properties, hover explains either half, and go-to-definition jumps
+to the `id:` that declares the name.
+
 ### Conditional blocks
 
 `{#if}` picks one arm of elements. The condition is an ordinary expression and
@@ -201,21 +209,25 @@ Window {
 - An `{#if}` inside an `{#each}` arm sees the loop variable, so a row can switch
   part of itself on its own fields.
 
-### Data and repeated rows
+### Bridge: values and handlers
 
-A design can read values the app holds. Declare them, then use them like any
-other value:
+A design declares the values it reads and the handlers it calls in one `bridge`
+block. `data { ... }` is the original spelling and still works; `type` and
+`data <name>` work alike for a row shape.
 
 ```goi
-data {
+bridge {
 	loading: bool
 	error: string
 	count: number
-	tickets: ticket[]
+	tickets: [ticket]
+	onOpen: func(id: string)
+	onFilter: func(query: string, limit: number)
 }
 
 // The shape of one row. A list names the shape it holds.
-data ticket {
+type ticket {
+	id: string
 	title: string
 	requester: string
 	unread: bool
@@ -225,39 +237,63 @@ data ticket {
 ```goi
 Window {
 	Column {
-		{#if data.loading}
+		{#if bridge.loading}
 			Text { text: "Loading…" }
 		{:else}
-			Text { text: data.count }
-			{#each data.tickets as ticket}
+			Text { text: bridge.count }
+			{#each bridge.tickets as ticket}
 				ListItem {
 					label: ticket.title
 					supporting: ticket.requester
 					selected: ticket.unread
+					onClick: bridge.onOpen(ticket.id)
 				}
 			{:else}
-				Text { text: data.error }
+				Text { text: bridge.error }
 			{/each}
 		{/if}
 	}
 }
 ```
 
+Go supplies the values and the handler bodies:
+
 ```go
 ui.SetData(w, "loading", true)
 ui.SetData(w, "count", "3 tickets")
 ui.SetData(w, "tickets", items)          // any slice
-ui.OnEach[*ui.ListItem](w, "tickets", func(row *ui.ListItem, it ticket) {
-	row.OnClick(func(ui.ClickEvent) { open(it) })
-})
+ui.SetHandler(w, "onOpen", func(id string) { open(id) })
 ```
 
+`ui.SetHandler` belongs in `Bind`, which runs again after every hot reload, so
+re-registering there is enough. A handler is any Go function; its parameters are
+converted from the design's values (a number may feed an `int`, a `float64` or a
+`string`).
+
 - **Types.** A scalar is `bool`, `string`, `number` or `color`. A list is
-  `shape[]`, and the shape must be declared. A field of a shape may itself be a
-  list, so `data group { name: string, items: item[] }` works.
-- **Any file may declare them.** A fragment owns its own `data { ... }` block and
-  the shapes its `{#each}` walks; the declarations merge into the one design the
-  app sees, so `ui.SetData(w, "rows", …)` feeds a list a fragment drew.
+  `[shape]` or the older `shape[]`, and the shape must be declared. A field of a
+  shape may itself be a list, so `type group { name: string, items: [item] }`
+  works.
+- **Handlers.** `onOpen: func(id: string)` declares a handler with its
+  parameters; `func()` takes none. A handler parameter is a scalar:
+  `bool`, `string`, `number` or `color`. A handler is never a value: it can only
+  be called in an event property.
+- **Calls.** `bridge.onOpen(ticket.id)` is the whole value of an event property.
+  It is not an expression: you cannot use it inside `+`, a comparison or a
+  non-event property.
+- **Fire time.** Arguments are evaluated when the event fires, not every frame,
+  so `ticket.id` is the row that exists at click time.
+- **`event`.** The event's own payload is available as `event`: `onToggle`
+  passes a bool, `onChange` a number, `onEdit` and `onSubmit` a string,
+  `onSelect` an index. `onClick` carries no scalar value. Declare the parameter
+  type the payload fits: `onChange: bridge.onVolume(event)` with
+  `onVolume: func(v: number)`.
+- **Events.** Every element accepts `onClick`. Components also accept
+  `onToggle`, `onChange`, `onEdit`, `onSubmit` and `onSelect` where they emit
+  them. The value is always a bridge call; a literal is rejected.
+- **Any file may declare them.** A fragment owns its own `bridge { ... }` block
+  and the shapes its `{#each}` walks; the declarations merge into the one design
+  the app sees, so `ui.SetData(w, "rows", …)` feeds a list a fragment drew.
 - **Go values.** `ui.SetData` takes a slice of structs — matched by `json` tag,
   then by the field name with a lower first letter — or a slice of
   `map[string]any`. Numbers are converted, so an `int` field reads in a `number`
@@ -265,7 +301,7 @@ ui.OnEach[*ui.ListItem](w, "tickets", func(row *ui.ListItem, it ticket) {
   before the fetch returns.
 - **Rebuilding.** A list variable rebuilds only the `{#each}` blocks that walk
   it, and only when it is set. A scalar keeps its nodes and just re-reads the
-  value, which is why `{#if data.loading}` costs one visibility toggle.
+  value, which is why `{#if bridge.loading}` costs one visibility toggle.
 - **The `{:else}` arm** shows when the list is empty or not yet set.
 - **Row ids** are not registered, exactly like an `ui.Instantiate` copy, because
   every row would otherwise collide: reach a part of a row with `ui.Descendant`.
@@ -273,32 +309,41 @@ ui.OnEach[*ui.ListItem](w, "tickets", func(row *ui.ListItem, it ticket) {
 - **Hooks.** `ui.OnEach` runs for every row the block builds, including rebuilt
   ones, and gets the item the row was built from. It must be safe to call twice.
 - **Validation.** `goicheck` and the language server check the declarations, the
-  list an `{#each}` walks, every `row.field` against its shape, and the type a
-  field feeds. `data.x` in a value position must not be a list; a list is only
-  valid as an `{#each}` source.
+  list an `{#each}` walks, every `row.field` against its shape, the type a field
+  feeds, and every handler call: the name, the argument count, the argument
+  types and the `event` payload. `bridge.x` in a value position must not be a
+  list or a handler; a list is only valid as an `{#each}` source.
+- **Runtime errors.** Calling a handler that Go never registered, or passing it
+  arguments it cannot accept, is reported through the app's error hook instead
+  of killing the frame.
 - `ui.Fill` and `template: true` remain for a list built by hand — inserting one
   row, or a container that is not a `.goi` block.
 
 ## Grammar
 
 ```
-File      = { Import | Param | Data } Element EOF
+File      = { Import | Param | Bridge | Shape } Element EOF
 Import    = "import" String "as" Ident
 Param     = "param" Ident ":" Value [";"]
-Data      = "data" ( "{" { VarDecl } "}" | Ident "{" { FieldDecl } "}" )
+Bridge    = ("bridge" | "data") "{" { VarDecl } "}"
+Shape     = ("type" | "data") Ident "{" { FieldDecl } "}"
 VarDecl   = Ident ":" Type [";"]
 FieldDecl = Ident ":" Type [";"]
-Type      = "bool" | "string" | "number" | "color" | Ident "[]"
+Type      = "bool" | "string" | "number" | "color"
+          | "[" Ident "]" | Ident "[]"
+          | "func" "(" [ Ident ":" Type { "," Ident ":" Type } ] ")"
 Element   = Ident "{" { Member } "}"
 Member    = Property | Element | Block | "$children"
 Block     = "{#" "if" Value "}" { Member }
             { "{:else if" Value "}" { Member } }
             [ "{:else}" { Member } ]
             "{/if}"
-          | "{#" "each" "data" "." Ident "as" Ident "}" { Member }
+          | "{#" "each" ("bridge" | "data") "." Ident "as" Ident "}" { Member }
             [ "{:else}" { Member } ]
             "{/each}"
 Property  = Ident ":" Value [";"]
+EventHandler = Ident ":" ("bridge" | "data") "." Ident
+               "(" [ Value { "," Value } ] ")"
 Value     = String | Number | Bool | Color | Ident | Map | Expression | "$" Ident
 Map       = "{" [ MapEntry { "," MapEntry } [","] ] "}"
 MapEntry  = Ident ":" Value
@@ -315,7 +360,9 @@ Factor     = Number | Number "%" | String | Bool | Color | Ident | Ident "." Ide
 
 Newlines are not tokens. A member is a property when the identifier is followed
 by `:` and a child element when it is followed by `{`, so `name: value` and
-`Name { ... }` can be written on one line or across many.
+`Name { ... }` can be written on one line or across many. An `EventHandler` is
+the only place a call may appear: it is an event property's whole value, never
+part of a `Value`.
 
 ## Literals
 
