@@ -50,7 +50,7 @@ func main() {
 			app.Post(func() {
 				ui.SetData(win, "loading", false)
 				ui.SetData(win, "tickets", tickets)
-				ui.SetData(win, "count", fmt.Sprintf("%d tickets", len(tickets)))
+				ui.SetData(win, "count", len(tickets))
 			})
 		}()
 	}
@@ -67,7 +67,7 @@ func main() {
 		// Bind runs again on every reload; re-applying is cheap and idempotent.
 		ui.SetData(w, "loading", false)
 		ui.SetData(w, "tickets", tickets)
-		ui.SetData(w, "count", fmt.Sprintf("%d tickets", len(tickets)))
+		ui.SetData(w, "count", len(tickets))
 		return nil
 	})
 	if err != nil {

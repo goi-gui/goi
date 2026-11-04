@@ -3,7 +3,16 @@
 // The `bridge` block declares the handlers; Go supplies the bodies with
 // ui.SetHandler. A handler call's arguments are evaluated when the event fires,
 // and `event` is the event's own payload.
+//
+// Counter.goi is a fragment with no bridge of its own: the instance below hands
+// it one value (`bridge.Step`) and one handler (`bridge.onStep`), and the
+// fragment reads them as `props.Count` and `props.OnStep`.
+import "./Counter.goi" as Counter
+
 bridge {
+	Step int
+	onStep func(delta int)
+
 	onClick func(name string)
 	onToggle func(on bool)
 	onVolume func(v float64)
@@ -27,6 +36,9 @@ Window {
 			role: "bodyMedium"
 			color: onSurfaceVariant
 		}
+
+		// One value and one handler leave the bridge here and arrive as props.
+		Counter { Label: "Clicks" Count: bridge.Step OnStep: bridge.onStep }
 
 		Row {
 			spacing: 12

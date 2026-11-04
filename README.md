@@ -105,7 +105,7 @@ make composition # one design split across Main.goi, Sidebar.goi and StatCard.go
 make theme     # built-in schemes plus one registered by name
 make datalist  # bridge values in a for loop, with a row handler
 make format    # formatf, arithmetic and bridge zero values
-make bridge    # every event property calling a Go handler
+make bridge    # every event property, and a fragment fed from the bridge
 make search    # a button and a text field reading another node by id
 go run ./cmd/goicheck -layout examples/*/*.goi  # syntax plus a headless layout check
 ```

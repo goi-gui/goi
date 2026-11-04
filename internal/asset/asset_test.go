@@ -676,3 +676,68 @@ Text { id: row text: "row" onClick: props.onOpen("7") }`,
 		t.Fatalf("handler calls = %v, want one with 7", got)
 	}
 }
+
+// TestFragmentTakesAValueAndAHandler is the shape examples/bridge uses: one
+// fragment receives a bridge value and a bridge handler as props, shows the
+// value and calls the handler, and never names `bridge` itself.
+func TestFragmentTakesAValueAndAHandler(t *testing.T) {
+	dir := design(t, map[string]string{
+		"Main.goi": `import "./Counter.goi" as Counter
+bridge {
+	Step   int
+	onStep func(delta int)
+}
+Window {
+	Column {
+		Counter { Label: "Clicks" Count: bridge.Step OnStep: bridge.onStep }
+	}
+}`,
+		"Counter.goi": `props {
+	Label  string
+	Count  int
+	OnStep func(delta int)
+}
+Card {
+	Column {
+		Text { id: label text: formatf("%s: %d", props.Label, props.Count) }
+		Button { id: plus label: "+1" onClick: props.OnStep(1) }
+		Button { id: minus label: "-1" onClick: props.OnStep(-1) }
+	}
+}`,
+	})
+	tr, err := load(t, dir, "Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr.SetData("Step", 3)
+	tr.ApplyExpressions()
+	label, ok := tr.ByID("label")
+	if !ok {
+		t.Fatalf("no label:\n%s", dump(tr))
+	}
+	if got := label.(*tree.Text).Text.Get(); got != "Clicks: 3" {
+		t.Fatalf("label = %q, want the prop value", got)
+	}
+
+	var got []int
+	if err := tr.SetHandler("onStep", func(d int) { got = append(got, d) }); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"plus", "minus"} {
+		n, ok := tr.ByID(id)
+		if !ok {
+			t.Fatalf("no %s:\n%s", id, dump(tr))
+		}
+		n.Base().Click.Emit(tree.ClickEvent{})
+	}
+	if len(got) != 2 || got[0] != 1 || got[1] != -1 {
+		t.Fatalf("calls = %v, want [1 -1]", got)
+	}
+
+	// Go writes the value the fragment shows; the design follows.
+	tr.SetData("Step", 10)
+	tr.ApplyExpressions()
+	if got := label.(*tree.Text).Text.Get(); got != "Clicks: 10" {
+		t.Fatalf("label after SetData = %q", got)
+	}
+}

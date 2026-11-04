@@ -199,16 +199,29 @@ func (l *loader) instantiateFile(f *syntax.File, name string, stack []string) (*
 // Preview returns a copy of a fragment with its props replaced by the type's
 // zero value, so the file can be laid out on its own: goicheck wraps the result
 // in a Window. A file that is not a fragment comes back unchanged.
+//
+// A slice, a map and a handler have no zero literal, so a preview stands them in
+// with a bridge variable of the same type. Nothing is registered at runtime, so
+// clicking a previewed button reports "no handler" instead of panicking.
 func Preview(f *syntax.File) (*syntax.File, syntax.Diagnostics) {
 	if f == nil || f.Root == nil || len(f.Props) == 0 {
 		return f, nil
 	}
 	props := propValues(f, nil)
+	out := *f
+	for _, pr := range f.Props {
+		if pr.Type.Kind == syntax.TypeScalar {
+			continue
+		}
+		props[pr.Name] = &syntax.Ref{ID: "bridge", Prop: pr.Name}
+		if out.Var(pr.Name) == nil {
+			out.Vars = append(out.Vars, syntax.Field{Name: pr.Name, NameAt: pr.NameAt, Type: pr.Type, At: pr.At})
+		}
+	}
 	root := copyElement(f.Root)
-	if diag := substitute(root, props, f.Src, f); !diag.Empty() {
+	if diag := substitute(root, props, f.Src, &out); !diag.Empty() {
 		return nil, diag
 	}
-	out := *f
 	out.Root = root
 	return &out, nil
 }
@@ -536,7 +549,8 @@ func substValue(v syntax.Value, props map[string]syntax.Value, src, from string,
 		return copyValue(got), diag
 	case *syntax.Call:
 		callee := x.Callee
-		if callee.ID == "props" {
+		// A builtin (formatf) has no callee; only a handler call names a prop.
+		if callee != nil && callee.ID == "props" {
 			// `onClick: props.onOpen(item.id)`: the instance passed the real
 			// handler, so the call points at it now.
 			got, ok := props[callee.Prop]

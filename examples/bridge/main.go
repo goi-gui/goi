@@ -1,6 +1,7 @@
-// Command bridge shows the design calling Go handlers through `bridge`.
+// Command bridge shows the design calling Go handlers through `bridge`, and a
+// fragment receiving one of those values and one of those handlers as props.
 //
-// The .goi file declares the handlers and which event calls each one; this file
+// The .goi files declare the handlers and which event calls each one; this file
 // supplies the bodies with ui.SetHandler and appends every event to the log.
 // Run with: go run -ldflags=-linkmode=internal ./examples/bridge
 package main
@@ -13,9 +14,13 @@ import (
 	"github.com/ksckaan1/goi/ui"
 )
 
-// events lives outside Bind: Bind runs again after a hot reload, so the log is
-// app state and Bind only re-registers the handlers.
+// events and step live outside Bind: Bind runs again after a hot reload, so the
+// log and the counter are app state and Bind only re-registers the handlers.
 var events []string
+
+// step is the value Counter.goi shows. The design never owns it: main.goi passes
+// bridge.Step into the fragment as a prop.
+var step = 3
 
 func main() {
 	app, err := ui.NewApp()
@@ -39,7 +44,15 @@ func main() {
 			}
 			log.Text.Set(strings.Join(events, "\n"))
 		}
+		// The fragment's prop, fed from the bridge: a value and a handler.
+		ui.SetData(w, "Step", step)
+
 		handlers := map[string]any{
+			"onStep": func(delta int) {
+				step += delta
+				ui.SetData(w, "Step", step)
+				add("onStep: %+d → %d", delta, step)
+			},
 			"onClick":  func(name string) { add("onClick: %s", name) },
 			"onToggle": func(on bool) { add("onToggle: %v", on) },
 			"onVolume": func(v float64) { add("onChange: %.2f", v) },

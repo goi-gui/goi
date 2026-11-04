@@ -76,6 +76,10 @@ Window {
   props.OnOpen(row.ID)`. The instance passes a handler — `Row { OnOpen:
   bridge.OnOpen }` — and `event` is not available inside the fragment, because
   the fragment decides what it passes.
+- A fragment can take a value and a handler from the same bridge in one call:
+  `Count: bridge.Step OnStep: bridge.onStep`. The fragment shows the value and
+  calls the handler, and never mentions `bridge` itself; see
+  `examples/bridge/Counter.goi`.
 - An instance property whose name is a prop sets that prop. Any other property
   is applied to the fragment root, replacing the fragment's own value of the same
   name. So `Sidebar { width: 300 }` overrides the fragment's width.

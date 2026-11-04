@@ -115,3 +115,41 @@ Window {
 		t.Fatal(err)
 	}
 }
+
+// TestPreviewStandsInForACompositeProp keeps `goicheck -layout` honest on a
+// fragment it opens alone: a handler, a slice and a map have no zero literal, so
+// the preview aliases each to a bridge variable of the same type.
+func TestPreviewStandsInForACompositeProp(t *testing.T) {
+	dir := design(t, map[string]string{
+		"Counter.goi": `props {
+	Rows   []Row
+	Labels map[string]string
+	OnStep func(delta int)
+}
+type Row { Title string }
+Column {
+	for _, row := range props.Rows {
+		Text { text: row.Title onClick: props.OnStep(1) }
+	}
+	for k, v := range props.Labels {
+		Text { text: formatf("%s=%s", k, v) }
+	}
+}`,
+	})
+	b, diag := Load(os.DirFS(dir), "Counter.goi")
+	if !diag.Empty() {
+		t.Fatal(diag.FormatFiles("Counter.goi", b.Sources["Counter.goi"], b.Sources))
+	}
+	p, diag := Preview(b.File)
+	if !diag.Empty() {
+		t.Fatal(diag.FormatFiles("Counter.goi", b.Sources["Counter.goi"], b.Sources))
+	}
+	if _, diag := schema.Validate(p); !diag.Empty() {
+		t.Fatalf("the preview is not valid: %v", diag)
+	}
+	for _, name := range []string{"Rows", "Labels", "OnStep"} {
+		if p.Var(name) == nil {
+			t.Fatalf("the preview has no stand-in bridge variable %q", name)
+		}
+	}
+}

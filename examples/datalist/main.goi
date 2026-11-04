@@ -5,7 +5,7 @@
 // values with ui.SetData and the handlers with ui.SetHandler; the `for`
 // loop builds one row per item and rebuilds when the list changes.
 bridge {
-	count float64
+	count int
 	loading bool
 	tickets []ticket
 	onReload func()
@@ -39,7 +39,8 @@ Window {
 				Text { text: "Loading…" color: onSurfaceVariant }
 			}
 		} else {
-			Text { text: bridge.count role: "labelMedium" color: onSurfaceVariant }
+			Text { text: formatf("%d tickets", bridge.count) role: "labelMedium" color: onSurfaceVariant }
+
 			for _, ticket := range bridge.tickets {
 				ListItem {
 					label: ticket.title
