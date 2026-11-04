@@ -7,9 +7,10 @@
 //
 // It provides diagnostics from the parser and the schema (including errors that
 // live in an imported fragment), completion for elements, properties, enum
-// values, colour roles, params, `bridge.` handlers, event calls and id
-// references, hover docs, a document outline, folding and go-to-definition for
-// imports and ids.
+// values, colour roles, declaration types, `bridge.`/`props.` values, handler
+// calls, `if`/`for` statements, the `formatf` builtin and a fragment instance's
+// props, hover docs for every declaration and fragment, a document outline,
+// folding and go-to-definition for imports and ids.
 //
 // The Zed extension (github.com/goi-gui/zed-goi) starts it automatically when
 // it is on PATH:
