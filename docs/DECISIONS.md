@@ -1227,3 +1227,37 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   `onClick: props.onOpen(row.id)` becomes `bridge.onOpen(...)` once the instance
   names the handler. Both keep one execution path instead of teaching the tree
   about fragment inputs.
+
+- **The design language reads like Go, because that is where behaviour lives.**
+  Declarations are `Name Type` (`bridge { Count int }`, `type Row { Title
+  string }`, `props { Rows []Row }`), blocks are `if cond { … } else { … }` and
+  `for i, row := range bridge.Rows { … }`, and a string is formatted with
+  `formatf`, Go's `fmt` in a value. The JavaScript-flavoured spellings
+  (`{#if}`, `{#each … as}`, `bridge.Count: number = 0`, backtick `${…}`) are
+  gone; nothing is left that a Go reader has to translate. Every primitive Go
+  has is accepted, plus `[]T`, `map[string]T` and `func(...)`, so a declared
+  type maps to the Go field the app actually holds.
+- **No declaration takes a default; the zero value is the default.** A variable
+  the app never sets reads its type's zero — `""`, `0`, `false`, transparent
+  black, an empty slice or map. That removes the second source of truth the old
+  `= 0` introduced (was the value the design's, Go's, or both?) and makes the
+  first frame identical whether or not Go wrote before it. `ui.SetData` and
+  `ui.SetHandler` stay the only place a value starts.
+- **A struct reaches the design through its `goi` tag.** `SetData` matches a
+  field by `goi:"name"`, then by the field name with a lower first letter; an
+  unexported field and a field tagged `goi:"-"` are invisible. The tag is a
+  separate key from `json` on purpose: a design name is not an API name, and a
+  struct already carrying JSON tags should not be forced to leak them into the
+  layout.
+- **`formatf` replaced template strings.** A backtick literal needed its own
+  lexer token, its own AST node, a nested parse for every hole and a formatter
+  per value type; `formatf` is one builtin call, gets `%d`/`%s`/`%0.2f` for free
+  from `fmt`, and needs one small helper that hands `%d` an integer because a
+  design number is a `float64`. The `+` rule survives: two numbers add, anything
+  else joins.
+- **A range loop is the only loop, and it follows Go exactly.** A slice gives
+  index and element, a map gives key and value (sorted, so a frame is stable), a
+  number counts. `_` and a missing name both mean "not bound". There is no
+  `{:else}` arm: an empty list draws nothing, which is what a Go `for` does, so a
+  design that wants an empty state switches on a bool the app sets
+  (`if bridge.Empty { … }`).

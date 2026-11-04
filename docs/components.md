@@ -156,22 +156,22 @@ A design declares its handlers in a `bridge` block and calls them from an event
 property; Go registers the body with `ui.SetHandler`:
 
 ```goi
-bridge { onOpen: func(id: string) }
-Button { label: "Open" onClick: bridge.onOpen("42") }
+bridge { OnOpen func(id string) }
+Button { label: "Open" onClick: bridge.OnOpen("42") }
 ```
 
 | Design property | Go call | Emitted by |
 |---|---|---|
-| `onClick: bridge.handler(...)` | `OnClick(func(ui.ClickEvent))` | every element; `ClickEvent` has `X`, `Y`, `Button` |
-| `onToggle: bridge.handler(event)` | `OnToggle(func(bool))` | Checkbox, RadioButton, Switch, Chip |
-| `onChange: bridge.handler(event)` | `OnChangeValue(func(float64))` | Slider |
-| `onEdit: bridge.handler(event)` | `OnEdit(func(string))` | TextField, SearchBar (every keystroke) |
-| `onSubmit: bridge.handler(event)` | `OnSubmit(func(string))` | TextField, SearchBar (Enter) |
-| `onSelect: bridge.handler(event)` | `OnSelect(func(int))` | Tabs, NavigationBar, NavigationRail, List, Menu |
+| `onClick: bridge.Handler(...)` | `OnClick(func(ui.ClickEvent))` | every element; `ClickEvent` has `X`, `Y`, `Button` |
+| `onToggle: bridge.Handler(event)` | `OnToggle(func(bool))` | Checkbox, RadioButton, Switch, Chip |
+| `onChange: bridge.Handler(event)` | `OnChangeValue(func(float64))` | Slider |
+| `onEdit: bridge.Handler(event)` | `OnEdit(func(string))` | TextField, SearchBar (every keystroke) |
+| `onSubmit: bridge.Handler(event)` | `OnSubmit(func(string))` | TextField, SearchBar (Enter) |
+| `onSelect: bridge.Handler(event)` | `OnSelect(func(int))` | Tabs, NavigationBar, NavigationRail, List, Menu |
 
 The value of an event property is always a handler call. Its arguments are
 evaluated when the event fires; `event` is the event's own payload. A fragment
-can also declare a handler prop (`props { onOpen: func(id: string) }`) and call
+can also declare a handler prop (`props { OnOpen func(id string) }`) and call
 it, with the instance deciding which bridge handler that is. See
 `docs/SYNTAX.md` for the bridge block, handler types and runtime errors.
 
@@ -210,19 +210,19 @@ node, err := w.ByID("save")                  // untyped
 ui.SetHandler(w, "onOpen", func(id string) { open(id) })  // body of a bridge handler
 ```
 
-`ui.SetHandler` supplies the Go function a `bridge { onOpen: func(id: string) }`
+`ui.SetHandler` supplies the Go function a `bridge { OnOpen func(id string) }`
 declaration calls; register it from `Bind` so a hot reload registers it again.
 The design can read a node's property by id as well (`width: panel.width`), which
 needs no Go code at all.
 
-A list of unknown length is usually a `{#each}` block the app feeds with
-`ui.SetData`; the row stays in the design and the shape it reads is declared, so
-`goicheck` and the editor check every field (see [SYNTAX](SYNTAX.md#bridge-values-and-handlers)).
+A list of unknown length is usually a `for` loop the app feeds with
+`ui.SetData`; the row stays in the design and the type it reads is declared, so
+`goicheck` and the editor check every field (see [SYNTAX](SYNTAX.md#declarations-values-and-handlers)).
 
 ```goi
-{#each bridge.tickets as ticket}
-    ListItem { label: ticket.title selected: ticket.unread }
-{/each}
+for _, ticket := range bridge.Tickets {
+    ListItem { label: ticket.Title selected: ticket.Unread }
+}
 ```
 
 `template: true` plus `ui.Fill` remains for a list built by hand — one row

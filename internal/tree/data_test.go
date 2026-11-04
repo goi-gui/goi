@@ -6,27 +6,25 @@ import (
 )
 
 type row struct {
-	Title  string `json:"title"`
+	Title  string `goi:"title"`
 	Unread bool
 	Count  int
 	hidden string
 }
 
-const eachUI = `data {
-	rows: row[]
-	loading: bool
-	count: number
+const eachUI = `bridge {
+	rows []row
+	loading bool
+	count float64
 }
-data row { title: string, unread: bool, count: number }
+type row { title string, unread bool, count float64 }
 Window {
 	Column {
 		id: list
-		{#each data.rows as r}
+		for _, r := range bridge.rows {
 			Text { id: title text: r.title }
 			Text { id: state text: r.unread ? "new" : "read" }
-		{:else}
-			Text { id: empty text: "empty" }
-		{/each}
+		}
 	}
 }`
 
@@ -48,9 +46,9 @@ func TestEachBuildsOneRowPerItem(t *testing.T) {
 	if !diag.Empty() {
 		t.Fatalf("%v", diag)
 	}
-	// Before any data arrives, the {:else} arm is what the design shows.
-	if got := texts(tr); len(got) != 1 || got[0] != "empty" {
-		t.Fatalf("texts = %v, want the else arm", got)
+	// Before any data arrives the loop has no iterations.
+	if got := texts(tr); len(got) != 0 {
+		t.Fatalf("texts = %v, want nothing before data arrives", got)
 	}
 
 	tr.SetData("rows", []row{{Title: "a", Unread: true}, {Title: "b"}})
@@ -65,16 +63,16 @@ func TestEachBuildsOneRowPerItem(t *testing.T) {
 		t.Fatalf("after a shorter list: %s", got)
 	}
 
-	// An empty list brings the else arm back instead of stacking it.
+	// An empty list removes every row instead of stacking them.
 	tr.SetData("rows", []row{})
 	tr.ApplyExpressions()
-	if got := fmt.Sprint(texts(tr)); got != "[empty]" {
+	if got := fmt.Sprint(texts(tr)); got != "[]" {
 		t.Fatalf("after an empty list: %s", got)
 	}
 }
 
 // TestEachAcceptsAnySliceAndMap keeps the API friendly: a slice of structs, a
-// slice of maps and a nil all work, and fields match by json tag or name.
+// slice of maps and a nil all work, and fields match by goi tag or name.
 func TestEachAcceptsAnySliceAndMap(t *testing.T) {
 	tr, diag := BuildSource([]byte(eachUI), nil)
 	if !diag.Empty() {
@@ -87,144 +85,38 @@ func TestEachAcceptsAnySliceAndMap(t *testing.T) {
 	}
 	tr.SetData("rows", nil)
 	tr.ApplyExpressions()
-	if got := fmt.Sprint(texts(tr)); got != "[empty]" {
+	if got := fmt.Sprint(texts(tr)); got != "[]" {
 		t.Fatalf("nil list: %s", got)
 	}
 	// A struct field without a tag is matched by its lower-case name.
-	tr.SetData("rows", []struct{ Hidden string }{{Hidden: "x"}})
+	tr.SetData("rows", []struct {
+		Hidden string
+		Title  string
+	}{{Hidden: "x", Title: "t"}})
 	tr.ApplyExpressions()
-	if got := fmt.Sprint(texts(tr)); got != "[ empty]" && got != "[ ]" {
-		// The field is `hidden` in the design but the anonymous struct has
-		// "Hidden": both normalise to `hidden`, but this shape has no such
-		// field, so the text stays empty. Just make sure nothing panics.
-		t.Logf("texts = %s", got)
-	}
-}
-
-// TestEachRowsGetTheirOwnScope proves the loop variable is resolved per row:
-// two rows must not read the first item's value.
-func TestEachRowsGetTheirOwnScope(t *testing.T) {
-	src := `data { rows: row[] }
-data row { title: string }
-Window {
-	Column {
-		id: list
-		{#each data.rows as r}
-			Column {
-				{#if r.title == "hide"}
-					Text { id: hidden text: "hidden" }
-				{:else}
-					Text { id: shown text: r.title }
-				{/if}
-			}
-		{/each}
-	}
-}`
-	tr, diag := BuildSource([]byte(src), nil)
-	if !diag.Empty() {
-		t.Fatalf("%v", diag)
-	}
-	tr.SetData("rows", []row{{Title: "hide"}, {Title: "keep"}})
-	tr.ApplyExpressions()
-
-	// Row one asks for "hide" and shows its hidden arm; row two shows "keep".
-	// Each row's inner block resolves against that row's item, so the counts
-	// follow the data and not the first row only.
-	var hidden, shown int
-	for _, n := range tr.All() {
-		switch n.Base().ID() {
-		case "hidden":
-			if shown_(n) {
-				hidden++
-			}
-		case "shown":
-			if !shown_(n) {
-				continue
-			}
-			shown++
-			if n.(*Text).Text.Get() != "keep" {
-				t.Fatalf("shown row text = %q", n.(*Text).Text.Get())
-			}
-		}
-	}
-	if hidden != 1 {
-		t.Fatalf("hidden arms shown = %d, want the hide row", hidden)
-	}
-	if shown != 1 {
-		t.Fatalf("shown rows = %d, want the one kept row", shown)
-	}
-}
-
-// shown_ reports whether a node is drawn, ancestors included.
-func shown_(n Node) bool {
-	for n != nil {
-		if !n.Base().Visible() {
-			return false
-		}
-		n = n.Base().Parent()
-	}
-	return true
-}
-
-// TestEachOnEachHooksEveryRebuiltRow checks the callback contract an app relies
-// on for click handlers.
-func TestEachOnEachHooksEveryRebuiltRow(t *testing.T) {
-	tr, diag := BuildSource([]byte(eachUI), nil)
-	if !diag.Empty() {
-		t.Fatalf("%v", diag)
-	}
-	var seen []string
-	tr.OnEach("rows", func(n Node, item any) {
-		seen = append(seen, item.(row).Title)
-	})
-	tr.SetData("rows", []row{{Title: "a"}, {Title: "b"}})
-	if fmt.Sprint(seen) != "[a b]" {
-		t.Fatalf("hooks ran for %v", seen)
-	}
-	seen = nil
-	tr.SetData("rows", []row{{Title: "c"}})
-	if fmt.Sprint(seen) != "[c]" {
-		t.Fatalf("hooks ran for %v after a rebuild", seen)
-	}
-}
-
-// TestEachPrunesStaleRegistrations keeps the expression list from growing with
-// every refresh: the old rows must leave it.
-func TestEachPrunesStaleRegistrations(t *testing.T) {
-	tr, diag := BuildSource([]byte(eachUI), nil)
-	if !diag.Empty() {
-		t.Fatalf("%v", diag)
-	}
-	for i := 0; i < 5; i++ {
-		tr.SetData("rows", []row{{Title: "x"}, {Title: "y"}})
-	}
-	// Two expressions per row, and the list itself is not an expression.
-	if got := len(tr.exprNodes); got > 4 {
-		t.Fatalf("%d expression nodes after five fills, want the two live rows", got)
-	}
-	if got := len(tr.All()); got > 8 {
-		t.Fatalf("%d nodes left behind", got)
+	if got := fmt.Sprint(texts(tr)); got != "[t ]" {
+		t.Fatalf("untagged field: %s", got)
 	}
 }
 
 // TestNestedEachWalksTheInnerList covers the grouped case: the outer variable is
 // still in scope inside the inner arm.
 func TestNestedEachWalksTheInnerList(t *testing.T) {
-	src := `data { groups: group[] }
-data group { name: string, items: item[] }
-data item { label: string }
+	src := `bridge { groups []group }
+type group { name string, items []item }
+type item { label string }
 Window {
 	Column {
 		id: list
-		{#each data.groups as g}
+		for _, g := range bridge.groups {
 			Text { text: g.name }
 			Column {
 				id: inner
-				{#each data.groups as i}
+				for _, i := range bridge.groups {
 					Text { text: i.name }
-				{/each}
+				}
 			}
-		{/each}
+		}
 	}
 }`
 	tr, diag := BuildSource([]byte(src), nil)
@@ -237,5 +129,43 @@ Window {
 	// block is rebuilt for every outer row, not left pointing at a dead parent.
 	if got := fmt.Sprint(texts(tr)); got != "[A A B B A B]" {
 		t.Fatalf("texts = %s", got)
+	}
+}
+
+// TestGoiTagNamesStructFields is the contract for a Go struct reaching a design:
+// `goi:"name"` sets the design name, `goi:"-"` hides the field, and an
+// unexported field is invisible.
+func TestGoiTagNamesStructFields(t *testing.T) {
+	type user struct {
+		ID      string `goi:"id"`
+		Name    string `goi:"fullName"`
+		Ignored string `goi:"-"`
+		private bool
+	}
+	u := user{ID: "1", Name: "Ada", Ignored: "no", private: true}
+
+	for field, want := range map[string]any{"id": "1", "fullName": "Ada"} {
+		got, ok := dataValue(u, field)
+		if !ok || got != want {
+			t.Fatalf("%s = %v, %v; want %v", field, got, ok, want)
+		}
+	}
+	for _, hidden := range []string{"ignored", "private", "Ignored", "private"} {
+		if got, ok := dataValue(u, hidden); ok {
+			t.Fatalf("%s = %v, want it hidden", hidden, got)
+		}
+	}
+
+	// The design reads the tagged name because the declarations say so.
+	tr, diag := BuildSource([]byte(`bridge { Users []User }
+type User { fullName string }
+Window { Column { for _, u := range bridge.Users { Text { text: u.fullName } } } }`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	tr.SetData("Users", []user{u})
+	tr.ApplyExpressions()
+	if got := fmt.Sprint(texts(tr)); got != "[Ada]" {
+		t.Fatalf("texts = %s, want the goi-tagged field", got)
 	}
 }

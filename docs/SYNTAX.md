@@ -29,20 +29,20 @@ Window {
 ## Splitting a design across files
 
 A file may start with `import` lines and one `props` block, before its root
-element. `props` declares the typed values the fragment expects; the fragment
-reads them as `props.name`:
+element. `props` declares the typed values the fragment expects, the way Go
+declares a field; the fragment reads them as `props.Name`:
 
 ```
 // Sidebar.goi
 props {
-    title: string = "Mail"
-    subtitle: string
+    Title    string
+    Subtitle string
 }
 
 Column {
     width: 280
-    Text { text: props.title role: "titleLarge" }
-    Text { text: props.subtitle role: "bodySmall" }
+    Text { text: props.Title role: "titleLarge" }
+    Text { text: props.Subtitle role: "bodySmall" }
 }
 ```
 
@@ -53,7 +53,7 @@ import "./Sidebar.goi" as Sidebar
 Window {
     Column {
         Sidebar {
-            title: "Inbox"
+            Title: "Inbox"
             width: 300
         }
     }
@@ -64,19 +64,17 @@ Window {
   asset container. Fragments may import fragments; a cycle is an error.
 - `Sidebar { }` is replaced by the fragment's root element, so the fragment
   decides its own layout and the instance places it like any other child.
-- A prop is `name: type`, with an optional `= default` on a scalar. The type is
-  `bool`, `string`, `number`, `color`, a list (`[shape]` / `shape[]`) or a
-  handler (`func(id: string)`).
-- A prop the instance leaves out is its default; with no default a scalar is the
+- A prop is `Name Type`, with no default: a prop the instance leaves out is the
   **type's zero value** (`""`, `0`, `false`, `#00000000`), so a fragment never
-  has to guard for a missing value. A list or a handler has no zero literal, so
-  the instance must pass one.
-- A list prop is walked like a bridge list: `{#each props.rows as row}`. The
-  instance passes a bridge list — `List { rows: bridge.tickets }` — whose shape
-  must match the declaration.
+  has to guard for a missing value.
+- The type is written the way Go writes it: a primitive, a slice (`[]Ticket`), a
+  map (`map[string]int`), a handler (`func(id string)`) or a declared `type`.
+- A slice prop is walked like a bridge list: `for i, row := range props.Rows`.
+  The instance passes a bridge list — `List { Rows: bridge.Tickets }` — whose
+  type must match the declaration.
 - A handler prop is called like a bridge handler: `onClick:
-  props.onOpen(row.id)`. The instance passes a handler — `Row { onOpen:
-  bridge.onOpen }` — and `event` is not available inside the fragment, because
+  props.OnOpen(row.ID)`. The instance passes a handler — `Row { OnOpen:
+  bridge.OnOpen }` — and `event` is not available inside the fragment, because
   the fragment decides what it passes.
 - An instance property whose name is a prop sets that prop. Any other property
   is applied to the fragment root, replacing the fragment's own value of the same
@@ -86,12 +84,10 @@ Window {
   a different prop name when the instance needs its ids namespaced.
 - A fragment's root may be any element; only the file a program loads must be a
   `Window`. A file that declares props is reported as a fragment by `goicheck`.
-- `props.name` is only valid inside the file that declares it. The entry file has
+- `props.Name` is only valid inside the file that declares it. The entry file has
   nothing to fill it in, so it is an error there; a name the block does not
   declare is an error too, with a "did you mean" hint.
-- A prop's declared type is checked against every property it feeds. The value an
-  instance passes is checked against that property, exactly like any other
-  literal, so `Sidebar { title: 5 }` is an error where `title` needs a string.
+- A prop's declared type is checked against every property it feeds.
 
 ### Passing children into a fragment
 
@@ -184,8 +180,8 @@ including the ones it passes to a slot — are not scoped, because they belong t
 the caller. An instance without an `id` scopes nothing, so two such instances
 still collide.
 
-An id in an `{#each}` row is scoped too, so `ui.Descendant` needs the prefixed
-name inside a scoped instance.
+An id in a `for` row is scoped too, so `ui.Descendant` needs the prefixed name
+inside a scoped instance.
 
 A design reads another node by its id, the same way it reads `window.width`:
 `width: panel.width`. The id must be declared in the same file, and the
@@ -197,150 +193,172 @@ to the `id:` that declares the name.
 
 ### Conditional blocks
 
-`{#if}` picks one arm of elements. The condition is an ordinary expression and
-must be a bool; every arm is built when the window loads and only the matching
-one is shown, so a block costs no layout for the arm it hides.
+`if` picks one arm of elements, written the way Go writes it. The condition is an
+ordinary expression and must be a bool; every arm is built when the window loads
+and only the matching one is shown, so a block costs no layout for the arm it
+hides.
 
 ```goi
 Window {
     Column {
-        {#if app.dark}
-            IconButton { icon: dark_mode }
-        {:else if window.width > 900}
-            IconButton { icon: desktop }
-        {:else}
-            IconButton { icon: light_mode }
-        {/if}
+        if app.dark {
+            Text { text: "Dark" }
+        } else if window.width > 900 {
+            Text { text: "Wide" }
+        } else {
+            Text { text: "Light" }
+        }
     }
 }
 ```
 
-- The arms are ordinary children of the enclosing element: a block adds no box,
-  no spacing and no flex item of its own. In a `Row` the visible arm is laid out
-  as a row item, exactly as if it were written there directly.
 - Conditions may read `app.theme`, `app.dark`, `app.os`, `window.width`,
-  `window.height` and any `id.prop` that is a bool, and combine them with
-  comparisons, `&&`, `||`, `!` and `?:`.
-- An arm holds elements only. A `{#if}` inside a `Text` is an error, because a
-  leaf has no children to switch.
-- Blocks nest: an inner `{#if}` shows only where its outer arm also shows.
+  `window.height`, `bridge.*`, `props.*` and any `id.prop` that is a bool, and
+  combine them with comparisons, `&&`, `||`, `!` and `?:`.
+- An arm holds elements and blocks only. An `if` inside a `Text` is an error,
+  because a leaf has no children to switch.
+- Blocks nest: an inner `if` shows only where its outer arm also shows.
 - A Go-set bool property re-evaluates the condition on the next frame, so
   `id.checked` is a fully reactive condition without any extra wiring.
 - Ids inside arms are registered like any other id, so two arms cannot declare
   the same one.
-- An `{#if}` inside an `{#each}` arm sees the loop variable, so a row can switch
-  part of itself on its own fields.
+- An `if` inside a `for` body sees the loop variables.
 
-### Bridge: values and handlers
+### Loops
+
+`for` repeats a body with Go's range rules:
+
+```goi
+Column {
+    for i, user := range bridge.users {
+        if user.Age > 17 {
+            Text { text: user.FullName }
+        }
+    }
+}
+```
+
+- A slice gives the index and the element (`for i, row := range bridge.rows`).
+- A map gives the key and the value, in sorted key order so a frame is stable.
+- A number counts from zero: `for i := range 5`.
+- `for range list` is legal when neither name is needed, and `_` ignores one:
+  `for _, row := range bridge.rows`.
+- A single name binds the key, as in Go: `for i := range bridge.rows`.
+- Rows are rebuilt when the list is set with `ui.SetData`, and they keep their
+  ids on the nodes rather than registering them, so two rows do not collide.
+
+### Declarations: values and handlers
 
 A design declares the values it reads and the handlers it calls in one `bridge`
 block. `data { ... }` is the original spelling and still works; `type` and
-`data <name>` work alike for a row shape.
+`data <Name>` work alike for a row type. Declarations are written like Go fields:
+`Name Type`, with no colon and no default.
 
 ```goi
 bridge {
-	loading: bool
-	error: string = ""
-	count: number = 0
-	tickets: [ticket]
-	onOpen: func(id: string)
-	onFilter: func(query: string, limit: number)
+    Loading bool
+    Error   string
+    Count   int
+    Tickets []Ticket
+    OnOpen  func(id string)
+    OnFilter func(query string, limit uint)
 }
 
-// The shape of one row. A list names the shape it holds.
-type ticket {
-	id: string
-	title: string
-	requester: string
-	unread: bool
+// The shape of one row. A list names the type it holds.
+type Ticket {
+    ID        string
+    Title     string
+    Requester string
+    Unread    bool
 }
 ```
 
 ```goi
 Window {
-	Column {
-		{#if bridge.loading}
-			Text { text: "Loading…" }
-		{:else}
-			Text { text: bridge.count }
-			{#each bridge.tickets as ticket}
-				ListItem {
-					label: ticket.title
-					supporting: ticket.requester
-					selected: ticket.unread
-					onClick: bridge.onOpen(ticket.id)
-				}
-			{:else}
-				Text { text: bridge.error }
-			{/each}
-		{/if}
-	}
+    Column {
+        if bridge.Loading {
+            Text { text: "Loading…" }
+        } else {
+            Text { text: formatf("%d tickets", bridge.Count) }
+            for _, ticket := range bridge.Tickets {
+                ListItem {
+                    label: ticket.Title
+                    supporting: ticket.Requester
+                    selected: ticket.Unread
+                    onClick: bridge.OnOpen(ticket.ID)
+                }
+            }
+        }
+    }
 }
 ```
 
 Go supplies the values and the handler bodies:
 
 ```go
-ui.SetData(w, "loading", true)
-ui.SetData(w, "count", "3 tickets")
-ui.SetData(w, "tickets", items)          // any slice
-ui.SetHandler(w, "onOpen", func(id string) { open(id) })
+ui.SetData(w, "Loading", true)
+ui.SetData(w, "Count", 3)
+ui.SetData(w, "Tickets", items)          // any slice
+ui.SetHandler(w, "OnOpen", func(id string) { open(id) })
 ```
 
 `ui.SetHandler` belongs in `Bind`, which runs again after every hot reload, so
 re-registering there is enough. A handler is any Go function; its parameters are
-converted from the design's values: a number may feed an `int`, a `float64` or a
-`string`, and a bool or a color may feed a `string` (as `true`/`false` and
-`#rrggbb`).
+converted from the design's values: a number may feed any Go numeric type, a
+bool and a color may feed a `string` (as `true`/`false` and `#rrggbb`).
 
-- **Types.** A scalar is `bool`, `string`, `number` or `color`. A list is
-  `[shape]` or the older `shape[]`, and the shape must be declared. A field of a
-  shape may itself be a list, so `type group { name: string, items: [item] }`
-  works.
-- **Defaults.** A scalar variable may name the value the design starts with:
-  `count: number = 0`. Go still wins — `ui.SetData(w, "count", 7)` replaces it.
-  With no default the variable starts at its type's zero value (`""`, `0`,
-  `false`, transparent black), so a design can read it before Go sets anything.
-  A list or a handler has no literal default: the app supplies them.
-- **Handlers.** `onOpen: func(id: string)` declares a handler with its
-  parameters; `func()` takes none. A handler parameter is a scalar:
-  `bool`, `string`, `number` or `color`. A handler is never a value: it can only
-  be called in an event property.
-- **Calls.** `bridge.onOpen(ticket.id)` is the whole value of an event property.
+- **Types.** Every primitive Go has is accepted: `bool`, `string`, `int`,
+  `int8`…`int64`, `uint`…`uint64`, `uintptr`, `float32`, `float64`, `byte`,
+  `rune`, plus `color` for an M3 colour. A list is `[]T`, a map is `map[K]V`
+  (the key is a string), and a handler is `func(a string)`.
+- **Zero values.** A variable the app never sets reads its type's zero value:
+  `""`, `0`, `false`, transparent black, an empty list or map. No declaration
+  takes a default; Go is the only place a value starts.
+- **Handlers.** `OnOpen func(id string)` declares a handler with its parameters;
+  `func()` takes none. A handler is never a value: it can only be called in an
+  event property.
+- **Calls.** `bridge.OnOpen(ticket.ID)` is the whole value of an event property.
   It is not an expression: you cannot use it inside `+`, a comparison or a
   non-event property.
 - **Fire time.** Arguments are evaluated when the event fires, not every frame,
-  so `ticket.id` is the row that exists at click time.
+  so `ticket.ID` is the row that exists at click time.
 - **`event`.** The event's own payload is available as `event`: `onToggle`
   passes a bool, `onChange` a number, `onEdit` and `onSubmit` a string,
-  `onSelect` an index. `onClick` carries no scalar value. Declare the parameter
-  type the payload fits: `onChange: bridge.onVolume(event)` with
-  `onVolume: func(v: number)`.
+  `onSelect` an index. `onClick` carries no scalar value.
 - **Events.** Every element accepts `onClick`. Components also accept
   `onToggle`, `onChange`, `onEdit`, `onSubmit` and `onSelect` where they emit
   them. The value is always a bridge call; a literal is rejected.
 - **Any file may declare them.** A fragment owns its own `bridge { ... }` block
-  and the shapes its `{#each}` walks; the declarations merge into the one design
-  the app sees, so `ui.SetData(w, "rows", …)` feeds a list a fragment drew.
-- **Go values.** `ui.SetData` takes a slice of structs — matched by `json` tag,
-  then by the field name with a lower first letter — or a slice of
-  `map[string]any`. Numbers are converted, so an `int` field reads in a `number`
-  position. A `nil` slice is an empty list, which is what the first frame has
-  before the fetch returns.
-- **Rebuilding.** A list variable rebuilds only the `{#each}` blocks that walk
-  it, and only when it is set. A scalar keeps its nodes and just re-reads the
-  value, which is why `{#if bridge.loading}` costs one visibility toggle.
-- **The `{:else}` arm** shows when the list is empty or not yet set.
+  and the types its loops walk; the declarations merge into the one design the
+  app sees, so `ui.SetData(w, "Rows", …)` feeds a list a fragment drew.
+- **Go values.** `ui.SetData` takes a slice of structs — a field is matched by its
+  `goi` tag, then by the field name with a lower first letter. An **unexported
+  field is ignored**, and so is a field tagged `goi:"-"`. A slice of
+  `map[string]any` works too. Numbers are converted, so an `int` field reads in
+  a `number` position. A `nil` slice is an empty list, which is what the first
+  frame has before the fetch returns.
+
+```go
+type User struct {
+    ID        string `goi:"id"`
+    FullName  string `goi:"fullName"`
+    Points    []int  `goi:"points"`
+    private   bool   // ignored: unexported
+    Ignored   string `goi:"-"` // ignored: the tag says so
+}
+```
+
+- **Rebuilding.** A list variable rebuilds only the loops that walk it, and only
+  when it is set. A scalar keeps its nodes and just re-reads the value, which is
+  why `if bridge.Loading` costs one visibility toggle.
 - **Row ids** are not registered, exactly like an `ui.Instantiate` copy, because
   every row would otherwise collide: reach a part of a row with `ui.Descendant`.
-  An id inside the `{:else}` arm is a normal, registered id.
-- **Hooks.** `ui.OnEach` runs for every row the block builds, including rebuilt
+- **Hooks.** `ui.OnEach` runs for every row the loop builds, including rebuilt
   ones, and gets the item the row was built from. It must be safe to call twice.
 - **Validation.** `goicheck` and the language server check the declarations, the
-  list an `{#each}` walks, every `row.field` against its shape, the type a field
-  feeds, and every handler call: the name, the argument count, the argument
-  types and the `event` payload. `bridge.x` in a value position must not be a
-  list or a handler; a list is only valid as an `{#each}` source.
+  value a loop walks, every `row.Field` against its type, the type a field feeds,
+  and every handler call: the name, the argument count, the argument types and
+  the `event` payload.
 - **Runtime errors.** Calling a handler that Go never registered, or passing it
   arguments it cannot accept, is reported through the app's error hook instead
   of killing the frame.
@@ -352,29 +370,24 @@ converted from the design's values: a number may feed an `int`, a `float64` or a
 ```
 File      = { Import | Props | Bridge | Shape } Element EOF
 Import    = "import" String "as" Ident
-Props     = "props" "{" { PropDecl } "}"
-PropDecl  = Ident ":" Type [ "=" Value ] [";"]
-Bridge    = ("bridge" | "data") "{" { VarDecl } "}"
-Shape     = ("type" | "data") Ident "{" { FieldDecl } "}"
-VarDecl   = Ident ":" Type [";"]
-FieldDecl = Ident ":" Type [";"]
-Type      = "bool" | "string" | "number" | "color"
-          | "[" Ident "]" | Ident "[]"
-          | "func" "(" [ Ident ":" Type { "," Ident ":" Type } ] ")"
+Props     = "props" "{" { Decl } "}"
+Bridge    = ("bridge" | "data") "{" { Decl } "}"
+Shape     = ("type" | "data") Ident "{" { Decl } "}"
+Decl      = Ident Type [";"]
+Type      = Primitive | "[]" Type | "map" "[" Ident "]" Type
+          | "func" "(" [ Ident Type { "," Ident Type } ] ")"
+Primitive = "bool" | "string" | "color" | Go numeric types | Ident
 Element   = Ident "{" { Member } "}"
-Member    = Property | Element | Block | "$" Ident [ "{" { Member } "}" ]
-Block     = "{#" "if" Value "}" { Member }
-            { "{:else if" Value "}" { Member } }
-            [ "{:else}" { Member } ]
-            "{/if}"
-          | "{#" "each" ("bridge" | "data" | "props") "." Ident "as" Ident "}" { Member }
-            [ "{:else}" { Member } ]
-            "{/each}"
+Member    = Property | Element | If | For | "$" Ident [ "{" { Member } "}" ]
+If        = "if" Value "{" { Member } "}"
+            { "else" "if" Value "{" { Member } "}" }
+            [ "else" "{" { Member } "}" ]
+For       = "for" [ Ident [ "," Ident ] ":=" ] "range" Value "{" { Member } "}"
 Property  = Ident ":" Value [";"]
-EventHandler = Ident ":" ("bridge" | "data") "." Ident
+EventHandler = Ident ":" ("bridge" | "data" | "props") "." Ident
                "(" [ Value { "," Value } ] ")"
-Value     = String | Template | Number | Bool | Color | Ident | Map | Expression
-Template  = "`" { Character | "${" Value } "}" "`"
+Value     = String | Number | Bool | Color | Ident | Map | Call | Expression
+Call      = "formatf" "(" Value { "," Value } ")"
 Map       = "{" [ MapEntry { "," MapEntry } [","] ] "}"
 MapEntry  = Ident ":" Value
 Expression = Or [ "?" Value ":" Value ]
@@ -385,14 +398,16 @@ Compare    = Sum { ("<" | "<=" | ">" | ">=") Sum }
 Sum        = Term { ("+" | "-") Term }
 Term       = Unary { ("*" | "/") Unary }
 Unary      = ("!" | "-") Unary | Factor
-Factor     = Number | Number "%" | String | Bool | Color | Ident | Ident "." Ident | "$" Ident | "(" Expression ")"
+Factor     = Number | Number "%" | String | Bool | Color | Ident
+           | Ident "." Ident | "(" Expression ")"
 ```
 
 Newlines are not tokens. A member is a property when the identifier is followed
-by `:` and a child element when it is followed by `{`, so `name: value` and
-`Name { ... }` can be written on one line or across many. An `EventHandler` is
-the only place a call may appear: it is an event property's whole value, never
-part of a `Value`.
+by `:` and a child element when it is followed by `{`, so `Name: value` and
+`Name { ... }` can be written on one line or across many. A declared type is
+`Name Type`, with no colon: the colon is what tells a property from a
+declaration. A function call appears either as an event property's whole value
+(the bridge handler) or as the `formatf` builtin inside a `Value`.
 
 ## Literals
 
@@ -540,117 +555,29 @@ string, a bool or an enum can be conditional too. A reference reads another
 element's property by id (`id.property`), so the value follows that element
 automatically. Operators are `+ - * /`, comparisons `== != < <= > >=`, `&& ||
 !`, a conditional `cond ? a : b` and parentheses, with the usual precedence.
-`+` adds two numbers and joins anything else as text, so `bridge.price *
-bridge.count` is arithmetic while `"n: " + bridge.count` is a string. `-`, `*`
-and `/` are numeric only. A type mismatch, division by zero or a reference cycle
+`+` adds two numbers and joins anything else as text, so `bridge.Price *
+float64(bridge.Count)` is arithmetic while `"n: " + bridge.Count` is a string.
+`-`, `*` and `/` are numeric only. A type mismatch, division by zero or a reference cycle
 leaves the property at its previous value instead of failing the frame.
 
-### Template strings
+### formatf
 
-A backtick value interpolates `${...}` holes into text:
+`formatf` builds a string with Go's `fmt` verbs:
 
 ```goi
-Text { text: `Count is ${bridge.count}` }
-Text { text: `${props.title} (${bridge.count} of ${bridge.total})` }
+Text { text: formatf("Count is %d", bridge.Count) }
+Text { text: formatf("%s: %0.2f", props.Title, props.Price) }
 ```
 
-A hole is an ordinary expression, so arithmetic, references and conditionals all
-work inside one: `` `Total: ${bridge.price * bridge.count}` ``. Each value is
-formatted the way a string property shows it — a number without trailing zeros,
-a bool as `true`/`false`, a color as `#rrggbb`.
+The first argument is the format string; every later argument fills one verb.
+Because a design number is a `float64`, `%d` converts it to an integer and
+`%0.2f` keeps it floating, so both spellings work on the same value. `%v` prints
+any value as Go would, and a color prints as `#rrggbb`.
 
-A template is a string, so it feeds `text`, a `string` prop, a `label` or an
-enum-or-string position; feeding a `number` property is an error. It is
+A `formatf` result is a string, so it feeds `text`, a `string` prop, a `label` or
+an enum-or-string position; feeding a `number` property is an error. It is
 re-evaluated on every frame, exactly like any other expression, so a
 `ui.SetData` write reaches the text without extra wiring.
-
-Two namespaces are reserved for expressions:
-
-| Reference | Type | Meaning |
-|---|---|---|
-| `app.theme` | string | the resolved scheme's name: `light`, `dark` or a registered one |
-| `app.mode` | `light` \| `dark` | the resolved scheme's mood |
-| `app.systemMode` | `light` \| `dark` | the desktop's preference |
-| `app.dark` | bool | shorthand for `app.mode == "dark"` |
-| `app.os` | string | `runtime.GOOS`: `linux`, `darwin`, `windows`, … |
-| `window.width`, `window.height` | number | logical client size, updated on resize |
-
-Any other name before the dot is read in order as a `props` entry, an `{#each}`
-loop variable, a `bridge` (or `data`) variable, or an element id declared in the
-same file:
-
-```
-Text { text: props.title }
-Text { text: bridge.count }
-Text { text: searchField.text }
-Rectangle { width: panel.width / 2 }
-```
-
-So a design can react to the scheme or the platform without any Go code:
-
-```
-TopAppBar { trailingIcon: app.dark ? "light_mode" : "dark_mode" }
-Text { text: app.dark ? "Dark scheme" : "Light scheme" color: app.dark ? onSurface : onPrimary }
-Rectangle { visible: window.width >= 640 width: window.width < 640 ? 240 : 320 }
-TitleBar { visible: app.os == "linux" }
-```
-
-`app.mode` is a value, not a flag, so it can feed a property that expects an
-enum or a string, and it can be compared:
-
-```
-IconButton { icon: app.mode == "dark" ? "light_mode" : "dark_mode" }
-Text { text: app.mode == "dark" ? "Dark scheme" : "Light scheme" }
-```
-
-`app.systemMode` is what the desktop asked for. Naming it as the theme makes a
-design follow the system setting with no Go code, and the window switches as soon
-as the desktop does:
-
-```
-Window {
-    theme: app.systemMode
-}
-```
-
-A platform that does not report a preference reads as `light`. `app.theme` still
-reports the *name*, so `theme: brand` keeps `app.theme == "brand"` while
-`app.mode` says whether that scheme is light or dark.
-
-Because these expressions read live state, they are re-evaluated every frame;
-an unchanged result does not mark anything dirty, so an idle window stays idle.
-
-A property starts out owned by its expression. The first time Go sets it, Go
-takes it over and the expression stops writing that property, so a scheme the
-user picked is not reverted by `theme: app.systemMode`. Hot reload keeps the
-rule, and editing that property's literal in the `.goi` file gives it back to
-the expression.
-
-```
-Window {
-    theme: app.systemMode          // follows the desktop until Go sets it
-    Switch { checked: app.dark }   // likewise: a click wins
-}
-```
-
-```
-Row {
-    Rectangle { id: side width: 200 height: 40 }
-    Rectangle { width: side.width / 2 height: 40 }
-    Rectangle { width: (side.width + 40) * 0.5 height: 40 }
-}
-```
-
-`width` and `height` also accept a percentage of the space the parent offers:
-`width: 50%` is half of the parent's content box, so it follows a resize without
-a breakpoint. A percentage may be part of an expression (`width: 50% - 8`).
-Percentages are only valid for `width` and `height`; a property whose value is a
-percentage cannot be referenced, because it depends on its own parent.
-
-Expressions are resolved before layout; percentages are resolved during layout,
-when the parent's content size is known. Like responsive values, they are owned
-by the file: a later `Prop.Set` from Go is overwritten on the next frame. To read
-Go state from a design, put it in a property another element can reference.
 
 ## Responsive values
 
@@ -706,9 +633,9 @@ set from Go with `Prop.Set` is replaced on the next frame.
 
 ## What is not in v1
 
-No bindings, no loops and no handler bodies — a design declares a handler's name
-and parameters, but the body is always Go. A list grows with `ui.Instantiate`
-from a hidden template, not with a `.goi` `for`.
+No bindings and no handler bodies — a design declares a handler's name and
+parameters, but the body is always Go. A list from Go is a `bridge` variable the
+app sets; `ui.Fill` covers a list built by hand.
 Theming is limited to the built-in light and dark Material 3 schemes; dynamic
 color and custom palettes are not exposed yet.
 

@@ -37,9 +37,10 @@ var pages = []page{
 // close the drawer.
 var navIDs = []string{"rail", "navbar"}
 
-// galleryRow is one row of the gallery's {#each} demo.
+// galleryRow is one row of the gallery's for-loop demo.
 type galleryRow struct {
-	title, supporting string
+	Title      string `goi:"title"`
+	Supporting string `goi:"supporting"`
 }
 
 // repeatItem is one row of the gallery's Fill demo.
@@ -236,11 +237,11 @@ func main() {
 			}
 		})
 
-		// The data demo: the design's {#each} block builds one row per item, so
+		// The data demo: the design's for loop builds one row per item, so
 		// Bind only supplies the slice.
 		ui.SetData(w, "rows", []galleryRow{
-			{title: "VPN will not connect", supporting: "Ada"},
-			{title: "Printer queue is stuck", supporting: "Grace"},
+			{Title: "VPN will not connect", Supporting: "Ada"},
+			{Title: "Printer queue is stuck", Supporting: "Grace"},
 		})
 
 		// The Layout page's repeat demo: one template row, three copies. A

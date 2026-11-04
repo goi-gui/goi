@@ -1,9 +1,9 @@
 // StatCard: one number with a caption. A fragment can be instantiated any
 // number of times, and each instance passes its own props.
 props {
-	label: string = "Label"
-	value: string = "0"
-	tone: color = #6750A4
+	label string
+	value string
+	tone color
 }
 
 Card {

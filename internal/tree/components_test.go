@@ -88,13 +88,13 @@ func snapshot(props []NamedProp) map[string]string {
 func TestIfBlockTogglesItsArm(t *testing.T) {
 	src := `Window {
 	Column {
-		{#if app.dark}
+		if app.dark {
 			Text { id: darkArm text: "dark" }
-		{:else if window.width > 900}
+		} else if window.width > 900 {
 			Text { id: wideArm text: "wide" }
-		{:else}
+		} else {
 			Text { id: smallArm text: "small" }
-		{/if}
+		}
 	}
 }`
 	tr, diag := BuildSource([]byte(src), nil)
@@ -131,11 +131,11 @@ func TestIfBlockTogglesItsArm(t *testing.T) {
 func TestNestedIfBlockNeedsItsOuterArm(t *testing.T) {
 	src := `Window {
 	Column {
-		{#if app.dark}
-			{#if window.width > 900}
+		if app.dark {
+			if window.width > 900 {
 				Text { id: inner text: "x" height: 40 }
-			{/if}
-		{/if}
+			}
+		}
 	}
 }`
 	tr, diag := BuildSource([]byte(src), nil)
@@ -160,11 +160,11 @@ func TestNestedIfBlockNeedsItsOuterArm(t *testing.T) {
 func TestIfBlockAddsNoContainerNode(t *testing.T) {
 	tr, diag := BuildSource([]byte(`Window {
 	Row {
-		{#if app.dark}
+		if app.dark {
 			Text { text: "a" }
-		{:else}
+		} else {
 			Text { text: "b" }
-		{/if}
+		}
 	}
 }`), nil)
 	if !diag.Empty() {

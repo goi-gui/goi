@@ -6,13 +6,13 @@
 // bar or rail is off screen.
 //
 // Every page is an independent scrolling column; Go shows one at a time.
-data {
-	rows: galleryRow[]
+bridge {
+	rows []galleryRow
 }
 
-data galleryRow {
-	title: string
-	supporting: string
+type galleryRow {
+	title string
+	supporting string
 }
 
 Window {
@@ -743,7 +743,7 @@ Window {
 							}
 						}
 
-						// ---- data: one {#each} block, rows from Go.
+						// ---- data: one for loop, rows from Go.
 						Column {
 							spacing: 8
 							Text { text: "Data rows" role: "titleMedium" }
@@ -751,18 +751,16 @@ Window {
 								id: dataList
 								spacing: 6
 								width: { base: 280, md: 420 }
-								{#each data.rows as row}
+								for _, row := range bridge.rows {
 									ListItem {
 										label: row.title
 										supporting: row.supporting
 										icon: circle
 									}
-								{:else}
-									Text { text: "No rows." color: onSurfaceVariant }
-								{/each}
+								}
 							}
 							Text {
-								text: "ui.SetData fills {#each data.rows}; the else arm shows while the list is empty."
+								text: "ui.SetData fills bridge.rows; the loop rebuilds when the list changes."
 								role: "bodySmall"
 								wrap: true
 								width: { base: 280, md: 420 }
@@ -778,19 +776,19 @@ Window {
 								label: "Show the wide layout"
 								checked: true
 							}
-							{#if blockSwitch.checked}
+							if blockSwitch.checked {
 								Card {
 									variant: filled
 									width: { base: 280, md: 420 }
-									Text { text: "The {#if} arm is shown." }
+									Text { text: "The if arm is shown." }
 								}
-							{:else}
+							} else {
 								Text {
 									id: blockElseLabel
-									text: "The {:else} arm is shown."
+									text: "The else arm is shown."
 									color: onSurfaceVariant
 								}
-							{/if}
+							}
 							Text {
 								text: "Both arms are built; only the matching one is laid out, and the condition re-reads the switch every frame."
 								role: "bodySmall"

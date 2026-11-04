@@ -104,17 +104,10 @@ func Build(f *syntax.File, hooks *Hooks) (*Tree, error) {
 	if hooks != nil {
 		t.report = hooks.Error
 	}
-	// A bridge variable starts at its declared default, or the type's zero
-	// value, so a design that reads one before Go sets it still has a value.
+	// A bridge variable starts at its type's zero value, so a design that reads
+	// one before Go sets it still has a value.
 	t.vars = map[string]any{}
 	for _, dv := range f.Vars {
-		if dv.Fn || dv.List {
-			continue
-		}
-		if v, ok := literalRuntime(dv.Default); ok {
-			t.vars[dv.Name] = v
-			continue
-		}
 		if v, ok := zeroRuntime(dv.Type); ok {
 			t.vars[dv.Name] = v
 		}
@@ -239,8 +232,8 @@ func (t *Tree) buildMembers(members []syntax.Member, parent *NodeBase, hooks *Ho
 				arm.own = append(arm.own, n.Base().Visible())
 			}
 		case *syntax.Block:
-			if x.Kind == syntax.BlockEach {
-				if err := t.buildEach(x, parent, hooks); err != nil {
+			if x.Kind == syntax.BlockFor {
+				if err := t.buildFor(x, parent, hooks); err != nil {
 					return err
 				}
 				continue

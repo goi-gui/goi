@@ -14,9 +14,9 @@ import (
 )
 
 type ticket struct {
-	Title     string `json:"title"`
-	Requester string `json:"requester"`
-	Unread    bool   `json:"unread"`
+	Title     string `goi:"title"`
+	Requester string `goi:"requester"`
+	Unread    bool   `goi:"unread"`
 }
 
 // tickets lives outside Bind: Bind runs again after a hot reload, so the list

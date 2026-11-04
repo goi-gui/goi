@@ -36,13 +36,16 @@ func LiteralEqual(a, b syntax.Value) bool {
 	case *syntax.Ternary:
 		y := b.(*syntax.Ternary)
 		return LiteralEqual(x.Cond, y.Cond) && LiteralEqual(x.Then, y.Then) && LiteralEqual(x.Else, y.Else)
-	case *syntax.Template:
-		y, ok := b.(*syntax.Template)
-		if !ok || len(x.Parts) != len(y.Parts) {
+	case *syntax.Call:
+		y, ok := b.(*syntax.Call)
+		if !ok || x.Name != y.Name || len(x.Args) != len(y.Args) {
 			return false
 		}
-		for i := range x.Parts {
-			if !LiteralEqual(x.Parts[i], y.Parts[i]) {
+		if x.Callee != nil && y.Callee != nil && (x.Callee.ID != y.Callee.ID || x.Callee.Prop != y.Callee.Prop) {
+			return false
+		}
+		for i := range x.Args {
+			if !LiteralEqual(x.Args[i], y.Args[i]) {
 				return false
 			}
 		}

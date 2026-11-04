@@ -2,20 +2,20 @@
 //
 // The `bridge` block declares the values the design reads (`count`, `loading`,
 // `tickets`) and the handlers Go supplies (`onReload`, `onOpen`). Go sets the
-// values with ui.SetData and the handlers with ui.SetHandler; the `{#each}`
-// block builds one row per item and rebuilds when the list changes.
+// values with ui.SetData and the handlers with ui.SetHandler; the `for`
+// loop builds one row per item and rebuilds when the list changes.
 bridge {
-	count: number
-	loading: bool
-	tickets: [ticket]
-	onReload: func()
-	onOpen: func(title: string)
+	count float64
+	loading bool
+	tickets []ticket
+	onReload func()
+	onOpen func(title string)
 }
 
 type ticket {
-	title: string
-	requester: string
-	unread: bool
+	title string
+	requester string
+	unread bool
 }
 
 Window {
@@ -31,16 +31,16 @@ Window {
 			Button { id: reload label: "Refresh" variant: tonal onClick: bridge.onReload() }
 		}
 
-		{#if data.loading}
+		if bridge.loading {
 			Row {
 				spacing: 12
 				crossAxisAlign: center
 				CircularProgress { }
 				Text { text: "Loading…" color: onSurfaceVariant }
 			}
-		{:else}
-			Text { text: data.count role: "labelMedium" color: onSurfaceVariant }
-			{#each data.tickets as ticket}
+		} else {
+			Text { text: bridge.count role: "labelMedium" color: onSurfaceVariant }
+			for _, ticket := range bridge.tickets {
 				ListItem {
 					label: ticket.title
 					supporting: ticket.requester
@@ -48,9 +48,7 @@ Window {
 					icon: mail
 					onClick: bridge.onOpen(ticket.title)
 				}
-			{:else}
-				Text { text: "Nothing here yet." color: onSurfaceVariant }
-			{/each}
-		{/if}
+			}
+		}
 	}
 }

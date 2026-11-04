@@ -6,24 +6,24 @@ import (
 )
 
 type bridgeRow struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
+	ID    string `goi:"id"`
+	Title string `goi:"title"`
 }
 
 const bridgeUI = `bridge {
-	rows: [row]
-	onOpen: func(id: string)
-	onToggle: func(on: bool)
-	onVolume: func(v: number)
-	onNote: func(text: string)
-	onIndex: func(index: number)
+	rows []row
+	onOpen func(id string)
+	onToggle func(on bool)
+	onVolume func(v float64)
+	onNote func(text string)
+	onIndex func(index float64)
 }
-type row { id: string, title: string }
+type row { id string, title string }
 Window {
 	Column {
-		{#each bridge.rows as row}
+		for _, row := range bridge.rows {
 			Text { id: card text: row.title onClick: bridge.onOpen(row.id) }
-		{/each}
+		}
 		Checkbox { id: check label: "on" onToggle: bridge.onToggle(event) }
 		Slider { id: volume onChange: bridge.onVolume(event) }
 		TextField { id: field onEdit: bridge.onNote(event) onSubmit: bridge.onNote(event) }

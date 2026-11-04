@@ -1,5 +1,5 @@
 bridge {
-	onSearch: func(term: string)
+	onSearch func(term string)
 }
 
 Window {

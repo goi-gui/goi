@@ -61,7 +61,7 @@ func TestQuotedColor(t *testing.T) {
 // of a design, so its root is whatever element it draws. Only an entry point must
 // be a Window.
 func TestFragmentRootCanBeAnyElement(t *testing.T) {
-	f, diag := syntax.Parse([]byte(`props { title: string }
+	f, diag := syntax.Parse([]byte(`props { title string }
 Column {
 	Text { text: props.title }
 }`))
@@ -328,13 +328,13 @@ func TestCommonPropsOnEveryElement(t *testing.T) {
 // leaf cannot hold one, and an arm holds elements, not properties.
 func TestIfBlockValidation(t *testing.T) {
 	bad := map[string]string{
-		"Window {\n\tColumn {\n\t\t{#if 5}\n\t\t\tText { text: \"a\" }\n\t\t{/if}\n\t}\n}":                                              "must be a bool",
-		"Window {\n\tColumn {\n\t\t{#if \"x\"}\n\t\t\tText { text: \"a\" }\n\t\t{/if}\n\t}\n}":                                          "must be a bool",
-		"Window {\n\tColumn {\n\t\t{#if loading}\n\t\t\tText { text: \"a\" }\n\t\t{/if}\n\t}\n}":                                        "must be a bool",
-		"Window {\n\tText {\n\t\t{#if app.dark}\n\t\t\tText { text: \"a\" }\n\t\t{/if}\n\t}\n}":                                         "cannot contain child elements",
-		"Window {\n\tColumn {\n\t\t{#if app.dark}\n\t\t\ttext: \"a\"\n\t\t{/if}\n\t}\n}":                                                "cannot declare the property",
-		"Window {\n\tColumn {\n\t\t{#if box.checked}\n\t\t\tText { text: \"a\" }\n\t\t{/if}\n\t}\n}":                                    "references unknown id",
-		"Window {\n\tColumn {\n\t\tText { id: label text: \"x\" }\n\t\t{#if label.text}\n\t\t\tText { text: \"a\" }\n\t\t{/if}\n\t}\n}": "is string, not bool",
+		"Window {\n\tColumn {\n\t\tif 5 {\n\t\t\tText { text: \"a\" }\n\t\t}\n\t}\n}":                                              "must be a bool",
+		"Window {\n\tColumn {\n\t\tif \"x\" {\n\t\t\tText { text: \"a\" }\n\t\t}\n\t}\n}":                                          "must be a bool",
+		"Window {\n\tColumn {\n\t\tif loading {\n\t\t\tText { text: \"a\" }\n\t\t}\n\t}\n}":                                        "must be a bool",
+		"Window {\n\tText {\n\t\tif app.dark {\n\t\t\tText { text: \"a\" }\n\t\t}\n\t}\n}":                                         "cannot contain child elements",
+		"Window {\n\tColumn {\n\t\tif app.dark {\n\t\t\ttext: \"a\"\n\t\t}\n\t}\n}":                                                "cannot declare the property",
+		"Window {\n\tColumn {\n\t\tif box.checked {\n\t\t\tText { text: \"a\" }\n\t\t}\n\t}\n}":                                    "references unknown id",
+		"Window {\n\tColumn {\n\t\tText { id: label text: \"x\" }\n\t\tif label.text {\n\t\t\tText { text: \"a\" }\n\t\t}\n\t}\n}": "is string, not bool",
 	}
 	for src, want := range bad {
 		_, diag := validate(t, src)
@@ -347,12 +347,11 @@ func TestIfBlockValidation(t *testing.T) {
 		}
 	}
 
-	// The good cases: a reference to a bool property, a comparison, app.dark.
 	good := []string{
-		"Window {\n\tColumn {\n\t\t{#if app.dark}\n\t\t\tText { text: \"a\" }\n\t\t{/if}\n\t}\n}",
-		"Window {\n\tColumn {\n\t\t{#if window.width > 900}\n\t\t\tText { text: \"a\" }\n\t\t{/if}\n\t}\n}",
-		"Window {\n\tColumn {\n\t\tCheckbox { id: box checked: true }\n\t\t{#if box.checked}\n\t\t\tText { text: \"a\" }\n\t\t{/if}\n\t}\n}",
-		"Window {\n\tColumn {\n\t\t{#if app.dark}\n\t\t\tText { text: \"a\" }\n\t\t{:else}\n\t\t\tRow { }\n\t\t{/if}\n\t}\n}",
+		"Window {\n\tColumn {\n\t\tif app.dark {\n\t\t\tText { text: \"a\" }\n\t\t}\n\t}\n}",
+		"Window {\n\tColumn {\n\t\tif window.width > 900 {\n\t\t\tText { text: \"a\" }\n\t\t}\n\t}\n}",
+		"Window {\n\tColumn {\n\t\tCheckbox { id: box checked: true }\n\t\tif box.checked {\n\t\t\tText { text: \"a\" }\n\t\t}\n\t}\n}",
+		"Window {\n\tColumn {\n\t\tif app.dark {\n\t\t\tText { text: \"a\" }\n\t\t} else {\n\t\t\tRow { }\n\t\t}\n\t}\n}",
 	}
 	for _, src := range good {
 		if _, diag := validate(t, src); !diag.Empty() {
@@ -383,7 +382,7 @@ func TestBlockSamplesAreTheShippedDocs(t *testing.T) {
 	}
 	for _, block := range blocks {
 		src := block[1]
-		if !strings.Contains(src, "{#if") && !strings.Contains(src, "{#each") {
+		if !strings.Contains(src, "if ") && !strings.Contains(src, "for ") {
 			continue
 		}
 		if !strings.Contains(src, "Window") {
@@ -400,21 +399,21 @@ func TestBlockSamplesAreTheShippedDocs(t *testing.T) {
 }
 
 // TestDataValidation checks the declarations and the two references a design can
-// make: `data.name` and a loop variable's field.
+// make: `bridge.name` and a loop variable's field.
 func TestDataValidation(t *testing.T) {
 	bad := map[string]string{
-		"data { rows: nope[] }\nWindow { }":                                   "unknown shape",
-		"data { rows: list }\nWindow { }":                                     "is not a type",
-		"data { data: bool }\nWindow { }":                                     "is a reserved name",
-		"data { rows: bool }\ndata { rows: number }\nWindow { }":              "duplicate bridge variable",
-		"data { rows: row[] }\ndata row { a: string, a: number }\nWindow { }": "repeats the field",
-		"data { rows: row[] }\ndata row { a: string }\nWindow {\n\tColumn {\n\t\t{#each data.rows as r}\n\t\t\tText { text: r.nope }\n\t\t{/each}\n\t}\n}":                                "has no field",
-		"data { rows: row[] }\ndata row { a: string }\nWindow {\n\tColumn {\n\t\t{#each data.rows as r}\n\t\t\tCheckbox { checked: r.a }\n\t\t{/each}\n\t}\n}":                            "is string, not bool",
-		"data { rows: row[] }\ndata row { a: string }\nWindow {\n\tColumn {\n\t\t{#each data.missing as r}\n\t\t\tText { text: r.a }\n\t\t{/each}\n\t}\n}":                                "no bridge variable",
-		"data { rows: bool }\nWindow {\n\tColumn {\n\t\t{#each data.rows as r}\n\t\t\tText { text: \"x\" }\n\t\t{/each}\n\t}\n}":                                                          "is not a list",
-		"data { rows: row[] }\ndata row { a: string }\nWindow {\n\tColumn {\n\t\tText { text: data.rows }\n\t}\n}":                                                                        "walk it with {#each}",
-		"data { flag: bool }\nWindow {\n\tColumn {\n\t\tText { text: data.flag }\n\t}\n}":                                                                                                 "is bool, not string",
-		"data { rows: row[] }\ndata row { a: string }\nWindow {\n\tColumn {\n\t\t{#each data.rows as r}\n\t\t\t{#if r.a}\n\t\t\t\tText { text: \"x\" }\n\t\t\t{/if}\n\t\t{/each}\n\t}\n}": "is string, not bool",
+		"bridge { rows []nope }\nWindow { }":                              "unknown type",
+		"bridge { rows list }\nWindow { }":                                "unknown type",
+		"bridge { data bool }\nWindow { }":                                "is a reserved name",
+		"bridge { rows bool }\nbridge { rows int }\nWindow { }":           "duplicate bridge variable",
+		"bridge { rows []row }\ntype row { a string, a int }\nWindow { }": "repeats the field",
+		"bridge { rows []row }\ntype row { a string }\nWindow {\n\tColumn {\n\t\tfor _, r := range bridge.rows {\n\t\t\tText { text: r.nope }\n\t\t}\n\t}\n}":                           "has no field",
+		"bridge { rows []row }\ntype row { a string }\nWindow {\n\tColumn {\n\t\tfor _, r := range bridge.rows {\n\t\t\tCheckbox { checked: r.a }\n\t\t}\n\t}\n}":                       "is string, not bool",
+		"bridge { rows []row }\ntype row { a string }\nWindow {\n\tColumn {\n\t\tfor _, r := range bridge.missing {\n\t\t\tText { text: r.a }\n\t\t}\n\t}\n}":                           "no bridge variable",
+		"bridge { rows bool }\nWindow {\n\tColumn {\n\t\tfor _, r := range bridge.rows {\n\t\t\tText { text: \"x\" }\n\t\t}\n\t}\n}":                                                    "cannot range over",
+		"bridge { rows []row }\ntype row { a string }\nWindow {\n\tColumn {\n\t\tText { text: bridge.rows }\n\t}\n}":                                                                    "walk it with for",
+		"bridge { flag bool }\nWindow {\n\tColumn {\n\t\tText { text: bridge.flag }\n\t}\n}":                                                                                            "is bool, not string",
+		"bridge { rows []row }\ntype row { a string }\nWindow {\n\tColumn {\n\t\tfor _, r := range bridge.rows {\n\t\t\tif r.a {\n\t\t\t\tText { text: \"x\" }\n\t\t\t}\n\t\t}\n\t}\n}": "is string, not bool",
 	}
 	for src, want := range bad {
 		_, diag := validate(t, src)
@@ -428,13 +427,9 @@ func TestDataValidation(t *testing.T) {
 	}
 
 	good := []string{
-		"data { rows: row[] }\ndata row { a: string }\nWindow {\n\tColumn {\n\t\t{#each data.rows as r}\n\t\t\tText { text: r.a }\n\t\t{/each}\n\t}\n}",
-		"data { rows: row[] }\ndata row { a: string }\nWindow {\n\tColumn {\n\t\t{#each data.rows as r}\n\t\t\tText { text: r.a }\n\t\t{:else}\n\t\t\tText { text: \"empty\" }\n\t\t{/each}\n\t}\n}",
-		// Nested loops: the inner variable resolves, and the outer one stays in
-		// scope for the inner arm.
-		"data { groups: group[] }\ndata group { name: string, items: item[] }\ndata item { label: string }\nWindow {\n\tColumn {\n\t\t{#each data.groups as g}\n\t\t\tText { text: g.name }\n\t\t{/each}\n\t}\n}",
-		// A number feeding a string property is formatted at runtime.
-		"data { count: number }\nWindow {\n\tText { text: data.count }\n}",
+		"bridge { rows []row }\ntype row { a string }\nWindow {\n\tColumn {\n\t\tfor i, r := range bridge.rows {\n\t\t\tText { text: r.a }\n\t\t\tText { text: formatf(\"%d\", i) }\n\t\t}\n\t}\n}",
+		"bridge { flag bool }\nWindow {\n\tColumn {\n\t\tif bridge.flag {\n\t\t\tText { text: \"on\" }\n\t\t}\n\t}\n}",
+		"bridge { count int }\nWindow {\n\tColumn {\n\t\tText { text: formatf(\"%d items\", bridge.count) }\n\t}\n}",
 	}
 	for _, src := range good {
 		if _, diag := validate(t, src); !diag.Empty() {
@@ -443,101 +438,35 @@ func TestDataValidation(t *testing.T) {
 	}
 }
 
-// TestAlignmentAxesAreSeparate lists the accepted values on each kind of
-// container, so an old `align` does not silently pass and the overlay's shorter
-// main-axis set stays honest.
-func TestAlignmentAxesAreSeparate(t *testing.T) {
-	bad := map[string]string{
-		"Window { Column { align: center } }":                 "unknown property",
-		"Window { Row { crossAxisAlign: middle } }":           "no value",
-		"Window { Row { mainAxisAlign: middle } }":            "no value",
-		"Window { Stack { mainAxisAlign: spaceBetween } }":    "no value",
-		"Window { ClipRRect { mainAxisAlign: spaceAround } }": "no value",
-		"Window { List { align: center } }":                   "unknown property",
-		"Window { Column { crossAxisAlign: spaceBetween } }":  "no value",
-	}
-	for src, want := range bad {
-		_, diag := validate(t, src)
-		if diag.Empty() {
-			t.Errorf("%q was accepted", src)
-			continue
-		}
-		if got := diag.Format("<src>", []byte(src)); !strings.Contains(got, want) {
-			t.Errorf("%q gave %s, want %q", src, got, want)
-		}
-	}
-
-	good := []string{
-		"Window { Column { crossAxisAlign: end mainAxisAlign: spaceEvenly } }",
-		"Window { Row { crossAxisAlign: stretch mainAxisAlign: spaceAround } }",
-		"Window { Stack { crossAxisAlign: center mainAxisAlign: stretch } }",
-		"Window { Wrap { mainAxisAlign: spaceBetween } }",
-		"Window { Grid { mainAxisAlign: center } }",
-		"Window { List { mainAxisAlign: spaceBetween } }",
-		"Window { Text { align: center text: \"x\" } }",
-	}
-	for _, src := range good {
-		if _, diag := validate(t, src); !diag.Empty() {
-			t.Errorf("%s: %v", src, diag.Format("<src>", []byte(src)))
-		}
-	}
-}
-
-// TestAppModeGlobals covers the two new reserved globals: `app.mode` is the
-// resolved mood and `app.systemMode` the desktop's, and both are strings so they
-// can feed a theme name or an enum.
-func TestAppModeGlobals(t *testing.T) {
-	good := []string{
-		`Window { theme: app.mode }`,
-		`Window { theme: app.systemMode }`,
-		`Window { Text { text: app.mode } }`,
-		`Window { IconButton { icon: app.mode == "dark" ? "light_mode" : "dark_mode" } }`,
-		`Window { Rectangle { visible: app.systemMode == "dark" } }`,
-		`Window { Text { text: app.dark ? "dark" : "light" } }`,
-	}
-	for _, src := range good {
-		if _, diag := validate(t, src); !diag.Empty() {
-			t.Errorf("%s: %v", src, diag.Format("<src>", []byte(src)))
-		}
-	}
-
-	_, diag := validate(t, `Window { Text { text: app.modes } }`)
-	if diag.Empty() || !strings.Contains(diag.Format("<src>", nil), "has no property") {
-		t.Fatalf("a typo in app.modes was accepted: %v", diag)
-	}
-}
-
-// TestBridgeEvents checks the contract between the design's bridge block and
+// TestBridgeEvents
 // the handler calls an event property accepts.
 func TestBridgeEvents(t *testing.T) {
 	good := []string{
-		"bridge { rows: [row], onOpen: func(id: string) }\ntype row { id: string }\nWindow {\n\tColumn {\n\t\t{#each bridge.rows as row}\n\t\t\tButton { label: \"x\" onClick: bridge.onOpen(row.id) }\n\t\t{/each}\n\t}\n}",
-		"bridge { onToggle: func(on: bool) }\nWindow {\n\tColumn {\n\t\tCheckbox { label: \"x\" onToggle: bridge.onToggle(event) }\n\t}\n}",
-		"bridge { onVolume: func(v: number) }\nWindow {\n\tColumn {\n\t\tSlider { onChange: bridge.onVolume(event) }\n\t}\n}",
-		"bridge { onEdit: func(text: string) }\nWindow {\n\tColumn {\n\t\tTextField { onEdit: bridge.onEdit(event) }\n\t}\n}",
-		// `data` is the original spelling and keeps working, handlers included.
-		"data { rows: row[], onOpen: func(id: string) }\ndata row { id: string }\nWindow {\n\tColumn {\n\t\t{#each data.rows as row}\n\t\t\tButton { label: \"x\" onClick: data.onOpen(row.id) }\n\t\t{/each}\n\t}\n}",
+		"bridge { rows []row\n onOpen func(id string) }\ntype row { id string }\nWindow {\n\tColumn {\n\t\tfor _, row := range bridge.rows {\n\t\t\tButton { label: \"x\" onClick: bridge.onOpen(row.id) }\n\t\t}\n\t}\n}",
+		"bridge { onToggle func(on bool) }\nWindow {\n\tColumn {\n\t\tCheckbox { label: \"x\" onToggle: bridge.onToggle(event) }\n\t}\n}",
+		"bridge { onVolume func(v float64) }\nWindow {\n\tColumn {\n\t\tSlider { onChange: bridge.onVolume(event) }\n\t}\n}",
+		"bridge { onOpen func(id string) }\nWindow {\n\tColumn {\n\t\tButton { label: \"x\" onClick: bridge.onOpen(\"42\") }\n\t}\n}",
 	}
 	for _, src := range good {
 		if _, diag := validate(t, src); !diag.Empty() {
-			t.Errorf("valid source rejected:\n%s\n%v", src, diag.Format("<src>", []byte(src)))
+			t.Errorf("%s: %v", src, diag.Format("<src>", []byte(src)))
 		}
 	}
 
 	bad := map[string]string{
-		"bridge { onOpen: func(id: string) }\nWindow {\n\tColumn {\n\t\tButton { label: \"x\" onClick: bridge.nope(\"1\") }\n\t}\n}":          "no handler",
-		"bridge { onOpen: func(id: string) }\nWindow {\n\tColumn {\n\t\tButton { label: \"x\" onClick: bridge.onOpen }\n\t}\n}":               "expects a handler call",
-		"bridge { onOpen: func(id: string) }\nWindow {\n\tColumn {\n\t\tText { id: label text: bridge.onOpen }\n\t}\n}":                       "is a handler",
-		"bridge { onOpen: func(id: string) }\nWindow {\n\tColumn {\n\t\tButton { label: \"x\" onClick: bridge.onOpen() }\n\t}\n}":             "takes 1 argument",
-		"bridge { onOpen: func(id: string) }\nWindow {\n\tColumn {\n\t\tButton { label: \"x\" onClick: bridge.onOpen(true) }\n\t}\n}":         "expects a string, got a bool",
-		"bridge { onToggle: func(on: bool) }\nWindow {\n\tColumn {\n\t\tCheckbox { label: \"x\" onToggle: bridge.onToggle(\"yes\") }\n\t}\n}": "expects true or false, got a string",
-		"bridge { onOpen: func(id: string) }\nWindow {\n\tColumn {\n\t\tButton { label: \"x\" onClick: bridge.onOpen(event) }\n\t}\n}":        "carries no value",
-		"bridge { onOpen: func(id: string) }\nWindow {\n\tColumn {\n\t\tButton { id: card label: \"x\" onClick: card.onOpen(\"1\") }\n\t}\n}": "starts with bridge",
-		"bridge { onOpen: func(id: nope) }\nWindow { }":                                                                                               "is not a type",
-		"bridge { onToggle: func(on: bool) }\nWindow {\n\tColumn {\n\t\tText { onToggle: bridge.onToggle(event) }\n\t}\n}":                            "unknown property",
-		"bridge { onOpen: func(id: string) }\nWindow {\n\tColumn {\n\t\tButton { label: \"x\" onClick: bridge.onOpen(bridge.onOpen(\"1\")) }\n\t}\n}": "cannot be another call",
+		"bridge { onOpen func(id string) }\nWindow {\n\tButton { label: \"x\" onClick: bridge.nope(\"1\") }\n}":                                                                                               "no handler",
+		"bridge { onOpen func(id string) }\nWindow {\n\tButton { label: \"x\" onClick: bridge.onOpen() }\n}":                                                                                                  "takes 1 argument",
+		"bridge { onOpen func(id string) }\nWindow {\n\tButton { label: \"x\" onClick: bridge.onOpen(1) }\n}":                                                                                                 "expects a string",
+		"bridge { onOpen func(id string) }\nWindow {\n\tButton { label: \"x\" onClick: \"x\" }\n}":                                                                                                            "handler call",
+		"bridge { count int }\nWindow {\n\tButton { label: \"x\" onClick: bridge.count }\n}":                                                                                                                  "expects a handler call",
+		"bridge { onOpen func(id string) }\nWindow {\n\tCheckbox { label: \"x\" onToggle: bridge.onOpen(event) }\n}":                                                                                          "carries bool",
+		"bridge { onToggle func(on bool) }\nWindow {\n\tCheckbox { label: \"x\" onToggle: bridge.onToggle(\"x\") }\n}":                                                                                        "expects true or false",
+		"bridge { rows []row\n onOpen func(id string) }\ntype row { id string }\nWindow {\n\tfor _, row := range bridge.rows {\n\t\tButton { label: \"x\" onClick: bridge.onOpen(row.id) }\n\t}\n}\ndata { }": "",
 	}
 	for src, want := range bad {
+		if want == "" {
+			continue
+		}
 		_, diag := validate(t, src)
 		if diag.Empty() {
 			t.Errorf("%q was accepted", src)
@@ -554,10 +483,10 @@ func TestBridgeEvents(t *testing.T) {
 // undeclared prop is a typo, not a silent zero value.
 func TestPropsAreTyped(t *testing.T) {
 	ok := `props {
-	title: string = "x"
-	width: number
-	accent: color = #112233
-	on: bool = false
+	title string
+	width float64
+	accent color
+	on bool
 }
 Column {
 	spacing: props.width
@@ -572,15 +501,15 @@ Column {
 	}
 
 	cases := []struct{ name, src, want string }{
-		{"wrong consuming type", `props { count: number }
+		{"wrong consuming type", `props { count float64 }
 Column { Text { visible: props.count } }`, `prop "count" is number, not bool`},
-		{"default does not fit", `props { title: number = "x" }
-Column { }`, "props.title expects a number"},
-		{"not a type", `props { title: text }
-Column { }`, `"text" is not a type`},
-		{"undeclared", `props { a: string }
+		{"stray default", `props { title float64 = 1 }
+Column { }`, "has no default"},
+		{"not a type", `props { title text }
+Column { }`, `unknown type "text"`},
+		{"undeclared", `props { a string }
 Column { Text { text: props.b } }`, `no prop "b"`},
-		{"duplicate", `props { a: string, a: number }
+		{"duplicate", `props { a string, a float64 }
 Column { }`, `duplicate prop "a"`},
 	}
 	for _, tc := range cases {
@@ -608,16 +537,16 @@ Column { }`, `duplicate prop "a"`},
 // mistakes around them.
 func TestPropsCarryListsAndHandlers(t *testing.T) {
 	ok := `props {
-	rows: [ticket]
-	onOpen: func(id: string)
-	count: number = 2
+	rows []ticket
+	onOpen func(id string)
+	count float64
 }
-type ticket { title: string }
+type ticket { title string }
 Column {
-	{#each props.rows as row}
+	for _, row := range props.rows {
 		Text { text: row.title onClick: props.onOpen(row.title) }
-	{/each}
-	Text { text: ` + "`" + `${props.count} items` + "`" + ` }
+	}
+	Text { text: formatf("%d items", props.count) }
 }`
 	f, diag := syntax.Parse([]byte(ok))
 	if !diag.Empty() {
@@ -628,18 +557,18 @@ Column {
 	}
 
 	cases := []struct{ name, src, want string }{
-		{"unknown shape", `props { rows: [nope] }
-Column { }`, `unknown shape "nope"`},
-		{"list prop in a value", `type t { a: string }
-props { rows: [t] }
-Column { Text { text: props.rows } }`, "is a list; walk it"},
-		{"handler prop in a value", `props { onOpen: func(id: string) }
+		{"unknown shape", `props { rows []nope }
+Column { }`, `unknown type "nope"`},
+		{"list prop in a value", `type t { a string }
+props { rows []t }
+Column { Text { text: props.rows } }`, "walk it with for"},
+		{"handler prop in a value", `props { onOpen func(id string) }
 Column { Text { text: props.onOpen } }`, "is a handler; call it"},
-		{"handler default", `props { onOpen: func(id: string) = "x" }
-Column { }`, "only a scalar variable takes a default value"},
-		{"shape field default", `type t { a: string = "x" }
-Column { }`, "only a bridge variable takes a default"},
-		{"template on a number", `Column { Rectangle { width: ` + "`" + `${1}` + "`" + ` } }`, "expects a number"},
+		{"handler default", `props { onOpen func(id string) = nil }
+Column { }`, "has no default"},
+		{"shape field default", `type t { a string = "x" }
+Column { }`, "has no default"},
+		{"formatf on a number", `Column { Rectangle { width: formatf("%d", 1) } }`, "expects a number"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

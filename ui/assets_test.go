@@ -19,7 +19,7 @@ Window {
 		Header { heading: "Hello" }
 	}
 }`)},
-		"ui/parts/Header.goi": &fstest.MapFile{Data: []byte(`props { heading: string }
+		"ui/parts/Header.goi": &fstest.MapFile{Data: []byte(`props { heading string }
 Text { text: props.heading role: "headlineSmall" }`)},
 	}
 	a := newHeadlessApp()

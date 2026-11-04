@@ -6,19 +6,19 @@ import (
 )
 
 type bridgeRow struct {
-	ID string `json:"id"`
+	ID string `goi:"id"`
 }
 
 const bridgeUI = `bridge {
-	rows: [row]
-	onOpen: func(id: string)
+	rows []row
+	onOpen func(id string)
 }
-type row { id: string }
+type row { id string }
 Window {
 	Column {
-		{#each bridge.rows as row}
+		for _, row := range bridge.rows {
 			Button { id: open label: "open" onClick: bridge.onOpen(row.id) }
-		{/each}
+		}
 	}
 }`
 

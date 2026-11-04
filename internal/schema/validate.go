@@ -102,8 +102,52 @@ func (v *validator) addIn(src string, at, end syntax.Pos, msg, hint string) {
 	v.diag = append(v.diag, syntax.Diagnostic{Pos: at, End: end, Message: msg, Hint: hint, Src: src})
 }
 
-// scalarTypes are the value types a data field may use.
-var scalarTypes = []string{"bool", "string", "number", "color"}
+// scalarTypes are the primitive names a declaration may use. They are Go's
+// primitives plus `color`, which the design needs and Go spells as a uint32.
+var scalarTypes = []string{
+	"bool", "string", "color",
+	"int", "int8", "int16", "int32", "int64",
+	"uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
+	"float32", "float64", "byte", "rune",
+}
+
+// numericTypes are the declared types that become a number in a design.
+var numericTypes = []string{
+	"int", "int8", "int16", "int32", "int64",
+	"uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
+	"float32", "float64", "byte", "rune",
+}
+
+// isNumericType reports whether a declared type is a Go number.
+func isNumericType(name string) bool {
+	for _, n := range numericTypes {
+		if n == name {
+			return true
+		}
+	}
+	return false
+}
+
+// TypeOf maps a declared type to the value type a property checks against.
+// The second result is false for a slice, a map or a handler, which are not
+// values a property can read.
+func TypeOf(t *syntax.Type) (ValueType, bool) {
+	if t == nil || t.Kind != syntax.TypeScalar {
+		return TypeString, false
+	}
+	switch t.Name {
+	case "bool":
+		return TypeBool, true
+	case "string":
+		return TypeString, true
+	case "color":
+		return TypeColor, true
+	}
+	if isNumericType(t.Name) {
+		return TypeNumber, true
+	}
+	return TypeString, false
+}
 
 // checkData validates the `bridge` block (still spelled `data` in older files)
 // and the row types it names.
@@ -124,11 +168,7 @@ func (v *validator) checkData() {
 				v.add(f.NameAt, f.NameAt+syntax.Pos(len(f.Name)), fmt.Sprintf("%s repeats the field %q", sh.Name, f.Name), "")
 			}
 			seenField[f.Name] = true
-			v.checkDataType(f.At, f.List, f.Type, f.Elem, "field "+sh.Name+"."+f.Name)
-			if f.Default != nil {
-				v.add(f.At, f.At+syntax.Pos(len(f.Type)),
-					fmt.Sprintf("field %s.%s is a row value; only a bridge variable takes a default", sh.Name, f.Name), "")
-			}
+			v.checkType(f.Type, "field "+sh.Name+"."+f.Name)
 		}
 	}
 	seenVar := map[string]syntax.Pos{}
@@ -138,52 +178,62 @@ func (v *validator) checkData() {
 			continue
 		}
 		seenVar[dv.Name] = dv.NameAt
-		if dv.Name == "data" || dv.Name == "bridge" || dv.Name == "props" || dv.Name == "app" || dv.Name == "window" {
+		if dv.Name == "data" || dv.Name == "bridge" || dv.Name == "props" || dv.Name == "app" || dv.Name == "window" || dv.Name == "formatf" {
 			v.add(dv.NameAt, dv.NameAt+syntax.Pos(len(dv.Name)), fmt.Sprintf("%q is a reserved name", dv.Name), "")
 		}
-		if dv.Fn {
-			for _, a := range dv.Args {
-				v.checkFuncArg(a)
+		v.checkType(dv.Type, "bridge "+dv.Name)
+	}
+}
+
+// checkType validates one declared type: a primitive, a slice or map of one, a
+// declared shape (or a slice of one), or a func whose parameters are primitives.
+func (v *validator) checkType(t syntax.Type, what string) {
+	v.src = ""
+	switch t.Kind {
+	case syntax.TypeSlice:
+		if t.Elem == nil {
+			return
+		}
+		if t.Elem.Kind == syntax.TypeScalar && v.file.Shape(t.Elem.Name) == nil && !isPrimitive(t.Elem.Name) {
+			v.add(t.Elem.At, t.Elem.At+syntax.Pos(len(t.Elem.Name)),
+				fmt.Sprintf("%s: unknown type %q", what, t.Elem.Name),
+				syntax.Suggest(t.Elem.Name, append(scalarTypes, shapeNames(v.file)...)))
+			return
+		}
+		v.checkType(*t.Elem, what)
+	case syntax.TypeMap:
+		if t.Name != "string" {
+			v.add(t.At, t.At+syntax.Pos(len("map")),
+				fmt.Sprintf("%s: a map key must be a string, not %q", what, t.Name), "")
+		}
+		if t.Elem != nil {
+			v.checkType(*t.Elem, what)
+		}
+	case syntax.TypeFunc:
+		for _, a := range t.Args {
+			v.checkType(a.Type, what)
+			if _, ok := TypeOf(&a.Type); !ok {
+				v.add(a.At, a.At+syntax.Pos(len(a.Type.String())),
+					fmt.Sprintf("handler parameter %q must be a primitive", a.Name), "")
 			}
-			continue
 		}
-		v.checkDataType(dv.At, dv.List, dv.Type, dv.Elem, "bridge "+dv.Name)
+	default:
+		if isPrimitive(t.Name) || v.file.Shape(t.Name) != nil {
+			return
+		}
+		v.add(t.At, t.At+syntax.Pos(len(t.Name)), fmt.Sprintf("%s: unknown type %q", what, t.Name),
+			syntax.Suggest(t.Name, append(scalarTypes, shapeNames(v.file)...)))
 	}
 }
 
-// checkFuncArg accepts the scalar types a handler parameter may declare. A
-// handler is a Go function, so a list or a shape would have no Go value to
-// receive.
-func (v *validator) checkFuncArg(a syntax.DataField) {
-	v.src = ""
-	for _, ok := range scalarTypes {
-		if a.Type == ok {
-			return
+// isPrimitive reports whether name is one of the primitive type names.
+func isPrimitive(name string) bool {
+	for _, n := range scalarTypes {
+		if n == name {
+			return true
 		}
 	}
-	v.add(a.At, a.At+syntax.Pos(len(a.Type)),
-		fmt.Sprintf("handler parameter %q: %q is not a type; use bool, string, number or color", a.Name, a.Type),
-		syntax.Suggest(a.Type, scalarTypes))
-}
-
-// checkDataType accepts a scalar type or a declared shape for a list.
-func (v *validator) checkDataType(at syntax.Pos, list bool, typ, elem, what string) {
-	v.src = ""
-	end := at + syntax.Pos(len(typ))
-	if list {
-		if v.file.Shape(elem) == nil {
-			v.add(at, end, fmt.Sprintf("%s: unknown shape %q", what, elem),
-				syntax.Suggest(elem, shapeNames(v.file)))
-		}
-		return
-	}
-	for _, ok := range scalarTypes {
-		if typ == ok {
-			return
-		}
-	}
-	v.add(at, end, fmt.Sprintf("%s: %q is not a type; use bool, string, number, color, [shape] or shape[]", what, typ),
-		syntax.Suggest(typ, scalarTypes))
+	return false
 }
 
 // shapeNames lists the declared shapes, for suggestions.
@@ -314,84 +364,124 @@ func firstChild(e *syntax.Element) *childStart {
 	return nil
 }
 
-// walkBlock checks one control block: the condition is a bool expression and the
-// arms hold only elements. A block adds no node of its own, so its arms are
-// validated as children of the enclosing element.
+// walkBlock checks one control block: an if arm's condition is a bool, and a
+// for block's range value is a list, a map or a number, with its loop variables
+// bound for the body.
 func (v *validator) walkBlock(blk *syntax.Block, parent string) {
 	v.src = blk.Src
-	// An {#each} puts its loop variable in scope for both arms, so a field
-	// access inside the row is checked against the shape the list holds.
-	if blk.Kind == syntax.BlockEach {
-		if sh := v.checkEachSource(blk); sh != nil {
-			v.scopes = append(v.scopes, map[string]*syntax.DataShape{blk.Var: sh})
-			defer func() { v.scopes = v.scopes[:len(v.scopes)-1] }()
-		}
+	if blk.Kind == syntax.BlockFor {
+		v.walkFor(blk, parent)
+		return
 	}
 	for _, br := range blk.Branches {
 		if br.Cond != nil {
 			v.checkCond(br)
 		}
-		for _, m := range br.Members {
-			switch x := m.(type) {
-			case *syntax.Element:
-				v.walk(x, parent)
-			case *syntax.Block:
-				v.walkBlock(x, parent)
-			case *syntax.Property:
-				v.addIn(x.Src, x.NameAt, x.NameAt+syntax.Pos(len(x.Name)),
-					fmt.Sprintf("a block cannot declare the property %q", x.Name), "")
-			}
+		v.walkArm(br.Members, parent)
+	}
+}
+
+// walkArm validates the elements of one arm.
+func (v *validator) walkArm(members []syntax.Member, parent string) {
+	for _, m := range members {
+		switch x := m.(type) {
+		case *syntax.Element:
+			v.walk(x, parent)
+		case *syntax.Block:
+			v.walkBlock(x, parent)
+		case *syntax.Property:
+			v.addIn(x.Src, x.NameAt, x.NameAt+syntax.Pos(len(x.Name)),
+				fmt.Sprintf("a block cannot declare the property %q", x.Name), "")
 		}
 	}
 }
 
-// eachShape resolves the shape an {#each} walks, without reporting anything.
-func (v *validator) eachShape(blk *syntax.Block) *syntax.DataShape {
-	if blk.SourceProps {
-		pr := v.file.Prop(blk.Source)
-		if pr == nil || !pr.List {
-			return nil
-		}
-		return v.file.Shape(pr.Elem)
+// walkFor validates a range loop and binds its loop variables.
+func (v *validator) walkFor(blk *syntax.Block, parent string) {
+	keyShape, valShape := v.checkForRange(blk)
+	defer func() { v.scopes = v.scopes[:len(v.scopes)-1] }()
+	v.scopes = append(v.scopes, map[string]*syntax.DataShape{})
+	top := v.scopes[len(v.scopes)-1]
+	if k := blk.LoopKey(); k != "" && keyShape != nil {
+		top[k] = keyShape
 	}
-	dv := v.file.Var(blk.Source)
-	if dv == nil || !dv.List {
-		return nil
+	if k := blk.LoopVal(); k != "" && valShape != nil {
+		top[k] = valShape
 	}
-	return v.file.Shape(dv.Elem)
+	for _, br := range blk.Branches {
+		v.walkArm(br.Members, parent)
+	}
 }
 
-// checkEachSource resolves `{#each data.rows as row}`: the variable must exist,
-// hold a list and name a declared shape. It returns the shape, or nil.
-func (v *validator) checkEachSource(blk *syntax.Block) *syntax.DataShape {
-	at := blk.SourceAt
-	end := at + syntax.Pos(len(blk.Source))
-	if blk.SourceProps {
-		pr := v.file.Prop(blk.Source)
+// checkForRange resolves `range X` and returns the key and value shapes the
+// loop variables hold. A list of a shape gives the value that shape and an
+// index key; a map gives no shape; a number counts.
+func (v *validator) checkForRange(blk *syntax.Block) (keyShape, valShape *syntax.DataShape) {
+	at, end := blk.RangeAt, blk.RangeAt+1
+	if blk.Range != nil {
+		end = blk.RangeAt + syntax.Pos(len(edgeOf(blk.Range)))
+	}
+	ref, ok := blk.Range.(*syntax.Ref)
+	if !ok {
+		switch blk.Range.(type) {
+		case *syntax.Number, *syntax.Binary:
+			return nil, nil // `for i := range 5`
+		}
+		v.add(at, end, "a for loop ranges over a list, a map or a number", "")
+		return nil, nil
+	}
+	switch ref.ID {
+	case "bridge", "data":
+		dv := v.file.Var(ref.Prop)
+		if dv == nil {
+			v.add(at, end, fmt.Sprintf("no bridge variable %q", ref.Prop),
+				syntax.Suggest(ref.Prop, varNames(v.file)))
+			return nil, nil
+		}
+		if dv.Type.Kind != syntax.TypeSlice && dv.Type.Kind != syntax.TypeMap {
+			v.add(at, end, fmt.Sprintf("cannot range over bridge.%s: it is %s, not a slice, a map or a number",
+				ref.Prop, dv.Type.String()), "")
+			return nil, nil
+		}
+		return shapeFor(&dv.Type, v.file), shapeFor(dv.Type.Elem, v.file)
+	case "props":
+		pr := v.file.Prop(ref.Prop)
 		if pr == nil {
-			v.add(at, end, fmt.Sprintf("no prop %q", blk.Source), syntax.Suggest(blk.Source, declaredPropNames(v.file)))
-			return nil
+			v.add(at, end, fmt.Sprintf("no prop %q", ref.Prop),
+				syntax.Suggest(ref.Prop, declaredPropNames(v.file)))
+			return nil, nil
 		}
-		if !pr.List {
-			v.add(at, end, fmt.Sprintf("props.%s is not a list: declare it as %s: [shape]", pr.Name, pr.Name), "")
-			return nil
+		if pr.Type.Kind != syntax.TypeSlice && pr.Type.Kind != syntax.TypeMap {
+			v.add(at, end, fmt.Sprintf("cannot range over props.%s: it is %s, not a slice, a map or a number",
+				ref.Prop, pr.Type.String()), "")
+			return nil, nil
 		}
-		return v.file.Shape(pr.Elem)
+		return nil, shapeFor(pr.Type.Elem, v.file)
 	}
-	dv := v.file.Var(blk.Source)
-	if dv == nil {
-		v.add(at, end, fmt.Sprintf("no bridge variable %q", blk.Source), syntax.Suggest(blk.Source, varNames(v.file)))
+	if sh := v.lookupLoopVar(ref.ID); sh != nil {
+		// A field of a row that is itself a list.
+		for i := range sh.Fields {
+			if sh.Fields[i].Name != ref.Prop {
+				continue
+			}
+			return nil, shapeFor(sh.Fields[i].Type.Elem, v.file)
+		}
+	}
+	v.add(at, end, fmt.Sprintf("cannot range over %s.%s", ref.ID, ref.Prop), "")
+	return nil, nil
+}
+
+// shapeFor resolves a type to the declared shape it names, or nil.
+func shapeFor(t *syntax.Type, f *syntax.File) *syntax.DataShape {
+	if t == nil || t.Kind != syntax.TypeScalar {
 		return nil
 	}
-	if !dv.List {
-		v.add(at, end, fmt.Sprintf("bridge.%s is not a list: declare it as %s: [shape]", dv.Name, dv.Name), "")
-		return nil
-	}
-	sh := v.file.Shape(dv.Elem)
-	if sh == nil {
-		return nil // already reported against the declaration
-	}
-	return sh
+	return f.Shape(t.Name)
+}
+
+// edgeOf returns a short text for a value, so a diagnostic can cover it.
+func edgeOf(val syntax.Value) string {
+	return fmt.Sprintf("%v", val.Kind())
 }
 
 // checkCond accepts the value types that can produce a bool. A bare identifier
@@ -401,7 +491,7 @@ func (v *validator) checkCond(br syntax.Branch) {
 	case *syntax.Bool, *syntax.Unary, *syntax.Binary, *syntax.Ternary, *syntax.Ref:
 	case *syntax.Ident, *syntax.String, *syntax.Number, *syntax.Color, *syntax.Percent:
 		v.add(br.Cond.Pos(), br.Cond.Pos()+1,
-			"an {#if} condition must be a bool: a comparison, app.dark, bridge.loading or an id.prop that is a bool", "")
+			"an if condition must be a bool: a comparison, app.dark, bridge.loading or an id.prop that is a bool", "")
 	}
 }
 
@@ -424,8 +514,8 @@ func (v *validator) checkValue(e *syntax.Element, p *syntax.Property, pd *Prop) 
 	v.checkLiteral(e, pd, val)
 }
 
-// checkProps validates a fragment's input block: unique names, a scalar type,
-// and a default that fits the declared type.
+// checkProps validates a fragment's input block: unique names and a declared
+// type. A prop is filled by the instance, so it has no default.
 func (v *validator) checkProps() {
 	v.src = ""
 	seen := map[string]syntax.Pos{}
@@ -437,38 +527,10 @@ func (v *validator) checkProps() {
 			continue
 		}
 		seen[pr.Name] = at
-		switch {
-		case pr.Fn:
-			for _, a := range pr.Args {
-				v.checkFuncArg(a)
-			}
-			if pr.Default != nil {
-				v.add(pr.At, pr.At+syntax.Pos(len(pr.Type)),
-					fmt.Sprintf("prop %q is a handler; it has no literal default", pr.Name), "")
-			}
-			continue
-		case pr.List:
-			if v.file.Shape(pr.Elem) == nil {
-				v.add(pr.At, pr.At+syntax.Pos(len(pr.Elem)),
-					fmt.Sprintf("prop %q: unknown shape %q", pr.Name, pr.Elem),
-					syntax.Suggest(pr.Elem, shapeNames(v.file)))
-			}
-			if pr.Default != nil {
-				v.add(pr.At, pr.At+syntax.Pos(len(pr.Type)),
-					fmt.Sprintf("prop %q is a list; it has no literal default", pr.Name), "")
-			}
-			continue
+		if pr.Name == "props" {
+			v.add(at, at+syntax.Pos(len(pr.Name)), `"props" is a reserved name`, "")
 		}
-		ft, ok := fieldType(false, pr.Type)
-		if !ok {
-			v.add(pr.At, pr.At+syntax.Pos(len(pr.Type)),
-				fmt.Sprintf("prop %q: %q is not a type; use bool, string, number, color, [shape] or func(...)", pr.Name, pr.Type),
-				syntax.Suggest(pr.Type, scalarTypes))
-			continue
-		}
-		if pr.Default != nil {
-			v.checkLiteral(propsElement, &Prop{Name: pr.Name, Type: ft}, pr.Default)
-		}
+		v.checkType(pr.Type, "prop "+pr.Name)
 	}
 }
 
@@ -505,17 +567,17 @@ func (v *validator) checkPropRef(e *syntax.Element, pd *Prop, x *syntax.Ref, at,
 			fmt.Sprintf("%s.%s cannot come from a prop: an id names a node once", e.Name, pd.Name), "")
 		return
 	}
-	if pr.Fn {
+	switch pr.Type.Kind {
+	case syntax.TypeFunc:
 		v.add(at, end,
 			fmt.Sprintf("%s.%s: props.%s is a handler; call it in an event, as onClick: props.%s(...)", e.Name, pd.Name, pr.Name, pr.Name), "")
 		return
-	}
-	if pr.List {
+	case syntax.TypeSlice, syntax.TypeMap:
 		v.add(at, end,
-			fmt.Sprintf("%s.%s: props.%s is a list; walk it with {#each props.%s as row}", e.Name, pd.Name, pr.Name, pr.Name), "")
+			fmt.Sprintf("%s.%s: props.%s is not a value; walk it with for i, row := range props.%s", e.Name, pd.Name, pr.Name, pr.Name), "")
 		return
 	}
-	ft, ok := fieldType(false, pr.Type)
+	ft, ok := TypeOf(&pr.Type)
 	if !ok || free {
 		return
 	}
@@ -605,7 +667,7 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 
 	case TypeString:
 		switch val.(type) {
-		case *syntax.String, *syntax.Ident, *syntax.Template:
+		case *syntax.String, *syntax.Ident, *syntax.Call:
 			// An Ident is allowed so `text: hello` reads naturally; the schema
 			// documents string properties as accepting bare words.
 		default:
@@ -752,16 +814,39 @@ var anyProp = &Prop{Name: "value", Type: TypeString}
 
 // walkBlockRefs checks the references inside block conditions and arms.
 func (v *validator) walkBlockRefs(blk *syntax.Block) {
-	if blk.Kind == syntax.BlockEach {
-		if sh := v.eachShape(blk); sh != nil {
-			v.scopes = append(v.scopes, map[string]*syntax.DataShape{blk.Var: sh})
-			defer func() { v.scopes = v.scopes[:len(v.scopes)-1] }()
-		}
+	if blk.Kind == syntax.BlockFor {
+		v.walkForRefs(blk)
+		return
 	}
 	for _, br := range blk.Branches {
 		if br.Cond != nil {
 			v.checkRefs(condElement, boolProp, br.Cond)
 		}
+		for _, m := range br.Members {
+			switch x := m.(type) {
+			case *syntax.Element:
+				v.walkRefs(x)
+			case *syntax.Block:
+				v.walkBlockRefs(x)
+			}
+		}
+	}
+}
+
+// walkForRefs checks the references inside a range loop with its loop variables
+// in scope.
+func (v *validator) walkForRefs(blk *syntax.Block) {
+	keyShape, valShape := v.checkForRange(blk)
+	defer func() { v.scopes = v.scopes[:len(v.scopes)-1] }()
+	v.scopes = append(v.scopes, map[string]*syntax.DataShape{})
+	top := v.scopes[len(v.scopes)-1]
+	if k := blk.LoopKey(); k != "" && keyShape != nil {
+		top[k] = keyShape
+	}
+	if k := blk.LoopVal(); k != "" && valShape != nil {
+		top[k] = valShape
+	}
+	for _, br := range blk.Branches {
 		for _, m := range br.Members {
 			switch x := m.(type) {
 			case *syntax.Element:
@@ -797,11 +882,11 @@ func (v *validator) checkRefs(e *syntax.Element, pd *Prop, val syntax.Value) {
 		v.checkRefs(e, boolProp, x.Cond)
 		v.checkRefs(e, pd, x.Then)
 		v.checkRefs(e, pd, x.Else)
-	case *syntax.Template:
-		// Each hole is formatted into the string, so its own type is free; a
-		// comparison inside it decides its type itself.
-		for _, part := range x.Parts {
-			v.checkRefs(e, anyProp, part)
+	case *syntax.Call:
+		// A builtin such as formatf formats its arguments itself, so nothing
+		// inside is checked against the consuming property.
+		for _, a := range x.Args {
+			v.checkRefs(e, anyProp, a)
 		}
 	case *syntax.Ref:
 		if pd == nil {
@@ -867,31 +952,39 @@ func (v *validator) checkPropCall(e *syntax.Element, p *syntax.Property, call *s
 			syntax.Suggest(call.Callee.Prop, declaredPropNames(v.file)))
 		return
 	}
-	if !pr.Fn {
+	if pr.Type.Kind != syntax.TypeFunc {
 		v.add(at, end,
-			fmt.Sprintf("%s.%s: props.%s is a value, not a handler; declare it as %s: func(...)",
+			fmt.Sprintf("%s.%s: props.%s is not a handler; declare it as %s func(...)",
 				e.Name, p.Name, call.Callee.Prop, call.Callee.Prop), "")
 		return
 	}
-	if len(call.Args) != len(pr.Args) {
+	v.checkCallArgs(e, p.Name, call, pr.Type.Args, end, nil)
+}
+
+// checkCallArgs checks a handler call's argument count and each argument's type
+// against the declared parameters.
+func (v *validator) checkCallArgs(e *syntax.Element, pname string, call *syntax.Call, params []syntax.Field, end syntax.Pos, ev *EventDef) {
+	if len(call.Args) != len(params) {
 		v.add(call.At, end,
-			fmt.Sprintf("%s.%s: props.%s takes %d argument(s), got %d",
-				e.Name, p.Name, call.Callee.Prop, len(pr.Args), len(call.Args)), "")
+			fmt.Sprintf("%s.%s: %s takes %d argument(s), got %d",
+				e.Name, pname, call.Callee.Prop, len(params), len(call.Args)), "")
 		return
 	}
 	for i, a := range call.Args {
-		if id, ok := a.(*syntax.Ident); ok && id.Val == "event" {
-			v.add(a.Pos(), a.Pos()+1,
-				fmt.Sprintf("%s.%s: a fragment handler does not receive event; the instance decides what it passes", e.Name, p.Name), "")
+		ft, _ := TypeOf(&params[i].Type)
+		prop := &Prop{Name: pname, Type: ft}
+		if id, ok := a.(*syntax.Ident); ok && id.Val == "event" && ev != nil {
+			switch {
+			case !ev.HasValue:
+				v.add(a.Pos(), a.Pos()+1,
+					fmt.Sprintf("%s.%s: %s carries no value, so event cannot be passed", e.Name, pname, pname), "")
+			case !typesFit(ev.Type, ft):
+				v.add(a.Pos(), a.Pos()+1,
+					fmt.Sprintf("%s.%s: %s carries %s, which cannot feed %s",
+						e.Name, pname, pname, typeName(ev.Type), typeName(ft)), "")
+			}
 			continue
 		}
-		if _, nested := a.(*syntax.Call); nested {
-			v.add(a.Pos(), a.Pos()+1,
-				fmt.Sprintf("%s.%s: a handler argument cannot be another call", e.Name, p.Name), "")
-			continue
-		}
-		ft, _ := fieldType(false, pr.Args[i].Type)
-		prop := &Prop{Name: p.Name, Type: ft}
 		v.checkLiteral(e, prop, a)
 		v.checkRefs(e, prop, a)
 	}
@@ -901,7 +994,7 @@ func (v *validator) checkPropCall(e *syntax.Element, p *syntax.Property, call *s
 func handlerNames(f *syntax.File) []string {
 	out := make([]string, 0, len(f.Vars))
 	for _, dv := range f.Vars {
-		if dv.Fn {
+		if dv.Type.Kind == syntax.TypeFunc {
 			out = append(out, dv.Name)
 		}
 	}
@@ -933,68 +1026,41 @@ func (v *validator) checkEventCall(e *syntax.Element, ev EventDef, p *syntax.Pro
 			syntax.Suggest(call.Callee.Prop, handlerNames(v.file)))
 		return
 	}
-	if !dv.Fn {
+	if dv.Type.Kind != syntax.TypeFunc {
 		v.add(at, end,
-			fmt.Sprintf("%s.%s: %s.%s is a value, not a handler; declare it as %s: func(...)",
+			fmt.Sprintf("%s.%s: %s.%s is a value, not a handler; declare it as %s func(...)",
 				e.Name, p.Name, call.Callee.ID, call.Callee.Prop, call.Callee.Prop), "")
 		return
 	}
-	if len(call.Args) != len(dv.Args) {
-		v.add(call.At, end,
-			fmt.Sprintf("%s.%s: %s takes %d argument(s), got %d",
-				e.Name, p.Name, call.Callee.Prop, len(dv.Args), len(call.Args)), "")
-		return
-	}
-	for i, a := range call.Args {
-		pa := dv.Args[i]
-		ft, _ := fieldType(false, pa.Type)
-		prop := &Prop{Name: p.Name, Type: ft}
-		if id, ok := a.(*syntax.Ident); ok && id.Val == "event" {
-			switch {
-			case !ev.HasValue:
-				v.add(a.Pos(), a.Pos()+1,
-					fmt.Sprintf("%s.%s: %s carries no value, so event cannot be passed", e.Name, p.Name, p.Name), "")
-			case !typesFit(ev.Type, ft):
-				v.add(a.Pos(), a.Pos()+1,
-					fmt.Sprintf("%s.%s: %s carries %s, which cannot feed %s",
-						e.Name, p.Name, p.Name, typeName(ev.Type), typeName(ft)), "")
-			}
-			continue
-		}
-		if _, nested := a.(*syntax.Call); nested {
-			v.add(a.Pos(), a.Pos()+1,
-				fmt.Sprintf("%s.%s: a handler argument cannot be another call", e.Name, p.Name), "")
-			continue
-		}
-		v.checkLiteral(e, prop, a)
-		v.checkRefs(e, prop, a)
-	}
+	v.checkCallArgs(e, p.Name, call, dv.Type.Args, end, &ev)
 }
 
-// checkDataRef validates `data.name` against the declared variable and the
+// checkDataRef validates `bridge.name` against the declared variable and the
 // property it feeds.
 func (v *validator) checkDataRef(e *syntax.Element, pd *Prop, x *syntax.Ref, at, end syntax.Pos, free bool) {
 	dv := v.file.Var(x.Prop)
 	if dv == nil {
 		v.add(at, end,
-			fmt.Sprintf("%s.%s: no data variable %q", e.Name, pd.Name, x.Prop),
+			fmt.Sprintf("%s.%s: no bridge variable %q", e.Name, pd.Name, x.Prop),
 			syntax.Suggest(x.Prop, varNames(v.file)))
 		return
 	}
-	if dv.Fn {
+	switch dv.Type.Kind {
+	case syntax.TypeFunc:
 		v.add(at, end,
 			fmt.Sprintf("%s.%s: %s.%s is a handler; call it in an event such as onClick: bridge.%s(...)",
 				e.Name, pd.Name, x.ID, x.Prop, x.Prop), "")
 		return
-	}
-	ft, ok := fieldType(dv.List, dv.Type)
-	if !ok {
-		v.add(at, end, fmt.Sprintf("%s.%s: data.%s is a list; walk it with {#each}", e.Name, pd.Name, x.Prop), "")
+	case syntax.TypeSlice, syntax.TypeMap:
+		v.add(at, end,
+			fmt.Sprintf("%s.%s: %s.%s is not a value; walk it with for i, row := range %s.%s",
+				e.Name, pd.Name, x.ID, x.Prop, x.ID, x.Prop), "")
 		return
 	}
+	ft, _ := TypeOf(&dv.Type)
 	if !free && !typesFit(ft, pd.Type) {
 		v.add(at, end,
-			fmt.Sprintf("%s.%s: data.%s is %s, not %s", e.Name, pd.Name, x.Prop, typeName(ft), typeName(pd.Type)), "")
+			fmt.Sprintf("%s.%s: %s.%s is %s, not %s", e.Name, pd.Name, x.ID, x.Prop, typeName(ft), typeName(pd.Type)), "")
 	}
 }
 
@@ -1018,11 +1084,13 @@ func (v *validator) checkFieldRef(e *syntax.Element, pd *Prop, x *syntax.Ref, sh
 			syntax.Suggest(x.Prop, names))
 		return
 	}
-	ft, ok := fieldType(field.List, field.Type)
-	if !ok {
-		v.add(at, end, fmt.Sprintf("%s.%s: %s.%s is a list; walk it with {#each}", e.Name, pd.Name, sh.Name, x.Prop), "")
+	if field.Type.Kind == syntax.TypeSlice || field.Type.Kind == syntax.TypeMap {
+		v.add(at, end,
+			fmt.Sprintf("%s.%s: %s.%s is not a value; walk it with for i, row := range %s.%s",
+				e.Name, pd.Name, sh.Name, x.Prop, x.ID, x.Prop), "")
 		return
 	}
+	ft, _ := TypeOf(&field.Type)
 	if !free && !typesFit(ft, pd.Type) {
 		v.add(at, end,
 			fmt.Sprintf("%s.%s: %s.%s is %s, not %s", e.Name, pd.Name, sh.Name, x.Prop, typeName(ft), typeName(pd.Type)), "")
@@ -1074,9 +1142,9 @@ func valueHasPercent(val syntax.Value) bool {
 		return valueHasPercent(x.X)
 	case *syntax.Ternary:
 		return valueHasPercent(x.Cond) || valueHasPercent(x.Then) || valueHasPercent(x.Else)
-	case *syntax.Template:
-		for _, part := range x.Parts {
-			if valueHasPercent(part) {
+	case *syntax.Call:
+		for _, a := range x.Args {
+			if valueHasPercent(a) {
 				return true
 			}
 		}
@@ -1118,8 +1186,7 @@ func kindName(val syntax.Value) string {
 		return "a percentage"
 	case syntax.RefKind:
 		return "a reference"
-	case syntax.TemplateKind:
-		return "a template string"
+
 	case syntax.BinaryKind, syntax.UnaryKind, syntax.TernaryKind:
 		return "an expression"
 	case syntax.CallKind:

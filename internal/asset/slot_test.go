@@ -12,9 +12,9 @@ import (
 
 // TestPreviewFillsPropsWithDefaults is what goicheck uses to lay a fragment out
 // on its own: `props.title` becomes the default before the tree is built.
-func TestPreviewFillsPropsWithDefaults(t *testing.T) {
+func TestPreviewFillsPropsWithZeroValues(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Card.goi": `props { title: string = "default" }
+		"Card.goi": `props { title string}
 Column {
 	Text { text: props.title }
 }`,
@@ -32,8 +32,8 @@ Column {
 	}
 	if txt := p.Root.Children()[0].Prop("text"); txt == nil {
 		t.Fatal("the preview has no text property")
-	} else if str, ok := txt.Value.(*syntax.String); !ok || str.Val != "default" {
-		t.Fatalf("text = %#v, want the default", txt.Value)
+	} else if str, ok := txt.Value.(*syntax.String); !ok || str.Val != "" {
+		t.Fatalf("text = %#v, want the zero value", txt.Value)
 	}
 }
 

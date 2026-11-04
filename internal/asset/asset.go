@@ -196,17 +196,16 @@ func (l *loader) instantiateFile(f *syntax.File, name string, stack []string) (*
 	}, nil
 }
 
-// Preview returns a copy of a fragment with its props replaced by their
-// defaults, so the file can be laid out on its own: goicheck wraps the result in
-// a Window. A prop with no default gets its type's zero value. A file that is
-// not a fragment comes back unchanged.
+// Preview returns a copy of a fragment with its props replaced by the type's
+// zero value, so the file can be laid out on its own: goicheck wraps the result
+// in a Window. A file that is not a fragment comes back unchanged.
 func Preview(f *syntax.File) (*syntax.File, syntax.Diagnostics) {
 	if f == nil || f.Root == nil || len(f.Props) == 0 {
 		return f, nil
 	}
 	props := propValues(f, nil)
 	root := copyElement(f.Root)
-	if diag := substitute(root, props, f.Src); !diag.Empty() {
+	if diag := substitute(root, props, f.Src, f); !diag.Empty() {
 		return nil, diag
 	}
 	out := *f
@@ -215,7 +214,7 @@ func Preview(f *syntax.File) (*syntax.File, syntax.Diagnostics) {
 }
 
 // propValues is what each declared prop holds: the instance's value when it
-// passed one, else the declaration's default, else the type's zero value.
+// passed one, else the type's zero value.
 func propValues(f *syntax.File, passed map[string]syntax.Value) map[string]syntax.Value {
 	out := make(map[string]syntax.Value, len(f.Props))
 	for _, pr := range f.Props {
@@ -223,32 +222,40 @@ func propValues(f *syntax.File, passed map[string]syntax.Value) map[string]synta
 			out[pr.Name] = v
 			continue
 		}
-		if pr.Default != nil {
-			out[pr.Name] = pr.Default
-			continue
-		}
-		// A list or a handler has no literal default: the instance must pass
-		// one, which substitute reports when it sees the nil.
 		out[pr.Name] = zeroValue(pr.Type)
 	}
 	return out
 }
 
-// zeroValue is Go's zero value for a prop type, as a literal the tree can read.
-// zeroValue is Go's zero for a scalar prop type. A "list" or "func" prop has no
-// zero literal, so it stays nil and substitute reports the missing value.
-func zeroValue(typ string) syntax.Value {
-	switch typ {
+// zeroValue is Go's zero for a declared type, as a literal the tree can read. A
+// slice or a map has no literal form and stays nil, which substitute reports.
+func zeroValue(t syntax.Type) syntax.Value {
+	if t.Kind != syntax.TypeScalar {
+		return nil
+	}
+	switch t.Name {
 	case "bool":
 		return &syntax.Bool{Val: false}
-	case "number":
-		return &syntax.Number{Val: 0}
 	case "color":
 		return &syntax.Color{RGBA: 0}
 	case "string":
 		return &syntax.String{Val: ""}
 	}
+	if isNumericName(t.Name) {
+		return &syntax.Number{Val: 0}
+	}
 	return nil
+}
+
+// isNumericName reports whether a declared type is a Go number.
+func isNumericName(name string) bool {
+	switch name {
+	case "int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
+		"float32", "float64", "byte", "rune":
+		return true
+	}
+	return false
 }
 
 // expand walks one element tree, replacing fragment instances with their
@@ -326,8 +333,8 @@ func (l *loader) instance(target string, call *syntax.Element, callerAliases map
 		}}
 	}
 
-	// Props start at their defaults and take whatever the instance passed. A
-	// prop the instance left out gets its default, or the type's zero value.
+	// Props take whatever the instance passed; a prop it leaves out is the
+	// type's zero value.
 	passed := make(map[string]syntax.Value, len(f.Props))
 	declared := make(map[string]bool, len(f.Props))
 	for _, pr := range f.Props {
@@ -344,7 +351,7 @@ func (l *loader) instance(target string, call *syntax.Element, callerAliases map
 	props := propValues(f, passed)
 
 	body := copyElement(f.Root)
-	if diag := substitute(body, props, target); !diag.Empty() {
+	if diag := substitute(body, props, target, f); !diag.Empty() {
 		return nil, diag
 	}
 	// Before the caller's children land in a slot, and before the caller's own
@@ -465,18 +472,18 @@ func (l *loader) fillMembers(members []syntax.Member, slots map[string][]*syntax
 
 // substitute replaces `props.name` values in place and reports a prop the
 // fragment never declared.
-func substitute(el *syntax.Element, props map[string]syntax.Value, from string) syntax.Diagnostics {
+func substitute(el *syntax.Element, props map[string]syntax.Value, from string, f *syntax.File) syntax.Diagnostics {
 	var diag syntax.Diagnostics
 	var walk func(*syntax.Element)
 	walk = func(e *syntax.Element) {
-		walkMembers(e.Members, props, from, &diag, walk)
+		walkMembers(e.Members, props, from, f, &diag, walk)
 	}
 	walk(el)
 	return diag
 }
 
 // walkMembers substitutes props in a member list, descending into block arms.
-func walkMembers(members []syntax.Member, props map[string]syntax.Value, from string, diag *syntax.Diagnostics, walk func(*syntax.Element)) {
+func walkMembers(members []syntax.Member, props map[string]syntax.Value, from string, f *syntax.File, diag *syntax.Diagnostics, walk func(*syntax.Element)) {
 	for _, m := range members {
 		switch v := m.(type) {
 		case *syntax.Property:
@@ -484,46 +491,18 @@ func walkMembers(members []syntax.Member, props map[string]syntax.Value, from st
 		case *syntax.Element:
 			walk(v)
 		case *syntax.Block:
-			if v.Kind == syntax.BlockEach && v.SourceProps {
-				if *diag = substEachSource(v, props, from, *diag); !diag.Empty() {
-					return
-				}
+			if v.Kind == syntax.BlockFor && v.Range != nil {
+				v.Range, *diag = substValue(v.Range, props, v.Src, from, *diag)
 			}
 			for i := range v.Branches {
 				br := &v.Branches[i]
 				if br.Cond != nil {
 					br.Cond, *diag = substValue(br.Cond, props, v.Src, from, *diag)
 				}
-				walkMembers(br.Members, props, from, diag, walk)
+				walkMembers(br.Members, props, from, f, diag, walk)
 			}
 		}
 	}
-}
-
-// substEachSource turns `{#each props.items as row}` into the bridge list the
-// instance passed. A list has no literal form, so the value must be a
-// `bridge.name` reference.
-func substEachSource(blk *syntax.Block, props map[string]syntax.Value, from string, diag syntax.Diagnostics) syntax.Diagnostics {
-	got, ok := props[blk.Source]
-	if !ok {
-		return append(diag, syntax.Diagnostic{
-			Pos:     blk.SourceAt,
-			End:     blk.SourceAt + syntax.Pos(len(blk.Source)),
-			Src:     blk.Src,
-			Message: fmt.Sprintf("%s has no prop %q", from, blk.Source),
-		})
-	}
-	ref, ok := got.(*syntax.Ref)
-	if !ok || (ref.ID != "bridge" && ref.ID != "data") {
-		return append(diag, syntax.Diagnostic{
-			Pos:     blk.SourceAt,
-			End:     blk.SourceAt + syntax.Pos(len(blk.Source)),
-			Src:     blk.Src,
-			Message: fmt.Sprintf("props.%s is a list; the instance must pass one, as %s: bridge.rows", blk.Source, blk.Source),
-		})
-	}
-	blk.Source, blk.SourceProps = ref.Prop, false
-	return diag
 }
 
 // substValue returns a value with every `props.name` reference replaced.
@@ -548,7 +527,7 @@ func substValue(v syntax.Value, props map[string]syntax.Value, src, from string,
 				Pos:     x.At,
 				End:     x.At + syntax.Pos(len(x.ID)+1+len(x.Prop)),
 				Src:     src,
-				Message: fmt.Sprintf("%s has no prop %q; %s.%s has no default, so the instance must pass one", from, x.Prop, x.ID, x.Prop),
+				Message: fmt.Sprintf("%s has no prop %q: a slice or a map has no zero literal, so the instance must pass one", from, x.Prop),
 			})
 			return x, diag
 		}
@@ -582,7 +561,7 @@ func substValue(v syntax.Value, props map[string]syntax.Value, src, from string,
 			}
 			callee = ref
 		}
-		out := &syntax.Call{At: x.At, Callee: callee, Args: make([]syntax.Value, len(x.Args))}
+		out := &syntax.Call{At: x.At, Callee: callee, Name: x.Name, Args: make([]syntax.Value, len(x.Args))}
 		for i, a := range x.Args {
 			out.Args[i], diag = substValue(a, props, src, from, diag)
 		}
@@ -606,12 +585,7 @@ func substValue(v syntax.Value, props map[string]syntax.Value, src, from string,
 		then, diag := substValue(x.Then, props, src, from, diag)
 		els, diag := substValue(x.Else, props, src, from, diag)
 		return &syntax.Ternary{At: x.At, Cond: cond, Then: then, Else: els}, diag
-	case *syntax.Template:
-		out := &syntax.Template{At: x.At, Parts: make([]syntax.Value, len(x.Parts))}
-		for i, part := range x.Parts {
-			out.Parts[i], diag = substValue(part, props, src, from, diag)
-		}
-		return out, diag
+
 	}
 	return v, diag
 }
@@ -654,7 +628,8 @@ func copyElement(el *syntax.Element) *syntax.Element {
 func copyBlock(b *syntax.Block) *syntax.Block {
 	out := &syntax.Block{
 		Kind: b.Kind, At: b.At, Close: b.Close, Src: b.Src,
-		Source: b.Source, SourceAt: b.SourceAt, Var: b.Var, VarAt: b.VarAt,
+		KeyVar: b.KeyVar, KeyAt: b.KeyAt, ValVar: b.ValVar, ValAt: b.ValAt,
+		Range: copyValue(b.Range), RangeAt: b.RangeAt,
 	}
 	out.Branches = make([]syntax.Branch, len(b.Branches))
 	for i, br := range b.Branches {
@@ -694,12 +669,6 @@ func copyValue(v syntax.Value) syntax.Value {
 		return &syntax.String{At: x.At, Val: x.Val}
 	case *syntax.Ref:
 		return &syntax.Ref{At: x.At, ID: x.ID, Prop: x.Prop}
-	case *syntax.Call:
-		args := make([]syntax.Value, len(x.Args))
-		for i, a := range x.Args {
-			args[i] = copyValue(a)
-		}
-		return &syntax.Call{At: x.At, Callee: &syntax.Ref{At: x.Callee.At, ID: x.Callee.ID, Prop: x.Callee.Prop}, Args: args}
 	case *syntax.Map:
 		out := &syntax.Map{At: x.At, Entries: make([]syntax.MapEntry, len(x.Entries))}
 		for i, entry := range x.Entries {
@@ -713,12 +682,16 @@ func copyValue(v syntax.Value) syntax.Value {
 		return &syntax.Unary{At: x.At, Op: x.Op, X: copyValue(x.X)}
 	case *syntax.Ternary:
 		return &syntax.Ternary{At: x.At, Cond: copyValue(x.Cond), Then: copyValue(x.Then), Else: copyValue(x.Else)}
-	case *syntax.Template:
-		out := &syntax.Template{At: x.At, Parts: make([]syntax.Value, len(x.Parts))}
-		for i, part := range x.Parts {
-			out.Parts[i] = copyValue(part)
+	case *syntax.Call:
+		args := make([]syntax.Value, len(x.Args))
+		for i, a := range x.Args {
+			args[i] = copyValue(a)
 		}
-		return out
+		var callee *syntax.Ref
+		if x.Callee != nil {
+			callee = &syntax.Ref{At: x.Callee.At, ID: x.Callee.ID, Prop: x.Callee.Prop}
+		}
+		return &syntax.Call{At: x.At, Callee: callee, Name: x.Name, Args: args}
 	}
 	return v
 }

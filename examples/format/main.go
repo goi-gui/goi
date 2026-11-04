@@ -1,8 +1,8 @@
-// Command template shows backtick strings and bridge defaults.
+// Command format shows the formatf builtin and a bridge starting at zero.
 //
 // The design starts with the values its bridge declares; the button below writes
 // a new count from Go, and every interpolated text follows it.
-// Run with: go run -ldflags=-linkmode=internal ./examples/template
+// Run with: go run -ldflags=-linkmode=internal ./examples/format
 package main
 
 import (
@@ -22,7 +22,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	win, err := app.LoadWindow(ui.DirFS("examples/template"), "main.goi",
+	win, err := app.LoadWindow(ui.DirFS("examples/format"), "main.goi",
 		ui.WithHotReload(true), ui.WithSize(420, 320))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -30,7 +30,7 @@ func main() {
 	}
 
 	err = win.Bind(func(w *ui.Window) error {
-		// The bridge declared count: number = 3, so the design already draws.
+		// The bridge starts at zero; the design already draws.
 		ui.SetData(w, "count", count)
 		ui.MustByID[*ui.Button](w, "more").OnClick(func(ui.ClickEvent) {
 			count++

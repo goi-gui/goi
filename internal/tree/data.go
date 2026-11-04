@@ -2,13 +2,14 @@ package tree
 
 import (
 	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/ksckaan1/goi/internal/syntax"
 )
 
-// scope binds an {#each} loop variable to one item. Scopes chain, so a nested
-// block sees its own loop variable first and the outer one through parent.
+// scope binds a loop variable to one value. Scopes chain, so a nested loop sees
+// its own variables first and the outer ones through parent.
 type scope struct {
 	name  string
 	value any
@@ -16,13 +17,21 @@ type scope struct {
 	parent *scope
 }
 
-// eachBlock is one {#each}: the list it walks, the arm it repeats and the nodes
-// the last fill produced.
+// eachBlock is one range loop: the value it walks, the arm it repeats and the
+// nodes the last fill produced.
 type eachBlock struct {
-	src   string // the data variable name, without the `data.` prefix
-	varN  string // loop variable
-	arm   []syntax.Member
-	empty []syntax.Member // the {:else} arm, nil when there is none
+	// key and val are the loop variable names, "" when the design ignored them
+	// with `_` or did not write them.
+	key, val string
+	// rng is the value the loop walks, evaluated on every fill so it follows a
+	// bridge write.
+	rng syntax.Value
+	// listName is the bridge variable a loop walks, when it walks one, so
+	// OnEach can hook the rows it builds.
+	listName string
+	src      string
+	arm      []syntax.Member
+	empty    []syntax.Member
 	// parent is the element the arm members are built under.
 	parent *NodeBase
 	scope  *scope
@@ -46,13 +55,23 @@ func (t *Tree) SetData(name string, v any) {
 	t.vars[name] = v
 	// A fill can register inner blocks and drop others, so walk a snapshot.
 	for _, eb := range append([]*eachBlock(nil), t.eachs...) {
-		if eb.src == name && t.live(eb.parent) {
+		if t.live(eb.parent) && eb.walks(name) {
 			t.fillEach(eb)
 		}
 	}
 	if t.Root != nil {
 		t.Root.mark(DirtyLayout)
 	}
+}
+
+// walks reports whether the loop's range expression names the bridge variable
+// name, so setting that variable rebuilds this loop.
+func (eb *eachBlock) walks(name string) bool {
+	if eb.src == name {
+		return true
+	}
+	ref, ok := eb.rng.(*syntax.Ref)
+	return ok && (ref.ID == "bridge" || ref.ID == "data") && ref.Prop == name
 }
 
 // Data returns the current value of a data variable.
@@ -81,11 +100,12 @@ func (t *Tree) OnEach(data string, fn func(Node, any)) {
 	}
 }
 
-// buildEach registers an {#each} and fills it from the data it names.
-func (t *Tree) buildEach(blk *syntax.Block, parent *NodeBase, hooks *Hooks) error {
+// buildFor registers a range loop and fills it from the value it walks.
+func (t *Tree) buildFor(blk *syntax.Block, parent *NodeBase, hooks *Hooks) error {
 	eb := &eachBlock{
-		src:    blk.Source,
-		varN:   blk.Var,
+		key:    blk.LoopKey(),
+		val:    blk.LoopVal(),
+		rng:    blk.Range,
 		parent: parent,
 		scope:  t.scope,
 		hooks:  hooks,
@@ -93,8 +113,8 @@ func (t *Tree) buildEach(blk *syntax.Block, parent *NodeBase, hooks *Hooks) erro
 	if len(blk.Branches) > 0 {
 		eb.arm = blk.Branches[0].Members
 	}
-	if len(blk.Branches) > 1 {
-		eb.empty = blk.Branches[1].Members
+	if ref, ok := blk.Range.(*syntax.Ref); ok && (ref.ID == "bridge" || ref.ID == "data") {
+		eb.listName = ref.Prop
 	}
 	t.eachs = append(t.eachs, eb)
 	t.fillEach(eb)
@@ -117,8 +137,9 @@ func (t *Tree) setErr(err error) {
 	}
 }
 
-// fillEach replaces the block's nodes with one copy of the arm per item. An
-// empty list builds the {:else} arm instead.
+// fillEach replaces the block's nodes with one copy of the arm per iteration.
+// A loop is one node cheaper than Svelte's `{#each}`: there is no else arm, and
+// Go's rules decide what the names mean.
 func (t *Tree) fillEach(eb *eachBlock) {
 	if !t.live(eb.parent) {
 		return // its subtree is gone; prune drops the registration
@@ -128,23 +149,20 @@ func (t *Tree) fillEach(eb *eachBlock) {
 	}
 	eb.nodes = nil
 
-	items, ok := sliceItems(t.vars[eb.src])
-	if !ok || len(items) == 0 {
-		if len(eb.empty) > 0 {
-			// The else arm is built once, so its ids are registered like any
-			// other element's.
-			nodes, err := t.buildInto(eb, eb.empty, eb.scope, false)
-			if err != nil {
-				t.setErr(err)
-			}
-			eb.nodes = nodes
-		}
+	pairs, ok := t.rangePairs(eb)
+	if !ok || len(pairs) == 0 {
 		t.prune()
 		eb.parent.mark(DirtyLayout)
 		return
 	}
-	for _, item := range items {
-		sc := &scope{name: eb.varN, value: item, parent: eb.scope}
+	for _, p := range pairs {
+		sc := eb.scope
+		if eb.val != "" {
+			sc = &scope{name: eb.val, value: p.value, parent: sc}
+		}
+		if eb.key != "" {
+			sc = &scope{name: eb.key, value: p.key, parent: sc}
+		}
 		rows, err := t.buildInto(eb, eb.arm, sc, true)
 		if err != nil {
 			t.setErr(err)
@@ -152,13 +170,133 @@ func (t *Tree) fillEach(eb *eachBlock) {
 		}
 		eb.nodes = append(eb.nodes, rows...)
 		if len(rows) > 0 {
-			for _, fn := range t.eachHooks[eb.src] {
-				fn(rows[0].node, item)
+			for _, fn := range t.eachHooks[eb.listName] {
+				fn(rows[0].node, p.value)
 			}
 		}
 	}
 	t.prune()
 	eb.parent.mark(DirtyLayout)
+}
+
+// rangeValue resolves what a loop walks. A list is not a value to the expression
+// engine (nothing may read it in a property), so the bridge namespace is read
+// here directly.
+func (t *Tree) rangeValue(eb *eachBlock) (any, bool) {
+	if ref, ok := eb.rng.(*syntax.Ref); ok {
+		switch ref.ID {
+		case "bridge", "data":
+			if v, ok := t.vars[ref.Prop]; ok {
+				return v, true
+			}
+			return nil, false
+		case "props":
+			return nil, false // props are substituted before the tree is built
+		}
+		if eb.scope != nil {
+			if v, ok := scopeValueAll(eb.scope, ref.ID, ref.Prop); ok {
+				return v, true
+			}
+		}
+	}
+	c := evalCtx{tree: t, sc: eb.scope, seen: map[refKey]bool{}}
+	return c.eval(eb.rng, 0)
+}
+
+// scopeValueAll is dataValue without normalizing, so a list field of a row can
+// be ranged over.
+func scopeValueAll(sc *scope, name, field string) (any, bool) {
+	for s := sc; s != nil; s = s.parent {
+		if s.name != name {
+			continue
+		}
+		if v, ok := rawField(s.value, field); ok {
+			return v, true
+		}
+	}
+	return nil, false
+}
+
+// rawField reads one field without turning it into an expression value.
+func rawField(item any, field string) (any, bool) {
+	if item == nil {
+		return nil, false
+	}
+	if m, ok := item.(map[string]any); ok {
+		return mapField(m, field)
+	}
+	rv := reflect.ValueOf(item)
+	for rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
+		if rv.IsNil() {
+			return nil, false
+		}
+		rv = rv.Elem()
+	}
+	switch rv.Kind() {
+	case reflect.Struct:
+		rt := rv.Type()
+		for i := 0; i < rt.NumField(); i++ {
+			f := rt.Field(i)
+			if f.PkgPath != "" {
+				continue
+			}
+			if n := dataFieldName(f); n != "" && fieldMatches(n, field) {
+				return rv.Field(i).Interface(), true
+			}
+		}
+	case reflect.Map:
+		if rv.Type().Key().Kind() != reflect.String {
+			return nil, false
+		}
+		return reflectMapField(rv, field)
+	}
+	return nil, false
+}
+
+// rangePair is one iteration: the key (index or map key) and the value.
+type rangePair struct {
+	key, value any
+}
+
+// rangePairs evaluates what a loop walks and lays out its iterations, exactly as
+// Go's range does: a slice gives index and element, a map gives key and value,
+// and a number counts from zero.
+func (t *Tree) rangePairs(eb *eachBlock) ([]rangePair, bool) {
+	v, ok := t.rangeValue(eb)
+	if !ok {
+		return nil, false
+	}
+	if items, isList := sliceItems(v); isList {
+		out := make([]rangePair, len(items))
+		for i, item := range items {
+			out[i] = rangePair{key: float64(i), value: item}
+		}
+		return out, true
+	}
+	if m, isMap := mapItems(v); isMap {
+		keys := make([]string, 0, len(m))
+		for k := range m {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		out := make([]rangePair, len(keys))
+		for i, k := range keys {
+			out[i] = rangePair{key: k, value: m[k]}
+		}
+		return out, true
+	}
+	if n, isNum := v.(float64); isNum {
+		count := int(n)
+		if count < 0 {
+			count = 0
+		}
+		out := make([]rangePair, count)
+		for i := range out {
+			out[i] = rangePair{key: float64(i), value: float64(i)}
+		}
+		return out, true
+	}
+	return nil, false
 }
 
 // buildInto builds one member list under the block's parent with sc in scope and
@@ -265,6 +403,32 @@ func sliceItems(v any) ([]any, bool) {
 	return out, true
 }
 
+// mapItems turns a map value into its entries, keyed by a string.
+func mapItems(v any) (map[string]any, bool) {
+	if v == nil {
+		return nil, false
+	}
+	if m, ok := v.(map[string]any); ok {
+		return m, true
+	}
+	rv := reflect.ValueOf(v)
+	for rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
+		if rv.IsNil() {
+			return nil, false
+		}
+		rv = rv.Elem()
+	}
+	if rv.Kind() != reflect.Map || rv.Type().Key().Kind() != reflect.String {
+		return nil, false
+	}
+	out := make(map[string]any, rv.Len())
+	iter := rv.MapRange()
+	for iter.Next() {
+		out[iter.Key().String()] = iter.Value().Interface()
+	}
+	return out, true
+}
+
 // dataValue reads one field of a data item: a struct field by `json` tag or
 // name, or a map key. It returns a value an expression can use.
 func dataValue(item any, field string) (any, bool) {
@@ -272,7 +436,11 @@ func dataValue(item any, field string) (any, bool) {
 		return nil, false
 	}
 	if m, ok := item.(map[string]any); ok {
-		return normalize(m[field])
+		v, ok := mapField(m, field)
+		if !ok {
+			return nil, false
+		}
+		return normalize(v)
 	}
 	rv := reflect.ValueOf(item)
 	for rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
@@ -289,27 +457,68 @@ func dataValue(item any, field string) (any, bool) {
 			if f.PkgPath != "" {
 				continue
 			}
-			if dataFieldName(f) == field {
+			if fieldMatches(dataFieldName(f), field) {
 				return normalize(rv.Field(i).Interface())
 			}
 		}
 	case reflect.Map:
-		if rv.Type().Key().Kind() == reflect.String {
-			v := rv.MapIndex(reflect.ValueOf(field))
-			if v.IsValid() {
-				return normalize(v.Interface())
-			}
+		if rv.Type().Key().Kind() != reflect.String {
+			return nil, false
+		}
+		got, ok := reflectMapField(rv, field)
+		if !ok {
+			return nil, false
+		}
+		return normalize(got)
+	}
+	return nil, false
+}
+
+// mapField reads a map entry by name: exact first, then ignoring case, so
+// `row.Title` reads the `"title"` a Go map holds.
+func mapField(m map[string]any, field string) (any, bool) {
+	if v, ok := m[field]; ok {
+		return v, true
+	}
+	for k, v := range m {
+		if strings.EqualFold(k, field) {
+			return v, true
 		}
 	}
 	return nil, false
 }
 
-// dataFieldName is the design-side name of a struct field: its `json` tag when
-// it has one, otherwise the field name with a lower first letter.
+// reflectMapField reads a reflect map entry by name, exact then ignoring case.
+func reflectMapField(rv reflect.Value, field string) (any, bool) {
+	if v := rv.MapIndex(reflect.ValueOf(field)); v.IsValid() {
+		return v.Interface(), true
+	}
+	iter := rv.MapRange()
+	for iter.Next() {
+		if strings.EqualFold(iter.Key().String(), field) {
+			return iter.Value().Interface(), true
+		}
+	}
+	return nil, false
+}
+
+// fieldMatches compares a design name with the name a Go value carries. The two
+// differ only in the first letter's case often enough (`Title` against `title`)
+// that the comparison ignores case.
+func fieldMatches(got, want string) bool {
+	return got != "" && strings.EqualFold(got, want)
+}
+
+// dataFieldName is the design-side name of a struct field: its `goi` tag when
+// it has one, otherwise the field name with a lower first letter. A `-` tag
+// hides the field.
 func dataFieldName(f reflect.StructField) string {
-	if tag := f.Tag.Get("json"); tag != "" {
+	if tag, ok := f.Tag.Lookup("goi"); ok {
 		name := strings.Split(tag, ",")[0]
-		if name != "" && name != "-" {
+		if name == "-" {
+			return ""
+		}
+		if name != "" {
 			return name
 		}
 	}
@@ -375,6 +584,16 @@ func normalize(v any) (any, bool) {
 	return nil, false
 }
 
+// scopeVar resolves a bare loop variable name to its value.
+func scopeVar(sc *scope, name string) (any, bool) {
+	for s := sc; s != nil; s = s.parent {
+		if s.name == name {
+			return normalize(s.value)
+		}
+	}
+	return nil, false
+}
+
 // scopeValue resolves `name.field` against the loop scopes of a node.
 func scopeValue(sc *scope, name, field string) (any, bool) {
 	for s := sc; s != nil; s = s.parent {
@@ -387,7 +606,7 @@ func scopeValue(sc *scope, name, field string) (any, bool) {
 }
 
 // normalizeData turns a data variable into the type the expression engine uses.
-// A list is not a value; {#each} walks it.
+// A list is not a value; a loop walks it.
 func normalizeData(v any) (any, bool) {
 	if _, isList := sliceItems(v); isList {
 		return nil, false
@@ -417,17 +636,38 @@ func literalRuntime(v syntax.Value) (any, bool) {
 }
 
 // zeroRuntime is Go's zero value for a declared bridge type, so an unset
-// variable still reads (`Count: 0`, `Name: ""`).
-func zeroRuntime(typ string) (any, bool) {
-	switch typ {
-	case "number":
-		return float64(0), true
+// variable still reads (`Count: 0`, `Name: ""`). A slice or a map starts empty;
+// a handler has no value to fake.
+func zeroRuntime(t syntax.Type) (any, bool) {
+	switch t.Kind {
+	case syntax.TypeSlice:
+		return []any{}, true
+	case syntax.TypeMap:
+		return map[string]any{}, true
+	case syntax.TypeFunc:
+		return nil, false
+	}
+	switch t.Name {
 	case "bool":
 		return false, true
-	case "color":
-		return uint32(0), true
 	case "string":
 		return "", true
+	case "color":
+		return uint32(0), true
+	}
+	if isNumericName(t.Name) {
+		return float64(0), true
 	}
 	return nil, false
+}
+
+// isNumericName reports whether a declared type is a Go number.
+func isNumericName(name string) bool {
+	switch name {
+	case "int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
+		"float32", "float64", "byte", "rune":
+		return true
+	}
+	return false
 }

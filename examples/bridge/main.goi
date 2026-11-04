@@ -4,12 +4,12 @@
 // ui.SetHandler. A handler call's arguments are evaluated when the event fires,
 // and `event` is the event's own payload.
 bridge {
-	onClick: func(name: string)
-	onToggle: func(on: bool)
-	onVolume: func(v: number)
-	onEdit: func(text: string)
-	onSubmit: func(text: string)
-	onSelect: func(index: number)
+	onClick func(name string)
+	onToggle func(on bool)
+	onVolume func(v float64)
+	onEdit func(text string)
+	onSubmit func(text string)
+	onSelect func(index float64)
 }
 
 Window {

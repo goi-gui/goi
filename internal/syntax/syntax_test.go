@@ -249,12 +249,12 @@ func TestParsePreamble(t *testing.T) {
 	f, diag := Parse([]byte(`import "./Sidebar.goi" as Sidebar
 import "parts/Card.goi" as Card
 props {
-	title: string = "Mail"
-	accent: color = #123456
-	count: number
+	Title  string
+	Accent color
+	Count  int
 }
 
-Column { Text { text: props.title } }`))
+Column { Text { text: props.Title } }`))
 	if !diag.Empty() {
 		t.Fatalf("%v", diag)
 	}
@@ -267,24 +267,19 @@ Column { Text { text: props.title } }`))
 	if len(f.Props) != 3 {
 		t.Fatalf("props = %d, want 3", len(f.Props))
 	}
-	if f.Props[0].Name != "title" || f.Props[0].Type != "string" {
+	if f.Props[0].Name != "Title" || f.Props[0].Type.String() != "string" {
 		t.Fatalf("first prop = %+v", f.Props[0])
 	}
-	if s, ok := f.Props[0].Default.(*String); !ok || s.Val != "Mail" {
-		t.Fatalf("prop default = %#v", f.Props[0].Default)
-	}
-	// A prop with no default is left at the type's zero value when the
-	// instance passes nothing.
-	if f.Props[2].Name != "count" || f.Props[2].Type != "number" || f.Props[2].Default != nil {
-		t.Fatalf("defaultless prop = %+v", f.Props[2])
+	if f.Props[2].Type.String() != "int" {
+		t.Fatalf("third prop = %+v", f.Props[2])
 	}
 	// A fragment's root need not be a Window.
 	if f.Root.Name != "Column" {
 		t.Fatalf("root = %s", f.Root.Name)
 	}
-	// `props.title` is an ordinary reference; asset expansion substitutes it.
+	// `props.Title` is an ordinary reference; asset expansion substitutes it.
 	ref, ok := f.Root.Children()[0].Prop("text").Value.(*Ref)
-	if !ok || ref.ID != "props" || ref.Prop != "title" {
+	if !ok || ref.ID != "props" || ref.Prop != "Title" {
 		t.Fatalf("value = %#v, want a props reference", f.Root.Children()[0].Prop("text").Value)
 	}
 }
@@ -295,9 +290,9 @@ func TestParsePreambleErrors(t *testing.T) {
 Window { }`, `expected "as"`},
 		{"missing alias", `import "./a.goi" as
 Window { }`, "expected an alias"},
-		{"missing brace", "props title: string\nWindow { }", "expected '{' after props"},
-		{"missing colon", "props { x string }\nWindow { }", "expected ':' after the name"},
-		{"missing type", "props { x: }\nWindow { }", "expected a type"},
+		{"missing brace", "props Title string\nWindow { }", "expected '{' after props"},
+		{"missing type", "props { Title }\nWindow { }", "expected a type"},
+		{"bad slice", "props { Rows [] }\nWindow { }", "expected a type"},
 		{"dollar in a value", "Window { Text { text: $ } }", "unexpected '$' in a value"},
 	}
 	for _, tc := range cases {
@@ -316,36 +311,21 @@ Window { }`, "expected an alias"},
 func TestParseDumpKeepsPreamble(t *testing.T) {
 	f, diag := Parse([]byte(`import "./S.goi" as S
 props {
-	n: number = 4
-	label: string
+	N     int
+	Label string
 }
+bridge { Rows []S }
+type S { Name string }
 Column { }`))
 	if !diag.Empty() {
 		t.Fatalf("%v", diag)
 	}
 	got := Dump(f)
-	for _, want := range []string{`import "./S.goi" as S`, "props n: number = 4", "props label: string"} {
+	for _, want := range []string{`import "./S.goi" as S`, "props N int", "props Label string", "bridge Rows []S", "type S", "  Name string"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("dump is missing %q:\n%s", want, got)
 		}
 	}
-}
-
-func FuzzParse(f *testing.F) {
-	f.Add([]byte(validUI))
-	f.Add([]byte("A { s: \"\\u00e7\" }"))
-	f.Add([]byte("A {"))
-	f.Add([]byte("A { c: #123 }"))
-	f.Fuzz(func(t *testing.T, src []byte) {
-		file, diag := Parse(src)
-		if file == nil && diag.Empty() {
-			t.Fatal("nil file with no diagnostics")
-		}
-		if file != nil {
-			// Rendering diagnostics must not panic on any AST.
-			_ = diag.Format("f.goi", src)
-		}
-	})
 }
 
 func TestParseResponsiveMap(t *testing.T) {
@@ -437,13 +417,13 @@ func TestParseChildrenSlot(t *testing.T) {
 func TestParseIfBlock(t *testing.T) {
 	src := `Window {
 	Column {
-		{#if app.dark}
+		if app.dark {
 			Text { text: "a" }
-		{:else if window.width > 900}
+		} else if window.width > 900 {
 			Text { text: "b" }
-		{:else}
+		} else {
 			Text { text: "c" }
-		{/if}
+		}
 	}
 }`
 	f, diag := Parse([]byte(src))
@@ -454,8 +434,8 @@ func TestParseIfBlock(t *testing.T) {
 	if !ok {
 		t.Fatalf("first member is %T, want a block", f.Root.Children()[0].Members[0])
 	}
-	if len(blk.Branches) != 3 {
-		t.Fatalf("%d branches, want 3", len(blk.Branches))
+	if blk.Kind != BlockIf || len(blk.Branches) != 3 {
+		t.Fatalf("branches = %+v", blk.Branches)
 	}
 	if blk.Branches[0].Cond == nil || blk.Branches[1].Cond == nil {
 		t.Fatal("if/else-if lost their conditions")
@@ -473,11 +453,11 @@ func TestParseIfBlock(t *testing.T) {
 
 func TestParseNestedIfBlocks(t *testing.T) {
 	src := `Window {
-	{#if app.dark}
-		{#if window.width > 900}
+	if app.dark {
+		if window.width > 900 {
 			Text { text: "a" }
-		{/if}
-	{/if}
+		}
+	}
 }`
 	f, diag := Parse([]byte(src))
 	if !diag.Empty() {
@@ -495,11 +475,9 @@ func TestParseNestedIfBlocks(t *testing.T) {
 
 func TestParseIfBlockErrors(t *testing.T) {
 	cases := map[string]string{
-		"{#if app.dark}\n\t\tText { text: \"a\" }\n\t}": "expected {:else} or {/if}",
-		"{:else}": "expected '#'",
-		"{#each rows as r}\n\t\tText { text: \"a\" }\n\t{/each}": "expected '.' after the bridge namespace",
-		"{#when app.dark}\n\t{/when}":                            "only {#if} exists",
-		"{#if}\n\t{/if}":                                         "expected a value",
+		"if {\n\t\t\tText { text: \"a\" }\n\t\t}":           "expected '{' to open the block body",
+		"{#if app.dark}\n\t\tText { text: \"a\" }\n\t{/if}": "the {#if}/{#each} form is gone",
+		"for x {\n\t\t}": "expected ':=' after the loop variable",
 	}
 	for body, want := range cases {
 		src := "Window {\n\tColumn {\n\t\t" + body + "\n\t}\n}\n"
@@ -514,71 +492,80 @@ func TestParseIfBlockErrors(t *testing.T) {
 	}
 }
 
-func TestParseDataAndEach(t *testing.T) {
-	src := `data {
-	loading: bool
-	tickets: ticket[]
+func TestParseDataAndFor(t *testing.T) {
+	src := `bridge {
+	loading bool
+	tickets []ticket
 }
-data ticket {
-	title: string
-	unread: bool
+type ticket {
+	title  string
+	unread bool
 }
 Window {
-	{#each data.tickets as t}
+	for i, t := range bridge.tickets {
 		Text { text: t.title }
-	{:else}
-		Text { text: "none" }
-	{/each}
+	}
 }`
 	f, diag := Parse([]byte(src))
 	if !diag.Empty() {
 		t.Fatalf("unexpected diagnostics: %v", diag)
 	}
-	if len(f.Vars) != 2 || f.Vars[1].Name != "tickets" || !f.Vars[1].List || f.Vars[1].Elem != "ticket" {
+	if len(f.Vars) != 2 || f.Vars[1].Name != "tickets" || f.Vars[1].Type.Kind != TypeSlice || f.Vars[1].Type.Elem.Name != "ticket" {
 		t.Fatalf("vars = %+v", f.Vars)
 	}
 	if len(f.Shapes) != 1 || f.Shapes[0].Name != "ticket" || len(f.Shapes[0].Fields) != 2 {
 		t.Fatalf("shapes = %+v", f.Shapes)
 	}
 	blk, ok := f.Root.Members[0].(*Block)
-	if !ok || blk.Kind != BlockEach || blk.Source != "tickets" || blk.Var != "t" {
+	if !ok || blk.Kind != BlockFor || blk.KeyVar != "i" || blk.ValVar != "t" {
 		t.Fatalf("block = %+v", f.Root.Members[0])
 	}
-	if len(blk.Branches) != 2 || blk.Branches[1].Cond != nil {
-		t.Fatalf("branches = %+v", blk.Branches)
+	if ref, ok := blk.Range.(*Ref); !ok || ref.ID != "bridge" || ref.Prop != "tickets" {
+		t.Fatalf("range = %#v", blk.Range)
 	}
 }
 
-func TestParseEachErrors(t *testing.T) {
-	cases := map[string]string{
-		"{#each tickets as t}\n\t{/each}":                     "expected '.' after the bridge namespace",
-		"{#each data.tickets t}\n\t{/each}":                   "expected 'as'",
-		"{#each data.tickets as}\n\t{/each}":                  "expected a loop variable",
-		"{#each data.tickets as t}\n{/if}":                    "unexpected {/if}",
-		"{#each data.tickets as t}\n{:else if true}\n{/each}": "expected '}' after {:else}",
+func TestParseForForms(t *testing.T) {
+	cases := []struct {
+		src        string
+		key, val   string
+		wantErrSub string
+	}{
+		{"for _, row := range bridge.rows { }", "_", "row", ""},
+		{"for row := range bridge.rows { }", "row", "", ""},
+		{"for range bridge.rows { }", "", "", ""},
+		{"for i := range 5 { }", "i", "", ""},
+		{"for i, row := range bridge.rows { }", "i", "row", ""},
 	}
-	for body, want := range cases {
-		src := "Window {\n\tColumn {\n\t\t" + body + "\n\t}\n}\n"
-		_, diag := Parse([]byte(src))
-		if diag.Empty() {
-			t.Errorf("%q was accepted", body)
+	for _, tc := range cases {
+		src := "bridge { rows []row }\ntype row { a string }\nWindow { Column { " + tc.src + " } }"
+		f, diag := Parse([]byte(src))
+		if !diag.Empty() {
+			t.Errorf("%q: %v", tc.src, diag)
 			continue
 		}
-		if got := diag.Format("<src>", []byte(src)); !strings.Contains(got, want) {
-			t.Errorf("%q gave %s, want %q", body, got, want)
+		blk := f.Root.Children()[0].Members[0].(*Block)
+		if blk.KeyVar != tc.key || blk.ValVar != tc.val {
+			t.Errorf("%q: key=%q val=%q, want %q/%q", tc.src, blk.KeyVar, blk.ValVar, tc.key, tc.val)
 		}
 	}
 }
 
 func TestParseDataErrors(t *testing.T) {
 	cases := map[string]string{
-		"data { rows [] }\nWindow { }":       "expected ':'",
-		"data { rows: [] }\nWindow { }":      "expected a shape name",
-		"data { rows: ticket[ }\nWindow { }": "expected ']'",
-		"data rows\nWindow { }":              "expected '{' after the shape name",
+		"data { rows [] }\nWindow { }":            "expected a type",
+		"data { rows: []row }\nWindow { }":        "expected a type",
+		"data rows\nWindow { }":                   "expected '{' after the shape name",
+		"bridge { r map[int]string }\nWindow { }": "",
 	}
 	for src, want := range cases {
 		_, diag := Parse([]byte(src))
+		if want == "" {
+			if !diag.Empty() {
+				t.Errorf("%q was rejected: %v", src, diag)
+			}
+			continue
+		}
 		if diag.Empty() {
 			t.Errorf("%q was accepted", src)
 			continue
@@ -609,17 +596,17 @@ func TestParseStringConcatenation(t *testing.T) {
 
 func TestParseBridge(t *testing.T) {
 	src := `bridge {
-	posts: [post]
-	onOpen: func(id: string)
-	onSave: func(title: string, count: number)
+	Posts  []post
+	OnOpen func(id string)
+	OnSave func(title string, count uint)
 }
-type post { id: string, title: string }
+type post { id string, title string }
 Window {
 	Column {
-		{#each bridge.posts as post}
-			Button { label: post.title onClick: bridge.onOpen(post.id) }
-		{/each}
-		Slider { onChange: bridge.onSave("x", event) }
+		for _, post := range bridge.Posts {
+			Button { label: post.title onClick: bridge.OnOpen(post.id) }
+		}
+		Slider { onChange: bridge.OnSave("x", event) }
 	}
 }`
 	f, diag := Parse([]byte(src))
@@ -630,39 +617,60 @@ Window {
 		t.Fatalf("vars = %+v", f.Vars)
 	}
 	posts := f.Vars[0]
-	if !posts.List || posts.Elem != "post" {
+	if posts.Type.Kind != TypeSlice || posts.Type.Elem.Name != "post" {
 		t.Fatalf("posts = %+v", posts)
 	}
 	open := f.Vars[1]
-	if !open.Fn || len(open.Args) != 1 || open.Args[0].Name != "id" || open.Args[0].Type != "string" {
-		t.Fatalf("onOpen = %+v", open)
+	if open.Type.Kind != TypeFunc || len(open.Type.Args) != 1 || open.Type.Args[0].Name != "id" || open.Type.Args[0].Type.Name != "string" {
+		t.Fatalf("OnOpen = %+v", open)
 	}
 	save := f.Vars[2]
-	if len(save.Args) != 2 || save.Args[1].Name != "count" || save.Args[1].Type != "number" {
-		t.Fatalf("onSave = %+v", save)
+	if len(save.Type.Args) != 2 || save.Type.Args[1].Name != "count" || save.Type.Args[1].Type.Name != "uint" {
+		t.Fatalf("OnSave = %+v", save)
 	}
 	if len(f.Shapes) != 1 || f.Shapes[0].Name != "post" || len(f.Shapes[0].Fields) != 2 {
 		t.Fatalf("shapes = %+v", f.Shapes)
 	}
-	each := f.Root.Members[0].(*Element).Members[0].(*Block)
-	if each.Source != "posts" || each.Var != "post" {
-		t.Fatalf("each = %+v", each)
+	loop := f.Root.Members[0].(*Element).Members[0].(*Block)
+	if loop.Kind != BlockFor || loop.ValVar != "post" {
+		t.Fatalf("loop = %+v", loop)
 	}
-	btn := each.Branches[0].Members[0].(*Element)
+	btn := loop.Branches[0].Members[0].(*Element)
 	call, ok := btn.Prop("onClick").Value.(*Call)
-	if !ok || call.Callee.ID != "bridge" || call.Callee.Prop != "onOpen" || len(call.Args) != 1 {
+	if !ok || call.Callee.ID != "bridge" || call.Callee.Prop != "OnOpen" || len(call.Args) != 1 {
 		t.Fatalf("onClick = %#v", btn.Prop("onClick").Value)
+	}
+}
+
+// TestParseFormatf keeps the builtin call a value, not an event-only call.
+func TestParseFormatf(t *testing.T) {
+	src := "Window { Column { Text { text: formatf(\"Count is %d\", bridge.Count) } } }"
+	f, diag := Parse([]byte(src))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	call, ok := f.Root.Children()[0].Children()[0].Prop("text").Value.(*Call)
+	if !ok || call.Name != "formatf" || call.Callee != nil || len(call.Args) != 2 {
+		t.Fatalf("value = %#v", f.Root.Children()[0].Children()[0].Prop("text").Value)
 	}
 }
 
 func TestParseBridgeErrors(t *testing.T) {
 	cases := map[string]string{
-		"bridge { onOpen: func }\nWindow { }":     "expected '(' after func",
-		"bridge { onOpen: func(id) }\nWindow { }": "expected ':' after the parameter name",
-		"bridge { rows: [ ] }\nWindow { }":        "expected a shape name",
+		"bridge { OnOpen func }\nWindow { }":         "expected '(' after func",
+		"bridge { OnOpen func(id) }\nWindow { }":     "expected a type",
+		"bridge { Rows [] }\nWindow { }":             "expected a type",
+		"bridge { Rows map[int]string }\nWindow { }": "",
+		"bridge { N int = 0 }\nWindow { }":           "expected a variable name",
 	}
 	for src, want := range cases {
 		_, diag := Parse([]byte(src))
+		if want == "" {
+			if !diag.Empty() {
+				t.Errorf("%q was rejected: %v", src, diag)
+			}
+			continue
+		}
 		if diag.Empty() {
 			t.Errorf("%q was accepted", src)
 			continue

@@ -196,8 +196,8 @@ func (s *Server) completion(raw json.RawMessage) any {
 	switch {
 	case inMap:
 		items = append(items, breakpointItems()...)
-	case inPropsBlock(d.text, off):
-		items = append(items, propDeclItems(d.text, off, prefix)...)
+	case inDeclBlock(d.text, off):
+		items = append(items, declTypeItems(file, d.text, off)...)
 	case prop != "":
 		values, cut := valueItems(file, prop, d.text, off, prefix, insideString(d.text, off))
 		items = append(items, values...)
@@ -212,24 +212,27 @@ func (s *Server) completion(raw json.RawMessage) any {
 	trimmed := strings.TrimSpace(string(line))
 	switch {
 	case prop == "" && !inMap && strings.HasPrefix(prefix, "{"):
-		// A block tag: `{#if`, `{:else}`, `{/if}`. The prefix word includes the
-		// brace because isWordByte does not, so it is cut to the tag itself.
-		items = append(items, blockItemsFor(openBlockAt(file, off) != nil, listVars(file))...)
+		// The Svelte spelling is gone; point at the Go one.
+		items = append(items, completionResult{
+			Label: "if", Kind: kindKeyword, Detail: "control",
+			Documentation: &doc{Kind: "markdown", Value: "The `{#if}` form is gone: write `if cond { … } else { … }`."},
+		})
 	case prop == "" && !inMap && strings.HasPrefix(prefix, "$"):
 		// `$` starts a slot here: a slot is an element, a prop is a value.
 		items = append(items, slotItems(file, d.text, off)...)
 	case prop == "" && !inMap && (trimmed == "" || strings.HasSuffix(trimmed, "{")):
 		items = append(items, memberItems(file, d.text, off)...)
+		items = append(items, blockItems(file)...)
 	case prop == "" && !inMap:
 		items = append(items, elementItems(file)...)
 	}
 	return completionList{Items: dedupe(items, prefix), IsIncomplete: incomplete}
 }
 
-// inPropsBlock reports whether off sits inside a top-level `props { ... }`
-// block, tracked by braces so an element body that happens to contain the word
-// does not count.
-func inPropsBlock(src []byte, off int) bool {
+// inDeclBlock reports whether off sits inside a top-level declaration block
+// (`props`, `bridge`, `data` or `type Name`), tracked by braces so an element
+// body that happens to contain the word does not count.
+func inDeclBlock(src []byte, off int) bool {
 	depth := 0
 	for i := off - 1; i >= 0; i-- {
 		switch src[i] {
@@ -248,90 +251,115 @@ func inPropsBlock(src []byte, off int) bool {
 			for j >= 0 && isWordByte(src[j]) {
 				j--
 			}
-			return string(src[j+1:end]) == "props"
+			switch string(src[j+1 : end]) {
+			case "props", "bridge", "data":
+				return true
+			}
+			// `type Name {` — the word before the brace is the type's name.
+			k := j
+			for k >= 0 && (src[k] == ' ' || src[k] == '\t') {
+				k--
+			}
+			wordEnd := k + 1
+			for k >= 0 && isWordByte(src[k]) {
+				k--
+			}
+			return string(src[k+1:wordEnd]) == "type"
 		}
 	}
 	return false
 }
 
-// propDeclItems offers the scalar types after a prop's colon. Nothing else in a
-// `props` block is a choice: the name is the fragment's own.
-func propDeclItems(src []byte, off int, prefix string) []completionResult {
+// declTypeItems offers a type after a declaration's name. Nothing else in a
+// declaration is a choice: the name belongs to the design.
+func declTypeItems(file *syntax.File, src []byte, off int) []completionResult {
 	line := off
 	for line > 0 && src[line-1] != '\n' {
 		line--
 	}
-	colon := false
-	for i := line; i < off && i < len(src); i++ {
-		if src[i] == ':' {
-			colon = true
-		}
-	}
-	if !colon {
+	// The type follows the name, so a word on the line means the cursor is in
+	// type position.
+	if !strings.ContainsAny(string(src[line:off]), "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_") {
 		return nil
 	}
-	out := make([]completionResult, 0, len(propTypes))
+	out := make([]completionResult, 0, len(propTypes)+6)
+	for _, t := range []string{"[]", "map[string]", "func("} {
+		out = append(out, completionResult{
+			Label: t, Kind: kindKeyword, Detail: "composite type",
+			Documentation: &doc{Kind: "markdown", Value: "**" + t + "…**\n\nA slice (`[]Ticket`), a map (`map[string]int`) or a handler (`func(id string)`)."},
+		})
+	}
 	for _, t := range propTypes {
 		out = append(out, completionResult{
-			Label: t, Kind: kindKeyword, Detail: "prop type",
-			Documentation: &doc{Kind: "markdown", Value: "**" + t + "**\n\nThe fragment reads the prop as `" + t +
-				"`; an instance passes it as a property on the call. Without one the fragment gets the default, or the type's zero value."},
+			Label: t, Kind: kindKeyword, Detail: "type",
+			Documentation: &doc{Kind: "markdown", Value: "**" + t + "**\n\nA value of this type reads as a `" + typeNameOf(t) +
+				"` in the design. Every primitive Go has is accepted, plus `color`."},
 		})
+	}
+	if file != nil {
+		for _, sh := range file.Shapes {
+			out = append(out, completionResult{
+				Label: sh.Name, Kind: kindClass, Detail: "declared type",
+				Documentation: &doc{Kind: "markdown", Value: "**" + sh.Name + "**\n\nA declared row type. Use it as `[]" + sh.Name +
+					"` to hold a list and `for i, row := range` to walk one."},
+			})
+		}
 	}
 	return out
 }
 
-// propTypes are the types a prop may declare: a prop becomes a value in the
-// design, so a list or a row shape has no place here.
-var propTypes = []string{"bool", "string", "number", "color"}
-
-// blockItems offers the block tags. Only `{#if}` exists, so the list is short:
-// a fresh block at member level, and the two tags that continue one already
-// open at the cursor.
-func blockItems(inside bool) []completionResult {
-	return blockItemsFor(inside, nil)
+// typeNameOf names the value type a declaration reads as.
+func typeNameOf(t string) string {
+	switch t {
+	case "bool":
+		return "bool"
+	case "string", "byte", "rune":
+		return "string"
+	case "color":
+		return "color"
+	}
+	return "number"
 }
 
-// blockItemsFor adds the design's list variables to the {#each} snippet, so the
-// tag completes into something that already names a real list.
-func blockItemsFor(inside bool, lists []string) []completionResult {
+// propTypes are the primitive names a declaration may use: Go's primitives plus
+// `color`, which the design needs and Go spells as a uint32.
+var propTypes = []string{
+	"bool", "string", "color",
+	"int", "int8", "int16", "int32", "int64",
+	"uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
+	"float32", "float64", "byte", "rune",
+}
+
+// blockItems offers the control statements a body can contain, written the way
+// Go writes them.
+func blockItems(file *syntax.File) []completionResult {
 	list := "bridge.rows"
-	if len(lists) > 0 {
+	if lists := listVars(file); len(lists) > 0 {
 		list = lists[0]
 	}
-	out := []completionResult{{
-		Label:  "{#if}",
-		Kind:   kindKeyword,
-		Detail: "block",
-		Documentation: &doc{Kind: "markdown", Value: "**{#if cond} … {/if}**\n\n" +
-			"Shows the first arm whose condition holds. The arms are ordinary children " +
-			"of the enclosing element, so a block adds no box of its own."},
-	}}
-	out = append(out, completionResult{
-		Label:  "{#each}",
-		Kind:   kindKeyword,
-		Detail: "block",
-		Documentation: &doc{Kind: "markdown", Value: "**{#each " + list + " as row} … {/each}**\n\n" +
-			"Repeats its body once per item of a list variable. Rows are rebuilt when " +
-			"`ui.SetData` changes the list."},
-	})
-	if !inside {
-		return out
+	return []completionResult{
+		{
+			Label: "if", Kind: kindKeyword, Detail: "control",
+			InsertText: "if ",
+			Documentation: &doc{Kind: "markdown", Value: "**if cond { … } else if cond { … } else { … }**\n\n" +
+				"Shows the first arm whose condition holds. The arms are ordinary children of the " +
+				"enclosing element, so a block adds no box of its own."},
+		},
+		{
+			Label: "for", Kind: kindKeyword, Detail: "control",
+			InsertText: "for i, row := range " + list,
+			Documentation: &doc{Kind: "markdown", Value: "**for i, row := range " + list + " { … }**\n\n" +
+				"A range loop, with Go's rules: a slice gives index and element, a map gives key and " +
+				"value, and a number counts from zero. `_` ignores a name you do not need."},
+		},
+		{
+			Label: "formatf", Kind: kindFunction, Detail: "builtin",
+			InsertText: `formatf("", )`,
+			Documentation: &doc{Kind: "markdown", Value: "**formatf(\"Count is %d\", bridge.count)**\n\n" +
+				"Builds a string with Go's `fmt` verbs: `%d` counts, `%s` text, `%v` any value, " +
+				"`%0.2f` money. The format string comes first; every later argument fills one verb."},
+		},
 	}
-	return append(out,
-		completionResult{
-			Label: "{:else}", Kind: kindKeyword, Detail: "block arm",
-			Documentation: &doc{Kind: "markdown", Value: "**{:else}** — the arm shown when no earlier condition holds."},
-		},
-		completionResult{
-			Label: "{:else if}", Kind: kindKeyword, Detail: "block arm",
-			Documentation: &doc{Kind: "markdown", Value: "**{:else if cond}** — another condition, tried in order."},
-		},
-		completionResult{
-			Label: "{/if}", Kind: kindKeyword, Detail: "block end",
-			Documentation: &doc{Kind: "markdown", Value: "**{/if}** — closes the `{#if}` block."},
-		},
-	)
 }
 
 // openBlockAt returns the innermost block whose body contains off.
@@ -394,18 +422,17 @@ func namedSlotDoc(name string) string {
 		"previews on its own."
 }
 
-// listVars lists every list a design can walk: the bridge variables and the
-// list props a fragment receives, each written as the reference an {#each}
-// takes.
+// listVars lists every collection a design can range over: bridge variables and
+// props whose type is a slice, written as the reference a loop takes.
 func listVars(file *syntax.File) []string {
 	var out []string
 	for _, dv := range file.Vars {
-		if dv.List {
+		if dv.Type.Kind == syntax.TypeSlice {
 			out = append(out, "bridge."+dv.Name)
 		}
 	}
 	for _, pr := range file.Props {
-		if pr.List {
+		if pr.Type.Kind == syntax.TypeSlice {
 			out = append(out, "props."+pr.Name)
 		}
 	}
@@ -500,84 +527,82 @@ func enclosingRef(before []byte) string {
 
 // refItems completes the member of a dotted reference: a reserved namespace
 // (`app.`, `window.`), the `props` block, the `bridge` block (also spelled
-// `data`), an {#each} loop variable or an element id.
+// `data`), a loop variable or an element id.
 func refItems(file *syntax.File, src []byte, off int, ref string) []completionResult {
+	if file == nil {
+		return nil
+	}
 	switch ref {
 	case "app", "window":
 		return globalItems(ref)
 	case "props":
-		out := make([]completionResult, 0, len(file.Props))
-		for _, pr := range file.Props {
-			typ := propTypeName(pr)
-			detail := "props." + pr.Name + " · " + typ
-			docu := "**props." + pr.Name + "**\n\nType: `" + typ + "`\n\n"
-			if pr.Default != nil {
-				docu += "Default: `" + sourceSpan(src, int(pr.Default.Pos())) + "`. "
-			} else {
-				docu += "No default: an instance that leaves it out passes the type's zero value. "
-			}
-			docu += "An instance sets it as a property on the call."
-			out = append(out, completionResult{
-				Label:         pr.Name,
-				Kind:          kindProperty,
-				Detail:        detail,
-				Documentation: &doc{Kind: "markdown", Value: docu},
-			})
-		}
-		return out
+		return fieldItems(file.Props, "props", "An instance sets it as a property on the call.")
 	case "data", "bridge":
-		out := make([]completionResult, 0, len(file.Vars))
-		for _, dv := range file.Vars {
-			if dv.Fn {
-				sig := "func("
-				for i, a := range dv.Args {
-					if i > 0 {
-						sig += ", "
-					}
-					sig += a.Name + ": " + a.Type
-				}
-				out = append(out, completionResult{
-					Label:  dv.Name,
-					Kind:   kindFunction,
-					Detail: ref + "." + dv.Name + " · " + sig + ")",
-					Documentation: &doc{Kind: "markdown", Value: "**" + ref + "." + dv.Name + "**\n\nHandler, `" +
-						sig + ")`.\n\nRegister it from Go with `ui.SetHandler(w, \"" + dv.Name + "\", …)`."},
-				})
-				continue
-			}
-			typ := dv.Type
-			if dv.List {
-				typ = dv.Elem + "[]"
-			}
-			out = append(out, completionResult{
-				Label:  dv.Name,
-				Kind:   kindVariable,
-				Detail: ref + "." + dv.Name + " · " + typ,
-				Documentation: &doc{Kind: "markdown", Value: "**" + ref + "." + dv.Name + "**\n\nType: `" +
-					typ + "`\n\nSet it from Go with `ui.SetData(w, \"" + dv.Name + "\", …)`."},
-			})
-		}
-		return out
+		return fieldItems(file.Vars, ref, "Set it from Go with `ui.SetData(w, …)`. A handler is registered with `ui.SetHandler`.")
 	}
 	sh := loopShapeAt(file, src, off, ref)
 	if sh == nil {
 		return idMemberItems(file, ref)
 	}
-	out := make([]completionResult, 0, len(sh.Fields))
-	for _, f := range sh.Fields {
-		typ := f.Type
-		if f.List {
-			typ = f.Elem + "[]"
+	return fieldItems(sh.Fields, ref, "Field of `"+sh.Name+"`.")
+}
+
+// fieldItems lists declarations as completion items, with their type and the
+// one line that explains where the value comes from.
+func fieldItems(fields []syntax.Field, prefix, source string) []completionResult {
+	out := make([]completionResult, 0, len(fields))
+	for _, f := range fields {
+		typ := f.Type.String()
+		kind := kindVariable
+		if f.Type.Kind == syntax.TypeFunc {
+			kind = kindFunction
 		}
 		out = append(out, completionResult{
 			Label:  f.Name,
-			Kind:   kindProperty,
-			Detail: ref + "." + f.Name + " · " + typ,
-			Documentation: &doc{Kind: "markdown", Value: "**" + ref + "." + f.Name + "**\n\nField of `" +
-				sh.Name + "`, type `" + typ + "`."},
+			Kind:   kind,
+			Detail: prefix + "." + f.Name + " · " + typ,
+			Documentation: &doc{Kind: "markdown", Value: "**" + prefix + "." + f.Name + "**\n\n" +
+				declDoc(f, prefix) + "\n\n" + source},
 		})
 	}
 	return out
+}
+
+// declDoc is the hover text of one declaration: its Go type and what it holds.
+func declDoc(f syntax.Field, prefix string) string {
+	var b strings.Builder
+	b.WriteString("Type: `" + f.Type.String() + "`")
+	switch f.Type.Kind {
+	case syntax.TypeSlice:
+		b.WriteString("\n\nA list. Walk it with `for i, row := range " + prefix + "." + f.Name + "`; " +
+			"`_` ignores the index.")
+	case syntax.TypeMap:
+		b.WriteString("\n\nA map. Walk it with `for key, value := range " + prefix + "." + f.Name + "`.")
+	case syntax.TypeFunc:
+		b.WriteString("\n\nA handler. Call it in an event, as `onClick: " + prefix + "." + f.Name + "(…)`.")
+	case syntax.TypeScalar:
+		if f.Type.Name == "color" {
+			b.WriteString("\n\nA colour: a theme role or a `#rrggbb` literal.")
+		} else if isNumericName(f.Type.Name) {
+			b.WriteString("\n\nA number: arithmetic, comparisons and `formatf` verbs all apply.")
+		} else if f.Type.Name == "bool" {
+			b.WriteString("\n\nA bool: use it as an `if` condition, directly or in a comparison.")
+		} else {
+			b.WriteString("\n\nA string: `+` joins it with any value, and `formatf` formats it.")
+		}
+	}
+	return b.String()
+}
+
+// isNumericName reports whether a declared type is a Go number.
+func isNumericName(name string) bool {
+	switch name {
+	case "int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
+		"float32", "float64", "byte", "rune":
+		return true
+	}
+	return false
 }
 
 // idMemberItems completes `abc.width`, where `abc` is an id declared in the
@@ -604,19 +629,21 @@ func idMemberItems(file *syntax.File, ref string) []completionResult {
 	return out
 }
 
-// loopShapeAt resolves a loop variable at off: the innermost {#each} whose arm
-// contains the cursor and whose variable is named ref.
+// loopShapeAt resolves a loop variable at off: the innermost loop whose body
+// contains the cursor and whose value name is ref. A loop over a slice of a
+// declared type completes that type's fields.
 func loopShapeAt(file *syntax.File, src []byte, off int, ref string) *syntax.DataShape {
+	if file == nil || file.Root == nil {
+		return nil
+	}
 	var found *syntax.DataShape
 	var walk func(blk *syntax.Block)
 	walk = func(blk *syntax.Block) {
 		if off <= int(blk.At) || off > int(blk.Close) {
 			return
 		}
-		if blk.Kind == syntax.BlockEach {
-			if dv := file.Var(blk.Source); dv != nil && dv.List && blk.Var == ref {
-				found = file.Shape(dv.Elem)
-			}
+		if blk.Kind == syntax.BlockFor && blk.LoopVal() == ref {
+			found = rangeElemShape(file, blk)
 		}
 		for _, br := range blk.Branches {
 			for _, m := range br.Members {
@@ -637,6 +664,33 @@ func loopShapeAt(file *syntax.File, src []byte, off int, ref string) *syntax.Dat
 		}
 	})
 	return found
+}
+
+// rangeElemShape resolves the declared shape a loop's value holds.
+func rangeElemShape(file *syntax.File, blk *syntax.Block) *syntax.DataShape {
+	ref, ok := blk.Range.(*syntax.Ref)
+	if !ok {
+		return nil
+	}
+	switch ref.ID {
+	case "bridge", "data":
+		if dv := file.Var(ref.Prop); dv != nil && dv.Type.Kind == syntax.TypeSlice {
+			return shapeOf(file, dv.Type.Elem)
+		}
+	case "props":
+		if pr := file.Prop(ref.Prop); pr != nil && pr.Type.Kind == syntax.TypeSlice {
+			return shapeOf(file, pr.Type.Elem)
+		}
+	}
+	return nil
+}
+
+// shapeOf resolves a type to the declared shape it names.
+func shapeOf(file *syntax.File, t *syntax.Type) *syntax.DataShape {
+	if t == nil || t.Kind != syntax.TypeScalar {
+		return nil
+	}
+	return file.Shape(t.Name)
 }
 
 // walkElementsIn visits the blocks directly inside an element.
@@ -704,37 +758,39 @@ func valueItems(file *syntax.File, prop string, src []byte, off int, prefix stri
 			Documentation: &doc{Kind: "markdown", Value: "**" + id.name + "**\n\n`" + id.kind + "` element declared with `id: " + id.name + "`.\n\nRead its properties with `" + id.name + ".width`, `" + id.name + ".visible`, and so on."},
 		})
 	}
+	if pd := el.Prop(prop); !isIconProp(prop) && (pd == nil || pd.Type == schema.TypeString || pd.Type == schema.TypeEnum) {
+		out = append(out, completionResult{
+			Label:      "formatf",
+			InsertText: `formatf("", )`,
+			Kind:       kindFunction,
+			Detail:     "builtin",
+			Documentation: &doc{Kind: "markdown", Value: "**formatf(\"Count is %d\", bridge.Count)**\n\n" +
+				"Builds a string with Go's `fmt` verbs: `%d` counts, `%s` text, `%v` any value, `%0.2f` money."},
+		})
+	}
 	if _, ok := schema.Event(prop); ok && el.HasEvent(prop) {
-		for _, pr := range file.Props {
-			if !pr.Fn {
+		for _, f := range file.Props {
+			if f.Type.Kind != syntax.TypeFunc {
 				continue
 			}
-			sig := "func("
-			for i, a := range pr.Args {
-				if i > 0 {
-					sig += ", "
-				}
-				sig += a.Name + ": " + a.Type
-			}
 			out = append(out, completionResult{
-				Label:         "props." + pr.Name + "(…)",
-				InsertText:    "props." + pr.Name + "(",
+				Label:         "props." + f.Name + "(…)",
+				InsertText:    "props." + f.Name + "(",
 				Kind:          kindFunction,
-				Detail:        "handler call",
-				Documentation: &doc{Kind: "markdown", Value: "**props." + pr.Name + "**\n\n" + sig + ")\n\nThe instance passes the handler this fragment calls."},
+				Detail:        "handler call · " + f.Type.String(),
+				Documentation: &doc{Kind: "markdown", Value: "**props." + f.Name + "**\n\n" + f.Type.String() + "\n\nThe instance passes the handler this fragment calls."},
 			})
 		}
-		for _, dv := range file.Vars {
-			if !dv.Fn {
+		for _, f := range file.Vars {
+			if f.Type.Kind != syntax.TypeFunc {
 				continue
 			}
 			out = append(out, completionResult{
-				Label:      "bridge." + dv.Name + "(…)",
-				InsertText: "bridge." + dv.Name + "(",
-				Kind:       kindFunction,
-				Detail:     "handler call",
-				Documentation: &doc{Kind: "markdown", Value: "**bridge." + dv.Name + "**\n\nRuns the Go handler registered with `ui.SetHandler(w, \"" +
-					dv.Name + "\", …)` when this event fires."},
+				Label:         "bridge." + f.Name + "(…)",
+				InsertText:    "bridge." + f.Name + "(",
+				Kind:          kindFunction,
+				Detail:        "handler call · " + f.Type.String(),
+				Documentation: &doc{Kind: "markdown", Value: "**bridge." + f.Name + "**\n\n" + f.Type.String() + "\n\nRuns the Go handler registered with `ui.SetHandler(w, \"" + f.Name + "\", …)` when this event fires."},
 			})
 		}
 	}
@@ -891,7 +947,7 @@ func memberItems(file *syntax.File, src []byte, off int) []completionResult {
 	}
 	if el.Children {
 		out = append(out, elementItems(file)...)
-		out = append(out, blockItemsFor(openBlockAt(file, off) != nil, listVars(file))...)
+		out = append(out, blockItems(file)...)
 	}
 	return out
 }
@@ -976,21 +1032,40 @@ func (s *Server) hover(raw json.RawMessage) any {
 		return nil
 	}
 
-	// A prop declaration explains itself, so the block is readable without the
-	// docs: the name, its type and its default.
+	// A declaration explains itself: its Go type and what it holds.
 	for _, pr := range file.Props {
 		if start, end := int(pr.NameAt), int(pr.NameAt)+len(pr.Name); off >= start && off <= end {
 			return map[string]any{
-				"contents": doc{Kind: "markdown", Value: declaredPropDoc(pr, d.text)},
+				"contents": doc{Kind: "markdown", Value: "**props." + pr.Name + "**\n\n" + declDoc(pr, "props")},
 				"range":    idx.at(start, end),
 			}
 		}
-		if start, end := int(pr.At), int(pr.At)+len(pr.Type); off >= start && off <= end {
+	}
+	for _, dv := range file.Vars {
+		if start, end := int(dv.NameAt), int(dv.NameAt)+len(dv.Name); off >= start && off <= end {
 			return map[string]any{
-				"contents": doc{Kind: "markdown", Value: "**" + pr.Type + "**\n\nA prop type. The fragment reads `props." +
-					pr.Name + "` as a `" + pr.Type + "`."},
-				"range": idx.at(start, end),
+				"contents": doc{Kind: "markdown", Value: "**bridge." + dv.Name + "**\n\n" + declDoc(dv, "bridge")},
+				"range":    idx.at(start, end),
 			}
+		}
+	}
+	// A shape's field explains itself too.
+	for _, sh := range file.Shapes {
+		for _, f := range sh.Fields {
+			start, end := int(f.NameAt), int(f.NameAt)+len(f.Name)
+			if off >= start && off <= end {
+				return map[string]any{
+					"contents": doc{Kind: "markdown", Value: "**" + sh.Name + "." + f.Name + "**\n\n" + declDoc(f, "row")},
+					"range":    idx.at(start, end),
+				}
+			}
+		}
+	}
+	// A bare loop variable is a value, and its fields are the shape it holds.
+	if start, end, v := loopVarAt(file, off); v != "" {
+		return map[string]any{
+			"contents": doc{Kind: "markdown", Value: loopVarDoc(file, d.text, off, v)},
+			"range":    idx.at(start, end),
 		}
 	}
 	if start, end, el := elementNameAt(file, off); el != nil {
@@ -1025,11 +1100,18 @@ func (s *Server) hover(raw json.RawMessage) any {
 	// element it names or the property it reads.
 	if r := refAt(file, off); r != nil {
 		propStart := int(r.At) + len(r.ID) + 1
+		// A loop variable and the field it reads explain themselves.
+		if doc, ok := loopRefDoc(file, d.text, off, r); ok {
+			return map[string]any{
+				"contents": doc,
+				"range":    idx.at(int(r.At), int(r.At)+len(r.ID)+1),
+			}
+		}
 		if r.ID == "props" {
 			// Either half of props.title explains the prop.
 			if pr := file.Prop(r.Prop); pr != nil {
 				return map[string]any{
-					"contents": doc{Kind: "markdown", Value: declaredPropDoc(*pr, d.text)},
+					"contents": doc{Kind: "markdown", Value: declaredPropDoc(*pr)},
 					"range":    idx.at(propStart, propStart+len(r.Prop)),
 				}
 			}
@@ -1116,12 +1198,15 @@ func symbolOf(idx lineIndex, e *syntax.Element, src []byte) symbol {
 // symbolOfBlock shows a control block in the outline. Its arms are not nodes, so
 // they have no kind of their own; the block is named after its first condition.
 func symbolOfBlock(idx lineIndex, blk *syntax.Block, src []byte) symbol {
-	name := "{#if}"
+	name := "if"
 	switch {
-	case blk.Kind == syntax.BlockEach:
-		name = "{#each " + blk.Source + " as " + blk.Var + "}"
+	case blk.Kind == syntax.BlockFor:
+		name = "for"
+		if blk.Range != nil {
+			name = "for " + sourceSpan(src, int(blk.RangeAt))
+		}
 	case len(blk.Branches) > 0 && blk.Branches[0].Cond != nil:
-		name = "{#if " + sourceSpan(src, int(blk.Branches[0].Cond.Pos())) + "}"
+		name = "if " + sourceSpan(src, int(blk.Branches[0].Cond.Pos()))
 	}
 	sym := symbol{
 		Name:           name,
@@ -1658,10 +1743,6 @@ func refAt(file *syntax.File, off int) *syntax.Ref {
 			val(x.Cond)
 			val(x.Then)
 			val(x.Else)
-		case *syntax.Template:
-			for _, part := range x.Parts {
-				val(part)
-			}
 		}
 	}
 	var members func([]syntax.Member)
@@ -1688,36 +1769,123 @@ func refAt(file *syntax.File, off int) *syntax.Ref {
 	return found
 }
 
-// propTypeName writes a prop's type the way the declaration reads.
-func propTypeName(pr syntax.Prop) string {
-	switch {
-	case pr.List:
-		return "[" + pr.Elem + "]"
-	case pr.Fn:
-		sig := "func("
-		for i, a := range pr.Args {
-			if i > 0 {
-				sig += ", "
-			}
-			sig += a.Name + ": " + a.Type
-		}
-		return sig + ")"
+// propTypeName writes a declaration's type the way the file reads.
+func propTypeName(f syntax.Field) string { return f.Type.String() }
+
+// loopRefDoc explains `row` or `row.title` when row is a loop variable.
+func loopRefDoc(file *syntax.File, src []byte, off int, r *syntax.Ref) (doc, bool) {
+	sh := loopShapeAt(file, src, off, r.ID)
+	if sh == nil {
+		return doc{}, false
 	}
-	return pr.Type
+	for _, f := range sh.Fields {
+		if fieldMatchesName(f.Name, r.Prop) {
+			return doc{Kind: "markdown", Value: "**" + r.ID + "." + r.Prop + "**\n\n" + declDoc(f, "row")}, true
+		}
+	}
+	return doc{Kind: "markdown", Value: "**" + r.ID + "** — loop variable\n\nHolds one `" + sh.Name + "`: " + fieldList(sh)}, true
 }
 
-// declaredPropDoc explains one `props` declaration.
-func declaredPropDoc(pr syntax.Prop, src []byte) string {
-	value := "**props." + pr.Name + "**\n\nType: `" + propTypeName(pr) + "`\n\n"
-	if pr.Default != nil {
-		value += "Default: `" + sourceSpan(src, int(pr.Default.Pos())) + "`. An instance sets it as a property on the call."
-	} else {
-		value += "No default: an instance that leaves it out passes the type's zero value."
+// fieldMatchesName compares a declared field name with the one a reference
+// reads, ignoring the first letter's case.
+func fieldMatchesName(got, want string) bool {
+	return got != "" && strings.EqualFold(got, want)
+}
+
+// loopVarAt returns the bare loop variable under off, if there is one.
+func loopVarAt(file *syntax.File, off int) (int, int, string) {
+	var out struct {
+		start, end int
+		name       string
+	}
+	syntax.WalkElements(file.Root, func(e *syntax.Element) {
+		for _, m := range e.Members {
+			blk, ok := m.(*syntax.Block)
+			if !ok {
+				continue
+			}
+			walkBlocks(blk, func(b *syntax.Block) {
+				if b.Kind != syntax.BlockFor {
+					return
+				}
+				for _, v := range []struct {
+					name string
+					at   syntax.Pos
+				}{{b.LoopKey(), b.KeyAt}, {b.LoopVal(), b.ValAt}} {
+					if v.name == "" {
+						continue
+					}
+					start, end := int(v.at), int(v.at)+len(v.name)
+					if off >= start && off <= end {
+						out.start, out.end, out.name = start, end, v.name
+					}
+				}
+			})
+		}
+	})
+	return out.start, out.end, out.name
+}
+
+// walkBlocks visits a block and every block nested in its arms.
+func walkBlocks(blk *syntax.Block, fn func(*syntax.Block)) {
+	fn(blk)
+	for _, br := range blk.Branches {
+		for _, m := range br.Members {
+			switch x := m.(type) {
+			case *syntax.Block:
+				walkBlocks(x, fn)
+			case *syntax.Element:
+				for _, sm := range x.Members {
+					if nested, ok := sm.(*syntax.Block); ok {
+						walkBlocks(nested, fn)
+					}
+				}
+			}
+		}
+	}
+}
+
+// loopVarDoc explains a loop variable, and the shape it holds when the loop
+// walks a list of a declared type.
+func loopVarDoc(file *syntax.File, src []byte, off int, name string) string {
+	var blk *syntax.Block
+	syntax.WalkElements(file.Root, func(e *syntax.Element) {
+		for _, m := range e.Members {
+			if b, ok := m.(*syntax.Block); ok {
+				walkBlocks(b, func(x *syntax.Block) {
+					if x.Kind == syntax.BlockFor && off > int(x.At) && off <= int(x.Close) &&
+						(x.LoopKey() == name || x.LoopVal() == name) {
+						blk = x
+					}
+				})
+			}
+		}
+	})
+	if blk == nil {
+		return "**" + name + "**"
+	}
+	value := "**" + name + "** — loop variable\n\nFrom `for … := range " + sourceSpan(src, int(blk.RangeAt)) + "`."
+	if sh := rangeElemShape(file, blk); sh != nil {
+		value += "\n\nEach iteration holds one `" + sh.Name + "`: " + fieldList(sh)
+	} else if blk.LoopKey() == name && blk.LoopVal() == "" {
+		value += "\n\nThe index, or the key of a map."
 	}
 	return value
 }
 
-// ---------------------------------------------------------------- docs
+// fieldList writes a shape's fields as `Name type, …` for a hover line.
+func fieldList(sh *syntax.DataShape) string {
+	parts := make([]string, len(sh.Fields))
+	for i, f := range sh.Fields {
+		parts[i] = f.Name + " " + f.Type.String()
+	}
+	return strings.Join(parts, ", ")
+}
+
+// declaredPropDoc explains one `props` declaration.
+func declaredPropDoc(f syntax.Field) string {
+	return "**props." + f.Name + "**\n\n" + declDoc(f, "props")
+}
 
 func elementDoc(el *schema.Element) string {
 	var b strings.Builder

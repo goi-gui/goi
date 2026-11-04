@@ -1,7 +1,5 @@
 package syntax
 
-import "strings"
-
 // Parse parses src into a File. It always returns as many diagnostics as it can
 // find; File is nil when nothing parseable was produced (no root element).
 func Parse(src []byte) (*File, Diagnostics) {
@@ -218,11 +216,11 @@ func (p *parser) parseImport() (Import, bool) {
 }
 
 // parseProps reads a fragment's input block, the typed values an instance
-// passes and the fragment reads as `props.name`:
+// passes and the fragment reads as `props.Name`:
 //
 //	props {
-//		id: string
-//		title: string = "untitled"
+//		Title string
+//		Rows  []ticket
 //	}
 func (p *parser) parseProps(f *File) {
 	p.next() // props
@@ -232,6 +230,12 @@ func (p *parser) parseProps(f *File) {
 		return
 	}
 	p.next()
+	p.parseFields(&f.Props, "prop")
+}
+
+// parseFields reads declarations until the block's '}', appending each to out.
+// A declaration is `Name Type`, the way Go writes it.
+func (p *parser) parseFields(out *[]Field, what string) {
 	for {
 		t := p.peek()
 		switch t.kind {
@@ -244,13 +248,16 @@ func (p *parser) parseProps(f *File) {
 		case tokComma, tokSemicolon:
 			p.next()
 		case tokIdent:
-			pr, ok := p.parseProp()
+			f, ok := p.parseField()
 			if !ok {
 				return
 			}
-			f.Props = append(f.Props, pr)
+			*out = append(*out, f)
+		case tokAssign:
+			p.errorf(t, "a declaration has no default; pass the value from the instance or Go")
+			p.next()
 		default:
-			p.errorf(t, "expected a prop declaration")
+			p.errorf(t, "expected a "+what+" name")
 			if !p.recoverMember() {
 				p.next()
 			}
@@ -258,140 +265,131 @@ func (p *parser) parseProps(f *File) {
 	}
 }
 
-// parseProp reads one entry of a fragment's `props` block. It shares the type
-// grammar with a bridge declaration, so a prop may be a scalar, a list of a
-// shape, or a handler; a scalar may carry a default.
-func (p *parser) parseProp() (Prop, bool) {
-	fl, ok := p.parseDataField()
-	if !ok {
-		return Prop{}, false
+// parseProp reads one entry of a fragment's `props` block.
+func (p *parser) parseProp() (Prop, bool) { return p.parseField() }
+
+// parseField reads `Name Type`.
+func (p *parser) parseField() (Field, bool) {
+	name := p.peek()
+	if name.kind != tokIdent {
+		p.errorf(name, "expected a name")
+		p.sync()
+		return Field{}, false
 	}
-	return Prop{
-		Name: fl.Name, NameAt: fl.NameAt, Type: fl.Type,
-		List: fl.List, Elem: fl.Elem, Fn: fl.Fn, Args: fl.Args,
-		Default: fl.Default, At: fl.At,
-	}, true
+	p.next()
+	f := Field{Name: name.text, NameAt: name.pos}
+	typ, ok := p.parseType()
+	if !ok {
+		p.sync()
+		return f, false
+	}
+	f.Type, f.At = typ, typ.At
+	if p.peek().kind == tokSemicolon {
+		p.next()
+	}
+	return f, true
 }
 
-// parseTemplate splits a backtick string into literal parts and the values
-// inside its `${...}` holes. Each hole is parsed as a normal expression, so
-// `\`${bridge.count + 1}\“ works like any other value.
-func (p *parser) parseTemplate(t token) (Value, bool) {
-	body := t.text
-	base := int(t.pos) + 1 // the body starts right after the opening backtick
-	tmpl := &Template{At: t.pos}
-	lit := 0
-	for i := 0; i < len(body); i++ {
-		if body[i] == '\\' {
-			i++
-			continue
+// parseType reads a Go-like type: a primitive, `[]T`, `map[K]V` or `func(...)`.
+func (p *parser) parseType() (Type, bool) {
+	t := p.peek()
+	switch {
+	case t.kind == tokLBracket:
+		open := p.next()
+		if p.peek().kind != tokRBracket {
+			p.errorf(p.peek(), "expected ']' after '[' in a slice type")
+			return Type{}, false
 		}
-		if body[i] != '$' || i+1 >= len(body) || body[i+1] != '{' {
-			continue
-		}
-		if i > lit {
-			tmpl.Parts = append(tmpl.Parts, &String{At: Pos(base + lit), Val: body[lit:i]})
-		}
-		end, ok := matchBrace(body, i+1)
+		p.next()
+		elem, ok := p.parseType()
 		if !ok {
-			p.errorf(t, "unterminated ${ in a template string")
+			return Type{}, false
+		}
+		return Type{Kind: TypeSlice, Elem: &elem, At: open.pos}, true
+	case t.kind == tokIdent && t.text == "map":
+		at := p.next().pos
+		if p.peek().kind != tokLBracket {
+			p.errorf(p.peek(), "expected '[' after map")
+			return Type{}, false
+		}
+		p.next()
+		key := p.peek()
+		if key.kind != tokIdent {
+			p.errorf(key, "expected a map key type")
+			return Type{}, false
+		}
+		p.next()
+		if p.peek().kind != tokRBracket {
+			p.errorf(p.peek(), "expected ']' after the map key type")
+			return Type{}, false
+		}
+		p.next()
+		elem, ok := p.parseType()
+		if !ok {
+			return Type{}, false
+		}
+		return Type{Kind: TypeMap, Name: key.text, Elem: &elem, At: at}, true
+	case t.kind == tokIdent && t.text == "func":
+		at := p.next().pos
+		if p.peek().kind != tokLParen {
+			p.errorf(p.peek(), "expected '(' after func")
+			return Type{}, false
+		}
+		p.next()
+		args, ok := p.parseFuncArgs()
+		if !ok {
+			return Type{}, false
+		}
+		return Type{Kind: TypeFunc, Args: args, At: at}, true
+	case t.kind == tokIdent:
+		p.next()
+		return Type{Kind: TypeScalar, Name: t.text, At: t.pos}, true
+	}
+	p.errorf(t, "expected a type: a primitive, []T, map[K]V or func(...)")
+	return Type{}, false
+}
+
+// parseFuncArgs reads `(id string, count uint)`, a handler's parameters.
+func (p *parser) parseFuncArgs() ([]Field, bool) {
+	var out []Field
+	for {
+		if p.peek().kind == tokRParen {
+			p.next()
+			return out, true
+		}
+		name := p.peek()
+		if name.kind != tokIdent {
+			p.errorf(name, "expected a parameter name")
 			return nil, false
 		}
-		v, ok := p.subValue(body[i+2:end], base+i+2)
+		p.next()
+		typ, ok := p.parseType()
 		if !ok {
 			return nil, false
 		}
-		tmpl.Parts = append(tmpl.Parts, v)
-		i = end
-		lit = i + 1
-	}
-	if lit < len(body) {
-		tmpl.Parts = append(tmpl.Parts, &String{At: Pos(base + lit), Val: body[lit:]})
-	}
-	return tmpl, true
-}
-
-// matchBrace returns the index of the '}' that closes the '{' at open, skipping
-// quoted text so a `${a == "}"}` is not cut short.
-func matchBrace(body string, open int) (int, bool) {
-	depth := 0
-	for i := open; i < len(body); i++ {
-		switch body[i] {
-		case '\'', '"', '`':
-			q := body[i]
-			for i++; i < len(body); i++ {
-				if body[i] == '\\' {
-					i++
-					continue
-				}
-				if body[i] == q {
-					break
-				}
-			}
-		case '{':
-			depth++
-		case '}':
-			depth--
-			if depth == 0 {
-				return i, true
-			}
+		out = append(out, Field{Name: name.text, NameAt: name.pos, Type: typ, At: typ.At})
+		switch p.peek().kind {
+		case tokComma, tokSemicolon:
+			p.next()
+		case tokRParen:
+			p.next()
+			return out, true
+		default:
+			p.errorf(p.peek(), "expected ',' or ')' after a parameter")
+			return nil, false
 		}
 	}
-	return 0, false
 }
 
-// subValue parses the text of one `${...}` hole. The text is padded with spaces
-// to the hole's byte offset, so every position it produces is already an offset
-// into the real file and diagnostics land on the right column.
-func (p *parser) subValue(src string, at int) (Value, bool) {
-	lx := newLexer([]byte(strings.Repeat(" ", at) + src))
-	toks, diag := lx.run()
-	sp := &parser{toks: toks, diag: diag}
-	v, ok := sp.parseValue()
-	if ok && sp.peek().kind != tokEOF {
-		sp.errorf(sp.peek(), "unexpected text after the interpolated expression")
-		ok = false
-	}
-	p.diag = append(p.diag, sp.diag...)
-	if !ok {
-		return nil, false
-	}
-	return v, true
-}
-
-// parseData reads either the variables block (`bridge { loading: bool }`, also
-// spelled `data { ... }`) or one row shape (`type ticket { title: string }`,
-// also spelled `data ticket { ... }`).
+// parseData reads either the variables block (`bridge { loading bool }`, also
+// spelled `data { ... }`) or one row shape (`type ticket { title string }`).
 func (p *parser) parseData(f *File) {
 	kw := p.next() // "data", "bridge" or "type"
 	name := p.peek()
 	if name.kind == tokLBrace {
-		open := p.next()
-		for {
-			t := p.peek()
-			switch t.kind {
-			case tokEOF:
-				p.errorf(t, "unexpected end of file: missing '}'")
-				return
-			case tokRBrace:
-				p.next()
-				return
-			case tokComma, tokSemicolon:
-				p.next()
-			case tokIdent:
-				v, ok := p.parseDataField()
-				if !ok {
-					return
-				}
-				f.Vars = append(f.Vars, DataVar(v))
-			default:
-				_ = open
-				p.errorf(t, "expected a variable declaration")
-				if !p.recoverMember() {
-					p.next()
-				}
-			}
-		}
+		p.next()
+		p.parseFields(&f.Vars, "variable")
+		return
 	}
 	if name.kind != tokIdent {
 		p.errorf(name, "expected '{' or a shape name after '"+kw.text+"'")
@@ -406,167 +404,13 @@ func (p *parser) parseData(f *File) {
 	}
 	sh := DataShape{Name: name.text, NameAt: name.pos}
 	sh.At = p.next().pos
-	for {
-		t := p.peek()
-		switch t.kind {
-		case tokEOF:
-			p.errorf(t, "unexpected end of file: missing '}'")
-			return
-		case tokRBrace:
-			sh.Close = p.next().pos
-			f.Shapes = append(f.Shapes, sh)
-			return
-		case tokComma, tokSemicolon:
-			p.next()
-		case tokIdent:
-			fl, ok := p.parseDataField()
-			if !ok {
-				return
-			}
-			sh.Fields = append(sh.Fields, DataField(fl))
-		default:
-			p.errorf(t, "expected a field name")
-			if !p.recoverMember() {
-				p.next()
-			}
-		}
+	var fields []Field
+	p.parseFields(&fields, "field")
+	sh.Fields = fields
+	if p.i > 0 && p.i-1 < len(p.toks) && p.toks[p.i-1].kind == tokRBrace {
+		sh.Close = p.toks[p.i-1].pos
 	}
-}
-
-// dataField is one `name: type` declaration, shared by variables and shapes.
-type dataField struct {
-	Name    string
-	NameAt  Pos
-	List    bool
-	Type    string
-	Elem    string
-	Fn      bool
-	Args    []DataField
-	Default Value
-	At      Pos
-}
-
-func (p *parser) parseDataField() (dataField, bool) {
-	name := p.next()
-	f := dataField{Name: name.text, NameAt: name.pos}
-	if p.peek().kind != tokColon {
-		p.errorf(p.peek(), "expected ':' after the name")
-		p.sync()
-		return f, false
-	}
-	p.next()
-	t := p.peek()
-	switch t.kind {
-	case tokLBracket:
-		// [shape] is the list form; shape[] below is the original spelling.
-		p.next()
-		elem := p.peek()
-		if elem.kind != tokIdent {
-			p.errorf(elem, "expected a shape name inside '['")
-			p.sync()
-			return f, false
-		}
-		p.next()
-		if p.peek().kind != tokRBracket {
-			p.errorf(p.peek(), "expected ']' after the shape name")
-			p.sync()
-			return f, false
-		}
-		p.next()
-		f.List, f.Elem, f.Type, f.At = true, elem.text, "list", elem.pos
-	case tokIdent:
-		p.next()
-		if t.text == "func" {
-			if p.peek().kind != tokLParen {
-				p.errorf(p.peek(), "expected '(' after func")
-				p.sync()
-				return f, false
-			}
-			p.next()
-			args, ok := p.parseFuncArgs()
-			if !ok {
-				p.sync()
-				return f, false
-			}
-			f.Fn, f.Type, f.At, f.Args = true, "func", t.pos, args
-			break
-		}
-		f.Type, f.At = t.text, t.pos
-		if p.peek().kind == tokLBracket {
-			p.next()
-			if p.peek().kind != tokRBracket {
-				p.errorf(p.peek(), "expected ']' after '['")
-				p.sync()
-				return f, false
-			}
-			p.next()
-			f.List, f.Elem, f.Type = true, t.text, "list"
-		}
-	default:
-		p.errorf(t, "expected a type: bool, string, number, color, [shape], shape[] or func(...)")
-		p.sync()
-		return f, false
-	}
-	// `count: number = 0` is the value the design starts with; Go may still
-	// overwrite it with SetData.
-	if p.peek().kind == tokAssign {
-		p.next()
-		if f.List || f.Fn {
-			p.errorf(p.peek(), "only a scalar variable takes a default value")
-			p.sync()
-			return f, false
-		}
-		v, ok := p.parseValue()
-		if !ok {
-			p.sync()
-			return f, false
-		}
-		f.Default = v
-	}
-	if p.peek().kind == tokSemicolon {
-		p.next()
-	}
-	return f, true
-}
-
-// parseFuncArgs reads `(id: string, count: number)`, the parameters of a bridge
-// handler.
-func (p *parser) parseFuncArgs() ([]DataField, bool) {
-	var out []DataField
-	for {
-		if p.peek().kind == tokRParen {
-			p.next()
-			return out, true
-		}
-		name := p.peek()
-		if name.kind != tokIdent {
-			p.errorf(name, "expected a handler parameter name")
-			return nil, false
-		}
-		p.next()
-		if p.peek().kind != tokColon {
-			p.errorf(p.peek(), "expected ':' after the parameter name")
-			return nil, false
-		}
-		p.next()
-		typ := p.peek()
-		if typ.kind != tokIdent {
-			p.errorf(typ, "expected a parameter type: bool, string, number or color")
-			return nil, false
-		}
-		p.next()
-		out = append(out, DataField{Name: name.text, NameAt: name.pos, Type: typ.text, At: typ.pos})
-		switch p.peek().kind {
-		case tokComma, tokSemicolon:
-			p.next()
-		case tokRParen:
-			p.next()
-			return out, true
-		default:
-			p.errorf(p.peek(), "expected ',' or ')' after a handler parameter")
-			return nil, false
-		}
-	}
+	f.Shapes = append(f.Shapes, sh)
 }
 
 func (p *parser) parseElement() *Element {
@@ -588,7 +432,7 @@ func (p *parser) parseElement() *Element {
 	}
 	el.Open = p.next().pos
 
-	ml := p.parseMembers(false, nil)
+	ml := p.parseMembers()
 	el.Members = ml.members
 	el.Close = ml.close
 	return el
@@ -597,17 +441,14 @@ func (p *parser) parseElement() *Element {
 // memberList is one parsed run of members plus how it ended.
 type memberList struct {
 	members []Member
-	// end describes the `{:else}`/`{/if}` that stopped a block body.
-	end blockEnd
-	// close is the position of the '}' that closed an element body.
+	// close is the position of the '}' that closed the body.
 	close Pos
-	// closed is true when the element's '}' was consumed.
+	// closed is true when the '}' was consumed.
 	closed bool
 }
 
-// parseMembers reads members until the element's '}' (inBlock false) or until a
-// block terminator `{:else ...}` / `{/if}` (inBlock true).
-func (p *parser) parseMembers(inBlock bool, open *Block) memberList {
+// parseMembers reads members until the body's '}'.
+func (p *parser) parseMembers() memberList {
 	var out memberList
 	for {
 		t := p.peek()
@@ -617,30 +458,33 @@ func (p *parser) parseMembers(inBlock bool, open *Block) memberList {
 			out.close = t.pos
 			return out
 		case tokRBrace:
-			if inBlock {
-				p.errorf(t, "expected {:else} or {/if} before '}'")
-			}
 			out.close = p.next().pos
 			out.closed = true
 			return out
 		case tokSemicolon, tokComma:
 			p.next() // stray separators are harmless
 		case tokLBrace:
-			// Inside a block body, `{:` and `{/` end the arm instead of
-			// starting something.
-			if inBlock && (p.peek2().kind == tokColon || p.peek2().kind == tokSlash) {
-				out.end = p.parseBlockEnd(open)
-				return out
-			}
-			if blk := p.parseBlock(); blk != nil {
+			if blk := p.parseOldBlock(); blk != nil {
 				out.members = append(out.members, blk)
 			}
 		case tokIdent:
-			// `Ident :` is a property, `Ident {` is a child element.
 			if p.peek2().kind == tokColon {
+				// `Ident :` is a property, `Ident {` is a child element.
 				prop, ok := p.parseProperty()
 				if ok {
 					out.members = append(out.members, prop)
+				}
+				continue
+			}
+			switch t.text {
+			case "if":
+				if blk := p.parseIfBlock(); blk != nil {
+					out.members = append(out.members, blk)
+				}
+				continue
+			case "for":
+				if blk := p.parseForBlock(); blk != nil {
+					out.members = append(out.members, blk)
 				}
 				continue
 			}
@@ -653,7 +497,7 @@ func (p *parser) parseMembers(inBlock bool, open *Block) memberList {
 				out.members = append(out.members, slot)
 			}
 		default:
-			p.errorf(t, "expected a property or child element")
+			p.errorf(t, "expected a property, a child element, if or for")
 			if !p.recoverMember() {
 				p.next()
 			}
@@ -661,213 +505,160 @@ func (p *parser) parseMembers(inBlock bool, open *Block) memberList {
 	}
 }
 
-// blockEndKind is how a block arm ended.
-type blockEndKind int
-
-const (
-	blockEndClose blockEndKind = iota + 1
-	blockEndElse
-	blockEndElseIf
-)
-
-// blockEnd is a parsed `{:else}`, `{:else if cond}` or `{/if}`.
-type blockEnd struct {
-	kind blockEndKind
-	cond Value
-	at   Pos
+// parseBlockBody reads one block body: `{ members }`. It returns the members and
+// the position of the closing brace.
+func (p *parser) parseBlockBody() ([]Member, Pos, bool) {
+	open := p.peek()
+	if open.kind != tokLBrace {
+		p.errorf(open, "expected '{' to open the block body")
+		return nil, open.pos, false
+	}
+	p.next()
+	ml := p.parseMembers()
+	return ml.members, ml.close, ml.closed
 }
 
-// parseBlockEnd reads the `{:else ...}` or `{/if}` that closes an arm.
-func (p *parser) parseBlockEnd(openBlk *Block) blockEnd {
-	open := p.next() // '{'
-	sep := p.next()  // ':' or '/'
-	name := p.peek()
-	if name.kind != tokIdent {
-		p.errorf(name, "expected a block name after '{:' or '{/'")
+// parseIfBlock reads Go's if/else if/else:
+//
+//	if user.Adult {
+//		Text { text: user.Name }
+//	} else {
+//		Text { text: "minor" }
+//	}
+func (p *parser) parseIfBlock() *Block {
+	kw := p.next() // if
+	blk := &Block{Kind: BlockIf, At: kw.pos}
+	cond, ok := p.parseValue()
+	if !ok {
 		p.sync()
-		return blockEnd{}
+		return nil
 	}
-	p.next()
+	blk.Branches = append(blk.Branches, Branch{Cond: cond, At: p.peek().pos})
+	members, close, ok := p.parseBlockBody()
+	if !ok {
+		return nil
+	}
+	blk.Branches[0].Members = members
+	blk.Close = close
 
-	want := "if"
-	if openBlk != nil && openBlk.Kind == BlockEach {
-		want = "each"
-	}
-	if sep.kind == tokSlash {
-		if name.text != want {
-			p.errorf(name, "unexpected {/"+name.text+"}: no {#"+name.text+"} is open")
-		}
-		if p.peek().kind == tokRBrace {
+	for p.peek().kind == tokIdent && p.peek().text == "else" {
+		at := p.next().pos
+		if p.peek().kind == tokIdent && p.peek().text == "if" {
 			p.next()
-		} else {
-			p.errorf(p.peek(), "expected '}' after {/"+name.text+"}")
+			cond, ok := p.parseValue()
+			if !ok {
+				p.sync()
+				return nil
+			}
+			arm := Branch{Cond: cond, At: at}
+			members, close, ok := p.parseBlockBody()
+			if !ok {
+				return nil
+			}
+			arm.Members = members
+			blk.Branches = append(blk.Branches, arm)
+			blk.Close = close
+			continue
 		}
-		return blockEnd{kind: blockEndClose, at: open.pos}
-	}
-
-	end := blockEnd{kind: blockEndElse, at: open.pos}
-	if name.text != "else" {
-		p.errorf(name, "expected 'else', got "+name.text)
-		p.sync()
-		return end
-	}
-	if want == "each" {
-		// An each block has one empty arm; `{:else if}` would be a condition,
-		// which a list does not have.
-		if p.peek().kind != tokRBrace {
-			p.errorf(p.peek(), "expected '}' after {:else}")
-		} else {
-			p.next()
-		}
-		return end
-	}
-	if p.peek().kind == tokIdent && p.peek().text == "if" {
-		p.next()
-		cond, ok := p.parseValue()
+		arm := Branch{At: at}
+		members, close, ok := p.parseBlockBody()
 		if !ok {
-			p.sync()
-			return end
-		}
-		end.kind = blockEndElseIf
-		end.cond = cond
-	}
-	if p.peek().kind != tokRBrace {
-		p.errorf(p.peek(), "expected '}' after {:else}")
-	} else {
-		p.next()
-	}
-	return end
-}
-
-// parseBlock reads `{#if cond} ... {/if}` with its else arms. Nested blocks are
-// ordinary members, so they recurse through parseMembers.
-func (p *parser) parseBlock() *Block {
-	open := p.next() // '{'
-	hash := p.peek()
-	if hash.kind != tokHash {
-		p.errorf(hash, "expected '#' after '{': a block is {#if ...}")
-		p.sync()
-		return nil
-	}
-	p.next()
-	name := p.peek()
-	if name.kind != tokIdent {
-		p.errorf(name, "expected a block name after '{#'")
-		p.sync()
-		return nil
-	}
-	p.next()
-	blk := &Block{At: open.pos}
-	switch name.text {
-	case "if":
-		blk.Kind = BlockIf
-	case "each":
-		blk.Kind = BlockEach
-		src := p.peek()
-		if src.kind != tokIdent {
-			p.errorf(src, "expected a list variable after {#each}")
-			p.sync()
 			return nil
 		}
-		p.next()
-		// The source is namespaced like any other app value: {#each bridge.rows as row}.
-		if p.peek().kind != tokDot {
-			p.errorf(p.peek(), "expected '.' after the bridge namespace: {#each bridge.rows as row}")
-			p.sync()
-			return nil
-		}
-		p.next()
-		name := p.peek()
-		if name.kind != tokIdent {
-			p.errorf(name, "expected a list name after 'bridge.'")
-			p.sync()
-			return nil
-		}
-		p.next()
-		switch src.text {
-		case "data", "bridge":
-		case "props":
-			blk.SourceProps = true
-		default:
-			p.errorf(src, "a list comes from 'bridge.', 'data.' or 'props.'; "+src.text+"."+name.text+" is not a collection")
-			p.sync()
-			return nil
-		}
-		blk.Source, blk.SourceAt = name.text, name.pos
-		// `as row` names one item inside the arm.
-		kw := p.peek()
-		if kw.kind != tokIdent || kw.text != "as" {
-			p.errorf(kw, "expected 'as' after the {#each} list: {#each rows as row}")
-			p.sync()
-			return nil
-		}
-		p.next()
-		v := p.peek()
-		if v.kind != tokIdent {
-			p.errorf(v, "expected a loop variable after 'as'")
-			p.sync()
-			return nil
-		}
-		p.next()
-		blk.Var, blk.VarAt = v.text, v.pos
-	default:
-		p.errorf(name, "unknown block {#"+name.text+"}: only {#if} exists")
-		p.sync()
-		return nil
-	}
-
-	// An if block reads its condition here; an each block has none, because the
-	// list picks the rows.
-	var cond Value
-	if blk.Kind == BlockIf {
-		var ok bool
-		cond, ok = p.parseValue()
-		if !ok {
-			p.sync()
-			return nil
-		}
-	}
-	if p.peek().kind != tokRBrace {
-		p.errorf(p.peek(), "expected '}' after the block header")
-		p.sync()
-		return nil
-	}
-	p.next()
-
-	arm := Branch{Cond: cond, At: open.pos}
-	sawElse := false
-	for {
-		ml := p.parseMembers(true, blk)
-		arm.Members = ml.members
+		arm.Members = members
 		blk.Branches = append(blk.Branches, arm)
-		if ml.end.kind == blockEndClose {
-			blk.Close = ml.end.at
-			return blk
-		}
-		switch ml.end.kind {
-		case blockEndElse:
-			if sawElse {
-				p.errorf(p.peek(), "{:else} was already used")
-			}
-			sawElse = true
-			arm = Branch{At: ml.end.at}
-		case blockEndElseIf:
-			if sawElse {
-				p.errorf(p.peek(), "an {:else if} cannot follow {:else}")
-			}
-			arm = Branch{Cond: ml.end.cond, At: ml.end.at}
-		default:
-			// The file ended, or a '}' closed the arm's own element: either
-			// way the block cannot continue.
-			return blk
-		}
+		blk.Close = close
+		break
 	}
+	return blk
 }
 
-// parseSlot reads `$name`, the marker for where an instance's children go.
-// `$children` is the unnamed slot; any other name is a named one. A bare marker
-// is what a fragment body writes, and it makes the file a fragment. The same
-// name with a body is how the caller passes elements to that slot.
+// parseForBlock reads Go's range loop forms:
+//
+//	for i, row := range bridge.rows { ... }
+//	for row := range bridge.rows { ... }   // the index, as in Go
+//	for _, row := range bridge.rows { ... }
+//	for i := range 5 { ... }
+func (p *parser) parseForBlock() *Block {
+	kw := p.next() // for
+	blk := &Block{Kind: BlockFor, At: kw.pos}
+
+	switch {
+	case p.peek().kind == tokIdent && p.peek().text == "range":
+		p.next()
+	default:
+		first := p.peek()
+		if first.kind != tokIdent {
+			p.errorf(first, "expected a loop variable, or range, after for")
+			p.sync()
+			return nil
+		}
+		p.next()
+		if p.peek().kind == tokComma {
+			p.next()
+			second := p.peek()
+			if second.kind != tokIdent {
+				p.errorf(second, "expected a second loop variable after ','")
+				p.sync()
+				return nil
+			}
+			p.next()
+			blk.KeyVar, blk.KeyAt = first.text, first.pos
+			blk.ValVar, blk.ValAt = second.text, second.pos
+		} else {
+			blk.KeyVar, blk.KeyAt = first.text, first.pos
+		}
+		if p.peek().kind != tokDefine {
+			p.errorf(p.peek(), "expected ':=' after the loop variable")
+			p.sync()
+			return nil
+		}
+		p.next()
+		if p.peek().kind != tokIdent || p.peek().text != "range" {
+			p.errorf(p.peek(), "expected range after ':='; a loop here is a range loop")
+			p.sync()
+			return nil
+		}
+		p.next()
+	}
+
+	rng := p.peek()
+	blk.RangeAt = rng.pos
+	v, ok := p.parseValue()
+	if !ok {
+		p.sync()
+		return nil
+	}
+	blk.Range = v
+	members, close, ok := p.parseBlockBody()
+	if !ok {
+		return nil
+	}
+	blk.Branches = []Branch{{Members: members}}
+	blk.Close = close
+	return blk
+}
+
+// parseOldBlock reads the `{#if ...}` / `{#each ...}` spelling, which is gone,
+// and reports it with the Go form that replaces it.
+func (p *parser) parseOldBlock() *Block {
+	open := p.next() // '{'
+	if p.peek().kind != tokHash {
+		p.errorf(open, "unexpected '{': a member is a property, a child element, an if or a for")
+		p.sync()
+		return nil
+	}
+	p.next()
+	name := p.peek()
+	hint := "if cond { ... } else { ... }"
+	if name.kind == tokIdent && name.text == "each" {
+		hint = "for i, row := range list { ... }"
+	}
+	p.errorf(open, "the {#if}/{#each} form is gone; write "+hint)
+	p.sync()
+	return nil
+}
+
 func (p *parser) parseSlot() *Element {
 	dollar := p.next()
 	name := p.peek()
@@ -882,7 +673,7 @@ func (p *parser) parseSlot() *Element {
 		return el
 	}
 	el.Open = p.next().pos
-	ml := p.parseMembers(false, nil)
+	ml := p.parseMembers()
 	el.Members = ml.members
 	el.Close = ml.close
 	return el
@@ -925,7 +716,7 @@ func (p *parser) parseProperty() (*Property, bool) {
 func (p *parser) parseValue() (Value, bool) {
 	t := p.peek()
 	switch t.kind {
-	case tokString, tokTemplate:
+	case tokString:
 		// A string is an operand too, so `"a" + "b"` concatenates as the
 		// syntax reference promises.
 		return p.parseExpr()
@@ -940,6 +731,9 @@ func (p *parser) parseValue() (Value, bool) {
 	case tokIdent:
 		// `name` is an enum or id, `name.prop` is a reference.
 		if p.peek2().kind == tokDot {
+			return p.parseExpr()
+		}
+		if p.peek2().kind == tokLParen {
 			return p.parseExpr()
 		}
 		p.next()
@@ -1162,9 +956,6 @@ func (p *parser) parseTerm() (Value, bool) {
 	case tokString:
 		p.next()
 		return &String{At: t.pos, Val: t.text}, true
-	case tokTemplate:
-		p.next()
-		return p.parseTemplate(t)
 	case tokBool:
 		p.next()
 		return &Bool{At: t.pos, Val: t.b}, true
@@ -1191,6 +982,10 @@ func (p *parser) parseTerm() (Value, bool) {
 		return v, true
 	case tokIdent:
 		id := p.next()
+		if p.peek().kind == tokLParen {
+			// A bare call is a builtin: formatf, today the only one.
+			return p.parseBuiltin(id.text, id.pos)
+		}
 		if p.peek().kind != tokDot {
 			return &Ident{At: id.pos, Val: id.text}, true
 		}
@@ -1210,6 +1005,31 @@ func (p *parser) parseTerm() (Value, bool) {
 		p.errorf(t, "expected a value or reference")
 		return nil, false
 	}
+}
+
+// parseBuiltin reads `formatf("%d items", count)`, a call on a bare function
+// name. Today formatf is the only builtin.
+func (p *parser) parseBuiltin(name string, at Pos) (Value, bool) {
+	p.next() // '('
+	call := &Call{At: at, Name: name}
+	for p.peek().kind != tokRParen {
+		v, ok := p.parseValue()
+		if !ok {
+			p.sync()
+			return nil, false
+		}
+		call.Args = append(call.Args, v)
+		switch p.peek().kind {
+		case tokComma, tokSemicolon:
+			p.next()
+		case tokRParen:
+		default:
+			p.errorf(p.peek(), "expected ',' or ')' after an argument")
+			return nil, false
+		}
+	}
+	p.next() // ')'
+	return call, true
 }
 
 // parseCall reads `bridge.onOpen(post.id, "now")`, the value of an event

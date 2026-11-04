@@ -79,7 +79,7 @@ func TestImportPassesProps(t *testing.T) {
 Window {
 	Sidebar { title: "Inbox" }
 }`,
-		"Sidebar.goi": `props { title: string = "none" }
+		"Sidebar.goi": `props { title string }
 Column {
 	Text { text: props.title }
 }`,
@@ -94,21 +94,21 @@ Column {
 	}
 }
 
-func TestParamDefaultApplies(t *testing.T) {
+func TestPropIsZeroWhenNotPassed(t *testing.T) {
 	dir := design(t, map[string]string{
 		"Main.goi": `import "./Sidebar.goi" as Sidebar
 Window {
 	Sidebar { }
 }`,
-		"Sidebar.goi": `props { title: string = "default" }
+		"Sidebar.goi": `props { title string }
 Column { Text { text: props.title } }`,
 	})
 	tr, err := load(t, dir, "Main.goi")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := textOf(tr); got != "default" {
-		t.Fatalf("text = %q, want the default", got)
+	if got := textOf(tr); got != "" {
+		t.Fatalf("text = %q, want the string zero value", got)
 	}
 }
 
@@ -125,8 +125,8 @@ Window {
 	}
 }`,
 		"Part.goi": `props {
-	label: string
-	show: bool
+	label string
+	show bool
 }
 Column {
 	Text { id: t text: props.label }
@@ -182,7 +182,7 @@ func TestParamInsideResponsiveMap(t *testing.T) {
 Window {
 	Sidebar { accent: #FF0000 }
 }`,
-		"Sidebar.goi": `props { accent: color = #00FF00 }
+		"Sidebar.goi": `props { accent color}
 Column {
 	Text { text: "x" color: { base: props.accent, md: props.accent } }
 }`,
@@ -211,7 +211,7 @@ Window {
 		Part { label: "two" }
 	}
 }`,
-		"Part.goi": `props { label: string }
+		"Part.goi": `props { label string }
 Text { text: props.label }`,
 	})
 	tr, err := load(t, dir, "Main.goi")
@@ -344,7 +344,7 @@ func TestDataOnlyValuesInFragment(t *testing.T) {
 	dir := design(t, map[string]string{
 		"Main.goi": `import "./Part.goi" as Part
 Window { Part { label: "x" } }`,
-		"Part.goi": `props { label: string }
+		"Part.goi": `props { label string }
 Column { Text { text: props.label } }`,
 	})
 	// A bare word prop value must work as a string, like every other string
@@ -366,22 +366,19 @@ func TestFragmentDataMergesIntoTheEntry(t *testing.T) {
 Window {
 	List { }
 }`,
-		"List.goi": `data {
-	rows: row[]
+		"List.goi": `bridge {
+	rows []row
 }
 
-data row {
-	title: string
+type row {
+	title string
 }
 
 Column {
-	{#each data.rows as row}
+	for _, row := range bridge.rows {
 		Text { text: row.title }
-	{:else}
-		Text { text: "empty" }
-	{/each}
-}`,
-	})
+	}
+}`})
 	tr, err := load(t, dir, "Main.goi")
 	if err != nil {
 		t.Fatal(err)
@@ -509,7 +506,7 @@ Window {
 		Row { template: true supporting: "x" }
 	}
 }`,
-		"Row.goi": `props { supporting: string }
+		"Row.goi": `props { supporting string }
 ListItem {
 	label: "Row"
 	supporting: props.supporting
@@ -543,15 +540,15 @@ Window {
 		Text { id: passed text: "passed" }
 	}
 }`,
-		"Card.goi": `props { mode: string = "dense" }
+		"Card.goi": `props { mode string}
 Column {
-	{#if props.mode == "fancy"}
+	if props.mode == "fancy" {
 		Text { id: fancy text: "fancy" }
-	{:else}
+	} else {
 		Column {
 			$children
 		}
-	{/if}
+	}
 }`,
 	})
 	tr, err := load(t, dir, "Main.goi")
@@ -594,7 +591,7 @@ Window {
 		Card { id: "one" }
 	}
 }`,
-		"Card.goi": `props { id: string }
+		"Card.goi": `props { id string }
 Column {
 	Text { id: title text: props.id }
 }`,
@@ -612,23 +609,23 @@ Column {
 	}
 }
 
-// TestPropCanCarryAList makes a fragment declare `props { rows: [ticket] }` and
+// TestPropCanCarryAList makes a fragment declare `props { rows []ticket }` and
 // the instance pass a bridge list, which its {#each} then walks.
 func TestPropCanCarryAList(t *testing.T) {
 	dir := design(t, map[string]string{
 		"Main.goi": `import "./List.goi" as List
-bridge { rows: [ticket] }
-type ticket { title: string }
+bridge { rows []ticket }
+type ticket { title string }
 Window {
 	Column {
 		List { rows: bridge.rows }
 	}
 }`,
-		"List.goi": `props { rows: [ticket] }
+		"List.goi": `props { rows []ticket }
 Column {
-	{#each props.rows as row}
+	for _, row := range props.rows {
 		Text { text: row.title }
-	{/each}
+	}
 }`,
 	})
 	tr, err := load(t, dir, "Main.goi")
@@ -653,13 +650,13 @@ Column {
 func TestPropCanCarryAHandler(t *testing.T) {
 	dir := design(t, map[string]string{
 		"Main.goi": `import "./Row.goi" as Row
-bridge { onOpen: func(id: string) }
+bridge { onOpen func(id string) }
 Window {
 	Column {
 		Row { onOpen: bridge.onOpen }
 	}
 }`,
-		"Row.goi": `props { onOpen: func(id: string) }
+		"Row.goi": `props { onOpen func(id string) }
 Text { id: row text: "row" onClick: props.onOpen("7") }`,
 	})
 	tr, err := load(t, dir, "Main.goi")

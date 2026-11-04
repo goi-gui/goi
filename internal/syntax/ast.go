@@ -6,6 +6,8 @@
 // child element by looking at the token after the identifier.
 package syntax
 
+import "strings"
+
 // Pos is a byte offset into the source, converted to line/column for diagnostics.
 type Pos int
 
@@ -23,10 +25,10 @@ type File struct {
 	// Props declares the values a fragment expects from its instance. A file
 	// with props is a fragment: its root may be any element, not just Window.
 	Props []Prop
-	// Vars is the `data { ... }` block: the app's variables, which Go sets and a
-	// design reads in conditions, values and {#each} sources.
+	// Vars is the `bridge { ... }` block: the app's variables, which Go sets and
+	// a design reads in conditions, values and for loops.
 	Vars []DataVar
-	// Shapes is one `data Name { ... }` per row type an {#each} can walk.
+	// Shapes is one `type Name { ... }` per row type a for loop can walk.
 	Shapes []DataShape
 	// Fragment records a `$children` slot. A file that has one is a fragment
 	// too: it is opened on its own only to preview it, without children.
@@ -47,48 +49,98 @@ type Import struct {
 	AliasAt Pos
 }
 
-// DataVar is one variable in `bridge { loading: bool }`.
-type DataVar struct {
+// TypeKind is the shape of a declared type.
+type TypeKind int
+
+// Type kinds. A type is written the way Go writes it.
+const (
+	// TypeScalar is a primitive such as `string`, `int` or `float64`.
+	TypeScalar TypeKind = iota
+	// TypeSlice is `[]T`.
+	TypeSlice
+	// TypeMap is `map[K]V`.
+	TypeMap
+	// TypeFunc is `func(a string) bool`.
+	TypeFunc
+)
+
+// Type is a Go-like type expression: `string`, `[]User`, `map[string]int` or
+// `func(id string)`.
+type Type struct {
+	Kind TypeKind
+	// Name is the scalar's name, or the map's key type.
+	Name string
+	// Elem is the slice element type or the map value type.
+	Elem *Type
+	// Args are a func's parameters.
+	Args []Field
+	// At is the position of the type as written, for diagnostics.
+	At Pos
+}
+
+// IsScalar reports whether the type is a named primitive.
+func (t *Type) IsScalar() bool { return t != nil && t.Kind == TypeScalar }
+
+// Scalar returns the scalar name, or "" for a composite.
+func (t *Type) Scalar() string {
+	if t == nil || t.Kind != TypeScalar {
+		return ""
+	}
+	return t.Name
+}
+
+// String writes the type back the way the file spells it.
+func (t *Type) String() string {
+	if t == nil {
+		return "?"
+	}
+	switch t.Kind {
+	case TypeSlice:
+		return "[]" + t.Elem.String()
+	case TypeMap:
+		return "map[" + t.Name + "]" + t.Elem.String()
+	case TypeFunc:
+		var b strings.Builder
+		b.WriteString("func(")
+		for i, a := range t.Args {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(a.Name + " " + a.Type.String())
+		}
+		b.WriteString(")")
+		return b.String()
+	}
+	return t.Name
+}
+
+// Field is one declaration: a bridge variable, a props entry, a shape field or
+// a handler parameter. The four are aliases of this type, so one parser, one
+// validator and one completion path serve all of them.
+type Field struct {
 	Name   string
 	NameAt Pos
-	// List marks a collection: `tickets: [ticket]`. Elem is then the shape it
-	// holds; for a scalar, Type names the value type.
-	List bool
-	Type string
-	Elem string
-	// Fn marks a handler: `onOpen: func(id: string)`. Args are its parameters,
-	// in order, and Type is "func".
-	Fn   bool
-	Args []DataField
-	// Default is `count: number = 0`: the value before Go sets one. A variable
-	// without a default starts at its type's zero value.
-	Default Value
+	Type   Type
 	// At is the type's position, for diagnostics.
 	At Pos
 }
 
-// DataShape is `data ticket { title: string, unread: bool }`, the row type an
-// {#each} walks.
+// DataVar is one variable in `bridge { title string }`.
+type DataVar = Field
+
+// DataField is one field of a shape, or a handler parameter.
+type DataField = Field
+
+// Prop is one entry of a fragment's `props { title string }` block.
+type Prop = Field
+
+// DataShape is `type ticket { title string }`, the row type a for loop walks.
 type DataShape struct {
 	Name   string
 	NameAt Pos
-	Fields []DataField
+	Fields []Field
 	// At is the opening brace, Close the closing one.
 	At, Close Pos
-}
-
-// DataField is one field of a shape, or a handler parameter.
-type DataField struct {
-	Name   string
-	NameAt Pos
-	List   bool
-	Type   string
-	Elem   string
-	Fn     bool
-	Args   []DataField
-	// Default is `count: number = 0`, a value the design starts with.
-	Default Value
-	At      Pos
 }
 
 // Shape returns the named shape, or nil.
@@ -117,27 +169,6 @@ func (f *File) Var(name string) *DataVar {
 	return nil
 }
 
-// Prop is one entry of a fragment's `props { ... }` block: a typed value the
-// instance passes, with an optional default. The fragment reads it as
-// `props.name`; a prop the instance leaves out is its default, or the type's
-// zero value when it declares none.
-type Prop struct {
-	Name   string
-	NameAt Pos
-	// Type is bool, string, number or color for a scalar; "list" for
-	// `[shape]` (or the older `shape[]`), where Elem names the shape; "func"
-	// for `func(id: string)`, where Args are its parameters.
-	Type string
-	List bool
-	Elem string
-	Fn   bool
-	Args []DataField
-	// Default, when the declaration wrote `= value`.
-	Default Value
-	// At is the type's position, for diagnostics.
-	At Pos
-}
-
 // Prop returns the named prop, or nil.
 func (f *File) Prop(name string) *Prop {
 	if f == nil {
@@ -154,47 +185,65 @@ func (f *File) Prop(name string) *Prop {
 // BlockKind identifies a control block.
 type BlockKind int
 
-// Block kinds.
+// Block kinds. Both are written the way Go writes them.
 const (
-	// BlockIf is `{#if cond} ... {:else if cond} ... {:else} ... {/if}`.
+	// BlockIf is `if cond { ... } else if cond { ... } else { ... }`.
 	BlockIf BlockKind = iota
-	// BlockEach is `{#each rows as row} ... {:else} ... {/each}`. Source names
-	// a declared list variable and Var is the loop variable.
-	BlockEach
+	// BlockFor is `for i, v := range list { ... }`.
+	BlockFor
 )
 
-// Block is a control block inside an element body. Its branches are built and
+// Block is a control block inside an element body. Its arms are built and
 // toggled at runtime; a design file declares no logic of its own.
 type Block struct {
 	Kind BlockKind
-	// At is the position of the opening '{', for diagnostics.
+	// At is the position of the `if` or `for` keyword, for diagnostics.
 	At Pos
-	// Close is the position of the '{' of the closing tag.
+	// Close is the position of the '}' that ends the block.
 	Close Pos
 	// Src names the file this block came from.
 	Src string
-	// Branches holds the `{#if}`, `{:else if}` and `{:else}` arms in source
-	// order. Only the last one may have a nil Cond, which is the else arm.
+	// Branches holds the `if`, `else if` and `else` arms in source order. Only
+	// the last one may have a nil Cond, which is the else arm. A for block has
+	// exactly one arm with a nil Cond.
 	Branches []Branch
-	// Source and Var belong to BlockEach: the list variable and the loop
-	// variable that names one row inside the arm. SourceProps marks a list the
-	// fragment receives as `props.items`; expansion replaces it with the bridge
-	// list the instance passed.
-	Source      string
-	SourceAt    Pos
-	SourceProps bool
-	Var         string
-	VarAt       Pos
+	// KeyVar, ValVar and Range belong to BlockFor: `for key, val := range X`.
+	// A name is "" when the design did not write it and "_" when it is
+	// deliberately ignored.
+	KeyVar string
+	KeyAt  Pos
+	ValVar string
+	ValAt  Pos
+	// Range is the value the loop walks: a list reference, a map reference or
+	// a number. RangeAt is its position.
+	Range   Value
+	RangeAt Pos
 }
 
 // Branch is one arm of a block.
 type Branch struct {
-	// Cond is the arm's condition, or nil for `{:else}`.
+	// Cond is the arm's condition, or nil for `else`.
 	Cond Value
-	// At is the position of the '{' that opened the arm.
+	// At is the position of the arm's '{'.
 	At Pos
-	// Members are the arm's properties and elements, in source order.
+	// Members are the arm's properties, elements and blocks, in source order.
 	Members []Member
+}
+
+// LoopKey is the name the key is bound to, or "" when it is ignored.
+func (b *Block) LoopKey() string {
+	if b == nil || b.KeyVar == "_" {
+		return ""
+	}
+	return b.KeyVar
+}
+
+// LoopVal is the name the value is bound to, or "" when it is ignored.
+func (b *Block) LoopVal() string {
+	if b == nil || b.ValVar == "_" {
+		return ""
+	}
+	return b.ValVar
 }
 
 // Element is `Name { members... }`.
@@ -308,7 +357,6 @@ const (
 	BinaryKind
 	UnaryKind
 	TernaryKind
-	TemplateKind
 	CallKind
 )
 
@@ -370,17 +418,6 @@ type Percent struct {
 	Val float64
 }
 
-// Template is a backtick string with `${...}` holes:
-//
-//	`Count is ${bridge.count}`
-//
-// Parts alternates literal Strings and the expressions inside the holes, so the
-// value keeps re-reading whatever it names on every frame.
-type Template struct {
-	At    Pos
-	Parts []Value
-}
-
 // Ref is `id.property`, a read of another element's property.
 type Ref struct {
 	At   Pos
@@ -388,12 +425,16 @@ type Ref struct {
 	Prop string
 }
 
-// Call is `bridge.onOpen(post.id)`, the whole value of an event property. The
-// arguments are evaluated when the event fires, not every frame.
+// Call is a function call: `bridge.onOpen(post.id)` as the whole value of an
+// event property, or a builtin such as `formatf("%d items", count)` in a value.
+// A handler call's arguments are evaluated when the event fires.
 type Call struct {
 	At     Pos
 	Callee *Ref
-	Args   []Value
+	// Name is the bare function name for a builtin call (`formatf`), and empty
+	// when Callee names a bridge handler.
+	Name string
+	Args []Value
 }
 
 // Binary is an expression: Left Op Right. Op is one of "+", "-", "*", "/",
@@ -421,32 +462,30 @@ type Ternary struct {
 
 // Kind implementations.
 
-func (s *String) Kind() ValueKind   { return StringKind }
-func (n *Number) Kind() ValueKind   { return NumberKind }
-func (b *Bool) Kind() ValueKind     { return BoolKind }
-func (c *Color) Kind() ValueKind    { return ColorKind }
-func (i *Ident) Kind() ValueKind    { return IdentKind }
-func (m *Map) Kind() ValueKind      { return MapKind }
-func (p *Percent) Kind() ValueKind  { return PercentKind }
-func (r *Ref) Kind() ValueKind      { return RefKind }
-func (b *Binary) Kind() ValueKind   { return BinaryKind }
-func (u *Unary) Kind() ValueKind    { return UnaryKind }
-func (t *Ternary) Kind() ValueKind  { return TernaryKind }
-func (t *Template) Kind() ValueKind { return TemplateKind }
-func (c *Call) Kind() ValueKind     { return CallKind }
+func (s *String) Kind() ValueKind  { return StringKind }
+func (n *Number) Kind() ValueKind  { return NumberKind }
+func (b *Bool) Kind() ValueKind    { return BoolKind }
+func (c *Color) Kind() ValueKind   { return ColorKind }
+func (i *Ident) Kind() ValueKind   { return IdentKind }
+func (m *Map) Kind() ValueKind     { return MapKind }
+func (p *Percent) Kind() ValueKind { return PercentKind }
+func (r *Ref) Kind() ValueKind     { return RefKind }
+func (b *Binary) Kind() ValueKind  { return BinaryKind }
+func (u *Unary) Kind() ValueKind   { return UnaryKind }
+func (t *Ternary) Kind() ValueKind { return TernaryKind }
+func (c *Call) Kind() ValueKind    { return CallKind }
 
 // Pos implementations.
 
-func (s *String) Pos() Pos   { return s.At }
-func (n *Number) Pos() Pos   { return n.At }
-func (b *Bool) Pos() Pos     { return b.At }
-func (c *Color) Pos() Pos    { return c.At }
-func (i *Ident) Pos() Pos    { return i.At }
-func (m *Map) Pos() Pos      { return m.At }
-func (p *Percent) Pos() Pos  { return p.At }
-func (r *Ref) Pos() Pos      { return r.At }
-func (b *Binary) Pos() Pos   { return b.At }
-func (u *Unary) Pos() Pos    { return u.At }
-func (t *Ternary) Pos() Pos  { return t.At }
-func (t *Template) Pos() Pos { return t.At }
-func (c *Call) Pos() Pos     { return c.At }
+func (s *String) Pos() Pos  { return s.At }
+func (n *Number) Pos() Pos  { return n.At }
+func (b *Bool) Pos() Pos    { return b.At }
+func (c *Color) Pos() Pos   { return c.At }
+func (i *Ident) Pos() Pos   { return i.At }
+func (m *Map) Pos() Pos     { return m.At }
+func (p *Percent) Pos() Pos { return p.At }
+func (r *Ref) Pos() Pos     { return r.At }
+func (b *Binary) Pos() Pos  { return b.At }
+func (u *Unary) Pos() Pos   { return u.At }
+func (t *Ternary) Pos() Pos { return t.At }
+func (c *Call) Pos() Pos    { return c.At }

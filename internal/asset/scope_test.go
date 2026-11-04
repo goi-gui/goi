@@ -20,7 +20,7 @@ Window {
 		Card { id: second label: "two" }
 	}
 }`,
-		"Card.goi": `props { label: string }
+		"Card.goi": `props { label string }
 Column {
 	Text { id: title text: props.label }
 }`,

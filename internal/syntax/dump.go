@@ -17,11 +17,16 @@ func Dump(f *File) string {
 		fmt.Fprintf(&b, "import %q as %s\n", imp.Path, imp.Alias)
 	}
 	for _, pr := range f.Props {
-		if pr.Default == nil {
-			fmt.Fprintf(&b, "props %s: %s\n", pr.Name, pr.Type)
-			continue
+		fmt.Fprintf(&b, "props %s %s\n", pr.Name, pr.Type.String())
+	}
+	for _, v := range f.Vars {
+		fmt.Fprintf(&b, "bridge %s %s\n", v.Name, v.Type.String())
+	}
+	for _, sh := range f.Shapes {
+		fmt.Fprintf(&b, "type %s\n", sh.Name)
+		for _, fl := range sh.Fields {
+			fmt.Fprintf(&b, "  %s %s\n", fl.Name, fl.Type.String())
 		}
-		fmt.Fprintf(&b, "props %s: %s = %s\n", pr.Name, pr.Type, dumpValue(pr.Default))
 	}
 	dumpElement(&b, f.Root, 0)
 	return b.String()
@@ -42,41 +47,35 @@ func dumpElement(b *strings.Builder, e *Element, depth int) {
 	}
 }
 
+// dumpBlock writes a control block in the Go spelling it is written in.
 func dumpBlock(b *strings.Builder, blk *Block, depth int) {
 	indent := strings.Repeat("  ", depth)
-	if blk.Kind == BlockEach {
-		fmt.Fprintf(b, "%seach data.%s as %s\n", indent, blk.Source, blk.Var)
-		for i, br := range blk.Branches {
-			if i == 1 {
-				fmt.Fprintf(b, "%s  else\n", indent)
-			}
-			dumpMembers(b, br.Members, depth+2)
+	if blk.Kind == BlockFor {
+		names := blk.KeyVar
+		if blk.ValVar != "" {
+			names += ", " + blk.ValVar
 		}
+		fmt.Fprintf(b, "%sfor %s := range %s\n", indent, names, dumpValue(blk.Range))
+		dumpMembers(b, blk.Branches[0].Members, depth+1)
 		return
 	}
-	for _, br := range blk.Branches {
+	for i, br := range blk.Branches {
 		switch {
-		case br.Cond == nil:
-			fmt.Fprintf(b, "%selse\n", indent)
-		default:
+		case i == 0:
 			fmt.Fprintf(b, "%sif %s\n", indent, dumpValue(br.Cond))
+		case br.Cond != nil:
+			fmt.Fprintf(b, "%selse if %s\n", indent, dumpValue(br.Cond))
+		default:
+			fmt.Fprintf(b, "%selse\n", indent)
 		}
 		dumpMembers(b, br.Members, depth+1)
 	}
 }
 
+// dumpMembers writes a block arm's members one level deeper.
 func dumpMembers(b *strings.Builder, members []Member, depth int) {
-	indent := strings.Repeat("  ", depth)
-	for _, m := range members {
-		switch v := m.(type) {
-		case *Property:
-			fmt.Fprintf(b, "%s  %s = %s\n", indent, v.Name, dumpValue(v.Value))
-		case *Element:
-			dumpElement(b, v, depth)
-		case *Block:
-			dumpBlock(b, v, depth)
-		}
-	}
+	fake := &Element{Members: members}
+	dumpElement(b, fake, depth)
 }
 
 func dumpValue(v Value) string {
@@ -100,25 +99,17 @@ func dumpValue(v Value) string {
 		for i, a := range v.Args {
 			parts[i] = dumpValue(a)
 		}
-		return v.Callee.ID + "." + v.Callee.Prop + "(" + strings.Join(parts, ", ") + ")"
+		name := v.Name
+		if name == "" {
+			name = v.Callee.ID + "." + v.Callee.Prop
+		}
+		return name + "(" + strings.Join(parts, ", ") + ")"
 	case *Binary:
 		return "(" + dumpValue(v.Left) + " " + v.Op + " " + dumpValue(v.Right) + ")"
 	case *Unary:
 		return v.Op + dumpValue(v.X)
 	case *Ternary:
 		return "(" + dumpValue(v.Cond) + " ? " + dumpValue(v.Then) + " : " + dumpValue(v.Else) + ")"
-	case *Template:
-		var b strings.Builder
-		b.WriteByte('`')
-		for _, part := range v.Parts {
-			if lit, ok := part.(*String); ok {
-				b.WriteString(lit.Val)
-				continue
-			}
-			b.WriteString("${" + dumpValue(part) + "}")
-		}
-		b.WriteByte('`')
-		return b.String()
 	case *Map:
 		parts := make([]string, len(v.Entries))
 		for i, e := range v.Entries {

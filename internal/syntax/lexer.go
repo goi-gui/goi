@@ -13,7 +13,6 @@ const (
 	tokEOF tokenKind = iota
 	tokIdent
 	tokString
-	tokTemplate
 	tokNumber
 	tokColor
 	tokLBrace
@@ -32,6 +31,7 @@ const (
 	tokRParen
 	tokDollar
 	tokAssign
+	tokDefine
 	tokEqEq
 	tokBang
 	tokBangEq
@@ -84,6 +84,9 @@ func (l *lexer) run() ([]token, Diagnostics) {
 		case c == '}':
 			l.off++
 			l.emit(token{kind: tokRBrace, pos: Pos(start), end: Pos(l.off)})
+		case c == ':' && l.off+1 < len(l.src) && l.src[l.off+1] == '=':
+			l.off += 2
+			l.emit(token{kind: tokDefine, pos: Pos(start), end: Pos(l.off)})
 		case c == ':':
 			l.off++
 			l.emit(token{kind: tokColon, pos: Pos(start), end: Pos(l.off)})
@@ -189,8 +192,6 @@ func (l *lexer) run() ([]token, Diagnostics) {
 			l.emit(token{kind: tokDollar, pos: Pos(start), end: Pos(l.off)})
 		case c == '"':
 			l.lexString(start)
-		case c == '`':
-			l.lexTemplate(start)
 		case c == '#':
 			// A '# right after '{' opens a block directive ({#if ...}); a value
 			// can never follow '{', because a map starts with a key.
@@ -303,33 +304,6 @@ func (l *lexer) lexNumber(start int) {
 		return
 	}
 	l.emit(token{kind: tokNumber, pos: Pos(start), end: Pos(l.off), num: f, text: text})
-}
-
-// lexTemplate reads a backtick string, the form that interpolates:
-//
-//	`Count is ${bridge.count}`
-//
-// The text is kept raw; the parser splits the `${...}` holes into expressions.
-func (l *lexer) lexTemplate(start int) {
-	l.off++ // opening backtick
-	for {
-		if l.off >= len(l.src) {
-			l.fail(start, l.off, "unterminated template string")
-			l.emit(token{kind: tokError, pos: Pos(start), end: Pos(l.off)})
-			return
-		}
-		c := l.src[l.off]
-		if c == '`' {
-			l.off++
-			l.emit(token{kind: tokTemplate, pos: Pos(start), end: Pos(l.off), text: string(l.src[start+1 : l.off-1])})
-			return
-		}
-		if c == '\\' && l.off+1 < len(l.src) {
-			l.off += 2
-			continue
-		}
-		l.off++
-	}
 }
 
 func (l *lexer) lexString(start int) {

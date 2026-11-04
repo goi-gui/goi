@@ -5,30 +5,28 @@ import (
 	"testing"
 )
 
-const dataUI = `data {
-	count: number
-	rows: row[]
+const dataUI = `bridge {
+	count float64
+	rows []row
 }
-data row { title: string, unread: bool }
+type row { title string, unread bool }
 Window {
 	Column {
 		id: list
-		Text { id: count text: data.count }
-		{#each data.rows as r}
+		Text { id: count text: bridge.count }
+		for _, r := range bridge.rows {
 			ListItem {
 				id: rowTitle
 				label: r.title
 				selected: r.unread
 			}
-		{:else}
-			Text { id: empty text: "nothing" }
-		{/each}
+		}
 	}
 }`
 
 type dataRow struct {
-	Title  string `json:"title"`
-	Unread bool   `json:"unread"`
+	Title  string `goi:"title"`
+	Unread bool   `goi:"unread"`
 }
 
 func labels(w *Window) []string {
@@ -81,27 +79,24 @@ func TestSetDataFillsRowsAndHooksEach(t *testing.T) {
 		t.Fatalf("clicked = %v, want the rebuilt row", clicked)
 	}
 
-	// An empty list brings the else arm back.
+	// An empty list removes every row.
 	SetData(w, "rows", nil)
 	if got := len(labels(w)); got != 0 {
 		t.Fatalf("%d rows after an empty list", got)
 	}
-	if !MustByID[*Text](w, "empty").Base().Visible() {
-		t.Fatal("the else arm did not come back")
-	}
 }
 
 // TestSetDataReachesACondition covers the other half of the API: a bool variable
-// switches an {#if} without any per-element wiring.
+// switches an if without any per-element wiring.
 func TestSetDataReachesACondition(t *testing.T) {
-	_, w := reloadApp(t, `data { loading: bool }
+	_, w := reloadApp(t, `bridge { loading bool }
 Window {
 	Column {
-		{#if data.loading}
+		if bridge.loading {
 			Text { id: spinner text: "wait" }
-		{:else}
+		} else {
 			Text { id: ready text: "done" }
-		{/if}
+		}
 	}
 }`)
 	spinner := MustByID[*Text](w, "spinner")

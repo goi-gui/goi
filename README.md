@@ -51,9 +51,9 @@ Window {
 
 ```go
 // Sidebar.goi
-props { title: string }
+props { Title string }
 Column {
-    Text { text: props.title role: "titleLarge" }
+    Text { text: props.Title role: "titleLarge" }
 }
 ```
 
@@ -103,8 +103,8 @@ make scroll    # scrolling page, horizontal strip, ripple
 make typography # type scale, five weights, wrapping
 make composition # one design split across Main.goi, Sidebar.goi and StatCard.goi
 make theme     # built-in schemes plus one registered by name
-make datalist  # bridge values in an {#each}, with a row handler
-make template  # backtick strings, arithmetic and bridge defaults
+make datalist  # bridge values in a for loop, with a row handler
+make format    # formatf, arithmetic and bridge zero values
 make bridge    # every event property calling a Go handler
 make search    # a button and a text field reading another node by id
 go run ./cmd/goicheck -layout examples/*/*.goi  # syntax plus a headless layout check
@@ -115,7 +115,7 @@ go run ./cmd/goicheck -layout examples/*/*.goi  # syntax plus a headless layout 
 - `.goi` files: literals only, no scripting. Elements, properties, ids, with
   diagnostics that point at `file:line:col`.
 - Composable designs: `import "./Sidebar.goi" as Sidebar`, a typed `props`
-  block the instance fills (`props.title`, zero value when it passes nothing,
+  block the instance fills (`props.Title`, zero value when it passes nothing,
   plus lists and handlers), named slots (`$header`) and `$children`, loaded
   from an `io/fs.FS` so `embed.FS` and `os.DirFS` both work. An instance's `id`
   scopes the fragment's own ids (`first.title`), so one fragment can be used
@@ -133,9 +133,14 @@ go run ./cmd/goicheck -layout examples/*/*.goi  # syntax plus a headless layout 
 - Text: the M3 type scale (`role`), explicit `fontSize` and `weight` (300/400/
   500/700/900 Roboto; other numbers snap to the nearest), and `wrap: true` for
   real word wrapping that reserves the height of every line.
-- Template strings: `` `Count is ${bridge.count}` `` interpolates any expression,
-  and `+` adds numbers but joins anything else. A bridge variable may carry a
-  default (`count: number = 0`) and otherwise starts at its type's zero value.
+- Go-shaped declarations and control flow: `bridge { Count int }`,
+  `type Row { Title string }`, `if x { } else { }` and
+  `for i, row := range bridge.Rows { }` read exactly like Go.
+  `formatf("%d items", bridge.Count)` formats with Go's verbs, and `+` adds
+  numbers but joins anything else. Every primitive type, `[]T`, `map[string]T`
+  and `func(...)` work; a variable starts at its type's zero value. A Go struct
+  reaches a design through its `goi` tag (`goi:"fullName"`; `goi:"-"` hides a
+  field, and so does leaving it unexported).
 - Value expressions on every property type: `width: side.width / 2`,
   `width: 50%` of the parent, comparisons and `&& || !`, and a conditional
   (`trailingIcon: app.dark ? "light_mode" : "dark_mode"`). `app.theme`,
@@ -149,11 +154,11 @@ go run ./cmd/goicheck -layout examples/*/*.goi  # syntax plus a headless layout 
   roles you need; `app.dark` follows the resolved scheme's mood, not its name.
 - Images: `Image { src: "photo.png" fit: cover }` decodes PNG, JPEG or GIF once
   and packs every bitmap into one GPU atlas.
-- Bridge: `bridge { onOpen: func(id: string) }` declares the handlers a design
-  calls from any event property (`onClick: bridge.onOpen(row.id)`), with the
+- Bridge: `bridge { OnOpen func(id string) }` declares the handlers a design
+  calls from any event property (`onClick: bridge.OnOpen(row.ID)`), with the
   arguments evaluated when the event fires and `event` carrying the event's own
-  payload; `ui.SetHandler` supplies the body.
-  `examples/bridge` (`make bridge`) runs every event.
+  payload; `ui.SetHandler` supplies the body. `examples/bridge`
+  (`make bridge`) runs every event.
 - Lists from Go: a hidden template in the `.goi` file plus `ui.Instantiate` makes
   N rows without hand-building nodes; `ui.Remove` takes one away.
 - Motion: `app.Tween` and `app.Animate` ease a function or a `Prop` over time,
@@ -186,9 +191,10 @@ The Zed extension lives in [goi-gui/zed-goi](https://github.com/goi-gui/zed-goi)
 syntax highlighting, brackets, indentation and an element outline. It starts
 `goipls`, the language server in `cmd/goipls`, which adds diagnostics (including
 errors inside an imported fragment), completion for elements, properties,
-values, icon names, ids, `bridge.` handlers, event calls and the
-`app.`/`window.` globals, hover docs, a document outline and go-to-definition for
-imports and id references:
+values, icon names, ids, declaration types, `bridge.`/`props.` values, handler
+calls, `if`/`for` statements and the `formatf` builtin, hover docs for every
+declaration, a document outline and go-to-definition for imports and id
+references:
 
 ```sh
 go install github.com/ksckaan1/goi/cmd/goipls@latest

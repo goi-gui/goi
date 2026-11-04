@@ -2,9 +2,9 @@
 // shows; everything else (width, visible, ...) is an ordinary property the
 // instance can override.
 props {
-	title: string = "Mail"
-	subtitle: string
-	active: string = "inbox"
+	title string
+	subtitle string
+	active string
 }
 
 Column {

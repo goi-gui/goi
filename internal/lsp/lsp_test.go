@@ -218,7 +218,7 @@ func TestDiagnosticsClearWhenFixed(t *testing.T) {
 func TestDiagnosticsLandInTheFragment(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()
-	frag := "props { title: string }\nColumn {\n\tbogus: 1\n}\n"
+	frag := "props { title string }\nColumn {\n\tbogus: 1\n}\n"
 	fragURI := writeDesign(t, dir, "Side.goi", frag)
 	src := "import \"./Side.goi\" as Side\nWindow {\n\tid: main\n\tSide { title: \"x\" }\n}\n"
 	uri := writeDesign(t, dir, "main.goi", src)
@@ -236,7 +236,7 @@ func TestDiagnosticsLandInTheFragment(t *testing.T) {
 func TestCompletionOffersImportedFragments(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()
-	writeDesign(t, dir, "Side.goi", "props { title: string }\nColumn { }\n")
+	writeDesign(t, dir, "Side.goi", "props { title string }\nColumn { }\n")
 	src := "import \"./Side.goi\" as Side\nWindow {\n\t\n}\n"
 	uri := writeDesign(t, dir, "main.goi", src)
 	c.openDoc(uri, src)
@@ -590,7 +590,7 @@ func TestSymbolsMirrorTheElementTree(t *testing.T) {
 func TestDefinitionFollowsAnImport(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()
-	fragURI := writeDesign(t, dir, "Side.goi", "props { title: string }\nColumn { }\n")
+	fragURI := writeDesign(t, dir, "Side.goi", "props { title string }\nColumn { }\n")
 	src := "import \"./Side.goi\" as Side\nWindow {\n\tid: main\n}\n"
 	uri := writeDesign(t, dir, "main.goi", src)
 	c.openDoc(uri, src)
@@ -611,7 +611,7 @@ func TestDefinitionFollowsAnImport(t *testing.T) {
 func TestDefinitionFollowsAFragmentCall(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()
-	fragURI := writeDesign(t, dir, "Side.goi", "props { title: string }\nColumn { }\n")
+	fragURI := writeDesign(t, dir, "Side.goi", "props { title string }\nColumn { }\n")
 	src := "import \"./Side.goi\" as Side\nWindow {\n\tSide { }\n}\n"
 	uri := writeDesign(t, dir, "main.goi", src)
 	c.openDoc(uri, src)
@@ -826,11 +826,12 @@ func TestIfBlockIsKnownToTheEditor(t *testing.T) {
 	dir := t.TempDir()
 	src := `Window {
 	Column {
-		{#if app.dark}
+		if app.dark {
 			Text { text: "dark" }
-		{:else}
+		} else {
 			Text { nope: 1 text: "light" }
-		{/if}
+			
+		}
 	}
 }
 `
@@ -847,7 +848,7 @@ func TestIfBlockIsKnownToTheEditor(t *testing.T) {
 	// Completion inside an arm offers the enclosing element's properties.
 	res := c.request("textDocument/completion", map[string]any{
 		"textDocument": map[string]any{"uri": uri},
-		"position":     at(t, src, "\t\t{:else}", 2),
+		"position":     at(t, src, "\t\t\t\n\t\t}", 3),
 	})
 	var list completionList
 	if err := json.Unmarshal(res, &list); err != nil {
@@ -873,7 +874,7 @@ func TestIfBlockIsKnownToTheEditor(t *testing.T) {
 	}
 	var block *symbol
 	for i := range syms[0].Children[0].Children {
-		if strings.HasPrefix(syms[0].Children[0].Children[i].Name, "{#if") {
+		if strings.HasPrefix(syms[0].Children[0].Children[i].Name, "if ") {
 			block = &syms[0].Children[0].Children[i]
 		}
 	}
@@ -885,12 +886,12 @@ func TestIfBlockIsKnownToTheEditor(t *testing.T) {
 	}
 }
 
-// TestCompletionOffersBlockTags completes the tags themselves, including the
-// ones that only make sense inside an open block.
+// TestCompletionOffersBlockTags offers the Go control statements and the
+// formatf builtin at member level.
 func TestCompletionOffersBlockTags(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()
-	src := "Window {\n\tColumn {\n\t\t{#if app.dark}\n\t\t\t\n\t\t{/if}\n\t\t\n\t}\n}\n"
+	src := "Window {\n\tColumn {\n\t\tif app.dark {\n\t\t\t\n\t\t}\n\t\t\n\t}\n}\n"
 	uri := writeDesign(t, dir, "main.goi", src)
 	c.openDoc(uri, src)
 
@@ -910,38 +911,33 @@ func TestCompletionOffersBlockTags(t *testing.T) {
 		return out
 	}
 
-	// Inside the block body, the closing tags are offered.
-	inner := labels(at(t, src, "\t\t\t\n\t\t{/if}", 3))
-	if !inner["{/if}"] || !inner["{:else}"] {
-		t.Fatalf("block tags missing inside the block: %v", inner)
+	inner := labels(at(t, src, "\t\t\t\n\t\t}", 3))
+	if !inner["if"] || !inner["for"] || !inner["formatf"] {
+		t.Fatalf("control statements missing inside a body: %v", inner)
 	}
-	// Outside a block, only a fresh {#if} makes sense.
 	outer := labels(at(t, src, "\t\t\n\t}\n}\n", 2))
-	if !outer["{#if}"] {
-		t.Fatalf("{#if} not offered at member level: %v", outer)
-	}
-	if outer["{/if}"] {
-		t.Fatal("a closing tag was offered with no block open")
+	if !outer["if"] {
+		t.Fatalf("if not offered at member level: %v", outer)
 	}
 }
 
 // TestDataAndEachAreKnownToTheEditor covers the editor surface of the data
-// feature: `data.` completes the variables, a loop variable completes its
+// feature: `bridge.` completes the variables, a loop variable completes its
 // fields, hover explains both, and the outline names the each block.
 func TestDataAndEachAreKnownToTheEditor(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()
-	src := `data {
-	rows: ticket[]
-	loading: bool
+	src := `bridge {
+	rows []ticket
+	loading bool
 }
-data ticket { title: string, unread: bool }
+type ticket { title string, unread bool }
 Window {
 	Column {
-		{#each data.rows as r}
+		for _, r := range bridge.rows {
 			ListItem { label: r. }
-		{/each}
-		Text { text: data. }
+		}
+		Text { text: bridge. }
 	}
 }
 `
@@ -973,10 +969,10 @@ Window {
 		t.Fatal("a property was offered as a row field")
 	}
 
-	// `data.` completes the declared variables.
-	data := labels(at(t, src, "text: data. }", 11))
-	if !data["rows"] || !data["loading"] {
-		t.Fatalf("data variables missing: %v", data)
+	// `bridge.` completes the declared variables.
+	vars := labels(at(t, src, "text: bridge. }", 13))
+	if !vars["rows"] || !vars["loading"] {
+		t.Fatalf("bridge variables missing: %v", vars)
 	}
 
 	// The only problems are the two references left open with a dot; the data
@@ -989,13 +985,13 @@ Window {
 	// The outline names the block with its list and shows the arm's elements.
 	// The completion file above does not parse (open dots), and the outline is
 	// only built for a file that does, so a clean copy is used here.
-	clean := `data { rows: ticket[] }
-data ticket { title: string, unread: bool }
+	clean := `bridge { rows []ticket }
+type ticket { title string, unread bool }
 Window {
 	Column {
-		{#each data.rows as r}
+		for _, r := range bridge.rows {
 			ListItem { label: r.title selected: r.unread }
-		{/each}
+		}
 	}
 }
 `
@@ -1010,12 +1006,12 @@ Window {
 	}
 	var each *symbol
 	for i := range syms[0].Children[0].Children {
-		if strings.HasPrefix(syms[0].Children[0].Children[i].Name, "{#each") {
+		if strings.HasPrefix(syms[0].Children[0].Children[i].Name, "for") {
 			each = &syms[0].Children[0].Children[i]
 		}
 	}
 	if each == nil || !strings.Contains(each.Name, "rows") {
-		t.Fatalf("outline has no {#each data.rows}: %+v", syms[0].Children[0].Children)
+		t.Fatalf("outline has no for loop over bridge.rows: %+v", syms[0].Children[0].Children)
 	}
 	if len(each.Children) != 1 || each.Children[0].Name != "ListItem" {
 		t.Fatalf("each arm children = %+v", each.Children)
@@ -1063,7 +1059,7 @@ func TestBridgeIsKnownToTheEditor(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()
 	src := `bridge {
-	onOpen: func(id: string)
+	onOpen func(id string)
 }
 Window {
 	Column {
@@ -1211,8 +1207,8 @@ func TestPropsAreKnownToTheEditor(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()
 	src := `props {
-	title: string = "untitled"
-	count: number
+	title string
+	count float64
 }
 Column {
 	Text { text: props. }
@@ -1238,13 +1234,14 @@ Column {
 	}
 
 	member := items(at(t, src, "text: props. }", len("text: props.")))
-	if !strings.Contains(member["title"].Detail, "string") || !strings.Contains(member["count"].Detail, "number") {
+	if !strings.Contains(member["title"].Detail, "string") || !strings.Contains(member["count"].Detail, "float64") {
 		t.Fatalf("props members = %v", member)
 	}
 
-	// After a prop's colon the four scalar types are the whole vocabulary.
-	decl := items(at(t, src, "count: number", len("count: ")))
-	for _, want := range []string{"bool", "string", "number", "color"} {
+	// After a prop's name the vocabulary is Go's primitives, and the declared
+	// types are suggested too.
+	decl := items(at(t, src, "count float64", len("count ")))
+	for _, want := range []string{"bool", "string", "float64", "int", "uint64", "color"} {
 		if _, ok := decl[want]; !ok {
 			t.Fatalf("type %q missing from %v", want, decl)
 		}
@@ -1252,8 +1249,8 @@ Column {
 
 	// Hover works off the AST, so it needs a file that parses.
 	clean := `props {
-	title: string = "untitled"
-	count: number
+	title string
+	count float64
 }
 Column {
 	Text { text: props.title }
@@ -1263,7 +1260,7 @@ Column {
 	c.openDoc(cleanURI, clean)
 	res := c.request("textDocument/hover", map[string]any{
 		"textDocument": map[string]any{"uri": cleanURI},
-		"position":     at(t, clean, "title: string", 2),
+		"position":     at(t, clean, "title string", 2),
 	})
 	var h struct {
 		Contents doc `json:"contents"`
@@ -1271,28 +1268,29 @@ Column {
 	if err := json.Unmarshal(res, &h); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(h.Contents.Value, "props.title") || !strings.Contains(h.Contents.Value, "untitled") {
+	if !strings.Contains(h.Contents.Value, "props.title") || !strings.Contains(h.Contents.Value, "string") {
 		t.Fatalf("hover on the declaration = %q", h.Contents.Value)
 	}
 }
 
-// TestTemplateAndCompositePropsAreKnownToTheEditor covers the editor surface of
-// backtick values and of list/handler props: a reference inside `${...}` still
-// hovers, `props.` shows the composite types, and an event offers the fragment's
-// own handler prop.
-func TestTemplateAndCompositePropsAreKnownToTheEditor(t *testing.T) {
+// TestFormatfAndCompositePropsAreKnownToTheEditor covers the editor surface of
+// the formatf builtin and of list/handler props: a reference inside the call
+// still hovers, `props.` shows the composite types, and an event offers the
+// fragment's own handler prop.
+func TestFormatfAndCompositePropsAreKnownToTheEditor(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()
 	src := `props {
-	rows: [ticket]
-	onOpen: func(id: string)
-	count: number = 2
+	rows []ticket
+	onOpen func(id string)
+	count float64
 }
-type ticket { title: string }
+type ticket { title string }
 Column {
-	Text { text: ` + "`${props.count} items`" + ` }
+	Text { text: formatf("%v items", props.count) }
 	Button { label: "x" onClick: props. }
-	{#each props. }
+	for _, row := range props.rows { row }
+	for range props.
 }
 `
 	uri := writeDesign(t, dir, "Card.goi", src)
@@ -1315,10 +1313,10 @@ Column {
 	}
 
 	member := items(at(t, src, "onClick: props. }", len("onClick: props.")))
-	if !strings.Contains(member["rows"].Detail, "[ticket]") {
+	if !strings.Contains(member["rows"].Detail, "[]ticket") {
 		t.Fatalf("list prop detail = %q", member["rows"].Detail)
 	}
-	if !strings.Contains(member["onOpen"].Detail, "func(id: string)") {
+	if !strings.Contains(member["onOpen"].Detail, "func(id string)") {
 		t.Fatalf("handler prop detail = %q", member["onOpen"].Detail)
 	}
 	if _, ok := member["count"]; !ok {
@@ -1331,23 +1329,23 @@ Column {
 		t.Fatalf("props handler call missing: %v", call)
 	}
 
-	// Inside `{#each props.` the list names complete, so the block is walkable.
-	each := items(at(t, src, "{#each props. }", len("{#each props.")))
+	// Inside `range props.` the list names complete, so the loop is walkable.
+	each := items(at(t, src, "range props.", len("range props.")))
 	if _, ok := each["rows"]; !ok {
-		t.Fatalf("props list missing from the each completion: %v", each)
+		t.Fatalf("props list missing from the range completion: %v", each)
 	}
 
 	// A reference inside ${...} is a real reference: hovering it works.
-	clean := `props { count: number = 2 }
+	clean := `props { count float64}
 Column {
-	Text { text: ` + "`${props.count} items`" + ` }
+	Text { text: formatf("%v items", props.count) }
 }
 `
 	cleanURI := writeDesign(t, dir, "Clean.goi", clean)
 	c.openDoc(cleanURI, clean)
 	res := c.request("textDocument/hover", map[string]any{
 		"textDocument": map[string]any{"uri": cleanURI},
-		"position":     at(t, clean, "props.count} items", 1),
+		"position":     at(t, clean, "props.count)", 1),
 	})
 	var h struct {
 		Contents doc `json:"contents"`
@@ -1356,6 +1354,118 @@ Column {
 		t.Fatal(err)
 	}
 	if !strings.Contains(h.Contents.Value, "props.count") {
-		t.Fatalf("hover inside a template = %q", h.Contents.Value)
+		t.Fatalf("hover inside formatf = %q", h.Contents.Value)
+	}
+}
+
+// TestGoDeclarationsAreKnownToTheEditor covers the Go-shaped language in the
+// editor: declaration types complete, a loop variable shows what it holds, a
+// shape field explains itself, and formatf is offered in a string position.
+func TestGoDeclarationsAreKnownToTheEditor(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := `props {
+	Title string
+	Rows  []ticket
+}
+bridge {
+	Count int
+	OnAdd func(n int)
+}
+type ticket {
+	title  string
+	unread bool
+}
+Window {
+	Column {
+		for i, row := range props.Rows {
+			Text { text: row.title }
+			Text { text: i }
+		}
+		Text { text:  }
+		Text { text: formatf("%d", bridge.Count) }
+	}
+}
+`
+	uri := writeDesign(t, dir, "Card.goi", src)
+	c.openDoc(uri, src)
+
+	items := func(p position) map[string]completionResult {
+		res := c.request("textDocument/completion", map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     p,
+		})
+		var list completionList
+		if err := json.Unmarshal(res, &list); err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]completionResult{}
+		for _, it := range list.Items {
+			out[it.Label] = it
+		}
+		return out
+	}
+
+	// A declaration's type position offers Go's primitives and the declared
+	// types.
+	types := items(at(t, src, "Count int", len("Count ")))
+	for _, want := range []string{"string", "float64", "uint64", "color", "ticket", "[]", "map[string]", "func("} {
+		if _, ok := types[want]; !ok {
+			t.Fatalf("type %q missing from a declaration: %v", want, types)
+		}
+	}
+
+	// formatf is offered where a string goes.
+	values := items(at(t, src, "text:  }", len("text: ")))
+	if _, ok := values["formatf"]; !ok {
+		t.Fatalf("formatf missing from a string value: %v", values)
+	}
+
+	// Hover explains the field a loop variable reads. Hover works off the AST,
+	// so it needs a file that parses; the completion file above does not.
+	clean := `props {
+	Rows []ticket
+}
+type ticket {
+	title  string
+	unread bool
+}
+Window {
+	Column {
+		for i, row := range props.Rows {
+			Text { text: row.title }
+		}
+	}
+}
+`
+	cleanURI := writeDesign(t, dir, "Clean.goi", clean)
+	c.openDoc(cleanURI, clean)
+	res := c.request("textDocument/hover", map[string]any{
+		"textDocument": map[string]any{"uri": cleanURI},
+		"position":     at(t, clean, "row.title", 1),
+	})
+	var h struct {
+		Contents doc `json:"contents"`
+	}
+	if err := json.Unmarshal(res, &h); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.Contents.Value, "row.title") || !strings.Contains(h.Contents.Value, "string") {
+		t.Fatalf("hover on a loop field = %q", h.Contents.Value)
+	}
+
+	// Hover explains a shape field with its type.
+	res = c.request("textDocument/hover", map[string]any{
+		"textDocument": map[string]any{"uri": cleanURI},
+		"position":     at(t, clean, "unread bool", 2),
+	})
+	h = struct {
+		Contents doc `json:"contents"`
+	}{}
+	if err := json.Unmarshal(res, &h); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.Contents.Value, "ticket.unread") || !strings.Contains(h.Contents.Value, "bool") {
+		t.Fatalf("hover on a shape field = %q", h.Contents.Value)
 	}
 }

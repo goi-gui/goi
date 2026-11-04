@@ -20,9 +20,13 @@ type exprSpec struct {
 // isExpression reports whether a value needs resolving rather than a plain
 // literal write.
 func isExpression(v syntax.Value) bool {
-	switch v.(type) {
-	case *syntax.Percent, *syntax.Ref, *syntax.Binary, *syntax.Unary, *syntax.Ternary, *syntax.Template:
+	switch x := v.(type) {
+	case *syntax.Percent, *syntax.Ref, *syntax.Binary, *syntax.Unary, *syntax.Ternary:
 		return true
+	case *syntax.Call:
+		// A builtin call such as formatf is a value; a handler call is only
+		// legal as an event property and is bound there, not here.
+		return x.Name != ""
 	}
 	return false
 }
@@ -333,6 +337,11 @@ func (c *evalCtx) eval(v syntax.Value, percent float64) (any, bool) {
 	case *syntax.Color:
 		return x.RGBA, true
 	case *syntax.Ident:
+		// A bare name is a loop variable when one is in scope; otherwise it is
+		// the literal word an enum or a string property reads.
+		if v, ok := scopeVar(c.sc, x.Val); ok {
+			return v, true
+		}
 		return x.Val, true
 	case *syntax.Percent:
 		if percent <= 0 {
@@ -370,8 +379,8 @@ func (c *evalCtx) eval(v syntax.Value, percent float64) (any, bool) {
 		return c.evalBinary(x, percent)
 	case *syntax.Ref:
 		return c.evalRef(x)
-	case *syntax.Template:
-		return c.evalTemplate(x, percent)
+	case *syntax.Call:
+		return c.evalBuiltin(x, percent)
 	}
 	return nil, false
 }
@@ -432,30 +441,80 @@ func (c *evalCtx) evalBinary(x *syntax.Binary, percent float64) (any, bool) {
 	return nil, false
 }
 
-// evalTemplate joins a backtick string's literal parts with the values its
-// ${...} holes produce, formatting each one the way a string property would.
-func (c *evalCtx) evalTemplate(x *syntax.Template, percent float64) (any, bool) {
-	var b strings.Builder
-	for _, part := range x.Parts {
-		if lit, ok := part.(*syntax.String); ok {
-			b.WriteString(lit.Val)
-			continue
-		}
-		v, ok := c.eval(part, percent)
-		if !ok {
-			return nil, false
-		}
-		s, ok := formatValue(v)
-		if !ok {
-			return nil, false
-		}
-		b.WriteString(s)
+// evalBuiltin runs a builtin call. formatf is the only one, and it formats its
+// arguments the way fmt.Sprintf does.
+func (c *evalCtx) evalBuiltin(call *syntax.Call, percent float64) (any, bool) {
+	if call.Name != "formatf" {
+		return nil, false
 	}
-	return b.String(), true
+	if len(call.Args) == 0 {
+		return "", true
+	}
+	format, ok := c.eval(call.Args[0], percent)
+	if !ok {
+		return nil, false
+	}
+	pattern, ok := format.(string)
+	if !ok {
+		return nil, false
+	}
+	verbs := integerVerbs(pattern)
+	args := make([]any, 0, len(call.Args)-1)
+	for i, a := range call.Args[1:] {
+		v, ok := c.eval(a, percent)
+		if !ok {
+			return nil, false
+		}
+		// A design number is a float64; `%d` expects an integer, so the verb
+		// decides the Go type it is handed.
+		if i < len(verbs) && verbs[i] {
+			if f, ok := v.(float64); ok {
+				v = int64(f)
+			}
+		}
+		args = append(args, formatArg(v))
+	}
+	return fmt.Sprintf(pattern, args...), true
 }
 
-// formatValue renders one value as text: what a string property, a template
-// hole and a `+` concatenation all show.
+// integerVerbs reports, for each verb in a format string, whether it expects an
+// integer, so a design number can be converted before it reaches fmt.
+func integerVerbs(pattern string) []bool {
+	var out []bool
+	for i := 0; i < len(pattern); i++ {
+		if pattern[i] != '%' {
+			continue
+		}
+		i++
+		for i < len(pattern) && strings.ContainsRune("+-# 0.123456789", rune(pattern[i])) {
+			i++
+		}
+		if i >= len(pattern) {
+			break
+		}
+		switch pattern[i] {
+		case '%':
+			continue
+		case 'd', 'b', 'o', 'O', 'x', 'X', 'c', 'U':
+			out = append(out, true)
+		default:
+			out = append(out, false)
+		}
+	}
+	return out
+}
+
+// formatArg turns a design value into something fmt can print: a color becomes
+// #rrggbb, everything else keeps its own type.
+func formatArg(v any) any {
+	if c, ok := v.(uint32); ok {
+		return fmt.Sprintf("#%06x", c>>8)
+	}
+	return v
+}
+
+// formatValue renders one value as text: what a string property and a `+`
+// concatenation both show.
 func formatValue(v any) (string, bool) {
 	switch x := v.(type) {
 	case string:

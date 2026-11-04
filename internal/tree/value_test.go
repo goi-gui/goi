@@ -1,29 +1,24 @@
 package tree
 
 import (
-	"strings"
+	"fmt"
+	"sort"
 	"testing"
 )
 
-// src replaces § with a backtick, so a test can write a template string inside
-// an ordinary raw literal.
-func tpl(s string) []byte { return []byte(strings.ReplaceAll(s, "§", "`")) }
-
-// TestBridgeDefaultBeforeGoSets pins the two fallbacks of a bridge variable: the
-// declared default, and the type's zero value when it declares none.
-func TestBridgeDefaultBeforeGoSets(t *testing.T) {
-	tr, diag := BuildSource(tpl(`bridge {
-	count: number = 3
-	name: string = "guest"
-	other: number
-	flag: bool
+// TestBridgeZeroBeforeGoSets pins the fallback of a bridge variable: the type's
+// zero value, so a design reads a value before Go says anything.
+func TestBridgeZeroBeforeGoSets(t *testing.T) {
+	tr, diag := BuildSource([]byte(`bridge {
+	Count int
+	Name  string
+	Ok    bool
 }
 Window {
 	Column {
-		Text { id: a text: §${bridge.count}§ }
-		Text { id: b text: §${bridge.name}§ }
-		Text { id: c text: §${bridge.other}§ }
-		Rectangle { id: d visible: bridge.flag }
+		Text { id: a text: formatf("%d", bridge.Count) }
+		Text { id: b text: formatf("%s!", bridge.Name) }
+		Rectangle { id: d visible: bridge.Ok }
 	}
 }`), nil)
 	if !diag.Empty() {
@@ -32,7 +27,7 @@ Window {
 	tr.SetViewport(800, 600)
 	tr.ApplyExpressions()
 
-	want := map[string]string{"a": "3", "b": "guest", "c": "0"}
+	want := map[string]string{"a": "0", "b": "!"}
 	for id, w := range want {
 		if got, _ := tr.ids[id].Base().PropValue("text"); got != w {
 			t.Fatalf("%s text = %v, want %q", id, got, w)
@@ -43,35 +38,39 @@ Window {
 	}
 
 	// Go still wins once it sets one.
-	tr.SetData("count", 7)
+	tr.SetData("Count", 7)
 	tr.ApplyExpressions()
 	if got, _ := tr.ids["a"].Base().PropValue("text"); got != "7" {
 		t.Fatalf("after SetData text = %v, want 7", got)
 	}
 }
 
-// TestTemplateInterpolatesValues covers the backtick form: literals, several
-// holes, and the formatting of each value type.
-func TestTemplateInterpolatesValues(t *testing.T) {
-	tr, diag := BuildSource(tpl(`bridge {
-	count: number = 41
-	name: string = "ada"
+// TestFormatf covers the builtin: Go's fmt verbs, several arguments, and a
+// color printed as #rrggbb.
+func TestFormatf(t *testing.T) {
+	tr, diag := BuildSource([]byte(`bridge {
+	Name  string
+	Count int
+	Price float64
 }
 Window {
 	Column {
-		Text { id: t text: §${bridge.name} has ${bridge.count} items§ }
-		Text { id: only text: §plain§ }
+		Text { id: t text: formatf("%s has %d items at %0.2f", bridge.Name, bridge.Count, bridge.Price) }
+		Text { id: hex text: formatf("%v", bridge.Price) }
 	}
 }`), nil)
 	if !diag.Empty() {
 		t.Fatalf("%v", diag)
 	}
 	tr.SetViewport(800, 600)
+	tr.SetData("Name", "ada")
+	tr.SetData("Count", 41)
+	tr.SetData("Price", 1.5)
 	tr.ApplyExpressions()
-	if got, _ := tr.ids["t"].Base().PropValue("text"); got != "ada has 41 items" {
+	if got, _ := tr.ids["t"].Base().PropValue("text"); got != "ada has 41 items at 1.50" {
 		t.Fatalf("text = %v", got)
 	}
-	if got, _ := tr.ids["only"].Base().PropValue("text"); got != "plain" {
+	if got, _ := tr.ids["hex"].Base().PropValue("text"); got != "1.5" {
 		t.Fatalf("text = %v", got)
 	}
 }
@@ -79,30 +78,84 @@ Window {
 // TestArithmeticAndConcat is the `+` rule: two numbers add, anything else is
 // joined as text.
 func TestArithmeticAndConcat(t *testing.T) {
-	tr, diag := BuildSource(tpl(`bridge {
-	a: number = 6
-	b: number = 3
+	tr, diag := BuildSource([]byte(`bridge {
+	A int
+	B int
 }
 Window {
 	Column {
-		Text { id: sum text: §${bridge.a + bridge.b}§ }
-		Text { id: join text: "n=" + bridge.a }
-		Text { id: mix text: bridge.b * 2 + "px" }
-		Rectangle { id: box width: bridge.a - bridge.b }
+		Text { id: sum text: formatf("%d", bridge.A + bridge.B) }
+		Text { id: join text: "n=" + bridge.A }
+		Rectangle { id: box width: bridge.A - bridge.B }
 	}
 }`), nil)
 	if !diag.Empty() {
 		t.Fatalf("%v", diag)
 	}
 	tr.SetViewport(800, 600)
+	tr.SetData("A", 6)
+	tr.SetData("B", 3)
 	tr.ApplyExpressions()
 
-	for id, want := range map[string]string{"sum": "9", "join": "n=6", "mix": "6px"} {
+	for id, want := range map[string]string{"sum": "9", "join": "n=6"} {
 		if got, _ := tr.ids[id].Base().PropValue("text"); got != want {
 			t.Fatalf("%s text = %v, want %q", id, got, want)
 		}
 	}
 	if got, _ := tr.ids["box"].Base().PropValue("width"); got != float64(3) {
 		t.Fatalf("width = %v, want 3", got)
+	}
+}
+
+// TestRangeLoopForms covers every range form the parser accepts: index and
+// value, value only, `_`, a map, and a count.
+func TestRangeLoopForms(t *testing.T) {
+	tr, diag := BuildSource([]byte(`bridge {
+	Rows  []Row
+	Table map[string]string
+}
+type Row { Title string }
+Window {
+	Column {
+		for i, r := range bridge.Rows {
+			Text { text: formatf("%d:%s", i, r.Title) }
+		}
+		for _, r := range bridge.Rows {
+			Text { text: r.Title }
+		}
+		for i := range bridge.Rows {
+			Text { text: formatf("#%d", i) }
+		}
+		for k, v := range bridge.Table {
+			Text { text: formatf("%s=%s", k, v) }
+		}
+		for i := range 3 {
+			Text { text: formatf("n%d", i) }
+		}
+	}
+}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	tr.SetData("Rows", []map[string]any{{"title": "a"}, {"title": "b"}})
+	tr.SetData("Table", map[string]string{"x": "1", "y": "2"})
+	tr.ApplyExpressions()
+
+	sorted := func() []string {
+		got := texts(tr)
+		sort.Strings(got)
+		return got
+	}
+	want := []string{"#0", "#1", "0:a", "1:b", "a", "b", "n0", "n1", "n2", "x=1", "y=2"}
+	if got := sorted(); fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("texts = %v, want %v", got, want)
+	}
+
+	// Setting the map alone rebuilds only the loop that walks it.
+	tr.SetData("Table", map[string]string{"z": "9"})
+	tr.ApplyExpressions()
+	want = []string{"#0", "#1", "0:a", "1:b", "a", "b", "n0", "n1", "n2", "z=9"}
+	if got := sorted(); fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("after a map set: %v, want %v", got, want)
 	}
 }
