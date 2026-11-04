@@ -103,6 +103,9 @@ make scroll    # scrolling page, horizontal strip, ripple
 make typography # type scale, five weights, wrapping
 make composition # one design split across Main.goi, Sidebar.goi and StatCard.goi
 make theme     # built-in schemes plus one registered by name
+make datalist  # bridge values in an {#each}, with a row handler
+make bridge    # every event property calling a Go handler
+make search    # a button and a text field reading another node by id
 go run ./cmd/goicheck -layout examples/*/*.goi  # syntax plus a headless layout check
 ```
 
@@ -131,7 +134,8 @@ go run ./cmd/goicheck -layout examples/*/*.goi  # syntax plus a headless layout 
 - Value expressions on every property type: `width: side.width / 2`,
   `width: 50%` of the parent, comparisons and `&& || !`, and a conditional
   (`trailingIcon: app.dark ? "light_mode" : "dark_mode"`). `app.theme`,
-  `app.dark` and `window.width`/`height` are readable from a design.
+  `app.dark`, `window.width`/`height` and any element's property by id
+  (`searchField.text`) are readable from a design.
 - Colors by M3 role: `background: surfaceContainerHigh` follows the scheme,
   while a hex literal stays a deliberate fixed color.
 - Themes: the baseline `light` and `dark` schemes plus any scheme the app
@@ -142,7 +146,8 @@ go run ./cmd/goicheck -layout examples/*/*.goi  # syntax plus a headless layout 
   and packs every bitmap into one GPU atlas.
 - Bridge: `bridge { onOpen: func(id: string) }` declares the handlers a design
   calls from any event property (`onClick: bridge.onOpen(row.id)`), with the
-  arguments evaluated when the event fires; `ui.SetHandler` supplies the body.
+  arguments evaluated when the event fires and `event` carrying the event's own
+  payload; `ui.SetHandler` supplies the body.
   `examples/bridge` (`make bridge`) runs every event.
 - Lists from Go: a hidden template in the `.goi` file plus `ui.Instantiate` makes
   N rows without hand-building nodes; `ui.Remove` takes one away.
@@ -178,7 +183,7 @@ syntax highlighting, brackets, indentation and an element outline. It starts
 errors inside an imported fragment), completion for elements, properties,
 values, icon names, ids, `bridge.` handlers, event calls and the
 `app.`/`window.` globals, hover docs, a document outline and go-to-definition for
-imports:
+imports and id references:
 
 ```sh
 go install github.com/ksckaan1/goi/cmd/goipls@latest

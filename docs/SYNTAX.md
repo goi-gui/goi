@@ -267,8 +267,9 @@ ui.SetHandler(w, "onOpen", func(id string) { open(id) })
 
 `ui.SetHandler` belongs in `Bind`, which runs again after every hot reload, so
 re-registering there is enough. A handler is any Go function; its parameters are
-converted from the design's values (a number may feed an `int`, a `float64` or a
-`string`).
+converted from the design's values: a number may feed an `int`, a `float64` or a
+`string`, and a bool or a color may feed a `string` (as `true`/`false` and
+`#rrggbb`).
 
 - **Types.** A scalar is `bool`, `string`, `number` or `color`. A list is
   `[shape]` or the older `shape[]`, and the shape must be declared. A field of a
@@ -333,7 +334,7 @@ Type      = "bool" | "string" | "number" | "color"
           | "[" Ident "]" | Ident "[]"
           | "func" "(" [ Ident ":" Type { "," Ident ":" Type } ] ")"
 Element   = Ident "{" { Member } "}"
-Member    = Property | Element | Block | "$children"
+Member    = Property | Element | Block | "$" Ident [ "{" { Member } "}" ]
 Block     = "{#" "if" Value "}" { Member }
             { "{:else if" Value "}" { Member } }
             [ "{:else}" { Member } ]
@@ -524,6 +525,15 @@ Two namespaces are reserved for expressions:
 | `app.os` | string | `runtime.GOOS`: `linux`, `darwin`, `windows`, … |
 | `window.width`, `window.height` | number | logical client size, updated on resize |
 
+Any other name before the dot is read in order as an `{#each}` loop variable, a
+`bridge` (or `data`) variable, or an element id declared in the same file:
+
+```
+Text { text: bridge.count }
+Text { text: searchField.text }
+Rectangle { width: panel.width / 2 }
+```
+
 So a design can react to the scheme or the platform without any Go code:
 
 ```
@@ -637,13 +647,16 @@ set from Go with `Prop.Set` is replaced on the next frame.
 - Unknown element, unknown property, wrong literal type, unknown enum value,
   unknown or repeated breakpoint, nested map, responsive `id` and duplicate ids
   are errors, each reported with `file:line:col`, the offending line and a
-  caret. A small edit distance adds a "did you mean" hint.
+  caret. A small edit distance adds a "did you mean" hint. A handler call is
+  checked the same way: the name must be declared in `bridge`, and the argument
+  count, argument types and `event` payload must match the declaration.
 - The parser recovers, so one typo does not hide the rest of the file.
 
 ## What is not in v1
 
-No bindings, no loops and no event declarations — behaviour lives in Go. A list
-grows with `ui.Instantiate` from a hidden template, not with a `.goi` `for`.
+No bindings, no loops and no handler bodies — a design declares a handler's name
+and parameters, but the body is always Go. A list grows with `ui.Instantiate`
+from a hidden template, not with a `.goi` `for`.
 Theming is limited to the built-in light and dark Material 3 schemes; dynamic
 color and custom palettes are not exposed yet.
 

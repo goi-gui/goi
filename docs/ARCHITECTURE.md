@@ -47,7 +47,8 @@ Nothing below `ui` imports `ui`, so there are no cycles. Only `render` and
 
 The AST is the parser's output and is never mutated: nodes keep a pointer to the
 `*syntax.Element` they came from so hot reload can compare literals. All runtime
-state — values, handlers, bounds, dirty flags — lives in the node tree.
+state — values, bounds, dirty flags and the `bridge` handler registry — lives in
+the tree.
 
 Validation returns diagnostics only. Instantiation reads the syntax AST directly
 and asks the schema for defaults, so there is no "validated AST" to keep in sync.

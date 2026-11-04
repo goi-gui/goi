@@ -1174,3 +1174,13 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   types live in `schema` so the validator, the builder and the LSP cannot drift;
   a missing handler or a bad argument surfaces through the app's error hook
   rather than panicking inside an input callback.
+
+- **The editor treats an id like a small namespace.** `abc.width` was already
+  readable at runtime (`tree.evalRef` falls back to `ByID`), but the language
+  server only listed ids for `id:` values, so reading one meant remembering the
+  name. Now every value position offers the file's ids, `abc.` completes the
+  element's schema properties, hover explains the id or the property, and
+  go-to-definition jumps to the declaring `id:`. The element kind comes from the
+  element that carries the `id:`, not a guess, so the member list cannot offer a
+  property that node does not have. Ids inside a block arm are offered too: the
+  design still writes the bare name there.

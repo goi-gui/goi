@@ -204,14 +204,21 @@ follows the desktop setting, and `Window.SystemMode()` reports it from Go as a
 btn, err := ui.ByID[*ui.Button](w, "save")   // typed, fails when missing or mistyped
 btn := ui.MustByID[*ui.Button](w, "save")    // panics; fine in Bind
 node, err := w.ByID("save")                  // untyped
+
+ui.SetHandler(w, "onOpen", func(id string) { open(id) })  // body of a bridge handler
 ```
+
+`ui.SetHandler` supplies the Go function a `bridge { onOpen: func(id: string) }`
+declaration calls; register it from `Bind` so a hot reload registers it again.
+The design can read a node's property by id as well (`width: panel.width`), which
+needs no Go code at all.
 
 A list of unknown length is usually a `{#each}` block the app feeds with
 `ui.SetData`; the row stays in the design and the shape it reads is declared, so
 `goicheck` and the editor check every field (see [SYNTAX](SYNTAX.md#bridge-values-and-handlers)).
 
 ```goi
-{#each data.tickets as ticket}
+{#each bridge.tickets as ticket}
     ListItem { label: ticket.title selected: ticket.unread }
 {/each}
 ```
