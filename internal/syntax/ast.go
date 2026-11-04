@@ -60,6 +60,9 @@ type DataVar struct {
 	// in order, and Type is "func".
 	Fn   bool
 	Args []DataField
+	// Default is `count: number = 0`: the value before Go sets one. A variable
+	// without a default starts at its type's zero value.
+	Default Value
 	// At is the type's position, for diagnostics.
 	At Pos
 }
@@ -74,7 +77,7 @@ type DataShape struct {
 	At, Close Pos
 }
 
-// DataField is one field of a shape.
+// DataField is one field of a shape, or a handler parameter.
 type DataField struct {
 	Name   string
 	NameAt Pos
@@ -83,7 +86,9 @@ type DataField struct {
 	Elem   string
 	Fn     bool
 	Args   []DataField
-	At     Pos
+	// Default is `count: number = 0`, a value the design starts with.
+	Default Value
+	At      Pos
 }
 
 // Shape returns the named shape, or nil.
@@ -119,8 +124,14 @@ func (f *File) Var(name string) *DataVar {
 type Prop struct {
 	Name   string
 	NameAt Pos
-	// Type is one of bool, string, number, color.
+	// Type is bool, string, number or color for a scalar; "list" for
+	// `[shape]` (or the older `shape[]`), where Elem names the shape; "func"
+	// for `func(id: string)`, where Args are its parameters.
 	Type string
+	List bool
+	Elem string
+	Fn   bool
+	Args []DataField
 	// Default, when the declaration wrote `= value`.
 	Default Value
 	// At is the type's position, for diagnostics.
@@ -166,11 +177,14 @@ type Block struct {
 	// order. Only the last one may have a nil Cond, which is the else arm.
 	Branches []Branch
 	// Source and Var belong to BlockEach: the list variable and the loop
-	// variable that names one row inside the arm.
-	Source   string
-	SourceAt Pos
-	Var      string
-	VarAt    Pos
+	// variable that names one row inside the arm. SourceProps marks a list the
+	// fragment receives as `props.items`; expansion replaces it with the bridge
+	// list the instance passed.
+	Source      string
+	SourceAt    Pos
+	SourceProps bool
+	Var         string
+	VarAt       Pos
 }
 
 // Branch is one arm of a block.
@@ -294,6 +308,7 @@ const (
 	BinaryKind
 	UnaryKind
 	TernaryKind
+	TemplateKind
 	CallKind
 )
 
@@ -355,6 +370,17 @@ type Percent struct {
 	Val float64
 }
 
+// Template is a backtick string with `${...}` holes:
+//
+//	`Count is ${bridge.count}`
+//
+// Parts alternates literal Strings and the expressions inside the holes, so the
+// value keeps re-reading whatever it names on every frame.
+type Template struct {
+	At    Pos
+	Parts []Value
+}
+
 // Ref is `id.property`, a read of another element's property.
 type Ref struct {
 	At   Pos
@@ -395,30 +421,32 @@ type Ternary struct {
 
 // Kind implementations.
 
-func (s *String) Kind() ValueKind  { return StringKind }
-func (n *Number) Kind() ValueKind  { return NumberKind }
-func (b *Bool) Kind() ValueKind    { return BoolKind }
-func (c *Color) Kind() ValueKind   { return ColorKind }
-func (i *Ident) Kind() ValueKind   { return IdentKind }
-func (m *Map) Kind() ValueKind     { return MapKind }
-func (p *Percent) Kind() ValueKind { return PercentKind }
-func (r *Ref) Kind() ValueKind     { return RefKind }
-func (b *Binary) Kind() ValueKind  { return BinaryKind }
-func (u *Unary) Kind() ValueKind   { return UnaryKind }
-func (t *Ternary) Kind() ValueKind { return TernaryKind }
-func (c *Call) Kind() ValueKind    { return CallKind }
+func (s *String) Kind() ValueKind   { return StringKind }
+func (n *Number) Kind() ValueKind   { return NumberKind }
+func (b *Bool) Kind() ValueKind     { return BoolKind }
+func (c *Color) Kind() ValueKind    { return ColorKind }
+func (i *Ident) Kind() ValueKind    { return IdentKind }
+func (m *Map) Kind() ValueKind      { return MapKind }
+func (p *Percent) Kind() ValueKind  { return PercentKind }
+func (r *Ref) Kind() ValueKind      { return RefKind }
+func (b *Binary) Kind() ValueKind   { return BinaryKind }
+func (u *Unary) Kind() ValueKind    { return UnaryKind }
+func (t *Ternary) Kind() ValueKind  { return TernaryKind }
+func (t *Template) Kind() ValueKind { return TemplateKind }
+func (c *Call) Kind() ValueKind     { return CallKind }
 
 // Pos implementations.
 
-func (s *String) Pos() Pos  { return s.At }
-func (n *Number) Pos() Pos  { return n.At }
-func (b *Bool) Pos() Pos    { return b.At }
-func (c *Color) Pos() Pos   { return c.At }
-func (i *Ident) Pos() Pos   { return i.At }
-func (m *Map) Pos() Pos     { return m.At }
-func (p *Percent) Pos() Pos { return p.At }
-func (r *Ref) Pos() Pos     { return r.At }
-func (b *Binary) Pos() Pos  { return b.At }
-func (u *Unary) Pos() Pos   { return u.At }
-func (t *Ternary) Pos() Pos { return t.At }
-func (c *Call) Pos() Pos    { return c.At }
+func (s *String) Pos() Pos   { return s.At }
+func (n *Number) Pos() Pos   { return n.At }
+func (b *Bool) Pos() Pos     { return b.At }
+func (c *Color) Pos() Pos    { return c.At }
+func (i *Ident) Pos() Pos    { return i.At }
+func (m *Map) Pos() Pos      { return m.At }
+func (p *Percent) Pos() Pos  { return p.At }
+func (r *Ref) Pos() Pos      { return r.At }
+func (b *Binary) Pos() Pos   { return b.At }
+func (u *Unary) Pos() Pos    { return u.At }
+func (t *Ternary) Pos() Pos  { return t.At }
+func (t *Template) Pos() Pos { return t.At }
+func (c *Call) Pos() Pos     { return c.At }

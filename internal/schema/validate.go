@@ -125,6 +125,10 @@ func (v *validator) checkData() {
 			}
 			seenField[f.Name] = true
 			v.checkDataType(f.At, f.List, f.Type, f.Elem, "field "+sh.Name+"."+f.Name)
+			if f.Default != nil {
+				v.add(f.At, f.At+syntax.Pos(len(f.Type)),
+					fmt.Sprintf("field %s.%s is a row value; only a bridge variable takes a default", sh.Name, f.Name), "")
+			}
 		}
 	}
 	seenVar := map[string]syntax.Pos{}
@@ -343,6 +347,13 @@ func (v *validator) walkBlock(blk *syntax.Block, parent string) {
 
 // eachShape resolves the shape an {#each} walks, without reporting anything.
 func (v *validator) eachShape(blk *syntax.Block) *syntax.DataShape {
+	if blk.SourceProps {
+		pr := v.file.Prop(blk.Source)
+		if pr == nil || !pr.List {
+			return nil
+		}
+		return v.file.Shape(pr.Elem)
+	}
 	dv := v.file.Var(blk.Source)
 	if dv == nil || !dv.List {
 		return nil
@@ -355,6 +366,18 @@ func (v *validator) eachShape(blk *syntax.Block) *syntax.DataShape {
 func (v *validator) checkEachSource(blk *syntax.Block) *syntax.DataShape {
 	at := blk.SourceAt
 	end := at + syntax.Pos(len(blk.Source))
+	if blk.SourceProps {
+		pr := v.file.Prop(blk.Source)
+		if pr == nil {
+			v.add(at, end, fmt.Sprintf("no prop %q", blk.Source), syntax.Suggest(blk.Source, declaredPropNames(v.file)))
+			return nil
+		}
+		if !pr.List {
+			v.add(at, end, fmt.Sprintf("props.%s is not a list: declare it as %s: [shape]", pr.Name, pr.Name), "")
+			return nil
+		}
+		return v.file.Shape(pr.Elem)
+	}
 	dv := v.file.Var(blk.Source)
 	if dv == nil {
 		v.add(at, end, fmt.Sprintf("no bridge variable %q", blk.Source), syntax.Suggest(blk.Source, varNames(v.file)))
@@ -414,10 +437,32 @@ func (v *validator) checkProps() {
 			continue
 		}
 		seen[pr.Name] = at
+		switch {
+		case pr.Fn:
+			for _, a := range pr.Args {
+				v.checkFuncArg(a)
+			}
+			if pr.Default != nil {
+				v.add(pr.At, pr.At+syntax.Pos(len(pr.Type)),
+					fmt.Sprintf("prop %q is a handler; it has no literal default", pr.Name), "")
+			}
+			continue
+		case pr.List:
+			if v.file.Shape(pr.Elem) == nil {
+				v.add(pr.At, pr.At+syntax.Pos(len(pr.Elem)),
+					fmt.Sprintf("prop %q: unknown shape %q", pr.Name, pr.Elem),
+					syntax.Suggest(pr.Elem, shapeNames(v.file)))
+			}
+			if pr.Default != nil {
+				v.add(pr.At, pr.At+syntax.Pos(len(pr.Type)),
+					fmt.Sprintf("prop %q is a list; it has no literal default", pr.Name), "")
+			}
+			continue
+		}
 		ft, ok := fieldType(false, pr.Type)
 		if !ok {
 			v.add(pr.At, pr.At+syntax.Pos(len(pr.Type)),
-				fmt.Sprintf("prop %q: %q is not a type; use bool, string, number or color", pr.Name, pr.Type),
+				fmt.Sprintf("prop %q: %q is not a type; use bool, string, number, color, [shape] or func(...)", pr.Name, pr.Type),
 				syntax.Suggest(pr.Type, scalarTypes))
 			continue
 		}
@@ -458,6 +503,16 @@ func (v *validator) checkPropRef(e *syntax.Element, pd *Prop, x *syntax.Ref, at,
 	if pd.Type == TypeID {
 		v.add(at, end,
 			fmt.Sprintf("%s.%s cannot come from a prop: an id names a node once", e.Name, pd.Name), "")
+		return
+	}
+	if pr.Fn {
+		v.add(at, end,
+			fmt.Sprintf("%s.%s: props.%s is a handler; call it in an event, as onClick: props.%s(...)", e.Name, pd.Name, pr.Name, pr.Name), "")
+		return
+	}
+	if pr.List {
+		v.add(at, end,
+			fmt.Sprintf("%s.%s: props.%s is a list; walk it with {#each props.%s as row}", e.Name, pd.Name, pr.Name, pr.Name), "")
 		return
 	}
 	ft, ok := fieldType(false, pr.Type)
@@ -550,7 +605,7 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 
 	case TypeString:
 		switch val.(type) {
-		case *syntax.String, *syntax.Ident:
+		case *syntax.String, *syntax.Ident, *syntax.Template:
 			// An Ident is allowed so `text: hello` reads naturally; the schema
 			// documents string properties as accepting bare words.
 		default:
@@ -742,6 +797,12 @@ func (v *validator) checkRefs(e *syntax.Element, pd *Prop, val syntax.Value) {
 		v.checkRefs(e, boolProp, x.Cond)
 		v.checkRefs(e, pd, x.Then)
 		v.checkRefs(e, pd, x.Else)
+	case *syntax.Template:
+		// Each hole is formatted into the string, so its own type is free; a
+		// comparison inside it decides its type itself.
+		for _, part := range x.Parts {
+			v.checkRefs(e, anyProp, part)
+		}
 	case *syntax.Ref:
 		if pd == nil {
 			return
@@ -796,6 +857,46 @@ func (v *validator) checkRefs(e *syntax.Element, pd *Prop, val syntax.Value) {
 	}
 }
 
+// checkPropCall validates an event value inside a fragment: the call names a
+// handler the props block declares, and the arguments fit its parameters.
+func (v *validator) checkPropCall(e *syntax.Element, p *syntax.Property, call *syntax.Call, at, end syntax.Pos) {
+	pr := v.file.Prop(call.Callee.Prop)
+	if pr == nil {
+		v.add(at, end,
+			fmt.Sprintf("%s.%s: no prop %q", e.Name, p.Name, call.Callee.Prop),
+			syntax.Suggest(call.Callee.Prop, declaredPropNames(v.file)))
+		return
+	}
+	if !pr.Fn {
+		v.add(at, end,
+			fmt.Sprintf("%s.%s: props.%s is a value, not a handler; declare it as %s: func(...)",
+				e.Name, p.Name, call.Callee.Prop, call.Callee.Prop), "")
+		return
+	}
+	if len(call.Args) != len(pr.Args) {
+		v.add(call.At, end,
+			fmt.Sprintf("%s.%s: props.%s takes %d argument(s), got %d",
+				e.Name, p.Name, call.Callee.Prop, len(pr.Args), len(call.Args)), "")
+		return
+	}
+	for i, a := range call.Args {
+		if id, ok := a.(*syntax.Ident); ok && id.Val == "event" {
+			v.add(a.Pos(), a.Pos()+1,
+				fmt.Sprintf("%s.%s: a fragment handler does not receive event; the instance decides what it passes", e.Name, p.Name), "")
+			continue
+		}
+		if _, nested := a.(*syntax.Call); nested {
+			v.add(a.Pos(), a.Pos()+1,
+				fmt.Sprintf("%s.%s: a handler argument cannot be another call", e.Name, p.Name), "")
+			continue
+		}
+		ft, _ := fieldType(false, pr.Args[i].Type)
+		prop := &Prop{Name: p.Name, Type: ft}
+		v.checkLiteral(e, prop, a)
+		v.checkRefs(e, prop, a)
+	}
+}
+
 // handlerNames lists the bridge handlers, for suggestions.
 func handlerNames(f *syntax.File) []string {
 	out := make([]string, 0, len(f.Vars))
@@ -817,6 +918,10 @@ func (v *validator) checkEventCall(e *syntax.Element, ev EventDef, p *syntax.Pro
 	}
 	at := call.Callee.At
 	end := at + syntax.Pos(len(call.Callee.ID)+1+len(call.Callee.Prop))
+	if call.Callee.ID == "props" {
+		v.checkPropCall(e, p, call, at, end)
+		return
+	}
 	if call.Callee.ID != "bridge" && call.Callee.ID != "data" {
 		v.add(at, end,
 			fmt.Sprintf("%s.%s: a handler call starts with bridge., not %s.", e.Name, p.Name, call.Callee.ID), "")
@@ -969,6 +1074,12 @@ func valueHasPercent(val syntax.Value) bool {
 		return valueHasPercent(x.X)
 	case *syntax.Ternary:
 		return valueHasPercent(x.Cond) || valueHasPercent(x.Then) || valueHasPercent(x.Else)
+	case *syntax.Template:
+		for _, part := range x.Parts {
+			if valueHasPercent(part) {
+				return true
+			}
+		}
 	case *syntax.Map:
 		for _, entry := range x.Entries {
 			if valueHasPercent(entry.Value) {
@@ -1007,6 +1118,8 @@ func kindName(val syntax.Value) string {
 		return "a percentage"
 	case syntax.RefKind:
 		return "a reference"
+	case syntax.TemplateKind:
+		return "a template string"
 	case syntax.BinaryKind, syntax.UnaryKind, syntax.TernaryKind:
 		return "an expression"
 	case syntax.CallKind:

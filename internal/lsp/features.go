@@ -295,7 +295,7 @@ func blockItems(inside bool) []completionResult {
 // blockItemsFor adds the design's list variables to the {#each} snippet, so the
 // tag completes into something that already names a real list.
 func blockItemsFor(inside bool, lists []string) []completionResult {
-	list := "rows"
+	list := "bridge.rows"
 	if len(lists) > 0 {
 		list = lists[0]
 	}
@@ -311,7 +311,7 @@ func blockItemsFor(inside bool, lists []string) []completionResult {
 		Label:  "{#each}",
 		Kind:   kindKeyword,
 		Detail: "block",
-		Documentation: &doc{Kind: "markdown", Value: "**{#each bridge." + list + " as row} … {/each}**\n\n" +
+		Documentation: &doc{Kind: "markdown", Value: "**{#each " + list + " as row} … {/each}**\n\n" +
 			"Repeats its body once per item of a list variable. Rows are rebuilt when " +
 			"`ui.SetData` changes the list."},
 	})
@@ -394,12 +394,19 @@ func namedSlotDoc(name string) string {
 		"previews on its own."
 }
 
-// listVars lists the declared bridge variables that hold a list.
+// listVars lists every list a design can walk: the bridge variables and the
+// list props a fragment receives, each written as the reference an {#each}
+// takes.
 func listVars(file *syntax.File) []string {
 	var out []string
 	for _, dv := range file.Vars {
 		if dv.List {
-			out = append(out, dv.Name)
+			out = append(out, "bridge."+dv.Name)
+		}
+	}
+	for _, pr := range file.Props {
+		if pr.List {
+			out = append(out, "props."+pr.Name)
 		}
 	}
 	return out
@@ -476,6 +483,11 @@ func globalItems(ref string) []completionResult {
 // the word prefix being typed and the text before it. `app.o` yields "app", and
 // so does `visible: app.` at the very start of a value.
 func enclosingRef(before []byte) string {
+	// Only the current line counts: a dot on an earlier line belongs to
+	// another value.
+	if i := lastIndexByte(before, '\n'); i >= 0 {
+		before = before[i+1:]
+	}
 	if i := lastIndexByte(before, '.'); i >= 0 {
 		start := i
 		for start > 0 && isWordByte(before[start-1]) {
@@ -496,8 +508,9 @@ func refItems(file *syntax.File, src []byte, off int, ref string) []completionRe
 	case "props":
 		out := make([]completionResult, 0, len(file.Props))
 		for _, pr := range file.Props {
-			detail := "props." + pr.Name + " · " + pr.Type
-			docu := "**props." + pr.Name + "**\n\nType: `" + pr.Type + "`\n\n"
+			typ := propTypeName(pr)
+			detail := "props." + pr.Name + " · " + typ
+			docu := "**props." + pr.Name + "**\n\nType: `" + typ + "`\n\n"
 			if pr.Default != nil {
 				docu += "Default: `" + sourceSpan(src, int(pr.Default.Pos())) + "`. "
 			} else {
@@ -692,6 +705,25 @@ func valueItems(file *syntax.File, prop string, src []byte, off int, prefix stri
 		})
 	}
 	if _, ok := schema.Event(prop); ok && el.HasEvent(prop) {
+		for _, pr := range file.Props {
+			if !pr.Fn {
+				continue
+			}
+			sig := "func("
+			for i, a := range pr.Args {
+				if i > 0 {
+					sig += ", "
+				}
+				sig += a.Name + ": " + a.Type
+			}
+			out = append(out, completionResult{
+				Label:         "props." + pr.Name + "(…)",
+				InsertText:    "props." + pr.Name + "(",
+				Kind:          kindFunction,
+				Detail:        "handler call",
+				Documentation: &doc{Kind: "markdown", Value: "**props." + pr.Name + "**\n\n" + sig + ")\n\nThe instance passes the handler this fragment calls."},
+			})
+		}
 		for _, dv := range file.Vars {
 			if !dv.Fn {
 				continue
@@ -994,7 +1026,8 @@ func (s *Server) hover(raw json.RawMessage) any {
 	if r := refAt(file, off); r != nil {
 		propStart := int(r.At) + len(r.ID) + 1
 		if r.ID == "props" {
-			if pr := file.Prop(r.Prop); pr != nil && off >= propStart {
+			// Either half of props.title explains the prop.
+			if pr := file.Prop(r.Prop); pr != nil {
 				return map[string]any{
 					"contents": doc{Kind: "markdown", Value: declaredPropDoc(*pr, d.text)},
 					"range":    idx.at(propStart, propStart+len(r.Prop)),
@@ -1330,9 +1363,21 @@ func braceElementName(src []byte, off int) string {
 // enclosingProperty reports the property whose value the cursor sits in. A
 // responsive map key reports inMap instead.
 func enclosingProperty(file *syntax.File, src []byte, off int) (string, bool) {
-	if el := elementAt(file, off); el != nil {
-		for _, p := range el.Props() {
+	el := elementAt(file, off)
+	// Mid-typing the AST drops the broken property, so the line is the more
+	// reliable witness when it names a property this element really has.
+	if name, inMap := braceProperty(src, off); inMap || isElementMember(el, name) {
+		return name, inMap
+	}
+	if el != nil {
+		props := el.Props()
+		for i, p := range props {
 			start, end := valueExtent(src, p)
+			// A value ends where the next property begins, or two properties
+			// on one line would both own the cursor.
+			if i+1 < len(props) && int(props[i+1].NameAt) < end {
+				end = int(props[i+1].NameAt)
+			}
 			if off < start || off > end {
 				continue
 			}
@@ -1343,8 +1388,20 @@ func enclosingProperty(file *syntax.File, src []byte, off int) (string, bool) {
 			return p.Name, false
 		}
 	}
-	name, ok := braceProperty(src, off)
-	return name, ok
+	return "", false
+}
+
+// isElementMember reports whether name is a property or event the element
+// accepts, which is what makes a line-based guess trustworthy.
+func isElementMember(el *syntax.Element, name string) bool {
+	if el == nil || name == "" {
+		return false
+	}
+	def, ok := schema.Lookup(el.Name)
+	if !ok {
+		return false
+	}
+	return def.Prop(name) != nil || def.HasEvent(name)
 }
 
 // mapKeyPosition reports whether off sits in the key half of a map entry: past
@@ -1601,6 +1658,10 @@ func refAt(file *syntax.File, off int) *syntax.Ref {
 			val(x.Cond)
 			val(x.Then)
 			val(x.Else)
+		case *syntax.Template:
+			for _, part := range x.Parts {
+				val(part)
+			}
 		}
 	}
 	var members func([]syntax.Member)
@@ -1627,9 +1688,27 @@ func refAt(file *syntax.File, off int) *syntax.Ref {
 	return found
 }
 
+// propTypeName writes a prop's type the way the declaration reads.
+func propTypeName(pr syntax.Prop) string {
+	switch {
+	case pr.List:
+		return "[" + pr.Elem + "]"
+	case pr.Fn:
+		sig := "func("
+		for i, a := range pr.Args {
+			if i > 0 {
+				sig += ", "
+			}
+			sig += a.Name + ": " + a.Type
+		}
+		return sig + ")"
+	}
+	return pr.Type
+}
+
 // declaredPropDoc explains one `props` declaration.
 func declaredPropDoc(pr syntax.Prop, src []byte) string {
-	value := "**props." + pr.Name + "**\n\nType: `" + pr.Type + "`\n\n"
+	value := "**props." + pr.Name + "**\n\nType: `" + propTypeName(pr) + "`\n\n"
 	if pr.Default != nil {
 		value += "Default: `" + sourceSpan(src, int(pr.Default.Pos())) + "`. An instance sets it as a property on the call."
 	} else {

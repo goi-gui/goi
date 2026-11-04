@@ -587,7 +587,69 @@ Column { }`, `duplicate prop "a"`},
 		t.Run(tc.name, func(t *testing.T) {
 			f, diag := syntax.Parse([]byte(tc.src))
 			if !diag.Empty() {
-				t.Fatalf("parse: %v", diag)
+				// Some of these are rejected before validation.
+				if !strings.Contains(diag[0].Message, tc.want) {
+					t.Fatalf("parse message = %q, want %q", diag[0].Message, tc.want)
+				}
+				return
+			}
+			_, diag = Validate(f)
+			if diag.Empty() {
+				t.Fatal("expected a diagnostic")
+			}
+			if !strings.Contains(diag[0].Message, tc.want) {
+				t.Fatalf("message = %q, want %q", diag[0].Message, tc.want)
+			}
+		})
+	}
+}
+
+// TestPropsCarryListsAndHandlers pins the two composite prop forms and the
+// mistakes around them.
+func TestPropsCarryListsAndHandlers(t *testing.T) {
+	ok := `props {
+	rows: [ticket]
+	onOpen: func(id: string)
+	count: number = 2
+}
+type ticket { title: string }
+Column {
+	{#each props.rows as row}
+		Text { text: row.title onClick: props.onOpen(row.title) }
+	{/each}
+	Text { text: ` + "`" + `${props.count} items` + "`" + ` }
+}`
+	f, diag := syntax.Parse([]byte(ok))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	if _, diag := Validate(f); !diag.Empty() {
+		t.Fatalf("a well-formed fragment was rejected: %v", diag)
+	}
+
+	cases := []struct{ name, src, want string }{
+		{"unknown shape", `props { rows: [nope] }
+Column { }`, `unknown shape "nope"`},
+		{"list prop in a value", `type t { a: string }
+props { rows: [t] }
+Column { Text { text: props.rows } }`, "is a list; walk it"},
+		{"handler prop in a value", `props { onOpen: func(id: string) }
+Column { Text { text: props.onOpen } }`, "is a handler; call it"},
+		{"handler default", `props { onOpen: func(id: string) = "x" }
+Column { }`, "only a scalar variable takes a default value"},
+		{"shape field default", `type t { a: string = "x" }
+Column { }`, "only a bridge variable takes a default"},
+		{"template on a number", `Column { Rectangle { width: ` + "`" + `${1}` + "`" + ` } }`, "expects a number"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, diag := syntax.Parse([]byte(tc.src))
+			if !diag.Empty() {
+				// Some of these are rejected before validation.
+				if !strings.Contains(diag[0].Message, tc.want) {
+					t.Fatalf("parse message = %q, want %q", diag[0].Message, tc.want)
+				}
+				return
 			}
 			_, diag = Validate(f)
 			if diag.Empty() {

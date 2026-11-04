@@ -1,0 +1,51 @@
+// Template strings: a backtick value interpolates `${...}` holes, and a bridge
+// variable starts at its declared default.
+//
+// `+` adds two numbers but joins anything else, so `${price * count}` is money
+// arithmetic while `${label} (${count})` is text.
+bridge {
+	price: number = 12.5
+	count: number = 3
+	label: string = "Items"
+	discount: bool = false
+}
+
+Window {
+	id: main
+	title: "Template"
+	width: 420
+	height: 320
+
+	Column {
+		padding: 16
+		spacing: 10
+
+		Text {
+			text: "A backtick value reads the bridge on every frame."
+			role: "bodyMedium"
+			color: onSurfaceVariant
+		}
+
+		Text { text: `${bridge.label}: ${bridge.count}` role: "titleLarge" }
+
+		Text { text: `Unit price: ${bridge.price}` role: "bodyLarge" }
+
+		Text { text: `Total: ${bridge.price * bridge.count}` role: "bodyLarge" }
+
+		Text { text: `${bridge.count} × ${bridge.price} = ${bridge.price * bridge.count}` role: "bodyMedium" }
+
+		Text {
+			text: bridge.discount ? "Discount applied" : "No discount"
+			role: "labelLarge"
+			color: onSurfaceVariant
+		}
+
+		Button { id: more label: "Add one" icon: add }
+
+		Text {
+			text: "Go may override any of these with ui.SetData."
+			role: "labelSmall"
+			color: onSurfaceVariant
+		}
+	}
+}

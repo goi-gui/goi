@@ -227,12 +227,16 @@ func propValues(f *syntax.File, passed map[string]syntax.Value) map[string]synta
 			out[pr.Name] = pr.Default
 			continue
 		}
+		// A list or a handler has no literal default: the instance must pass
+		// one, which substitute reports when it sees the nil.
 		out[pr.Name] = zeroValue(pr.Type)
 	}
 	return out
 }
 
 // zeroValue is Go's zero value for a prop type, as a literal the tree can read.
+// zeroValue is Go's zero for a scalar prop type. A "list" or "func" prop has no
+// zero literal, so it stays nil and substitute reports the missing value.
 func zeroValue(typ string) syntax.Value {
 	switch typ {
 	case "bool":
@@ -241,8 +245,10 @@ func zeroValue(typ string) syntax.Value {
 		return &syntax.Number{Val: 0}
 	case "color":
 		return &syntax.Color{RGBA: 0}
+	case "string":
+		return &syntax.String{Val: ""}
 	}
-	return &syntax.String{Val: ""}
+	return nil
 }
 
 // expand walks one element tree, replacing fragment instances with their
@@ -478,6 +484,11 @@ func walkMembers(members []syntax.Member, props map[string]syntax.Value, from st
 		case *syntax.Element:
 			walk(v)
 		case *syntax.Block:
+			if v.Kind == syntax.BlockEach && v.SourceProps {
+				if *diag = substEachSource(v, props, from, *diag); !diag.Empty() {
+					return
+				}
+			}
 			for i := range v.Branches {
 				br := &v.Branches[i]
 				if br.Cond != nil {
@@ -487,6 +498,32 @@ func walkMembers(members []syntax.Member, props map[string]syntax.Value, from st
 			}
 		}
 	}
+}
+
+// substEachSource turns `{#each props.items as row}` into the bridge list the
+// instance passed. A list has no literal form, so the value must be a
+// `bridge.name` reference.
+func substEachSource(blk *syntax.Block, props map[string]syntax.Value, from string, diag syntax.Diagnostics) syntax.Diagnostics {
+	got, ok := props[blk.Source]
+	if !ok {
+		return append(diag, syntax.Diagnostic{
+			Pos:     blk.SourceAt,
+			End:     blk.SourceAt + syntax.Pos(len(blk.Source)),
+			Src:     blk.Src,
+			Message: fmt.Sprintf("%s has no prop %q", from, blk.Source),
+		})
+	}
+	ref, ok := got.(*syntax.Ref)
+	if !ok || (ref.ID != "bridge" && ref.ID != "data") {
+		return append(diag, syntax.Diagnostic{
+			Pos:     blk.SourceAt,
+			End:     blk.SourceAt + syntax.Pos(len(blk.Source)),
+			Src:     blk.Src,
+			Message: fmt.Sprintf("props.%s is a list; the instance must pass one, as %s: bridge.rows", blk.Source, blk.Source),
+		})
+	}
+	blk.Source, blk.SourceProps = ref.Prop, false
+	return diag
 }
 
 // substValue returns a value with every `props.name` reference replaced.
@@ -506,11 +543,46 @@ func substValue(v syntax.Value, props map[string]syntax.Value, src, from string,
 			})
 			return x, diag
 		}
+		if got == nil {
+			diag = append(diag, syntax.Diagnostic{
+				Pos:     x.At,
+				End:     x.At + syntax.Pos(len(x.ID)+1+len(x.Prop)),
+				Src:     src,
+				Message: fmt.Sprintf("%s has no prop %q; %s.%s has no default, so the instance must pass one", from, x.Prop, x.ID, x.Prop),
+			})
+			return x, diag
+		}
 		// Copy: the value belongs to the caller (or to the fragment's default),
 		// and the expansion rewrites ids and references in place.
 		return copyValue(got), diag
 	case *syntax.Call:
-		out := &syntax.Call{At: x.At, Callee: x.Callee, Args: make([]syntax.Value, len(x.Args))}
+		callee := x.Callee
+		if callee.ID == "props" {
+			// `onClick: props.onOpen(item.id)`: the instance passed the real
+			// handler, so the call points at it now.
+			got, ok := props[callee.Prop]
+			if !ok {
+				diag = append(diag, syntax.Diagnostic{
+					Pos:     x.At,
+					End:     x.At + syntax.Pos(len("props.")+len(callee.Prop)),
+					Src:     src,
+					Message: fmt.Sprintf("%s has no prop %q", from, callee.Prop),
+				})
+				return x, diag
+			}
+			ref, ok := got.(*syntax.Ref)
+			if !ok || (ref.ID != "bridge" && ref.ID != "data") {
+				diag = append(diag, syntax.Diagnostic{
+					Pos:     x.At,
+					End:     x.At + syntax.Pos(len("props.")+len(callee.Prop)),
+					Src:     src,
+					Message: fmt.Sprintf("props.%s is a handler; the instance must pass one, as %s: bridge.onSomething", callee.Prop, callee.Prop),
+				})
+				return x, diag
+			}
+			callee = ref
+		}
+		out := &syntax.Call{At: x.At, Callee: callee, Args: make([]syntax.Value, len(x.Args))}
 		for i, a := range x.Args {
 			out.Args[i], diag = substValue(a, props, src, from, diag)
 		}
@@ -534,6 +606,12 @@ func substValue(v syntax.Value, props map[string]syntax.Value, src, from string,
 		then, diag := substValue(x.Then, props, src, from, diag)
 		els, diag := substValue(x.Else, props, src, from, diag)
 		return &syntax.Ternary{At: x.At, Cond: cond, Then: then, Else: els}, diag
+	case *syntax.Template:
+		out := &syntax.Template{At: x.At, Parts: make([]syntax.Value, len(x.Parts))}
+		for i, part := range x.Parts {
+			out.Parts[i], diag = substValue(part, props, src, from, diag)
+		}
+		return out, diag
 	}
 	return v, diag
 }
@@ -635,6 +713,12 @@ func copyValue(v syntax.Value) syntax.Value {
 		return &syntax.Unary{At: x.At, Op: x.Op, X: copyValue(x.X)}
 	case *syntax.Ternary:
 		return &syntax.Ternary{At: x.At, Cond: copyValue(x.Cond), Then: copyValue(x.Then), Else: copyValue(x.Else)}
+	case *syntax.Template:
+		out := &syntax.Template{At: x.At, Parts: make([]syntax.Value, len(x.Parts))}
+		for i, part := range x.Parts {
+			out.Parts[i] = copyValue(part)
+		}
+		return out
 	}
 	return v
 }

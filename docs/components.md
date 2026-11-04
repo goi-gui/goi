@@ -170,7 +170,9 @@ Button { label: "Open" onClick: bridge.onOpen("42") }
 | `onSelect: bridge.handler(event)` | `OnSelect(func(int))` | Tabs, NavigationBar, NavigationRail, List, Menu |
 
 The value of an event property is always a handler call. Its arguments are
-evaluated when the event fires; `event` is the event's own payload. See
+evaluated when the event fires; `event` is the event's own payload. A fragment
+can also declare a handler prop (`props { onOpen: func(id: string) }`) and call
+it, with the instance deciding which bridge handler that is. See
 `docs/SYNTAX.md` for the bridge block, handler types and runtime errors.
 
 ## Themes

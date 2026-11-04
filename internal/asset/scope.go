@@ -98,6 +98,10 @@ func walkValues(body *syntax.Element, fn func(*syntax.Ref)) {
 			val(x.Cond)
 			val(x.Then)
 			val(x.Else)
+		case *syntax.Template:
+			for _, part := range x.Parts {
+				val(part)
+			}
 		}
 	}
 	var members func([]syntax.Member)

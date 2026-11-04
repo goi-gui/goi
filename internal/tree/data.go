@@ -394,3 +394,40 @@ func normalizeData(v any) (any, bool) {
 	}
 	return normalize(v)
 }
+
+// literalRuntime turns a scalar literal into the value the expression engine
+// carries: a number is float64, a color is uint32.
+func literalRuntime(v syntax.Value) (any, bool) {
+	switch x := v.(type) {
+	case nil:
+		return nil, false
+	case *syntax.Number:
+		return x.Val, true
+	case *syntax.String:
+		return x.Val, true
+	case *syntax.Bool:
+		return x.Val, true
+	case *syntax.Color:
+		return x.RGBA, true
+	case *syntax.Ident:
+		// A bare word is a string, the way a string property reads it.
+		return x.Val, true
+	}
+	return normalize(v)
+}
+
+// zeroRuntime is Go's zero value for a declared bridge type, so an unset
+// variable still reads (`Count: 0`, `Name: ""`).
+func zeroRuntime(typ string) (any, bool) {
+	switch typ {
+	case "number":
+		return float64(0), true
+	case "bool":
+		return false, true
+	case "color":
+		return uint32(0), true
+	case "string":
+		return "", true
+	}
+	return nil, false
+}

@@ -1198,3 +1198,32 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   prop is substituted as a literal and a list has no literal to substitute. The
   lexer now emits a lone `=` for the default; only the props block accepts it, so
   a stray `=` elsewhere still fails at the same edit.
+
+- **A value can interpolate, and `+` means what the reader expects.** `` `Total:
+  ${price * count}` `` parses into a `Template` whose parts alternate literal
+  strings and ordinary expressions, so a hole gets the full expression language
+  and re-reads its references every frame. The parser parses each hole with the
+  same value parser by padding the hole's text with spaces to its byte offset:
+  every position it reports is then already an offset into the real file, so a
+  diagnostic inside `${...}` lands on the right column with no position fix-up.
+  `+` adds two numbers and joins anything else as text, which is what makes
+  `"n: " + count` work; `-`, `*` and `/` stay numeric because there is no
+  sensible concatenation for them.
+
+- **A bridge variable starts at a default, then its zero value.** `count: number
+  = 0` is declared in the design and seeded into the tree when it is built, so a
+  design reads a real value before Go says anything; `ui.SetData` still replaces
+  it. Without a default the seed is the type's zero (`""`, `0`, `false`,
+  transparent black). The alternative — leaving the variable unset so the
+  property keeps its own default — was rejected because it makes `{#if
+  bridge.flag}` depend on whether Go wrote first.
+
+- **A list prop is a bridge reference, not a list literal.** `.goi` has no
+  list literal, so `props { rows: [ticket] }` is filled by naming a bridge list
+  (`List { rows: bridge.tickets }`) and the fragment walks it with `{#each
+  props.rows as row}`; expansion rewrites the block's source to the bridge name
+  before validation, so the runtime only ever sees `{#each bridge.tickets}`. A
+  handler prop works the same way: `props { onOpen: func(id: string) }` plus
+  `onClick: props.onOpen(row.id)` becomes `bridge.onOpen(...)` once the instance
+  names the handler. Both keep one execution path instead of teaching the tree
+  about fragment inputs.

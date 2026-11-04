@@ -1,5 +1,7 @@
 package syntax
 
+import "strings"
+
 // Parse parses src into a File. It always returns as many diagnostics as it can
 // find; File is nil when nothing parseable was produced (no root element).
 func Parse(src []byte) (*File, Diagnostics) {
@@ -256,37 +258,105 @@ func (p *parser) parseProps(f *File) {
 	}
 }
 
-// parseProp reads `name: type` or `name: type = default`.
+// parseProp reads one entry of a fragment's `props` block. It shares the type
+// grammar with a bridge declaration, so a prop may be a scalar, a list of a
+// shape, or a handler; a scalar may carry a default.
 func (p *parser) parseProp() (Prop, bool) {
-	name := p.next()
-	pr := Prop{Name: name.text, NameAt: name.pos}
-	if p.peek().kind != tokColon {
-		p.errorf(p.peek(), "expected ':' after the prop name")
-		p.sync()
-		return pr, false
+	fl, ok := p.parseDataField()
+	if !ok {
+		return Prop{}, false
 	}
-	p.next()
-	t := p.peek()
-	if t.kind != tokIdent {
-		p.errorf(t, "expected a prop type: bool, string, number or color")
-		p.sync()
-		return pr, false
-	}
-	p.next()
-	pr.Type, pr.At = t.text, t.pos
-	if p.peek().kind == tokAssign {
-		p.next()
-		v, ok := p.parseValue()
-		if !ok {
-			p.sync()
-			return pr, false
+	return Prop{
+		Name: fl.Name, NameAt: fl.NameAt, Type: fl.Type,
+		List: fl.List, Elem: fl.Elem, Fn: fl.Fn, Args: fl.Args,
+		Default: fl.Default, At: fl.At,
+	}, true
+}
+
+// parseTemplate splits a backtick string into literal parts and the values
+// inside its `${...}` holes. Each hole is parsed as a normal expression, so
+// `\`${bridge.count + 1}\“ works like any other value.
+func (p *parser) parseTemplate(t token) (Value, bool) {
+	body := t.text
+	base := int(t.pos) + 1 // the body starts right after the opening backtick
+	tmpl := &Template{At: t.pos}
+	lit := 0
+	for i := 0; i < len(body); i++ {
+		if body[i] == '\\' {
+			i++
+			continue
 		}
-		pr.Default = v
+		if body[i] != '$' || i+1 >= len(body) || body[i+1] != '{' {
+			continue
+		}
+		if i > lit {
+			tmpl.Parts = append(tmpl.Parts, &String{At: Pos(base + lit), Val: body[lit:i]})
+		}
+		end, ok := matchBrace(body, i+1)
+		if !ok {
+			p.errorf(t, "unterminated ${ in a template string")
+			return nil, false
+		}
+		v, ok := p.subValue(body[i+2:end], base+i+2)
+		if !ok {
+			return nil, false
+		}
+		tmpl.Parts = append(tmpl.Parts, v)
+		i = end
+		lit = i + 1
 	}
-	if p.peek().kind == tokSemicolon {
-		p.next()
+	if lit < len(body) {
+		tmpl.Parts = append(tmpl.Parts, &String{At: Pos(base + lit), Val: body[lit:]})
 	}
-	return pr, true
+	return tmpl, true
+}
+
+// matchBrace returns the index of the '}' that closes the '{' at open, skipping
+// quoted text so a `${a == "}"}` is not cut short.
+func matchBrace(body string, open int) (int, bool) {
+	depth := 0
+	for i := open; i < len(body); i++ {
+		switch body[i] {
+		case '\'', '"', '`':
+			q := body[i]
+			for i++; i < len(body); i++ {
+				if body[i] == '\\' {
+					i++
+					continue
+				}
+				if body[i] == q {
+					break
+				}
+			}
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return i, true
+			}
+		}
+	}
+	return 0, false
+}
+
+// subValue parses the text of one `${...}` hole. The text is padded with spaces
+// to the hole's byte offset, so every position it produces is already an offset
+// into the real file and diagnostics land on the right column.
+func (p *parser) subValue(src string, at int) (Value, bool) {
+	lx := newLexer([]byte(strings.Repeat(" ", at) + src))
+	toks, diag := lx.run()
+	sp := &parser{toks: toks, diag: diag}
+	v, ok := sp.parseValue()
+	if ok && sp.peek().kind != tokEOF {
+		sp.errorf(sp.peek(), "unexpected text after the interpolated expression")
+		ok = false
+	}
+	p.diag = append(p.diag, sp.diag...)
+	if !ok {
+		return nil, false
+	}
+	return v, true
 }
 
 // parseData reads either the variables block (`bridge { loading: bool }`, also
@@ -365,14 +435,15 @@ func (p *parser) parseData(f *File) {
 
 // dataField is one `name: type` declaration, shared by variables and shapes.
 type dataField struct {
-	Name   string
-	NameAt Pos
-	List   bool
-	Type   string
-	Elem   string
-	Fn     bool
-	Args   []DataField
-	At     Pos
+	Name    string
+	NameAt  Pos
+	List    bool
+	Type    string
+	Elem    string
+	Fn      bool
+	Args    []DataField
+	Default Value
+	At      Pos
 }
 
 func (p *parser) parseDataField() (dataField, bool) {
@@ -435,6 +506,22 @@ func (p *parser) parseDataField() (dataField, bool) {
 		p.errorf(t, "expected a type: bool, string, number, color, [shape], shape[] or func(...)")
 		p.sync()
 		return f, false
+	}
+	// `count: number = 0` is the value the design starts with; Go may still
+	// overwrite it with SetData.
+	if p.peek().kind == tokAssign {
+		p.next()
+		if f.List || f.Fn {
+			p.errorf(p.peek(), "only a scalar variable takes a default value")
+			p.sync()
+			return f, false
+		}
+		v, ok := p.parseValue()
+		if !ok {
+			p.sync()
+			return f, false
+		}
+		f.Default = v
 	}
 	if p.peek().kind == tokSemicolon {
 		p.next()
@@ -697,8 +784,12 @@ func (p *parser) parseBlock() *Block {
 			return nil
 		}
 		p.next()
-		if src.text != "data" && src.text != "bridge" {
-			p.errorf(src, "a list comes from 'bridge.' or 'data.'; "+src.text+"."+name.text+" is not a collection")
+		switch src.text {
+		case "data", "bridge":
+		case "props":
+			blk.SourceProps = true
+		default:
+			p.errorf(src, "a list comes from 'bridge.', 'data.' or 'props.'; "+src.text+"."+name.text+" is not a collection")
 			p.sync()
 			return nil
 		}
@@ -834,7 +925,7 @@ func (p *parser) parseProperty() (*Property, bool) {
 func (p *parser) parseValue() (Value, bool) {
 	t := p.peek()
 	switch t.kind {
-	case tokString:
+	case tokString, tokTemplate:
 		// A string is an operand too, so `"a" + "b"` concatenates as the
 		// syntax reference promises.
 		return p.parseExpr()
@@ -1071,6 +1162,9 @@ func (p *parser) parseTerm() (Value, bool) {
 	case tokString:
 		p.next()
 		return &String{At: t.pos, Val: t.text}, true
+	case tokTemplate:
+		p.next()
+		return p.parseTemplate(t)
 	case tokBool:
 		p.next()
 		return &Bool{At: t.pos, Val: t.b}, true

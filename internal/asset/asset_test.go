@@ -611,3 +611,71 @@ Column {
 		t.Fatalf("text = %q, want the prop value", got)
 	}
 }
+
+// TestPropCanCarryAList makes a fragment declare `props { rows: [ticket] }` and
+// the instance pass a bridge list, which its {#each} then walks.
+func TestPropCanCarryAList(t *testing.T) {
+	dir := design(t, map[string]string{
+		"Main.goi": `import "./List.goi" as List
+bridge { rows: [ticket] }
+type ticket { title: string }
+Window {
+	Column {
+		List { rows: bridge.rows }
+	}
+}`,
+		"List.goi": `props { rows: [ticket] }
+Column {
+	{#each props.rows as row}
+		Text { text: row.title }
+	{/each}
+}`,
+	})
+	tr, err := load(t, dir, "Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr.SetData("rows", []map[string]any{{"title": "one"}, {"title": "two"}})
+	tr.ApplyExpressions()
+	var got []string
+	for _, n := range tr.All() {
+		if n.Kind() == "Text" {
+			got = append(got, n.(*tree.Text).Text.Get())
+		}
+	}
+	if strings.Join(got, ",") != "one,two" {
+		t.Fatalf("texts = %v, want the two rows", got)
+	}
+}
+
+// TestPropCanCarryAHandler lets the instance decide which handler a fragment's
+// event calls.
+func TestPropCanCarryAHandler(t *testing.T) {
+	dir := design(t, map[string]string{
+		"Main.goi": `import "./Row.goi" as Row
+bridge { onOpen: func(id: string) }
+Window {
+	Column {
+		Row { onOpen: bridge.onOpen }
+	}
+}`,
+		"Row.goi": `props { onOpen: func(id: string) }
+Text { id: row text: "row" onClick: props.onOpen("7") }`,
+	})
+	tr, err := load(t, dir, "Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	if err := tr.SetHandler("onOpen", func(id string) { got = append(got, id) }); err != nil {
+		t.Fatal(err)
+	}
+	n, ok := tr.ByID("row")
+	if !ok {
+		t.Fatalf("no row:\n%s", dump(tr))
+	}
+	n.Base().Click.Emit(tree.ClickEvent{})
+	if len(got) != 1 || got[0] != "7" {
+		t.Fatalf("handler calls = %v, want one with 7", got)
+	}
+}

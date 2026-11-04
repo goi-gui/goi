@@ -37,6 +37,9 @@ datalist:
 bridge:
 	go run -ldflags=-linkmode=internal ./examples/bridge
 
+template:
+	go run -ldflags=-linkmode=internal ./examples/template
+
 test:
 	go test -race ./...
 
@@ -46,4 +49,4 @@ vet:
 bench:
 	go test -run XXX -bench . -benchmem ./internal/layout/ ./internal/syntax/ ./internal/paint/
 
-.PHONY: build search spike counter gallery hello scroll typography composition theme titlebar datalist bridge test vet bench
+.PHONY: build search spike counter gallery hello scroll typography composition theme titlebar datalist bridge template test vet bench

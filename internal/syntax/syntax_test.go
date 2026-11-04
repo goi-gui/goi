@@ -296,8 +296,8 @@ Window { }`, `expected "as"`},
 		{"missing alias", `import "./a.goi" as
 Window { }`, "expected an alias"},
 		{"missing brace", "props title: string\nWindow { }", "expected '{' after props"},
-		{"missing colon", "props { x string }\nWindow { }", "expected ':' after the prop name"},
-		{"missing type", "props { x: }\nWindow { }", "expected a prop type"},
+		{"missing colon", "props { x string }\nWindow { }", "expected ':' after the name"},
+		{"missing type", "props { x: }\nWindow { }", "expected a type"},
 		{"dollar in a value", "Window { Text { text: $ } }", "unexpected '$' in a value"},
 	}
 	for _, tc := range cases {

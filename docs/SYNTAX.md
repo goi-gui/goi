@@ -64,12 +64,20 @@ Window {
   asset container. Fragments may import fragments; a cycle is an error.
 - `Sidebar { }` is replaced by the fragment's root element, so the fragment
   decides its own layout and the instance places it like any other child.
-- A prop is `name: type`, with an optional `= default`. The type is `bool`,
-  `string`, `number` or `color`: a prop becomes a value in the design, so a list
-  or a row shape has no place here.
-- A prop the instance leaves out is its default; with no default it is the
+- A prop is `name: type`, with an optional `= default` on a scalar. The type is
+  `bool`, `string`, `number`, `color`, a list (`[shape]` / `shape[]`) or a
+  handler (`func(id: string)`).
+- A prop the instance leaves out is its default; with no default a scalar is the
   **type's zero value** (`""`, `0`, `false`, `#00000000`), so a fragment never
-  has to guard for a missing value.
+  has to guard for a missing value. A list or a handler has no zero literal, so
+  the instance must pass one.
+- A list prop is walked like a bridge list: `{#each props.rows as row}`. The
+  instance passes a bridge list — `List { rows: bridge.tickets }` — whose shape
+  must match the declaration.
+- A handler prop is called like a bridge handler: `onClick:
+  props.onOpen(row.id)`. The instance passes a handler — `Row { onOpen:
+  bridge.onOpen }` — and `event` is not available inside the fragment, because
+  the fragment decides what it passes.
 - An instance property whose name is a prop sets that prop. Any other property
   is applied to the fragment root, replacing the fragment's own value of the same
   name. So `Sidebar { width: 300 }` overrides the fragment's width.
@@ -232,8 +240,8 @@ block. `data { ... }` is the original spelling and still works; `type` and
 ```goi
 bridge {
 	loading: bool
-	error: string
-	count: number
+	error: string = ""
+	count: number = 0
 	tickets: [ticket]
 	onOpen: func(id: string)
 	onFilter: func(query: string, limit: number)
@@ -289,6 +297,11 @@ converted from the design's values: a number may feed an `int`, a `float64` or a
   `[shape]` or the older `shape[]`, and the shape must be declared. A field of a
   shape may itself be a list, so `type group { name: string, items: [item] }`
   works.
+- **Defaults.** A scalar variable may name the value the design starts with:
+  `count: number = 0`. Go still wins — `ui.SetData(w, "count", 7)` replaces it.
+  With no default the variable starts at its type's zero value (`""`, `0`,
+  `false`, transparent black), so a design can read it before Go sets anything.
+  A list or a handler has no literal default: the app supplies them.
 - **Handlers.** `onOpen: func(id: string)` declares a handler with its
   parameters; `func()` takes none. A handler parameter is a scalar:
   `bool`, `string`, `number` or `color`. A handler is never a value: it can only
@@ -340,8 +353,7 @@ converted from the design's values: a number may feed an `int`, a `float64` or a
 File      = { Import | Props | Bridge | Shape } Element EOF
 Import    = "import" String "as" Ident
 Props     = "props" "{" { PropDecl } "}"
-PropDecl  = Ident ":" ScalarType [ "=" Value ] [";"]
-ScalarType = "bool" | "string" | "number" | "color"
+PropDecl  = Ident ":" Type [ "=" Value ] [";"]
 Bridge    = ("bridge" | "data") "{" { VarDecl } "}"
 Shape     = ("type" | "data") Ident "{" { FieldDecl } "}"
 VarDecl   = Ident ":" Type [";"]
@@ -355,13 +367,14 @@ Block     = "{#" "if" Value "}" { Member }
             { "{:else if" Value "}" { Member } }
             [ "{:else}" { Member } ]
             "{/if}"
-          | "{#" "each" ("bridge" | "data") "." Ident "as" Ident "}" { Member }
+          | "{#" "each" ("bridge" | "data" | "props") "." Ident "as" Ident "}" { Member }
             [ "{:else}" { Member } ]
             "{/each}"
 Property  = Ident ":" Value [";"]
 EventHandler = Ident ":" ("bridge" | "data") "." Ident
                "(" [ Value { "," Value } ] ")"
-Value     = String | Number | Bool | Color | Ident | Map | Expression | "$" Ident
+Value     = String | Template | Number | Bool | Color | Ident | Map | Expression
+Template  = "`" { Character | "${" Value } "}" "`"
 Map       = "{" [ MapEntry { "," MapEntry } [","] ] "}"
 MapEntry  = Ident ":" Value
 Expression = Or [ "?" Value ":" Value ]
@@ -527,8 +540,29 @@ string, a bool or an enum can be conditional too. A reference reads another
 element's property by id (`id.property`), so the value follows that element
 automatically. Operators are `+ - * /`, comparisons `== != < <= > >=`, `&& ||
 !`, a conditional `cond ? a : b` and parentheses, with the usual precedence.
-`+` concatenates two strings. A type mismatch, division by zero or a reference
-cycle leaves the property at its previous value instead of failing the frame.
+`+` adds two numbers and joins anything else as text, so `bridge.price *
+bridge.count` is arithmetic while `"n: " + bridge.count` is a string. `-`, `*`
+and `/` are numeric only. A type mismatch, division by zero or a reference cycle
+leaves the property at its previous value instead of failing the frame.
+
+### Template strings
+
+A backtick value interpolates `${...}` holes into text:
+
+```goi
+Text { text: `Count is ${bridge.count}` }
+Text { text: `${props.title} (${bridge.count} of ${bridge.total})` }
+```
+
+A hole is an ordinary expression, so arithmetic, references and conditionals all
+work inside one: `` `Total: ${bridge.price * bridge.count}` ``. Each value is
+formatted the way a string property shows it — a number without trailing zeros,
+a bool as `true`/`false`, a color as `#rrggbb`.
+
+A template is a string, so it feeds `text`, a `string` prop, a `label` or an
+enum-or-string position; feeding a `number` property is an error. It is
+re-evaluated on every frame, exactly like any other expression, so a
+`ui.SetData` write reaches the text without extra wiring.
 
 Two namespaces are reserved for expressions:
 

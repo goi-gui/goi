@@ -107,6 +107,18 @@ func dumpValue(v Value) string {
 		return v.Op + dumpValue(v.X)
 	case *Ternary:
 		return "(" + dumpValue(v.Cond) + " ? " + dumpValue(v.Then) + " : " + dumpValue(v.Else) + ")"
+	case *Template:
+		var b strings.Builder
+		b.WriteByte('`')
+		for _, part := range v.Parts {
+			if lit, ok := part.(*String); ok {
+				b.WriteString(lit.Val)
+				continue
+			}
+			b.WriteString("${" + dumpValue(part) + "}")
+		}
+		b.WriteByte('`')
+		return b.String()
 	case *Map:
 		parts := make([]string, len(v.Entries))
 		for i, e := range v.Entries {

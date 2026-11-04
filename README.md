@@ -104,6 +104,7 @@ make typography # type scale, five weights, wrapping
 make composition # one design split across Main.goi, Sidebar.goi and StatCard.goi
 make theme     # built-in schemes plus one registered by name
 make datalist  # bridge values in an {#each}, with a row handler
+make template  # backtick strings, arithmetic and bridge defaults
 make bridge    # every event property calling a Go handler
 make search    # a button and a text field reading another node by id
 go run ./cmd/goicheck -layout examples/*/*.goi  # syntax plus a headless layout check
@@ -114,11 +115,11 @@ go run ./cmd/goicheck -layout examples/*/*.goi  # syntax plus a headless layout 
 - `.goi` files: literals only, no scripting. Elements, properties, ids, with
   diagnostics that point at `file:line:col`.
 - Composable designs: `import "./Sidebar.goi" as Sidebar`, a typed `props`
-  block the instance fills (`props.title`, zero value when it passes nothing),
-  named slots (`$header`) and `$children`, loaded from an `io/fs.FS` so
-  `embed.FS` and `os.DirFS` both work. An instance's `id` scopes the fragment's
-  own ids (`first.title`), so one fragment can be used many times with behaviour
-  attached to each copy.
+  block the instance fills (`props.title`, zero value when it passes nothing,
+  plus lists and handlers), named slots (`$header`) and `$children`, loaded
+  from an `io/fs.FS` so `embed.FS` and `os.DirFS` both work. An instance's `id`
+  scopes the fragment's own ids (`first.title`), so one fragment can be used
+  many times with behaviour attached to each copy.
 - Typed Go API: `Prop[T]` cells, `Event[E]`, `ByID[T]`.
 - Material 3 components as core elements: buttons, FABs, chips, selection
   controls, sliders, text fields, cards, dialogs, sheets, lists, menus,
@@ -132,6 +133,9 @@ go run ./cmd/goicheck -layout examples/*/*.goi  # syntax plus a headless layout 
 - Text: the M3 type scale (`role`), explicit `fontSize` and `weight` (300/400/
   500/700/900 Roboto; other numbers snap to the nearest), and `wrap: true` for
   real word wrapping that reserves the height of every line.
+- Template strings: `` `Count is ${bridge.count}` `` interpolates any expression,
+  and `+` adds numbers but joins anything else. A bridge variable may carry a
+  default (`count: number = 0`) and otherwise starts at its type's zero value.
 - Value expressions on every property type: `width: side.width / 2`,
   `width: 50%` of the parent, comparisons and `&& || !`, and a conditional
   (`trailingIcon: app.dark ? "light_mode" : "dark_mode"`). `app.theme`,

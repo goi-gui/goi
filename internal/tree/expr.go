@@ -1,8 +1,10 @@
 package tree
 
 import (
+	"fmt"
 	"runtime"
 	"strconv"
+	"strings"
 
 	"github.com/ksckaan1/goi/internal/syntax"
 )
@@ -19,7 +21,7 @@ type exprSpec struct {
 // literal write.
 func isExpression(v syntax.Value) bool {
 	switch v.(type) {
-	case *syntax.Percent, *syntax.Ref, *syntax.Binary, *syntax.Unary, *syntax.Ternary:
+	case *syntax.Percent, *syntax.Ref, *syntax.Binary, *syntax.Unary, *syntax.Ternary, *syntax.Template:
 		return true
 	}
 	return false
@@ -368,6 +370,8 @@ func (c *evalCtx) eval(v syntax.Value, percent float64) (any, bool) {
 		return c.evalBinary(x, percent)
 	case *syntax.Ref:
 		return c.evalRef(x)
+	case *syntax.Template:
+		return c.evalTemplate(x, percent)
 	}
 	return nil, false
 }
@@ -409,15 +413,61 @@ func (c *evalCtx) evalBinary(x *syntax.Binary, percent float64) (any, bool) {
 	case "<", "<=", ">", ">=":
 		return compareValues(x.Op, left, right)
 	case "+":
-		if a, ok := left.(string); ok {
-			b, ok := right.(string)
-			return a + b, ok
+		// Two numbers add; anything else concatenates, so `"n: " + 3` and
+		// `1 + 2` both mean what a reader expects.
+		if _, ok := left.(float64); ok {
+			if _, ok := right.(float64); ok {
+				return arith(x.Op, left, right)
+			}
 		}
-		return arith(x.Op, left, right)
+		a, aok := formatValue(left)
+		b, bok := formatValue(right)
+		if !aok || !bok {
+			return nil, false
+		}
+		return a + b, true
 	case "-", "*", "/":
 		return arith(x.Op, left, right)
 	}
 	return nil, false
+}
+
+// evalTemplate joins a backtick string's literal parts with the values its
+// ${...} holes produce, formatting each one the way a string property would.
+func (c *evalCtx) evalTemplate(x *syntax.Template, percent float64) (any, bool) {
+	var b strings.Builder
+	for _, part := range x.Parts {
+		if lit, ok := part.(*syntax.String); ok {
+			b.WriteString(lit.Val)
+			continue
+		}
+		v, ok := c.eval(part, percent)
+		if !ok {
+			return nil, false
+		}
+		s, ok := formatValue(v)
+		if !ok {
+			return nil, false
+		}
+		b.WriteString(s)
+	}
+	return b.String(), true
+}
+
+// formatValue renders one value as text: what a string property, a template
+// hole and a `+` concatenation all show.
+func formatValue(v any) (string, bool) {
+	switch x := v.(type) {
+	case string:
+		return x, true
+	case float64:
+		return strconv.FormatFloat(x, 'f', -1, 64), true
+	case bool:
+		return strconv.FormatBool(x), true
+	case uint32:
+		return fmt.Sprintf("#%06x", x>>8), true
+	}
+	return "", false
 }
 
 func valuesEqual(a, b any) bool {

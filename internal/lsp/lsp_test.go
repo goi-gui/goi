@@ -1275,3 +1275,87 @@ Column {
 		t.Fatalf("hover on the declaration = %q", h.Contents.Value)
 	}
 }
+
+// TestTemplateAndCompositePropsAreKnownToTheEditor covers the editor surface of
+// backtick values and of list/handler props: a reference inside `${...}` still
+// hovers, `props.` shows the composite types, and an event offers the fragment's
+// own handler prop.
+func TestTemplateAndCompositePropsAreKnownToTheEditor(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := `props {
+	rows: [ticket]
+	onOpen: func(id: string)
+	count: number = 2
+}
+type ticket { title: string }
+Column {
+	Text { text: ` + "`${props.count} items`" + ` }
+	Button { label: "x" onClick: props. }
+	{#each props. }
+}
+`
+	uri := writeDesign(t, dir, "Card.goi", src)
+	c.openDoc(uri, src)
+
+	items := func(p position) map[string]completionResult {
+		res := c.request("textDocument/completion", map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     p,
+		})
+		var list completionList
+		if err := json.Unmarshal(res, &list); err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]completionResult{}
+		for _, it := range list.Items {
+			out[it.Label] = it
+		}
+		return out
+	}
+
+	member := items(at(t, src, "onClick: props. }", len("onClick: props.")))
+	if !strings.Contains(member["rows"].Detail, "[ticket]") {
+		t.Fatalf("list prop detail = %q", member["rows"].Detail)
+	}
+	if !strings.Contains(member["onOpen"].Detail, "func(id: string)") {
+		t.Fatalf("handler prop detail = %q", member["onOpen"].Detail)
+	}
+	if _, ok := member["count"]; !ok {
+		t.Fatalf("scalar prop missing: %v", member)
+	}
+
+	// An event property offers the handler the fragment declares.
+	call := items(at(t, src, "onClick: props. }", len("onClick: ")))
+	if _, ok := call["props.onOpen(…)"]; !ok {
+		t.Fatalf("props handler call missing: %v", call)
+	}
+
+	// Inside `{#each props.` the list names complete, so the block is walkable.
+	each := items(at(t, src, "{#each props. }", len("{#each props.")))
+	if _, ok := each["rows"]; !ok {
+		t.Fatalf("props list missing from the each completion: %v", each)
+	}
+
+	// A reference inside ${...} is a real reference: hovering it works.
+	clean := `props { count: number = 2 }
+Column {
+	Text { text: ` + "`${props.count} items`" + ` }
+}
+`
+	cleanURI := writeDesign(t, dir, "Clean.goi", clean)
+	c.openDoc(cleanURI, clean)
+	res := c.request("textDocument/hover", map[string]any{
+		"textDocument": map[string]any{"uri": cleanURI},
+		"position":     at(t, clean, "props.count} items", 1),
+	})
+	var h struct {
+		Contents doc `json:"contents"`
+	}
+	if err := json.Unmarshal(res, &h); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.Contents.Value, "props.count") {
+		t.Fatalf("hover inside a template = %q", h.Contents.Value)
+	}
+}
