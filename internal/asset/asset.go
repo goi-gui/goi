@@ -343,8 +343,10 @@ func (l *loader) instance(target string, call *syntax.Element, callerAliases map
 	}
 	// Before the caller's children land in a slot, and before the caller's own
 	// properties are applied to the root: their ids and references belong to
-	// the caller, and only the fragment's own ids follow the instance id.
-	if id, ok := literalID(call); ok {
+	// the caller, and only the fragment's own ids follow the instance id. A
+	// fragment that declares an `id` prop owns that name, so the instance's
+	// `id:` is its value and scopes nothing.
+	if id, ok := literalID(call); ok && !declared["id"] {
 		scopeIDs(body, id)
 	}
 	applyOverrides(body, overrides)

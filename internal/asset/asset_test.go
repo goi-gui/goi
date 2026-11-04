@@ -582,3 +582,32 @@ func shown(n tree.Node) bool {
 	}
 	return true
 }
+
+// TestPropNamedIDOwnsTheInstanceProperty pins the one name that two features
+// share: a fragment that declares an `id` prop takes the instance's `id:` as
+// that value, so instance-id scoping stays off for it.
+func TestPropNamedIDOwnsTheInstanceProperty(t *testing.T) {
+	dir := design(t, map[string]string{
+		"Main.goi": `import "./Card.goi" as Card
+Window {
+	Column {
+		Card { id: "one" }
+	}
+}`,
+		"Card.goi": `props { id: string }
+Column {
+	Text { id: title text: props.id }
+}`,
+	})
+	tr, err := load(t, dir, "Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, ok := tr.ByID("title")
+	if !ok {
+		t.Fatalf("the inner id was scoped by a prop:\n%s", dump(tr))
+	}
+	if got := n.(*tree.Text).Text.Get(); got != "one" {
+		t.Fatalf("text = %q, want the prop value", got)
+	}
+}

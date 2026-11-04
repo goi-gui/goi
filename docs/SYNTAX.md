@@ -73,6 +73,9 @@ Window {
 - An instance property whose name is a prop sets that prop. Any other property
   is applied to the fragment root, replacing the fragment's own value of the same
   name. So `Sidebar { width: 300 }` overrides the fragment's width.
+- `id` is the one shared name: a fragment that declares an `id` prop takes the
+  instance's `id:` as that value, so instance-id scoping is off for it. Declare
+  a different prop name when the instance needs its ids namespaced.
 - A fragment's root may be any element; only the file a program loads must be a
   `Window`. A file that declares props is reported as a fragment by `goicheck`.
 - `props.name` is only valid inside the file that declares it. The entry file has
