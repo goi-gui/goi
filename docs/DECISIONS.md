@@ -1304,3 +1304,16 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   types private: a caller imports `ui`, passes `ui.FileFilter`, and tests
   `errors.Is(err, ui.ErrDialogCanceled)`. No cgo is added, so the Linux
   `-linkmode=internal` rule is unchanged.
+- **SVG is rasterized by `srwiley/oksvg` + `rasterx`, inside `ui`.** The two are
+  pure Go, so nothing above `internal/platform` gains cgo and the Linux
+  `-linkmode=internal` rule is unchanged. `oksvg` exposes
+  `ReadReplacingCurrentColor`, which is exactly the design's `color` property:
+  one parsed file, a text substitution, then a raster. The rasterizer lives in
+  `internal/svg` so `internal/tree` keeps importing only the pixel type from
+  `internal/img`; the node itself no longer needs to know how SVG is drawn.
+  Rasters are cached by path and colour, so a reload or two nodes sharing an
+  icon repeat neither the parse nor the raster. The frame loop compares a
+  node's `Color`/`Src` with the values its bitmap was made from and re-rasters
+  when Go changes them; that is cheaper than giving `Prop[T]` a change hook.
+  `src` stays local-only for now: remote images have a placeholder and a
+  background fetch, and duplicating that path for SVG buys little.

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ksckaan1/goi/internal/img"
+	"github.com/ksckaan1/goi/internal/svg"
 	"github.com/ksckaan1/goi/internal/tree"
 )
 
@@ -29,10 +30,11 @@ func isRemoteSrc(src string) bool {
 	return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://")
 }
 
-// loadImages fills in every Image element in a freshly built tree. Local files
-// are read and decoded here, on the UI goroutine, because they are small and the
-// result is needed for the first frame; decoding is cached by src, so a hot
-// reload does not decode again and a failed file is not retried every frame.
+// loadImages fills in every Image and SVG element in a freshly built tree.
+// Local files are read and decoded here, on the UI goroutine, because they are
+// small and the result is needed for the first frame; decoding is cached by src,
+// so a hot reload does not decode again and a failed file is not retried every
+// frame.
 //
 // A remote src is not read here: the node is marked Loading and the fetch runs
 // in the background, so a slow host cannot hold up the window. The placeholder
@@ -45,7 +47,13 @@ func (a *App) loadImages(tr *tree.Tree) {
 	if tr == nil {
 		return
 	}
+	a.hasSVG = false
 	for _, n := range tr.All() {
+		if s, ok := n.(*tree.SVG); ok {
+			a.hasSVG = true
+			a.loadSVG(s)
+			continue
+		}
 		im, ok := n.(*tree.Image)
 		if !ok {
 			continue
@@ -84,6 +92,101 @@ func (a *App) cacheImage(src string, d *img.Data) {
 		a.images = map[string]*img.Data{}
 	}
 	a.images[src] = d
+}
+
+// svgKey identifies a rasterized SVG: the same file in the same colour is one
+// bitmap on the GPU atlas, however many nodes use it.
+type svgKey struct {
+	src   string
+	color uint32
+}
+
+// loadSVG rasterizes one SVG node. An empty src leaves the node as it is.
+func (a *App) loadSVG(n *tree.SVG) {
+	if src := n.Src.Get(); src != "" {
+		a.renderSVG(n, src, n.Color.Get())
+	}
+}
+
+// renderSVG reads, parses and rasterizes src with color as currentColor. The
+// parsed file and the bitmap are cached, so a reload and a second node with the
+// same src do not repeat the work.
+//
+// shortcut: an SVG is read once per app. Editing the file on disk needs a
+// restart, the same as a bitmap; upgrade with an mtime check in the watcher.
+func (a *App) renderSVG(n *tree.SVG, src string, color uint32) {
+	n.Data = nil
+	n.RenderedSrc, n.RenderedColor = src, color
+	n.LoadErr = nil
+	if isRemoteSrc(src) {
+		n.LoadErr = fmt.Errorf("%s: SVG src must be a local path, not a URL", src)
+		return
+	}
+	if a.assets == nil {
+		return
+	}
+	source, ok := a.svgs[src]
+	if !ok {
+		b, err := fs.ReadFile(a.assets, path.Clean(src))
+		if err != nil {
+			n.LoadErr = err
+			return
+		}
+		if source, err = svg.Parse(b); err != nil {
+			n.LoadErr = fmt.Errorf("%s: %w", src, err)
+			return
+		}
+		if a.svgs == nil {
+			a.svgs = map[string]*svg.SVG{}
+		}
+		a.svgs[src] = source
+	}
+	n.IntrinsicW, n.IntrinsicH = source.Intrinsic()
+
+	// SVG colours have no alpha channel, so 0 means "the design named none"
+	// and gets black; the alpha of a real colour becomes drawing opacity.
+	c := color
+	if c == 0 {
+		c = 0x000000FF
+	}
+	key := svgKey{src: src, color: c}
+	d, ok := a.svgData[key]
+	if !ok {
+		var err error
+		if d, err = source.Render(c); err != nil {
+			n.LoadErr = fmt.Errorf("%s: %w", src, err)
+			return
+		}
+		if a.svgData == nil {
+			a.svgData = map[svgKey]*img.Data{}
+		}
+		a.svgData[key] = d
+	}
+	n.Data = d
+	// shortcut: a colour change rasterizes a new bitmap and the image atlas
+	// keeps the superseded region, so animating Color every frame grows GPU
+	// memory. Upgrade with a tint mask or in-place atlas updates if that is
+	// ever needed; state changes and theme switches are fine.
+}
+
+// syncSVGs re-rasterizes an SVG whose src or colour changed from Go. It runs
+// once per frame and only walks the tree while the design has an SVG.
+func (a *App) syncSVGs() {
+	if !a.hasSVG || a.win == nil || a.win.tree == nil {
+		return
+	}
+	a.win.tree.Walk(func(n tree.Node) {
+		s, ok := n.(*tree.SVG)
+		if !ok {
+			return
+		}
+		src, color := s.Src.Get(), s.Color.Get()
+		if src == s.RenderedSrc && color == s.RenderedColor {
+			return
+		}
+		a.renderSVG(s, src, color)
+		s.Base().MarkDirty(tree.DirtyPaint)
+	})
 }
 
 // loadRemoteImage shows the cached bitmap at once, or marks the node as loading

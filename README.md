@@ -214,6 +214,9 @@ go run ./cmd/goifmt -l .                        # list unformatted .goi files
   roles you need; `app.dark` follows the resolved scheme's mood, not its name.
 - Images: `Image { src: "photo.png" fit: cover }` decodes PNG, JPEG or GIF once
   and packs every bitmap into one GPU atlas.
+- SVG: `SVG { src: "logo.svg" color: primary }` rasterizes an SVG file and
+  substitutes the design's colour for its `currentColor`, so theme roles and
+  `Color.Set` from Go reach the icon.
 - Bridge: `bridge { OnOpen func(id string) }` declares the handlers a design
   calls from any event property (`onClick: bridge.OnOpen(row.ID)`), with the
   arguments evaluated when the event fires and `event` carrying the event's own

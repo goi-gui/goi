@@ -172,7 +172,7 @@ func collapsed(tr *tree.Tree) []string {
 			continue
 		}
 		switch n.Kind() {
-		case "Divider", "Positioned", "Image":
+		case "Divider", "Positioned", "Image", "SVG":
 			continue
 		}
 		if bb.W == 0 || bb.H == 0 {

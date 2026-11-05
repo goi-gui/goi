@@ -162,6 +162,9 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 		if im, ok := b.Node().(*tree.Image); ok {
 			l.paintImage(im, r, clip)
 		}
+		if s, ok := b.Node().(*tree.SVG); ok {
+			l.paintSVG(s, r, clip)
+		}
 	}
 	inner := b.ContentBox(r)
 	childClip := clip
@@ -203,6 +206,9 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 		}
 		if im, ok := b.Node().(*tree.Image); ok {
 			l.paintImage(im, r, clip)
+		}
+		if s, ok := b.Node().(*tree.SVG); ok {
+			l.paintSVG(s, r, clip)
 		}
 	}
 
@@ -299,20 +305,31 @@ func (l *List) paintScrollbar(b *tree.NodeBase, r, inner tree.Rect, clip tree.Re
 // requested fit. A missing or undecoded image keeps the node's background, so a
 // bad path shows as a coloured placeholder rather than a hole.
 func (l *List) paintImage(n *tree.Image, r tree.Rect, clip tree.Rect) {
-	d := n.Data
+	l.paintBitmap(n.Data, n.Fit.Get(), &n.NodeBase, n.Loading, n.Phase, r, clip)
+}
+
+// paintSVG draws a rasterized SVG through the same bitmap path as Image.
+func (l *List) paintSVG(n *tree.SVG, r tree.Rect, clip tree.Rect) {
+	l.paintBitmap(n.Data, n.Fit.Get(), &n.NodeBase, false, 0, r, clip)
+}
+
+func (l *List) paintBitmap(d *img.Data, fit string, base *tree.NodeBase, loading bool, phase float64, r tree.Rect, clip tree.Rect) {
 	if d == nil || d.W <= 0 || d.H <= 0 || r.W <= 0 || r.H <= 0 {
 		// A remote image still on the way gets a breathing wash, so the space
 		// reads as loading instead of broken. A failed or empty one stays the
 		// node's own background.
-		if n.Loading {
-			l.paintImageLoading(n, r, clip)
+		if loading {
+			col := l.Theme.Colors
+			alpha := 0.06 + 0.10*phase
+			l.fillRect(r, withAlpha(col.OnSurface, alpha), base.Radius(), 0, 0,
+				intersect(clip, r))
 		}
 		return
 	}
 	uv := [4]float32{0, 0, 1, 1}
 	quad := r
 	sw, sh := float64(d.W), float64(d.H)
-	switch n.Fit.Get() {
+	switch fit {
 	case "contain":
 		scale := r.W / sw
 		if r.H/sh < scale {
@@ -340,18 +357,9 @@ func (l *List) paintImage(n *tree.Image, r tree.Rect, clip tree.Rect) {
 	// the shader already knows how to round a clip.
 	l.Ops = append(l.Ops, Op{
 		Kind: Bitmap, Rect: rectArr(quad), Clip: clipArr(intersect(clip, r)),
-		ClipRadius: float32(n.Base().Radius()),
+		ClipRadius: float32(base.Radius()),
 		Src:        d, UV: uv,
 	})
-}
-
-// paintImageLoading draws the placeholder for an image that is still being
-// fetched: a faint wash over the box that breathes with Phase.
-func (l *List) paintImageLoading(n *tree.Image, r tree.Rect, clip tree.Rect) {
-	col := l.Theme.Colors
-	alpha := 0.06 + 0.10*n.Phase
-	l.fillRect(r, withAlpha(col.OnSurface, alpha), n.Base().Radius(), 0, 0,
-		intersect(clip, r))
 }
 
 // componentNode is implemented by every Material 3 component (they all embed

@@ -227,6 +227,39 @@ func (i *Image) namedProps() []NamedProp {
 	)
 }
 
+// SVG draws an SVG file. The ui layer rasterizes it, replacing the file's
+// currentColor with Color, so one icon can follow the theme. IntrinsicW/H is
+// the viewBox size, which is the element's size when width and height are
+// omitted.
+type SVG struct {
+	NodeBase
+	Src   Prop[string]
+	Fit   Prop[string]
+	Color Prop[uint32]
+	Data  *img.Data
+	// IntrinsicW/H is the parsed viewBox size in logical pixels.
+	IntrinsicW, IntrinsicH float64
+	// RenderedSrc and RenderedColor are what Data was rasterized from. The ui
+	// layer compares them to re-rasterize when Go changes the colour.
+	RenderedSrc   string
+	RenderedColor uint32
+	// LoadErr is a read, parse or rasterize failure. The node keeps drawing
+	// whatever background its box has, so a bad file is visible rather than a
+	// silent hole.
+	LoadErr error
+}
+
+// Kind implements Node.
+func (s *SVG) Kind() string { return "SVG" }
+
+func (s *SVG) namedProps() []NamedProp {
+	return append(commonProps(&s.NodeBase),
+		StringProp(&s.NodeBase, "src", &s.Src),
+		EnumProp(&s.NodeBase, "fit", DirtyLayout, &s.Fit, "cover", "contain", "fill"),
+		ColorProp(&s.NodeBase, "color", DirtyPaint, &s.Color),
+	)
+}
+
 // Text draws a single run of text. FontSize 0 means "use the M3 role in Role";
 // Role is one of the type-scale names (bodyMedium is the default).
 type Text struct {

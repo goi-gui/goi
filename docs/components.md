@@ -4,8 +4,8 @@ Every element the `.goi` format knows, grouped by what it is for. Each name link
 to its own page with a `.goi` example, its properties and a Go example.
 
 The framework has three layers: layout primitives (`Column`, `Row`, `Stack`, …),
-plain drawing nodes (`Rectangle`, `Image`, `Text`) and the Material 3 components.
-They all share one property set and one way of being driven from Go.
+plain drawing nodes (`Rectangle`, `Image`, `SVG`, `Text`) and the Material 3
+components. They all share one property set and one way of being driven from Go.
 
 
 ## Layout and structure
@@ -21,6 +21,7 @@ They all share one property set and one way of being driven from Go.
 - [Grid](components/grid.md) — Places children in a fixed number of equal-width columns.
 - [Rectangle](components/rectangle.md) — A plain colored box.
 - [Image](components/image.md) — Draws a decoded bitmap.
+- [SVG](components/svg.md) — Draws an SVG file, with `currentColor` set from the design.
 - [Text](components/text.md) — One run of text at a Material 3 type-scale role.
 
 ## Actions

@@ -91,6 +91,7 @@ type (
 	Grid       = tree.Grid
 	Rectangle  = tree.Rectangle
 	Image      = tree.Image
+	SVG        = tree.SVG
 	Text       = tree.Text
 
 	// Material 3 components.

@@ -232,6 +232,11 @@ var elements = func() []Element {
 			Prop{Name: "src", Type: TypeString, Dirty: DirtyLayout, Default: ""},
 			Prop{Name: "fit", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"cover", "contain", "fill"}, Default: "cover"},
 		)},
+		{Name: "SVG", Children: false, Attrs: withCommon(
+			Prop{Name: "src", Type: TypeString, Dirty: DirtyLayout, Default: ""},
+			Prop{Name: "fit", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"cover", "contain", "fill"}, Default: "contain"},
+			Prop{Name: "color", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0)},
+		)},
 		{Name: "Text", Children: false, Attrs: withCommon(
 			Prop{Name: "text", Type: TypeString, Dirty: DirtyLayout, Default: ""},
 			Prop{Name: "fontSize", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},

@@ -734,6 +734,9 @@ func (e *Engine) naturalSize(k *tree.NodeBase, availW, availH float64) (float64,
 	switch n := k.Node().(type) {
 	case *tree.Text:
 		return e.textSize(n.Text.Get(), n, availW)
+	case *tree.SVG:
+		// An SVG knows its own viewBox size, so width and height can be left out.
+		return n.IntrinsicW, n.IntrinsicH
 	}
 	if k.Node().Kind() == "Window" {
 		return availW, availH

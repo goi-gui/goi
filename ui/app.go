@@ -9,6 +9,7 @@ import (
 	"github.com/ksckaan1/goi/internal/hotreload"
 	"github.com/ksckaan1/goi/internal/img"
 	"github.com/ksckaan1/goi/internal/m3"
+	"github.com/ksckaan1/goi/internal/svg"
 	"github.com/ksckaan1/goi/internal/tree"
 )
 
@@ -73,6 +74,11 @@ type App struct {
 	tweens []*tween
 	// images caches decoded Image assets by path or URL, so a reload is cheap.
 	images map[string]*img.Data
+	// svgs caches parsed SVG files by path, and svgData the rasterized bitmaps
+	// by path and colour, so a reload or a second node reuses the work.
+	svgs    map[string]*svg.SVG
+	svgData map[svgKey]*img.Data
+	hasSVG  bool
 	// pending holds the URLs with a fetch in flight, so two nodes with the same
 	// src share one request and a reload does not start a second.
 	pending map[string]bool

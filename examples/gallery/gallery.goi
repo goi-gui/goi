@@ -694,6 +694,26 @@ Window {
 								wrap:  true
 								width: { base: 280, md: 420 }
 							}
+
+							Wrap {
+								spacing: 12
+
+								// currentColor takes the design's colour, so one file
+								// serves every theme role.
+								SVG {
+									src:    "star.svg"
+									color:  primary
+									width:  48
+									height: 48
+								}
+
+								SVG {
+									src:    "star.svg"
+									color:  tertiary
+									width:  48
+									height: 48
+								}
+							}
 						}
 
 						Column {
