@@ -48,6 +48,33 @@ func TestPointsFloorsAuto(t *testing.T) {
 	}
 }
 
+// TestChromeSettersReachThePlatform is the Go-facing half: every window chrome
+// property must be writable from Go, not only from the design file.
+func TestChromeSettersReachThePlatform(t *testing.T) {
+	a, w := reloadApp(t, `Window { }`)
+	a.chrome = chromeOf(w)
+	r := w.Root()
+
+	r.SetMinWidth(480)
+	r.SetMinHeight(320)
+	r.SetMaxWidth(1280)
+	r.SetMaxHeight(720)
+	r.DisableResize.Set(true)
+	r.Fullscreen.Set(true)
+
+	want := chromeState{disableResize: true, fullscreen: true, minW: 480, minH: 320, maxW: 1280, maxH: 720}
+	if got := chromeOf(w); got != want {
+		t.Fatalf("chrome = %+v, want %+v", got, want)
+	}
+
+	// The same setters clear a limit, which is what "no limit" means.
+	r.SetMaxWidth(-1)
+	r.SetMinWidth(-1)
+	if got := chromeOf(w); got.maxW != 0 || got.minW != 0 {
+		t.Fatalf("cleared limits = %+v", got)
+	}
+}
+
 // TestWindowMinHeightLayouts keeps minHeight from being a window-only idea: it
 // is a common property, so a child can ask for it too.
 func TestWindowMinHeightLayouts(t *testing.T) {

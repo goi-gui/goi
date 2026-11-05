@@ -225,6 +225,20 @@ func (b *NodeBase) MinHeight() float64 { return b.minHeight.Get() }
 // MaxHeight returns the declared maximum height, or -1 for unbounded.
 func (b *NodeBase) MaxHeight() float64 { return b.maxHeight.Get() }
 
+// SetMinWidth changes the minimum width. A negative value clears it, the same
+// as the property's default. Like every Prop.Set it marks the node for layout,
+// and on Window the frame loop passes the new limit to the platform.
+func (b *NodeBase) SetMinWidth(v float64) { b.minWidth.Set(v) }
+
+// SetMaxWidth changes the maximum width; a negative value means unbounded.
+func (b *NodeBase) SetMaxWidth(v float64) { b.maxWidth.Set(v) }
+
+// SetMinHeight changes the minimum height; a negative value clears it.
+func (b *NodeBase) SetMinHeight(v float64) { b.minHeight.Set(v) }
+
+// SetMaxHeight changes the maximum height; a negative value means unbounded.
+func (b *NodeBase) SetMaxHeight(v float64) { b.maxHeight.Set(v) }
+
 // Background returns 0xRRGGBBAA.
 func (b *NodeBase) Background() uint32 { return b.background.Get() }
 

@@ -5,10 +5,6 @@
 // Run with: go run -ldflags=-linkmode=internal ./examples/window
 
 bridge {
-	// The size limits read these, so setting one from Go resizes the window on
-	// the next frame. -1 means "no limit".
-	MinW        float64
-	MaxW        float64
 	SetMin      func()
 	ClearLimits func()
 }
@@ -18,9 +14,10 @@ Window {
 	title:         "Window"
 	width:         760
 	height:        620
-	minWidth:      bridge.MinW
+	// Go can change these too: w.Root().SetMinWidth(...) writes the same cell.
+	minWidth:      420
 	minHeight:     360
-	maxWidth:      bridge.MaxW
+	maxWidth:      1100
 	maxHeight:     900
 	disableResize: false
 	fullscreen:    false

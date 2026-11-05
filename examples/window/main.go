@@ -23,14 +23,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	// App state lives outside Bind, which runs again after every reload.
-	minW, maxW := 420.0, 1100.0
-
 	err = win.Bind(func(w *ui.Window) error {
+		// The setters write the same cells the design's literals fill, so the
+		// native window and the layout always agree. The tree keeps the values,
+		// so a hot reload carries them over: no app state needed.
 		setMin := func(a, b float64) {
-			minW, maxW = a, b
-			ui.SetData(w, "MinW", minW)
-			ui.SetData(w, "MaxW", maxW)
+			w.Root().SetMinWidth(a)
+			w.Root().SetMaxWidth(b)
 			render(w)
 		}
 		render(w)

@@ -45,7 +45,7 @@ button, and `Window.ToggleMaximize` becomes a no-op. `fullscreen` is a separate
 switch and still works, so a kiosk can ask for a fixed size in windowed mode and
 fill the screen when the user asks for it.
 
-All four are read on every frame, not just at startup, so an expression or a
+All six are read on every frame, not just at startup, so an expression or a
 `Set` from Go reaches the platform without a reload:
 
 ```goi
@@ -55,6 +55,12 @@ Window { minWidth: bridge.MinW }   // -1 means no limit here too
 ```go
 w.Root().DisableResize.Set(true)
 w.Root().Fullscreen.Set(true)
+
+// The limits have setters too; -1 clears one.
+w.Root().SetMinWidth(600)
+w.Root().SetMinHeight(400)
+w.Root().SetMaxWidth(-1)
+w.Root().SetMaxHeight(-1)
 ```
 
 A window whose current size falls outside a newly set limit is resized to fit,
@@ -90,10 +96,11 @@ if w.Maximized() {
 }
 w.Close()
 
-// Resize and fullscreen are properties, so state lives where every other
-// property does.
+// Resize, fullscreen and the size limits are properties, so state lives where
+// every other property does.
 w.Root().DisableResize.Set(true)
 w.Root().Fullscreen.Set(true)
+w.Root().SetMinWidth(600)
 
 // A custom scheme, registered under a name the file can select.
 brand := *ui.LightTheme()
