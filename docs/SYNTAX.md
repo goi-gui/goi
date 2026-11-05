@@ -448,6 +448,7 @@ declaration. A function call appears either as an event property's whole value
 | `Grid` | yes | `columns`, `spacing` (`gap`), `align` |
 | `Rectangle` | no | — |
 | `Image` | no | `src`, `fit` (`cover`, `contain`, `fill`), plus `radius` |
+| `SVG` | no | `src` (a path or an `http(s)` URL), `fit` (`contain`, `cover`, `fill`), `color` (replaces the file's `currentColor`) |
 | `Text` | no | `text`, `fontSize`, `weight`, `color`, `align`, `wrap`, `role`, `selectable` |
 
 `theme` names a colour scheme. `light` and `dark` are built in; the app adds

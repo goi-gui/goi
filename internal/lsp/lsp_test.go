@@ -284,6 +284,35 @@ func TestCompletionOffersPropertiesAndChildren(t *testing.T) {
 	}
 }
 
+// TestSVGVocabulary is the same guard for a newer element: the design must stop
+// being squiggled, and completion must offer it. A goipls binary installed before
+// SVG existed reported `unknown element "SVG"`, and only a rebuild fixed it.
+func TestSVGVocabulary(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tColumn {\n\t\t\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "\t\t\n", 2),
+	})
+	var list completionList
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range list.Items {
+		if it.Label == "SVG" {
+			if !strings.Contains(it.Documentation.Value, "src") {
+				t.Fatalf("SVG doc = %q, want its properties", it.Documentation.Value)
+			}
+			return
+		}
+	}
+	t.Fatalf("completion does not offer SVG: %v", list.Items)
+}
+
 // TestTitleBarVocabulary keeps the editor honest about the custom title bar:
 // the element, its property on Window and the OS global must all be in the
 // schema the server imports, or a design that draws its own frame is covered in
