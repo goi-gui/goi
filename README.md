@@ -1,4 +1,6 @@
-# goi
+<p align="center">
+  <img src="./goi-logo.svg" alt="Logo" width="200">
+</p>
 
 A declarative GUI framework for Go, rendered with WebGPU. The window is described
 in a small QML-like file; Go finds elements by id and attaches behaviour.
