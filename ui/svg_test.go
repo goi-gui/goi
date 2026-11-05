@@ -120,6 +120,30 @@ func TestSVGRemoteFailureStopsLoading(t *testing.T) {
 	}
 }
 
+// TestSVGColorBeatsRole is the gallery case: the design names a role, Go sets a
+// literal, and the frame loop's colour resolver must not undo it.
+func TestSVGColorBeatsRole(t *testing.T) {
+	a, w := svgApp(t, `Window {
+		Column {
+			SVG { id: icon src: "icon.svg" color: primary }
+		}
+	}`)
+	n := MustByID[*SVG](w, "icon")
+	// The frame resolves the role before it repaints, exactly as the driver does.
+	a.win.tree.ResolveColors(themeFor(w).Colors.Role)
+	a.syncSVGs()
+
+	n.Color.Set(0x0000FFFF)
+	a.win.tree.ResolveColors(themeFor(w).Colors.Role)
+	a.syncSVGs()
+	if n.Color.Get() != 0x0000FFFF {
+		t.Fatalf("colour = %08x, the role put its own back", n.Color.Get())
+	}
+	if r, g, b, _ := svgPixel(n, n.Data.W/2, n.Data.H/2); r > 15 || g > 15 || b < 240 {
+		t.Fatalf("centre = %d,%d,%d, want blue", r, g, b)
+	}
+}
+
 // TestSVGUsesViewBoxAsIntrinsicSize keeps width and height optional.
 func TestSVGUsesViewBoxAsIntrinsicSize(t *testing.T) {
 	_, w := svgApp(t, `Window {

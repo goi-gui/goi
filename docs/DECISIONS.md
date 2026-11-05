@@ -1320,3 +1320,6 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   and the bytes are parsed and rasterized when they land. The fetch function
   was split into "download bytes" and "decode", because SVG needs the bytes
   before it has a pixel type to decode into.
+  A colour written from Go drops the role the design named for that cell
+  (`Prop.Set` clears it), otherwise `ResolveColors` would rewrite the scheme's
+  colour on the next frame and `Color.Set` would look like a no-op.

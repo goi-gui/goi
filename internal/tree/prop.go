@@ -40,6 +40,9 @@ func (p *Prop[T]) Set(v T) {
 	p.val = v
 	p.goSet = true
 	if p.base != nil {
+		// A colour written by Go wins over the role the design named, otherwise
+		// the next ResolveColors would put the scheme's colour back.
+		p.base.clearColorRole(p.name)
 		p.base.mark(p.dirty)
 	}
 }

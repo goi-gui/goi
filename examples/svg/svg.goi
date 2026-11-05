@@ -8,9 +8,11 @@ bridge {
 }
 
 Window {
-	id:    main
-	title: "SVG"
-	theme: app.systemMode
+	id:     main
+	title:  "SVG"
+	theme:  app.systemMode
+	width:  500
+	height: 740
 
 	Column {
 		spacing: 0

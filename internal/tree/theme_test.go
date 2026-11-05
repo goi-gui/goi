@@ -52,3 +52,23 @@ func TestLiteralColorReplacesRole(t *testing.T) {
 		t.Fatalf("literal was overwritten by a role: %08x", got)
 	}
 }
+
+// TestGoSetColorReplacesRole is the same rule for Go: `Color.Set` must win over
+// the design's role, or the frame loop would put the scheme's colour back on the
+// next tick.
+func TestGoSetColorReplacesRole(t *testing.T) {
+	tr, diag := BuildSource([]byte(`Window { Text { id: label text: "x" color: primary } }`), nil)
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	label := tr.ids["label"].(*Text)
+	tr.ResolveColors(m3.Light().Colors.Role)
+	label.Color.Set(0x123456FF)
+	tr.ResolveColors(m3.Light().Colors.Role)
+	if got := label.Color.Get(); got != 0x123456FF {
+		t.Fatalf("Go colour = %08x, the role put its own back", got)
+	}
+	if got := label.Base().colorRoleFor("color"); got != "" {
+		t.Fatalf("role %q survived a Go write", got)
+	}
+}
