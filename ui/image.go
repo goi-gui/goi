@@ -108,39 +108,36 @@ func (a *App) loadSVG(n *tree.SVG) {
 	}
 }
 
-// renderSVG reads, parses and rasterizes src with color as currentColor. The
-// parsed file and the bitmap are cached, so a reload and a second node with the
-// same src do not repeat the work.
+// renderSVG resolves src, parses it and rasterizes it with color as
+// currentColor. Local files are read from the asset container; a remote URL is
+// only parsed once the fetch has landed, until then the node stays Loading.
 //
-// shortcut: an SVG is read once per app. Editing the file on disk needs a
-// restart, the same as a bitmap; upgrade with an mtime check in the watcher.
+// shortcut: a file is read once per app. Editing it on disk needs a restart,
+// the same as a bitmap; upgrade with an mtime check in the watcher.
 func (a *App) renderSVG(n *tree.SVG, src string, color uint32) {
-	n.Data = nil
 	n.RenderedSrc, n.RenderedColor = src, color
 	n.LoadErr = nil
+	if src == "" {
+		n.Data = nil
+		n.Loading = false
+		return
+	}
 	if isRemoteSrc(src) {
-		n.LoadErr = fmt.Errorf("%s: SVG src must be a local path, not a URL", src)
-		return
-	}
-	if a.assets == nil {
-		return
-	}
-	source, ok := a.svgs[src]
-	if !ok {
-		b, err := fs.ReadFile(a.assets, path.Clean(src))
-		if err != nil {
-			n.LoadErr = err
+		if _, ok := a.svgRemote[src]; !ok {
+			a.loadRemoteSVG(n, src)
 			return
 		}
-		if source, err = svg.Parse(b); err != nil {
-			n.LoadErr = fmt.Errorf("%s: %w", src, err)
-			return
-		}
-		if a.svgs == nil {
-			a.svgs = map[string]*svg.SVG{}
-		}
-		a.svgs[src] = source
 	}
+	source, err := a.svgSource(src)
+	if err != nil {
+		n.Data = nil
+		n.LoadErr = err
+		return
+	}
+	if source == nil {
+		return // no asset container (a headless test, or a detached node)
+	}
+	n.Loading = false
 	n.IntrinsicW, n.IntrinsicH = source.Intrinsic()
 
 	// SVG colours have no alpha channel, so 0 means "the design named none"
@@ -152,8 +149,8 @@ func (a *App) renderSVG(n *tree.SVG, src string, color uint32) {
 	key := svgKey{src: src, color: c}
 	d, ok := a.svgData[key]
 	if !ok {
-		var err error
 		if d, err = source.Render(c); err != nil {
+			n.Data = nil
 			n.LoadErr = fmt.Errorf("%s: %w", src, err)
 			return
 		}
@@ -167,6 +164,89 @@ func (a *App) renderSVG(n *tree.SVG, src string, color uint32) {
 	// keeps the superseded region, so animating Color every frame grows GPU
 	// memory. Upgrade with a tint mask or in-place atlas updates if that is
 	// ever needed; state changes and theme switches are fine.
+}
+
+// svgSource returns the parsed file for src, reading a local asset or using the
+// bytes a remote fetch cached. A nil source with a nil error means the app has
+// no asset container yet.
+func (a *App) svgSource(src string) (*svg.SVG, error) {
+	if s, ok := a.svgs[src]; ok {
+		return s, nil
+	}
+	var b []byte
+	var err error
+	if isRemoteSrc(src) {
+		b = a.svgRemote[src]
+	} else if a.assets != nil {
+		if b, err = fs.ReadFile(a.assets, path.Clean(src)); err != nil {
+			return nil, err
+		}
+	} else {
+		return nil, nil
+	}
+	s, err := svg.Parse(b)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", src, err)
+	}
+	if a.svgs == nil {
+		a.svgs = map[string]*svg.SVG{}
+	}
+	a.svgs[src] = s
+	return s, nil
+}
+
+// loadRemoteSVG marks the node as loading and starts one fetch per URL, which
+// the placeholder breathes over until the file lands.
+func (a *App) loadRemoteSVG(n *tree.SVG, src string) {
+	n.Data = nil
+	n.Loading = true
+	a.pulsing = true
+	if a.svgPending == nil {
+		a.svgPending = map[string]bool{}
+	}
+	if a.svgPending[src] {
+		return
+	}
+	a.svgPending[src] = true
+	go func() {
+		b, err := fetchRemote(src)
+		// Post runs on the UI goroutine, which is the only place a node may be
+		// touched.
+		a.Post(func() { a.finishSVGLoad(src, b, err) })
+	}()
+}
+
+// finishSVGLoad hands a finished download to the SVG nodes with that src. It
+// walks the current tree, so a fetch that lands after a hot reload still fills
+// in the new nodes.
+func (a *App) finishSVGLoad(src string, b []byte, err error) {
+	delete(a.svgPending, src)
+	if err == nil {
+		if a.svgRemote == nil {
+			a.svgRemote = map[string][]byte{}
+		}
+		a.svgRemote[src] = b
+	}
+	if a.win == nil || a.win.tree == nil {
+		return
+	}
+	a.win.tree.Walk(func(n tree.Node) {
+		s, ok := n.(*tree.SVG)
+		if !ok || s.Src.Get() != src || !s.Loading {
+			return
+		}
+		s.Loading = false
+		if err != nil {
+			s.Data = nil
+			s.LoadErr = err
+			s.Base().MarkDirty(tree.DirtyPaint)
+			return
+		}
+		a.renderSVG(s, src, s.Color.Get())
+		// The viewBox is only known now, so width/height can change with it.
+		s.Base().MarkDirty(tree.DirtyLayout)
+	})
+	a.needsFrame = true
 }
 
 // syncSVGs re-rasterizes an SVG whose src or colour changed from Go. It runs
@@ -184,8 +264,14 @@ func (a *App) syncSVGs() {
 		if src == s.RenderedSrc && color == s.RenderedColor {
 			return
 		}
+		kind := tree.DirtyPaint
+		if src != s.RenderedSrc {
+			// A different file may have a different viewBox, and with no
+			// declared width/height that changes the element's size.
+			kind = tree.DirtyLayout
+		}
 		a.renderSVG(s, src, color)
-		s.Base().MarkDirty(tree.DirtyPaint)
+		s.Base().MarkDirty(kind)
 	})
 }
 
@@ -217,6 +303,20 @@ func (a *App) loadRemoteImage(im *tree.Image, src string) {
 // fetchRemoteImage downloads and decodes one URL. Decoding happens here, off the
 // UI goroutine: a large JPEG takes long enough to drop a frame.
 func fetchRemoteImage(src string) (*img.Data, error) {
+	b, err := fetchRemote(src)
+	if err != nil {
+		return nil, err
+	}
+	d, err := img.Decode(b)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", src, err)
+	}
+	return d, nil
+}
+
+// fetchRemote downloads one URL and returns its bytes. Image decodes them here
+// too; SVG keeps them until the UI goroutine can parse and rasterize.
+func fetchRemote(src string) ([]byte, error) {
 	req, err := http.NewRequest(http.MethodGet, src, nil)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", src, err)
@@ -237,11 +337,7 @@ func fetchRemoteImage(src string) (*img.Data, error) {
 	if len(b) > maxRemoteImageBytes {
 		return nil, fmt.Errorf("%s: larger than %d bytes", src, maxRemoteImageBytes)
 	}
-	d, err := img.Decode(b)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", src, err)
-	}
-	return d, nil
+	return b, nil
 }
 
 // finishImageLoad hands a finished download to the nodes that asked for it. It
@@ -287,13 +383,22 @@ func (a *App) tickImageLoads(dt float64) bool {
 
 	still := false
 	a.win.tree.Walk(func(n tree.Node) {
-		im, ok := n.(*tree.Image)
-		if !ok || !im.Loading {
-			return
+		switch v := n.(type) {
+		case *tree.Image:
+			if !v.Loading {
+				return
+			}
+			v.Phase = phase
+			v.Base().MarkDirty(tree.DirtyPaint)
+			still = true
+		case *tree.SVG:
+			if !v.Loading {
+				return
+			}
+			v.Phase = phase
+			v.Base().MarkDirty(tree.DirtyPaint)
+			still = true
 		}
-		im.Phase = phase
-		im.Base().MarkDirty(tree.DirtyPaint)
-		still = true
 	})
 	if !still {
 		a.pulsing = false

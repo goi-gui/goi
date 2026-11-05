@@ -310,7 +310,7 @@ func (l *List) paintImage(n *tree.Image, r tree.Rect, clip tree.Rect) {
 
 // paintSVG draws a rasterized SVG through the same bitmap path as Image.
 func (l *List) paintSVG(n *tree.SVG, r tree.Rect, clip tree.Rect) {
-	l.paintBitmap(n.Data, n.Fit.Get(), &n.NodeBase, false, 0, r, clip)
+	l.paintBitmap(n.Data, n.Fit.Get(), &n.NodeBase, n.Loading, n.Phase, r, clip)
 }
 
 func (l *List) paintBitmap(d *img.Data, fit string, base *tree.NodeBase, loading bool, phase float64, r tree.Rect, clip tree.Rect) {

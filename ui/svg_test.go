@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"testing/fstest"
 
@@ -57,6 +59,67 @@ func TestSVGLoadsAndFollowsColor(t *testing.T) {
 	}
 }
 
+// TestSVGRemoteLoads mirrors the Image path: the node lays out at once, shows
+// the placeholder, and the raster lands without a reload.
+func TestSVGRemoteLoads(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.Header().Set("Content-Type", "image/svg+xml")
+		w.Write([]byte(svgFixture))
+	}))
+	defer srv.Close()
+
+	src := srv.URL + "/icon.svg"
+	a, win := svgApp(t, `Window { Column {
+		SVG { id: one src: "`+src+`" color: #ff0000 width: 20 height: 40 }
+		SVG { id: two src: "`+src+`" color: #ff0000 width: 20 height: 40 }
+	} }`)
+	one := MustByID[*SVG](win, "one")
+	two := MustByID[*SVG](win, "two")
+
+	if one.Data != nil || !one.Loading {
+		t.Fatal("a remote src was not marked loading")
+	}
+	if !a.pulsing {
+		t.Fatal("the placeholder was not started")
+	}
+	pumpPosted(t, a, func() bool { return one.Data != nil && two.Data != nil })
+
+	if hits != 1 {
+		t.Fatalf("%d requests for one URL, want 1", hits)
+	}
+	if one.Loading || one.LoadErr != nil {
+		t.Fatalf("Loading = %v, LoadErr = %v", one.Loading, one.LoadErr)
+	}
+	if one.IntrinsicW != 10 || one.IntrinsicH != 20 {
+		t.Fatalf("intrinsic = %vx%v, want 10x20", one.IntrinsicW, one.IntrinsicH)
+	}
+	if r, g, b, _ := svgPixel(one, one.Data.W/2, one.Data.H/2); r < 240 || g > 15 || b > 15 {
+		t.Fatalf("centre = %d,%d,%d, want red", r, g, b)
+	}
+}
+
+// TestSVGRemoteFailureStopsLoading keeps a bad URL from pulsing forever.
+func TestSVGRemoteFailureStopsLoading(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	a, win := svgApp(t, `Window { Column {
+		SVG { id: icon src: "`+srv.URL+`/gone.svg" width: 10 height: 10 }
+	} }`)
+	n := MustByID[*SVG](win, "icon")
+	pumpPosted(t, a, func() bool { return !n.Loading })
+	if n.LoadErr == nil {
+		t.Fatal("the failure was not recorded")
+	}
+	if n.Data != nil {
+		t.Fatal("a 404 produced a raster")
+	}
+}
+
 // TestSVGUsesViewBoxAsIntrinsicSize keeps width and height optional.
 func TestSVGUsesViewBoxAsIntrinsicSize(t *testing.T) {
 	_, w := svgApp(t, `Window {
@@ -68,23 +131,6 @@ func TestSVGUsesViewBoxAsIntrinsicSize(t *testing.T) {
 	layout.New(layout.FakeMeasurer{}).Layout(w.tree.Root, 200, 200)
 	if b := n.Base().Bounds(); b.W != 10 || b.H != 20 {
 		t.Fatalf("bounds = %vx%v, want 10x20", b.W, b.H)
-	}
-}
-
-// TestSVGRejectsRemoteSrc keeps the loader honest: unlike Image, SVG reads a
-// local file only, and says so instead of silently drawing nothing.
-func TestSVGRejectsRemoteSrc(t *testing.T) {
-	_, w := svgApp(t, `Window {
-		Column {
-			SVG { id: icon src: "https://example.invalid/icon.svg" width: 10 height: 10 }
-		}
-	}`)
-	n := MustByID[*SVG](w, "icon")
-	if n.LoadErr == nil {
-		t.Fatal("a remote src was accepted")
-	}
-	if n.Data != nil {
-		t.Fatal("a remote src produced a bitmap")
 	}
 }
 

@@ -74,11 +74,16 @@ type App struct {
 	tweens []*tween
 	// images caches decoded Image assets by path or URL, so a reload is cheap.
 	images map[string]*img.Data
-	// svgs caches parsed SVG files by path, and svgData the rasterized bitmaps
-	// by path and colour, so a reload or a second node reuses the work.
-	svgs    map[string]*svg.SVG
-	svgData map[svgKey]*img.Data
-	hasSVG  bool
+	// svgs caches parsed SVG files by src, and svgData the rasterized bitmaps
+	// by src and colour, so a reload or a second node reuses the work. svgRemote
+	// holds the bytes of a fetched remote src until it is parsed.
+	svgs      map[string]*svg.SVG
+	svgData   map[svgKey]*img.Data
+	svgRemote map[string][]byte
+	// svgPending holds the SVG URLs with a fetch in flight, for the same reason
+	// as pending: one request per URL.
+	svgPending map[string]bool
+	hasSVG     bool
 	// pending holds the URLs with a fetch in flight, so two nodes with the same
 	// src share one request and a reload does not start a second.
 	pending map[string]bool

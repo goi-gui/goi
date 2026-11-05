@@ -158,6 +158,7 @@ make theme     # built-in schemes plus one registered by name
 make datalist  # bridge values in a for loop, with a row handler
 make format    # formatf, arithmetic and bridge zero values
 make bridge    # every event property, and a fragment fed from the bridge
+make svg       # one SVG recoloured by role, by Go, and loaded from a URL
 make search    # a button and a text field reading another node by id
 go run ./cmd/goicheck -layout examples/*/*.goi  # syntax plus a headless layout check
 go run ./cmd/goifmt -l .                        # list unformatted .goi files
@@ -216,7 +217,8 @@ go run ./cmd/goifmt -l .                        # list unformatted .goi files
   and packs every bitmap into one GPU atlas.
 - SVG: `SVG { src: "logo.svg" color: primary }` rasterizes an SVG file and
   substitutes the design's colour for its `currentColor`, so theme roles and
-  `Color.Set` from Go reach the icon.
+  `Color.Set` from Go reach the icon. A local path or an `http`/`https` URL
+  works, with the same background fetch and breathing placeholder as `Image`.
 - Bridge: `bridge { OnOpen func(id string) }` declares the handlers a design
   calls from any event property (`onClick: bridge.OnOpen(row.ID)`), with the
   arguments evaluated when the event fires and `event` carrying the event's own

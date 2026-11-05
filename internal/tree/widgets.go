@@ -247,6 +247,11 @@ type SVG struct {
 	// whatever background its box has, so a bad file is visible rather than a
 	// silent hole.
 	LoadErr error
+	// Loading is true while a remote src is on the way; paint draws the same
+	// breathing placeholder Image uses. Phase is that placeholder's 0..1
+	// opacity, advanced per frame by the ui layer.
+	Loading bool
+	Phase   float64
 }
 
 // Kind implements Node.

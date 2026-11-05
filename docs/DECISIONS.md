@@ -1315,5 +1315,8 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   icon repeat neither the parse nor the raster. The frame loop compares a
   node's `Color`/`Src` with the values its bitmap was made from and re-rasters
   when Go changes them; that is cheaper than giving `Prop[T]` a change hook.
-  `src` stays local-only for now: remote images have a placeholder and a
-  background fetch, and duplicating that path for SVG buys little.
+  A remote `src` reuses the Image fetch rather than growing a second one: the
+  download is shared per URL, the node keeps a `Loading`/`Phase` placeholder,
+  and the bytes are parsed and rasterized when they land. The fetch function
+  was split into "download bytes" and "decode", because SVG needs the bytes
+  before it has a pixel type to decode into.
