@@ -3,17 +3,29 @@
 A declarative GUI framework for Go, rendered with WebGPU. The window is described
 in a small QML-like file; Go finds elements by id and attaches behaviour.
 
-```go
+```goi
 // app.goi
+
 Window {
-    title: "Counter"
-    Column {
-        padding: 24
-        spacing: 12
-        align: center
-        Text   { id: label text: "0" role: displayLarge }
-        Button { id: inc   label: "Increase" icon: add }
-    }
+	title: "Counter"
+
+	Column {
+		padding:        24
+		spacing:        12
+		crossAxisAlign: center
+
+		Text {
+			id:   label
+			text: "0"
+			role: displayLarge
+		}
+
+		Button {
+			id:    inc
+			label: "Increase"
+			icon:  add
+		}
+	}
 }
 ```
 
@@ -38,22 +50,33 @@ app.Run()
 A `.goi` file can import fragments and pass them values, so a page does not have
 to be one long file. An import names its alias first, as in Go:
 
-```go
+```goi
 // Main.goi
+
 import Sidebar "./Sidebar.goi"
 
 Window {
-    Row {
-        Sidebar { title: "Mail" width: 300 }
-    }
+	Row {
+		Sidebar {
+			title: "Mail"
+			width: 300
+		}
+	}
 }
 ```
 
-```go
+```goi
 // Sidebar.goi
-props { Title string }
+
+props {
+	title string
+}
+
 Column {
-    Text { text: props.Title role: "titleLarge" }
+	Text {
+		text: props.title
+		role: "titleLarge"
+	}
 }
 ```
 
@@ -200,10 +223,10 @@ syntax highlighting, brackets, indentation and an element outline. It starts
 `goipls`, the language server in `cmd/goipls`, which adds diagnostics (including
 errors inside an imported fragment), completion for elements, properties,
 values, icon names, ids, declaration types, `bridge.`/`props.` values, handler
-calls, `if`/`for` statements, the `formatf` builtin and a fragment instance's
-props (read from the imported file), hover docs for every declaration and
-fragment, a document outline and go-to-definition for imports and id
-references:
+calls, `if`/`for` statements, the Go builtins, formatting on save, and a
+fragment instance's props (read from the imported file), hover docs for every
+declaration and fragment, a document outline and go-to-definition for imports
+and id references:
 
 ```sh
 go install github.com/ksckaan1/goi/cmd/goipls@latest

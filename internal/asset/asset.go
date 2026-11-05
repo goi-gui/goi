@@ -8,8 +8,13 @@
 //
 // A fragment declares the typed values it expects and reads them by name:
 //
-//	props { title: string }
-//	Column { Text { text: props.title } }
+//	props {
+//		title string
+//	}
+//
+//	Column {
+//		Text { text: props.title }
+//	}
 //
 // Expansion happens before validation, so the schema, validator and tree builder
 // see one ordinary tree and need no notion of fragments.

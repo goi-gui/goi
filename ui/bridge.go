@@ -6,7 +6,7 @@ import "fmt"
 // design declares the name and the parameter types; Go supplies the body:
 //
 //	bridge {
-//		onOpen: func(id: string)
+//		onOpen func(id string)
 //	}
 //
 //	Button { label: "Open" onClick: bridge.onOpen("42") }
