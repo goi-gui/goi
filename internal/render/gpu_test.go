@@ -5,8 +5,8 @@ package render
 import (
 	"testing"
 
-	"github.com/ksckaan1/goi/internal/m3"
-	"github.com/ksckaan1/goi/internal/paint"
+	"github.com/goi-gui/goi/internal/m3"
+	"github.com/goi-gui/goi/internal/paint"
 )
 
 // TestClearColorFollowsTheme guards dark mode: the page behind the components is

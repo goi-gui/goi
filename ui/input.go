@@ -7,11 +7,11 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/ksckaan1/goi/internal/m3"
-	"github.com/ksckaan1/goi/internal/paint"
-	"github.com/ksckaan1/goi/internal/platform"
-	"github.com/ksckaan1/goi/internal/text"
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/m3"
+	"github.com/goi-gui/goi/internal/paint"
+	"github.com/goi-gui/goi/internal/platform"
+	"github.com/goi-gui/goi/internal/text"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // interactor turns platform input into tree events. It runs on the UI
@@ -371,6 +371,7 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 	}
 	_ = button
 }
+
 func (i *interactor) MouseUp(x, y float64, button int) {
 	i.event("MouseUp", "x", x, "y", y, "button", button)
 	defer func() {

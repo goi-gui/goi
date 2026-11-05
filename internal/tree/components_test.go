@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/ksckaan1/goi/internal/componentdef"
-	"github.com/ksckaan1/goi/internal/syntax"
+	"github.com/goi-gui/goi/internal/componentdef"
+	"github.com/goi-gui/goi/internal/syntax"
 )
 
 // TestEveryComponentPropHasItsOwnCell guards the one() fallback: a name that

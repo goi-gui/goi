@@ -3,9 +3,9 @@ package paint
 import (
 	"math"
 
-	"github.com/ksckaan1/goi/internal/m3"
-	"github.com/ksckaan1/goi/internal/text"
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/m3"
+	"github.com/goi-gui/goi/internal/text"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // This file draws Material 3 components. Every number comes from the M3 specs
@@ -165,7 +165,8 @@ func (l *List) ripple(c *tree.Component, r tree.Rect, radius float64, color uint
 	grow = 1 - (1-grow)*(1-grow) // ease out
 	reach := math.Hypot(
 		maxf(c.RippleX-r.X, r.Right()-c.RippleX),
-		maxf(c.RippleY-r.Y, r.Bottom()-c.RippleY))
+		maxf(c.RippleY-r.Y, r.Bottom()-c.RippleY),
+	)
 	size := 2 * reach * grow
 	fade := 1.0
 	if p > 0.6 {
@@ -377,7 +378,8 @@ func (l *List) focusRing(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	}
 	l.fillRect(
 		tree.Rect{X: r.X - gap, Y: r.Y - gap, W: r.W + 2*gap, H: r.H + 2*gap},
-		0, rad+gap, l.Theme.Colors.Primary, width, clip)
+		0, rad+gap, l.Theme.Colors.Primary, width, clip,
+	)
 }
 
 // ---------------------------------------------------------------- buttons
@@ -786,9 +788,11 @@ func (l *List) paintRadio(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	if c.Checked.Get() {
 		l.Ops = append(l.Ops, Op{Kind: Fill, Shape: Circle, Rect: rectArr(br), Color: col.Primary, Clip: clipArr(clip)})
 		dot := size * 0.5
-		l.Ops = append(l.Ops, Op{Kind: Fill, Shape: Circle,
+		l.Ops = append(l.Ops, Op{
+			Kind: Fill, Shape: Circle,
 			Rect:  [4]float32{float32(cx - dot/2), float32(cy - dot/2), float32(dot), float32(dot)},
-			Color: col.OnPrimary, Clip: clipArr(clip)})
+			Color: col.OnPrimary, Clip: clipArr(clip),
+		})
 	} else {
 		l.fillRect(br, 0, size/2, col.OnSurfaceVariant, 2, clip)
 	}
@@ -860,9 +864,11 @@ func (l *List) paintSwitch(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	}
 	cx := tr.X + 16 + (trackW-32)*pos
 	l.stateLayer(c, tr, trackH/2, thumb, clip)
-	l.Ops = append(l.Ops, Op{Kind: Fill, Shape: Circle,
+	l.Ops = append(l.Ops, Op{
+		Kind: Fill, Shape: Circle,
 		Rect:  [4]float32{float32(cx - thumbD/2), float32(tr.Y + (trackH-thumbD)/2), float32(thumbD), float32(thumbD)},
-		Color: thumb, Clip: clipArr(clip)})
+		Color: thumb, Clip: clipArr(clip),
+	})
 	if icon != "" {
 		// The glyph belongs to one side, so it fades out and back in as the
 		// handle crosses the middle instead of swapping abruptly.

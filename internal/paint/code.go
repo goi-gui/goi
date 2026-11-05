@@ -1,10 +1,10 @@
 package paint
 
 import (
-	"github.com/ksckaan1/goi/internal/highlight"
-	"github.com/ksckaan1/goi/internal/m3"
-	"github.com/ksckaan1/goi/internal/text"
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/highlight"
+	"github.com/goi-gui/goi/internal/m3"
+	"github.com/goi-gui/goi/internal/text"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // Code geometry.
@@ -100,7 +100,8 @@ func (l *List) paintCode(c *tree.Component, r tree.Rect, clip tree.Rect) {
 
 // codeSelection draws the highlight for a byte range on one line.
 func (l *List) codeSelection(ln text.Line, a, b int, st m3.TextStyle, box tree.Rect, y float64,
-	advance func(string) float64, clip tree.Rect) {
+	advance func(string) float64, clip tree.Rect,
+) {
 	from := clampInt(a-ln.Start, 0, len(ln.Text))
 	to := clampInt(b-ln.Start, 0, len(ln.Text))
 	if from == to {
@@ -122,7 +123,8 @@ func (l *List) codeSelection(ln text.Line, a, b int, st m3.TextStyle, box tree.R
 
 // codeLine draws one source line, splitting it into highlighted runs.
 func (l *List) codeLine(src string, ln text.Line, spans []highlight.Span, st m3.TextStyle, body uint32,
-	box tree.Rect, y float64, advance func(string) float64, clip tree.Rect) {
+	box tree.Rect, y float64, advance func(string) float64, clip tree.Rect,
+) {
 	col := l.Theme.Colors
 	x := box.X
 	at := ln.Start

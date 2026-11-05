@@ -3,8 +3,8 @@ package tree
 import (
 	"strings"
 
-	"github.com/ksckaan1/goi/internal/componentdef"
-	"github.com/ksckaan1/goi/internal/highlight"
+	"github.com/goi-gui/goi/internal/componentdef"
+	"github.com/goi-gui/goi/internal/highlight"
 )
 
 // Component holds the state every Material 3 component shares. Concrete

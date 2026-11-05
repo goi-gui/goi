@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ksckaan1/goi/internal/asset"
-	"github.com/ksckaan1/goi/internal/hotreload"
-	"github.com/ksckaan1/goi/internal/syntax"
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/asset"
+	"github.com/goi-gui/goi/internal/hotreload"
+	"github.com/goi-gui/goi/internal/syntax"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // reload reads the whole design again and swaps it in. The watcher callback runs

@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ksckaan1/goi/internal/m3"
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/m3"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // brandTheme is Light with a distinctive primary, so a test can tell the

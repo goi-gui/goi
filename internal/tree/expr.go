@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ksckaan1/goi/internal/syntax"
+	"github.com/goi-gui/goi/internal/syntax"
 )
 
 // exprSpec is one expression-valued property. The value stays a syntax

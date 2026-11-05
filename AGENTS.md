@@ -5,8 +5,8 @@ window; Go finds elements by id and attaches behaviour.
 
 ## Names that are easy to get wrong
 
-- Module is `github.com/ksckaan1/goi`, but the imported package is **`ui`**:
-  `import "github.com/ksckaan1/goi/ui"`. Do not "fix" it to `goi`.
+- Module is `github.com/goi-gui/goi`, but the imported package is **`ui`**:
+  `import "github.com/goi-gui/goi/ui"`. Do not "fix" it to `goi`.
 - Design files are **`.goi`** (not `.ui`). The project was renamed from `goui`;
   do not reintroduce either old name. The checker is `cmd/goicheck`.
 - Everything user-facing is `ui.X`: `ui.MustByID[*ui.Button](w, "id")`.
@@ -50,6 +50,7 @@ and `ui` on top.
 ## Adding a property (the step people miss)
 
 A **component** property needs all of:
+
 1. `internal/componentdef/componentdef.go` — the `props` map, plus `TypeOf` for a
    non-string type and `EnumValues` for an enum. The schema derives from this.
 2. `internal/tree/components.go` `one()` — a distinct cell. A name missing here

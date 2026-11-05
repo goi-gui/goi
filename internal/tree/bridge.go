@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"strconv"
 
-	"github.com/ksckaan1/goi/internal/syntax"
+	"github.com/goi-gui/goi/internal/syntax"
 )
 
 // Bridge is the Go side of the `bridge { ... }` contract: the handlers a design

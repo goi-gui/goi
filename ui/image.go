@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ksckaan1/goi/internal/img"
-	"github.com/ksckaan1/goi/internal/svg"
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/img"
+	"github.com/goi-gui/goi/internal/svg"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // maxRemoteImageBytes caps one download. A design may point at anything, and an

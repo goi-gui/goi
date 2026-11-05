@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // loadForTest builds a Window from source without a GPU or event loop.

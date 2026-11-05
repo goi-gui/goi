@@ -3,7 +3,7 @@ package ui
 import (
 	"fmt"
 
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // Instantiate copies a hidden template element under parent, which is how an app

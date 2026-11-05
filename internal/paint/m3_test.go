@@ -3,9 +3,9 @@ package paint
 import (
 	"testing"
 
-	"github.com/ksckaan1/goi/internal/layout"
-	"github.com/ksckaan1/goi/internal/m3"
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/layout"
+	"github.com/goi-gui/goi/internal/m3"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // dump builds the list and returns it, failing on a parse error.
@@ -488,7 +488,8 @@ func TestSplitButtonPaintsTwoPills(t *testing.T) {
 func TestSplitButtonRadiusIsStable(t *testing.T) {
 	radiiFor := func(hover, pressed bool) [][4]float32 {
 		tr, diag := tree.BuildSource([]byte(
-			`Window { SplitButton { label: "Split" width: 180 height: 40 } }`), nil)
+			`Window { SplitButton { label: "Split" width: 180 height: 40 } }`,
+		), nil)
 		if !diag.Empty() {
 			t.Fatalf("%v", diag)
 		}

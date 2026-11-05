@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ksckaan1/goi/internal/syntax"
+	"github.com/goi-gui/goi/internal/syntax"
 )
 
 // Precedence levels, matching the parser: a child needs parentheses only when

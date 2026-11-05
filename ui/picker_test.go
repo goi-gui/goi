@@ -4,8 +4,8 @@ import (
 	"math"
 	"testing"
 
-	"github.com/ksckaan1/goi/internal/paint"
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/paint"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 const pickerUI = `Window {

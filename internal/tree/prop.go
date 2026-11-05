@@ -1,6 +1,6 @@
 package tree
 
-import "github.com/ksckaan1/goi/internal/syntax"
+import "github.com/goi-gui/goi/internal/syntax"
 
 // DirtyKind says what a change affects.
 type DirtyKind uint8

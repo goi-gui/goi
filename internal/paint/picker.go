@@ -4,8 +4,8 @@ import (
 	"math"
 	"time"
 
-	"github.com/ksckaan1/goi/internal/m3"
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/m3"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // The pickers are the only components whose content is laid out by the painter
@@ -297,8 +297,10 @@ func (l *List) paintTimePicker(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		tree.Rect{X: cx + 4, Y: r.Y + 32, W: 96, H: 56}, AlignStart, clip)
 
 	dcx, dcy := t.Dial.X+t.Dial.W/2, t.Dial.Y+t.Dial.H/2
-	l.Ops = append(l.Ops, Op{Kind: Fill, Shape: Circle, Rect: rectArr(t.Dial),
-		Color: col.SurfaceContainerHighest, Clip: clipArr(clip)})
+	l.Ops = append(l.Ops, Op{
+		Kind: Fill, Shape: Circle, Rect: rectArr(t.Dial),
+		Color: col.SurfaceContainerHighest, Clip: clipArr(clip),
+	})
 
 	outer, inner := t.OuterRadius(), t.InnerRadius()
 	selected := t.DialIndex()
@@ -336,9 +338,11 @@ func (l *List) paintTimePicker(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		ringRadius = inner
 	}
 	sx, sy := dialPoint(dcx, dcy, ringRadius, selected)
-	l.Ops = append(l.Ops, Op{Kind: Fill, Shape: Circle,
+	l.Ops = append(l.Ops, Op{
+		Kind: Fill, Shape: Circle,
 		Rect:  [4]float32{float32(sx - 18), float32(sy - 18), 36, 36},
-		Color: col.Primary, Clip: clipArr(clip)})
+		Color: col.Primary, Clip: clipArr(clip),
+	})
 	selLabel := t.DialLabel(selected)
 	if t.DialInner() {
 		selLabel = t.DialInnerLabel(selected)

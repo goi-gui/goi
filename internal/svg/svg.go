@@ -11,7 +11,7 @@ import (
 	"github.com/srwiley/oksvg"
 	"github.com/srwiley/rasterx"
 
-	"github.com/ksckaan1/goi/internal/img"
+	"github.com/goi-gui/goi/internal/img"
 )
 
 // Rasterizing at a multiple of the viewBox keeps an icon sharp when the desktop

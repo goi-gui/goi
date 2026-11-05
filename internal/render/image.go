@@ -7,8 +7,8 @@ import (
 
 	"github.com/gogpu/gputypes"
 	"github.com/gogpu/wgpu"
-	"github.com/ksckaan1/goi/internal/img"
-	"github.com/ksckaan1/goi/internal/paint"
+	"github.com/goi-gui/goi/internal/img"
+	"github.com/goi-gui/goi/internal/paint"
 )
 
 // imageRenderer packs bitmaps into one RGBA texture and draws them as quads

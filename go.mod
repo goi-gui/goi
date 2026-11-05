@@ -1,4 +1,4 @@
-module github.com/ksckaan1/goi
+module github.com/goi-gui/goi
 
 go 1.27.3
 

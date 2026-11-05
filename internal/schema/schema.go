@@ -6,7 +6,7 @@ package schema
 import (
 	"sort"
 
-	"github.com/ksckaan1/goi/internal/componentdef"
+	"github.com/goi-gui/goi/internal/componentdef"
 )
 
 // ValueType is the literal type a property demands.
@@ -260,7 +260,8 @@ var elements = func() []Element {
 		if componentdef.Flow(k.Name) {
 			// Containers that lay their children out in a row or column accept
 			// the same spacing and alignment as Row and Column.
-			attrs = append(attrs,
+			attrs = append(
+				attrs,
 				Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
 				Prop{Name: "crossAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
 				Prop{Name: "mainAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "spaceBetween", "spaceAround", "spaceEvenly"}, Default: "start"},

@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ksckaan1/goi/internal/syntax"
+	"github.com/goi-gui/goi/internal/syntax"
 )
 
 // idPattern accepts a scoped id: an instance prefixes the ids it owns with its

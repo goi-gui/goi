@@ -5,7 +5,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // TestLoadWindowFromFS loads a design from an in-memory container, which is what

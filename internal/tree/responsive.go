@@ -3,8 +3,8 @@ package tree
 import (
 	"sort"
 
-	"github.com/ksckaan1/goi/internal/schema"
-	"github.com/ksckaan1/goi/internal/syntax"
+	"github.com/goi-gui/goi/internal/schema"
+	"github.com/goi-gui/goi/internal/syntax"
 )
 
 // responsiveProp is one property whose value follows the window width. The

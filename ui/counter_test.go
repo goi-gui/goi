@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/ksckaan1/goi/internal/layout"
-	"github.com/ksckaan1/goi/internal/syntax"
+	"github.com/goi-gui/goi/internal/layout"
+	"github.com/goi-gui/goi/internal/syntax"
 )
 
 // counterApp is the example's state, declared outside Bind so it survives a

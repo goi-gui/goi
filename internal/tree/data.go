@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ksckaan1/goi/internal/syntax"
+	"github.com/goi-gui/goi/internal/syntax"
 )
 
 // scope binds a loop variable to one value. Scopes chain, so a nested loop sees

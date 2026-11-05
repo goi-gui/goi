@@ -1,6 +1,6 @@
 package tree
 
-import "github.com/ksckaan1/goi/internal/syntax"
+import "github.com/goi-gui/goi/internal/syntax"
 
 // Rect is a rectangle in logical pixels, relative to the parent's content box.
 type Rect struct {

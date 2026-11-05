@@ -8,13 +8,13 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ksckaan1/goi/internal/asset"
-	"github.com/ksckaan1/goi/internal/goifmt"
-	"github.com/ksckaan1/goi/internal/highlight"
-	"github.com/ksckaan1/goi/internal/m3"
-	"github.com/ksckaan1/goi/internal/schema"
-	"github.com/ksckaan1/goi/internal/syntax"
-	"github.com/ksckaan1/goi/internal/text"
+	"github.com/goi-gui/goi/internal/asset"
+	"github.com/goi-gui/goi/internal/goifmt"
+	"github.com/goi-gui/goi/internal/highlight"
+	"github.com/goi-gui/goi/internal/m3"
+	"github.com/goi-gui/goi/internal/schema"
+	"github.com/goi-gui/goi/internal/syntax"
+	"github.com/goi-gui/goi/internal/text"
 )
 
 // diagnostic is one published problem, in LSP shape.
@@ -535,8 +535,10 @@ func globalItems(ref string) []completionResult {
 			Label:  m.name,
 			Kind:   kindProperty,
 			Detail: ref + "." + m.name + " · " + m.typ,
-			Documentation: &doc{Kind: "markdown",
-				Value: "**" + ref + "." + m.name + "**\n\nType: `" + m.typ + "`\n\n" + m.doc},
+			Documentation: &doc{
+				Kind:  "markdown",
+				Value: "**" + ref + "." + m.name + "**\n\nType: `" + m.typ + "`\n\n" + m.doc,
+			},
 		})
 	}
 	return out
@@ -770,9 +772,11 @@ func valueItems(file *syntax.File, prop string, src []byte, off int, prefix stri
 				out = append(out, completionResult{
 					Label: v, Kind: kindColor,
 					Detail: "colour role",
-					Documentation: &doc{Kind: "markdown",
+					Documentation: &doc{
+						Kind: "markdown",
 						Value: "Theme role: follows the scheme. A `#rrggbb` literal stays fixed, " +
-							"and a name the app defines with `ui.SetCustomColor` follows the app."},
+							"and a name the app defines with `ui.SetCustomColor` follows the app.",
+					},
 				})
 			}
 		case prop == "language" && elName == "Code":
@@ -2200,8 +2204,10 @@ func fragmentValueItems(file *syntax.File, prop string, frag *syntax.Prop, prefi
 				for _, v := range m3.ColorRoles() {
 					out = append(out, completionResult{
 						Label: v, Kind: kindColor, Detail: "colour role",
-						Documentation: &doc{Kind: "markdown",
-							Value: "Theme role. A name the app defines with `ui.SetCustomColor` works here too."},
+						Documentation: &doc{
+							Kind:  "markdown",
+							Value: "Theme role. A name the app defines with `ui.SetCustomColor` works here too.",
+						},
 					})
 				}
 				return out

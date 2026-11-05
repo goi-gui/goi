@@ -5,7 +5,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // scrollSpeedUI is deliberately long, so a fling is measured rather than

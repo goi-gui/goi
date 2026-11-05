@@ -3,8 +3,8 @@ package paint
 import (
 	"testing"
 
-	"github.com/ksckaan1/goi/internal/layout"
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/layout"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // TestZeroAreaNodeDrawsNothing guards the collapsed FAB menu: its actions get no

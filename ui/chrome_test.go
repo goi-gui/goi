@@ -3,7 +3,7 @@ package ui
 import (
 	"testing"
 
-	"github.com/ksckaan1/goi/internal/layout"
+	"github.com/goi-gui/goi/internal/layout"
 )
 
 // TestChromeOfReadsTheDesign pins the mapping from the root's properties to the

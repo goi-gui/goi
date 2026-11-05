@@ -27,7 +27,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/ksckaan1/goi/internal/syntax"
+	"github.com/goi-gui/goi/internal/syntax"
 )
 
 // Bundle is one loaded entry point together with every file it pulled in.

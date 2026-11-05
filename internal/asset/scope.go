@@ -1,6 +1,6 @@
 package asset
 
-import "github.com/ksckaan1/goi/internal/syntax"
+import "github.com/goi-gui/goi/internal/syntax"
 
 // scopeIDs prefixes the ids a fragment declares with the instance's own id, so
 // two instances of one fragment can both carry behaviour:

@@ -3,8 +3,8 @@ package main
 import (
 	"testing"
 
-	"github.com/ksckaan1/goi/internal/layout"
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/layout"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // TestCollapsedFindsEmptyContainers is the check that would have caught a Stack

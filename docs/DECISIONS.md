@@ -537,7 +537,7 @@ batch. This is what the display list will feed.
   made the switch shift every page by one.
 - **The project is `goi`, and designs are `.goi`.** The module path, the
   command and the file extension all read `goi` (go + gui). The Go package you
-  import stays `ui` (`import "github.com/ksckaan1/goi/ui"`): it names the
+  import stays `ui` (`import "github.com/goi-gui/goi/ui"`): it names the
   layer, not the project, and every example in this repo and in the docs uses
   `ui.MustByID`, so renaming the import path would churn every snippet without
   making anything clearer. The design-language pages and the component pages

@@ -16,14 +16,14 @@
 // The Zed extension (github.com/goi-gui/zed-goi) starts it automatically when
 // it is on PATH:
 //
-//	go install github.com/ksckaan1/goi/cmd/goipls@latest
+//	go install github.com/goi-gui/goi/cmd/goipls@latest
 package main
 
 import (
 	"fmt"
 	"os"
 
-	"github.com/ksckaan1/goi/internal/lsp"
+	"github.com/goi-gui/goi/internal/lsp"
 )
 
 func main() {

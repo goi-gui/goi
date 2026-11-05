@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/ksckaan1/goi/internal/platform"
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/platform"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // Window wraps a live node tree. Its methods must only be called from the UI

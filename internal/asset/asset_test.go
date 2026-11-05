@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ksckaan1/goi/internal/schema"
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/schema"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // design writes a set of files into a temp dir and returns an FS over it.
@@ -378,7 +378,8 @@ Column {
 	for _, row := range bridge.rows {
 		Text { text: row.title }
 	}
-}`})
+}`,
+	})
 	tr, err := load(t, dir, "Main.goi")
 	if err != nil {
 		t.Fatal(err)

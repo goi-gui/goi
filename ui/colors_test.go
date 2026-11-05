@@ -3,7 +3,7 @@ package ui
 import (
 	"testing"
 
-	"github.com/ksckaan1/goi/internal/m3"
+	"github.com/goi-gui/goi/internal/m3"
 )
 
 // TestCustomColorResolves checks the design side of SetCustomColor: a name that

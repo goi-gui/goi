@@ -3,9 +3,9 @@ package ui
 import (
 	"strings"
 
-	"github.com/ksckaan1/goi/internal/m3"
-	"github.com/ksckaan1/goi/internal/syntax"
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/m3"
+	"github.com/goi-gui/goi/internal/syntax"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // SetCustomColors defines several design-side colour names at once. It is

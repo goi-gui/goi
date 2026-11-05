@@ -277,8 +277,12 @@ declaration and fragment, a document outline and go-to-definition for imports
 and id references:
 
 ```sh
-go install github.com/ksckaan1/goi/cmd/goipls@latest
+go install github.com/goi-gui/goi/cmd/goipls@latest
 ```
+
+The module lives in a private repository, so Go needs a credential for it;
+`GOPRIVATE=github.com/goi-gui/*` (or `GONOSUMDB`) keeps the toolchain from
+asking the public proxy for it.
 
 See [goi-gui/zed-goi](https://github.com/goi-gui/zed-goi) for the local install
 steps.

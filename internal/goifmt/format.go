@@ -17,7 +17,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ksckaan1/goi/internal/syntax"
+	"github.com/goi-gui/goi/internal/syntax"
 )
 
 // Source formats src. A file that does not parse comes back unchanged, so a

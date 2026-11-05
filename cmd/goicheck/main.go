@@ -15,14 +15,14 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ksckaan1/goi/internal/asset"
-	"github.com/ksckaan1/goi/internal/layout"
-	"github.com/ksckaan1/goi/internal/m3"
-	"github.com/ksckaan1/goi/internal/paint"
-	"github.com/ksckaan1/goi/internal/schema"
-	"github.com/ksckaan1/goi/internal/syntax"
-	"github.com/ksckaan1/goi/internal/text"
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/asset"
+	"github.com/goi-gui/goi/internal/layout"
+	"github.com/goi-gui/goi/internal/m3"
+	"github.com/goi-gui/goi/internal/paint"
+	"github.com/goi-gui/goi/internal/schema"
+	"github.com/goi-gui/goi/internal/syntax"
+	"github.com/goi-gui/goi/internal/text"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 func main() {

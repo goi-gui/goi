@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ksckaan1/goi/internal/syntax"
+	"github.com/goi-gui/goi/internal/syntax"
 )
 
 func validate(t *testing.T, src string) (*Result, syntax.Diagnostics) {

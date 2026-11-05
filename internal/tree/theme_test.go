@@ -3,8 +3,8 @@ package tree
 import (
 	"testing"
 
-	"github.com/ksckaan1/goi/internal/m3"
-	"github.com/ksckaan1/goi/internal/syntax"
+	"github.com/goi-gui/goi/internal/m3"
+	"github.com/goi-gui/goi/internal/syntax"
 )
 
 // TestRoleColorsFollowTheScheme is the point of roles: the same .goi value paints

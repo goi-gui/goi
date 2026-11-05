@@ -4,9 +4,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/ksckaan1/goi/internal/schema"
-	"github.com/ksckaan1/goi/internal/syntax"
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/schema"
+	"github.com/goi-gui/goi/internal/syntax"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // TestTwoInstancesKeepTheirOwnIDs is the point of scoping: a fragment with an

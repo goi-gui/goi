@@ -9,8 +9,8 @@ import (
 
 	"github.com/gogpu/gputypes"
 	"github.com/gogpu/wgpu"
-	"github.com/ksckaan1/goi/internal/paint"
-	"github.com/ksckaan1/goi/internal/text"
+	"github.com/goi-gui/goi/internal/paint"
+	"github.com/goi-gui/goi/internal/text"
 )
 
 // textRenderer owns the glyph atlas. Glyph quads go into the same instance
@@ -196,12 +196,15 @@ func (t *textRenderer) emit(i int) {
 			ClipBox: q.clipBox,
 			// kind 4 is a glyph quad: params.zw is the UV origin, misc.xy is
 			// the UV far corner and misc.z the rounded clip.
-			Params: [4]float32{4, 0,
+			Params: [4]float32{
+				4, 0,
 				float32(q.slot.Min.X) / float32(t.atlasW),
-				float32(q.slot.Min.Y) / float32(t.atlasH)},
+				float32(q.slot.Min.Y) / float32(t.atlasH),
+			},
 			Misc: [4]float32{
 				float32(q.slot.Max.X) / float32(t.atlasW),
-				float32(q.slot.Max.Y) / float32(t.atlasH), q.clipR, 0},
+				float32(q.slot.Max.Y) / float32(t.atlasH), q.clipR, 0,
+			},
 		})
 	}
 }

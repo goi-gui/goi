@@ -1,6 +1,6 @@
 package ui
 
-import "github.com/ksckaan1/goi/internal/tree"
+import "github.com/goi-gui/goi/internal/tree"
 
 // rippleDur is how long one press ripple lives: expansion, then fade.
 const rippleDur = 0.45 // seconds

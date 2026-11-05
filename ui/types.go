@@ -17,8 +17,8 @@
 package ui
 
 import (
-	"github.com/ksckaan1/goi/internal/m3"
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/m3"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // Component is the shared Material 3 component state (label, icon, variant,

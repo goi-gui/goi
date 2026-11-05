@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ksckaan1/goi/internal/syntax"
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/syntax"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // reloadApp builds an app without a window and a window whose tree came from

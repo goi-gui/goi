@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // TestEaseTowardSettlesAndReverses pins the switch motion: it closes the gap

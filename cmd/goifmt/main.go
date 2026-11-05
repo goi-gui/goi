@@ -16,8 +16,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ksckaan1/goi/internal/goifmt"
-	"github.com/ksckaan1/goi/internal/syntax"
+	"github.com/goi-gui/goi/internal/goifmt"
+	"github.com/goi-gui/goi/internal/syntax"
 )
 
 func main() {

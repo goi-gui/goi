@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"github.com/ksckaan1/goi/internal/platform"
+	"github.com/goi-gui/goi/internal/platform"
 )
 
 // chromeState is the Window's platform-side state: what the design asked of the

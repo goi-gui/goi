@@ -1,6 +1,6 @@
 package tree
 
-import "github.com/ksckaan1/goi/internal/syntax"
+import "github.com/goi-gui/goi/internal/syntax"
 
 // LiteralEqual reports whether two parsed literals carry the same value. Used
 // by hot reload to decide if the .goi file changed a property.

@@ -1,6 +1,6 @@
 package tree
 
-import "github.com/ksckaan1/goi/internal/syntax"
+import "github.com/goi-gui/goi/internal/syntax"
 
 // condBranch is one arm of an {#if} block. A block adds no node of its own: the
 // arm's elements are ordinary children of the enclosing element, and the arm

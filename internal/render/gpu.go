@@ -9,8 +9,8 @@ import (
 
 	"github.com/gogpu/gputypes"
 	"github.com/gogpu/wgpu"
-	"github.com/ksckaan1/goi/internal/paint"
-	"github.com/ksckaan1/goi/internal/text"
+	"github.com/goi-gui/goi/internal/paint"
+	"github.com/goi-gui/goi/internal/text"
 
 	_ "github.com/gogpu/wgpu/hal/allbackends"
 )
@@ -438,18 +438,28 @@ func (g *GPU) initPipeline() error {
 // bind group share: viewport, instances, atlas, sampler.
 func shapeLayoutEntries() []gputypes.BindGroupLayoutEntry {
 	return []gputypes.BindGroupLayoutEntry{
-		{Binding: 0, Visibility: gputypes.ShaderStageVertex | gputypes.ShaderStageFragment,
-			Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeUniform}},
-		{Binding: 1, Visibility: gputypes.ShaderStageVertex,
-			Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeReadOnlyStorage}},
+		{
+			Binding: 0, Visibility: gputypes.ShaderStageVertex | gputypes.ShaderStageFragment,
+			Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeUniform},
+		},
+		{
+			Binding: 1, Visibility: gputypes.ShaderStageVertex,
+			Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeReadOnlyStorage},
+		},
 		{Binding: 2, Visibility: gputypes.ShaderStageFragment, Texture: &gputypes.TextureBindingLayout{
-			SampleType: gputypes.TextureSampleTypeFloat, ViewDimension: gputypes.TextureViewDimension2D, Multisampled: false}},
-		{Binding: 3, Visibility: gputypes.ShaderStageFragment,
-			Sampler: &gputypes.SamplerBindingLayout{Type: gputypes.SamplerBindingTypeFiltering}},
+			SampleType: gputypes.TextureSampleTypeFloat, ViewDimension: gputypes.TextureViewDimension2D, Multisampled: false,
+		}},
+		{
+			Binding: 3, Visibility: gputypes.ShaderStageFragment,
+			Sampler: &gputypes.SamplerBindingLayout{Type: gputypes.SamplerBindingTypeFiltering},
+		},
 		{Binding: 4, Visibility: gputypes.ShaderStageFragment, Texture: &gputypes.TextureBindingLayout{
-			SampleType: gputypes.TextureSampleTypeFloat, ViewDimension: gputypes.TextureViewDimension2D, Multisampled: false}},
-		{Binding: 5, Visibility: gputypes.ShaderStageFragment,
-			Sampler: &gputypes.SamplerBindingLayout{Type: gputypes.SamplerBindingTypeFiltering}},
+			SampleType: gputypes.TextureSampleTypeFloat, ViewDimension: gputypes.TextureViewDimension2D, Multisampled: false,
+		}},
+		{
+			Binding: 5, Visibility: gputypes.ShaderStageFragment,
+			Sampler: &gputypes.SamplerBindingLayout{Type: gputypes.SamplerBindingTypeFiltering},
+		},
 	}
 }
 

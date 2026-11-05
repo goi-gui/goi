@@ -3,8 +3,8 @@ package ui
 import (
 	"testing"
 
-	"github.com/ksckaan1/goi/internal/paint"
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/paint"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // focusText clicks a field so it owns the keyboard, the way a user would.

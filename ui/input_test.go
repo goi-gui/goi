@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ksckaan1/goi/internal/layout"
-	"github.com/ksckaan1/goi/internal/paint"
-	"github.com/ksckaan1/goi/internal/platform"
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/layout"
+	"github.com/goi-gui/goi/internal/paint"
+	"github.com/goi-gui/goi/internal/platform"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // inputFixture builds a laid-out headless window plus an interactor wired to it.

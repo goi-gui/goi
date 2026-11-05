@@ -3,7 +3,7 @@ package ui
 import (
 	"math"
 
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // switchTau shapes the Switch handle's travel: the position eases toward the

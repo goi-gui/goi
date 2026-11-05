@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/ksckaan1/goi/internal/componentdef"
+	"github.com/goi-gui/goi/internal/componentdef"
 )
 
 // TestEveryComponentValidates keeps the schema vocabulary and the component

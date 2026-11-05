@@ -6,8 +6,8 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/ksckaan1/goi/internal/asset"
-	"github.com/ksckaan1/goi/internal/goifmt"
+	"github.com/goi-gui/goi/internal/asset"
+	"github.com/goi-gui/goi/internal/goifmt"
 )
 
 // TestReadmeExamplesValidate keeps the samples in README.md honest: they are

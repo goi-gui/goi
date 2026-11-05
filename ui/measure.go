@@ -1,6 +1,6 @@
 package ui
 
-import "github.com/ksckaan1/goi/internal/text"
+import "github.com/goi-gui/goi/internal/text"
 
 // textMeasurer adapts the text library to layout.Measurer so layout uses real
 // glyph advances instead of the fake approximation.

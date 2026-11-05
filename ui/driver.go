@@ -5,12 +5,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ksckaan1/goi/internal/layout"
-	"github.com/ksckaan1/goi/internal/m3"
-	"github.com/ksckaan1/goi/internal/paint"
-	"github.com/ksckaan1/goi/internal/platform"
-	"github.com/ksckaan1/goi/internal/render"
-	"github.com/ksckaan1/goi/internal/tree"
+	"github.com/goi-gui/goi/internal/layout"
+	"github.com/goi-gui/goi/internal/m3"
+	"github.com/goi-gui/goi/internal/paint"
+	"github.com/goi-gui/goi/internal/platform"
+	"github.com/goi-gui/goi/internal/render"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // gpuDriver is the SDL3 + WebGPU event loop. It runs on the main goroutine.

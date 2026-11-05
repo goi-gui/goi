@@ -3,7 +3,7 @@ package svg
 import (
 	"testing"
 
-	"github.com/ksckaan1/goi/internal/img"
+	"github.com/goi-gui/goi/internal/img"
 )
 
 // testSVG is a 10x20 rectangle that follows currentColor, so a render shows

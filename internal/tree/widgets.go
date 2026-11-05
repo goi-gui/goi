@@ -1,6 +1,6 @@
 package tree
 
-import "github.com/ksckaan1/goi/internal/img"
+import "github.com/goi-gui/goi/internal/img"
 
 // Node is any element in the tree. The interface is intentionally narrow: all
 // state lives in NodeBase, and namedProps is the only per-type hook.
@@ -64,7 +64,8 @@ type Window struct {
 func (w *Window) Kind() string { return "Window" }
 
 func (w *Window) namedProps() []NamedProp {
-	return append(commonProps(&w.NodeBase),
+	return append(
+		commonProps(&w.NodeBase),
 		StringProp(&w.NodeBase, "title", &w.Title),
 		StringProp(&w.NodeBase, "theme", &w.Theme),
 		EnumProp(&w.NodeBase, "titleBar", DirtyPaint, &w.TitleBar, "system", "custom"),
@@ -97,7 +98,8 @@ type Container struct {
 }
 
 func (c *Container) namedProps() []NamedProp {
-	return append(commonProps(&c.NodeBase),
+	return append(
+		commonProps(&c.NodeBase),
 		NumberProp(&c.NodeBase, "spacing", DirtyLayout, &c.Spacing),
 		NumberProp(&c.NodeBase, "gap", DirtyLayout, &c.Spacing),
 		EnumProp(&c.NodeBase, "crossAxisAlign", DirtyLayout, &c.CrossAlign, CrossAxisValues...),
@@ -163,7 +165,8 @@ type Positioned struct {
 func (*Positioned) Kind() string { return "Positioned" }
 
 func (p *Positioned) namedProps() []NamedProp {
-	return append(commonProps(&p.NodeBase),
+	return append(
+		commonProps(&p.NodeBase),
 		NumberProp(&p.NodeBase, "left", DirtyLayout, &p.Left),
 		NumberProp(&p.NodeBase, "top", DirtyLayout, &p.Top),
 		NumberProp(&p.NodeBase, "right", DirtyLayout, &p.Right),
@@ -191,7 +194,8 @@ type Grid struct {
 func (*Grid) Kind() string { return "Grid" }
 
 func (g *Grid) namedProps() []NamedProp {
-	return append(g.Container.namedProps(),
+	return append(
+		g.Container.namedProps(),
 		NumberProp(&g.NodeBase, "columns", DirtyLayout, &g.Columns),
 	)
 }
@@ -230,7 +234,8 @@ type Image struct {
 func (i *Image) Kind() string { return "Image" }
 
 func (i *Image) namedProps() []NamedProp {
-	return append(commonProps(&i.NodeBase),
+	return append(
+		commonProps(&i.NodeBase),
 		StringProp(&i.NodeBase, "src", &i.Src),
 		EnumProp(&i.NodeBase, "fit", DirtyLayout, &i.Fit, "cover", "contain", "fill"),
 	)
@@ -267,7 +272,8 @@ type SVG struct {
 func (s *SVG) Kind() string { return "SVG" }
 
 func (s *SVG) namedProps() []NamedProp {
-	return append(commonProps(&s.NodeBase),
+	return append(
+		commonProps(&s.NodeBase),
 		StringProp(&s.NodeBase, "src", &s.Src),
 		EnumProp(&s.NodeBase, "fit", DirtyLayout, &s.Fit, "cover", "contain", "fill"),
 		ColorProp(&s.NodeBase, "color", DirtyPaint, &s.Color),
@@ -294,7 +300,8 @@ type Text struct {
 func (t *Text) Kind() string { return "Text" }
 
 func (t *Text) namedProps() []NamedProp {
-	return append(commonProps(&t.NodeBase),
+	return append(
+		commonProps(&t.NodeBase),
 		StringProp(&t.NodeBase, "text", &t.Text),
 		NumberProp(&t.NodeBase, "fontSize", DirtyLayout, &t.FontSize),
 		ColorProp(&t.NodeBase, "color", DirtyPaint, &t.Color),
