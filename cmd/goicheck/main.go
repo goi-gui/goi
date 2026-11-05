@@ -1,7 +1,9 @@
 // Command goicheck loads .goi designs, expanding imports, and prints diagnostics.
 //
-//	go run ./cmd/goicheck examples/gallery/gallery.goi
-//	go run ./cmd/goicheck -layout examples/*/*.goi
+// The examples are a sibling module, so their designs are checked by path:
+//
+//	go run ./cmd/goicheck ../examples/gallery/gallery.goi
+//	go run ./cmd/goicheck -layout ../examples/*/*.goi
 //
 // With -layout it also lays the design out headlessly and reports nodes that
 // collapsed to zero size. That is the class of bug a syntax check cannot see: a

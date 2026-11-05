@@ -147,6 +147,10 @@ decorations and lets the design draw and drag its own; see
 
 ## Run the examples
 
+The examples live in their own module next to this checkout
+([goi-gui/examples](../examples)); they build against this tree through a
+`replace` in their `go.mod`. The `make` targets below run them for you.
+
 ```sh
 make counter   # counter with hot reload
 make gallery   # every Material 3 component, one category page at a time
@@ -161,8 +165,8 @@ make bridge    # every event property, and a fragment fed from the bridge
 make svg       # one SVG recoloured by role, by Go, and loaded from a URL
 make window    # size limits, disableResize and fullscreen
 make search    # a button and a text field reading another node by id
-go run ./cmd/goicheck -layout examples/*/*.goi  # syntax plus a headless layout check
-go run ./cmd/goifmt -l .                        # list unformatted .goi files
+go run ./cmd/goicheck -layout ../examples/*/*.goi  # syntax plus a headless layout check
+go run ./cmd/goifmt -l .                            # list unformatted .goi files
 ```
 
 ## What it does
@@ -228,7 +232,7 @@ go run ./cmd/goifmt -l .                        # list unformatted .goi files
 - Bridge: `bridge { OnOpen func(id string) }` declares the handlers a design
   calls from any event property (`onClick: bridge.OnOpen(row.ID)`), with the
   arguments evaluated when the event fires and `event` carrying the event's own
-  payload; `ui.SetHandler` supplies the body. `examples/bridge`
+  payload; `ui.SetHandler` supplies the body. The `bridge` example
   (`make bridge`) runs every event.
 - Platform dialogs and notifications: `ui.OpenFile`, `ui.OpenFiles`,
   `ui.SaveFile` and `ui.OpenFolder` wrap the native file picker with a title,

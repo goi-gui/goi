@@ -23,11 +23,12 @@ func (m realMeasurer) MeasureWeight(s string, size float64, weight int) (float64
 	return f.Measure(s, 0)
 }
 
-// galleryTree loads the gallery design, which is the widest real page in the
-// repo: every component kind, nested containers and a lot of text.
+// galleryTree loads the gallery design, which is the widest real page: every
+// component kind, nested containers and a lot of text. It lives in the sibling
+// examples module, so this skips when that checkout is not next to this one.
 func galleryTree(b *testing.B) *tree.Tree {
 	b.Helper()
-	src, err := os.ReadFile("../../examples/gallery/gallery.goi")
+	src, err := os.ReadFile("../../../examples/gallery/gallery.goi")
 	if err != nil {
 		b.Skipf("gallery design not available: %v", err)
 	}

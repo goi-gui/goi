@@ -1,56 +1,63 @@
 build:
 	go build -ldflags=-linkmode=internal ./...
 
+# The examples are their own module in ../examples, next to this checkout. They
+# load their .goi files by relative path, so they run from that directory.
+EXAMPLES := ../examples
+RUN := go -C $(EXAMPLES) run -ldflags=-linkmode=internal
+
 spike:
-	go run -ldflags=-linkmode=internal ./examples/spike
+	$(RUN) ./spike
 
 search:
-	go run -ldflags=-linkmode=internal ./examples/search
+	$(RUN) ./search
 
 counter:
-	go run -ldflags=-linkmode=internal ./examples/counter
+	$(RUN) ./counter
 
 gallery:
-	go run -ldflags=-linkmode=internal ./examples/gallery
+	$(RUN) ./gallery
 
 hello:
-	go run -ldflags=-linkmode=internal ./examples/hello
+	$(RUN) ./hello
 
 scroll:
-	go run -ldflags=-linkmode=internal ./examples/scroll
+	$(RUN) ./scroll
 
 typography:
-	go run -ldflags=-linkmode=internal ./examples/typography
+	$(RUN) ./typography
 
 composition:
-	go run -ldflags=-linkmode=internal ./examples/composition
+	$(RUN) ./composition
 
 theme:
-	go run -ldflags=-linkmode=internal ./examples/theme
+	$(RUN) ./theme
 
 titlebar:
-	go run -ldflags=-linkmode=internal ./examples/titlebar
+	$(RUN) ./titlebar
 
 datalist:
-	go run -ldflags=-linkmode=internal ./examples/datalist
+	$(RUN) ./datalist
 
 bridge:
-	go run -ldflags=-linkmode=internal ./examples/bridge
+	$(RUN) ./bridge
 
 svg:
-	go run -ldflags=-linkmode=internal ./examples/svg
+	$(RUN) ./svg
 
 window:
-	go run -ldflags=-linkmode=internal ./examples/window
+	$(RUN) ./window
 
 format:
-	go run -ldflags=-linkmode=internal ./examples/format
+	$(RUN) ./format
 
 fmt:
 	go run ./cmd/goifmt -w .
+	go run ./cmd/goifmt -w $(EXAMPLES)
 
 fmt-list:
 	go run ./cmd/goifmt -l .
+	go run ./cmd/goifmt -l $(EXAMPLES)
 
 test:
 	go test -race -ldflags=-linkmode=internal ./...

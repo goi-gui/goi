@@ -678,7 +678,7 @@ Text { id: row text: "row" onClick: props.onOpen("7") }`,
 	}
 }
 
-// TestFragmentTakesAValueAndAHandler is the shape examples/bridge uses: one
+// TestFragmentTakesAValueAndAHandler is the shape the bridge example uses: one
 // fragment receives a bridge value and a bridge handler as props, shows the
 // value and calls the handler, and never names `bridge` itself.
 func TestFragmentTakesAValueAndAHandler(t *testing.T) {

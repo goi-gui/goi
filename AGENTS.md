@@ -19,8 +19,8 @@ go vet ./...                                 # SDL picks Wayland/X11 at runtime
 gofmt -l .                                   # CI fails on any output
 go test -race -ldflags=-linkmode=internal ./ui ./internal/syntax ./internal/schema ./internal/layout ./internal/paint ./internal/text ./internal/hotreload ./internal/lsp ./internal/goifmt
 go test -ldflags=-linkmode=internal ./...    # test binaries link goffi too
-go run ./cmd/goicheck -layout -ops examples/*/*.goi   # headless render check
-go run ./cmd/goifmt -l .                              # CI fails on any output
+go run ./cmd/goicheck -layout -ops ../examples/*/*.goi  # headless render check
+go run ./cmd/goifmt -l .                                # CI fails on any output
 ```
 
 - `-ldflags=-linkmode=internal` is not optional on Linux: goffi's dynamic
@@ -28,9 +28,11 @@ go run ./cmd/goifmt -l .                              # CI fails on any output
 - `internal/platform` is the only cgo in the tree: a small `sdl_shim.c` over
   SDL3, because SDL3 has no Go binding we own and its dark, `cgo_import_dynamic`
   build clashes with goffi's. Everything above `platform` stays cgo-free.
-- Run the examples **from the repo root** (`make gallery`, `make counter`, …).
-  They load `examples/<name>/<name>.goi` by relative path; running the binary
-  from elsewhere fails with "file not found".
+- The examples are their own module in `../examples`, next to this checkout.
+  `make gallery` and `make counter` run them with `go -C ../examples`, because
+  each loads `<name>/<name>.goi` by relative path; running the binary from
+  elsewhere fails with "file not found". They build against this tree through
+  a `replace` in their `go.mod`.
 - Golden AST snapshots: `go test ./internal/syntax -run TestGoldenAST -update`.
 - `staticcheck ./...` runs in CI.
 
@@ -85,7 +87,7 @@ Tests that enforce the above: `TestEveryComponentValidates`,
 ## Go-side conventions
 
 - `Bind` runs again after every hot reload: state declared inside it resets.
-  Keep app state outside `Bind` (see `examples/counter/main.go`).
+  Keep app state outside `Bind` (see `../examples/counter/main.go`).
 - `Prop[T].Set` is a no-op when the value is unchanged; `Set` marks the tree
   dirty and schedules a frame, so no manual repaint call is needed.
 - `DirtyPaint` vs `DirtyLayout`: anything that changes size, text, padding,
@@ -107,6 +109,6 @@ Tests that enforce the above: `TestEveryComponentValidates`,
 
 ## Verifying visuals
 
-There is no screenshot test. `examples/gallery` is the manual test bed for every
-component and page; `goicheck -layout` catches nodes that collapse to zero size,
+There is no screenshot test. `../examples/gallery` is the manual test bed for
+every component and page; `goicheck -layout` catches nodes that collapse to zero size,
 which is the failure a syntax check cannot see.
