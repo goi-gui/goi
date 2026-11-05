@@ -49,7 +49,7 @@ Window {
 					}
 
 					Text {
-						text: "minWidth 420 · minHeight 360 · maxWidth 1100 · maxHeight 900. Drag this window's edge and it stops at those bounds."
+						text: "minWidth 420 · minHeight 360 · maxWidth 1100 · maxHeight 900. Drag an edge and it stops at those bounds, and a maximum also turns maximize off."
 						role: "bodySmall"
 						wrap: true
 					}

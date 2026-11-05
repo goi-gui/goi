@@ -1356,3 +1356,12 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   A height pair that only `Window` accepted would be the one asymmetry in the
   common set; adding it costs two cells and the same `minSize`/`maxSize` branch
   layout already had for width.
+- **Every size change goes through one clamp, because Wayland hides the resize.**
+  During an interactive resize SDL defers the configure and sends only an
+  expose, so the framebuffer read is the path a drag actually takes; it used to
+  bypass the limits, which is why `maxWidth` looked ignored. `applyClientSize`
+  now clamps both the resize event and the framebuffer read, asks the platform
+  for the clamped size when the request was outside it, and only then tells the
+  tree. A declared maximum also undoes a maximize, since the compositor owns
+  that button and an xdg `max_size` hint is only a hint; fullscreen stays
+  exempt so it can fill the display.

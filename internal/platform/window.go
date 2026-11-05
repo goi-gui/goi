@@ -243,16 +243,7 @@ func (p *Window) dispatch(ev rawEvent) {
 			p.input.Close()
 		}
 	case evResize:
-		if ev.width <= 0 || ev.height <= 0 {
-			return
-		}
-		// A tiling compositor may ignore SDL's size hints, so the limit is
-		// enforced here too: the clamped size is applied back to the window and
-		// reported, which keeps the client and the tree in step.
-		p.width, p.height = p.clamp(ev.width, ev.height)
-		if p.input != nil {
-			p.input.Resize(p.width, p.height, p.contentScale())
-		}
+		p.applyClientSize(ev.width, ev.height)
 	case evTheme:
 		if p.input != nil {
 			p.input.ThemeChanged()
@@ -314,14 +305,41 @@ func (p *Window) dispatch(ev rawEvent) {
 }
 
 // resizeToFramebuffer re-reads the client size and reports it when it changed.
+// During an interactive Wayland resize SDL defers the configure and sends only
+// an expose, so this is the path a drag actually takes: it must clamp as well,
+// or the client would follow the pointer past the design's limits.
 func (p *Window) resizeToFramebuffer() {
 	w, h := p.FramebufferSize()
-	if w <= 0 || h <= 0 || (w == p.width && h == p.height) {
+	if w <= 0 || h <= 0 {
 		return
 	}
-	p.width, p.height = w, h
+	p.applyClientSize(w, h)
+}
+
+// applyClientSize is the single place a new client size enters the window: it
+// clamps to the design's limits, asks the platform for the clamped size when
+// the request was outside them, and tells the input sink. Both the resize event
+// and the framebuffer read go through here.
+func (p *Window) applyClientSize(pw, ph int) {
+	if pw <= 0 || ph <= 0 {
+		return
+	}
+	// A design that caps the size is a window that is not meant to fill the
+	// screen, so a maximize from the title bar is undone: the compositor owns
+	// that button, and this is the only way to keep the cap.
+	if p.hasMax() && p.Maximized() && !p.fullscreen {
+		sdlRestore(p.win)
+	}
+	cw, ch := p.clamp(pw, ph)
+	if cw != pw || ch != ph {
+		p.setWindowPixels(cw, ch)
+	}
+	if cw == p.width && ch == p.height {
+		return
+	}
+	p.width, p.height = cw, ch
 	if p.input != nil {
-		p.input.Resize(w, h, p.contentScale())
+		p.input.Resize(cw, ch, p.contentScale())
 	}
 }
 
@@ -425,11 +443,14 @@ func (p *Window) ToggleMaximize() {
 		sdlRestore(p.win)
 		return
 	}
-	if !p.resizable {
+	if !p.resizable || p.hasMax() {
 		return
 	}
 	sdlMaximize(p.win)
 }
+
+// hasMax reports whether the design capped the window size.
+func (p *Window) hasMax() bool { return p.maxW > 0 || p.maxH > 0 }
 
 // SetResizable turns the user's resize and maximize off. A screen-filling
 // window is unaffected: fullscreen is a separate switch.
@@ -462,46 +483,48 @@ func (p *Window) SetSizeLimits(minW, minH, maxW, maxH int) {
 }
 
 // resizeToClamped brings the current size inside the limits, for a design that
-// declares a minimum larger than its start size.
+// declares a minimum larger than its start size (or a maximum smaller).
 func (p *Window) resizeToClamped() {
 	w, h := p.FramebufferSize()
-	cw, ch := p.clamp(w, h)
-	if cw == w && ch == h {
+	if w <= 0 || h <= 0 {
 		return
 	}
-	p.setWindowPixels(cw, ch)
+	p.applyClientSize(w, h)
 }
 
 // clamp returns a pixel size inside the design's limits. SDL talks in logical
 // points, so the limits are scaled to pixels here.
 func (p *Window) clamp(pw, ph int) (int, int) {
-	// A fullscreen window fills the display, so the windowed limits must not
-	// pull it back: they apply again when it returns to a normal window.
-	if p.fullscreen {
+	// Fullscreen and maximize are the platform's own sizes: a fullscreen window
+	// fills the display, and a maximized one must keep the exact geometry the
+	// compositor assigned or the protocol is violated. The limits apply again
+	// when the window returns to a normal one. This is why maximize is not a
+	// way to test the limits, and why `disableResize` also refuses to maximize.
+	if p.fullscreen || (p.Maximized() && !p.hasMax()) {
 		return pw, ph
 	}
-	if p.minW <= 0 && p.minH <= 0 && p.maxW <= 0 && p.maxH <= 0 {
-		return pw, ph
-	}
-	s := float64(p.contentScale())
+	s := p.contentScale()
 	if s <= 0 {
 		s = 1
 	}
+	return clampSize(p.minW, p.minH, p.maxW, p.maxH, float64(s), pw, ph)
+}
+
+// clampSize bounds a pixel size by limits given in logical points. A zero limit
+// means "none", which is also how the design's -1 arrives here.
+func clampSize(minW, minH, maxW, maxH int, scale float64, pw, ph int) (int, int) {
 	w, h := pw, ph
-	if p.minW > 0 && w < int(math.Round(float64(p.minW)*s)) {
-		w = int(math.Round(float64(p.minW) * s))
+	if minW > 0 && w < int(math.Round(float64(minW)*scale)) {
+		w = int(math.Round(float64(minW) * scale))
 	}
-	if p.minH > 0 && h < int(math.Round(float64(p.minH)*s)) {
-		h = int(math.Round(float64(p.minH) * s))
+	if minH > 0 && h < int(math.Round(float64(minH)*scale)) {
+		h = int(math.Round(float64(minH) * scale))
 	}
-	if p.maxW > 0 && w > int(math.Round(float64(p.maxW)*s)) {
-		w = int(math.Round(float64(p.maxW) * s))
+	if maxW > 0 && w > int(math.Round(float64(maxW)*scale)) {
+		w = int(math.Round(float64(maxW) * scale))
 	}
-	if p.maxH > 0 && h > int(math.Round(float64(p.maxH)*s)) {
-		h = int(math.Round(float64(p.maxH) * s))
-	}
-	if w != pw || h != ph {
-		p.setWindowPixels(w, h)
+	if maxH > 0 && h > int(math.Round(float64(maxH)*scale)) {
+		h = int(math.Round(float64(maxH) * scale))
 	}
 	return w, h
 }

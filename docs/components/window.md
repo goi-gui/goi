@@ -45,6 +45,18 @@ button, and `Window.ToggleMaximize` becomes a no-op. `fullscreen` is a separate
 switch and still works, so a kiosk can ask for a fixed size in windowed mode and
 fill the screen when the user asks for it.
 
+A declared `maxWidth`/`maxHeight` also disables maximizing: the maximized size
+would exceed the cap the design asked for, so a maximize from the title bar is
+undone on the next frame and `ToggleMaximize` does nothing. Leave the maximum
+out (`-1`) for a window that should be able to fill the screen. Fullscreen is
+never capped, which is the point of the separate switch.
+
+The limits are enforced on every size change the window sees — a drag, a
+compositor request, a maximize that is being undone — not only at startup, so a
+compositor that ignores the window's size hints still cannot make the client
+draw outside the design's bounds. A window whose current size falls outside a
+newly declared limit is resized to fit at once.
+
 All six are read on every frame, not just at startup, so an expression or a
 `Set` from Go reaches the platform without a reload:
 
@@ -65,6 +77,10 @@ w.Root().SetMaxHeight(-1)
 
 A window whose current size falls outside a newly set limit is resized to fit,
 which is what a design asking for `minWidth: 600` on a 480-wide window needs.
+
+On a maximized window the limits do not apply while it stays maximized (the
+compositor owns that geometry, and resizing it there is a protocol violation);
+that is why a declared maximum turns maximize off instead.
 
 `titleBar` is read when the window is created, so changing it needs a restart.
 `custom` hides the platform title bar; draw your own with
