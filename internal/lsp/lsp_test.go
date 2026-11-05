@@ -561,6 +561,37 @@ func TestHoverDocumentsAProperty(t *testing.T) {
 	}
 }
 
+// TestHoverExplainsColours separates a theme role from a custom name: the
+// second is not in the schema, but the app can define it at runtime.
+func TestHoverExplainsColours(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tRectangle {\n\t\tbackground: primary\n\t\tborderColor: myBrand\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	hover := func(needle string) string {
+		res := c.request("textDocument/hover", map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     at(t, src, needle, 2),
+		})
+		var h struct {
+			Contents doc `json:"contents"`
+		}
+		if err := json.Unmarshal(res, &h); err != nil {
+			t.Fatal(err)
+		}
+		return h.Contents.Value
+	}
+
+	if got := hover("primary"); !strings.Contains(got, "theme role") {
+		t.Fatalf("role hover = %q", got)
+	}
+	if got := hover("myBrand"); !strings.Contains(got, "SetCustomColor") {
+		t.Fatalf("custom hover = %q", got)
+	}
+}
+
 func TestSymbolsMirrorTheElementTree(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()

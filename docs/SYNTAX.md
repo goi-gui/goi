@@ -430,7 +430,8 @@ declaration. A function call appears either as an event property's whole value
 | `480`, `32.5`, `-1` | number | one numeric type everywhere (`float64`) |
 | `true`, `false` | bool | |
 | `#rgb`, `#rrggbb`, `#rrggbbaa` | color | alpha defaults to `ff`; `"#rrggbb"` quoted also works |
-| `surfaceContainerHigh` | color role | a theme name, so it follows light/dark; any role in the M3 scheme, typo hints included |
+| `surfaceContainerHigh` | color role | a theme name, so it follows light/dark; any role in the M3 scheme |
+| `myBrand` | custom color | any other bare word; the app defines it with `ui.SetCustomColor`, and an undefined one warns and falls back to `onSurface` |
 | `{ base: 8, md: 16 }` | map | responsive value, one entry per breakpoint |
 
 ## Elements

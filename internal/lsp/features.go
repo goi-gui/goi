@@ -618,7 +618,7 @@ func declDoc(f syntax.Field, prefix string) string {
 		b.WriteString("\n\nA handler. Call it in an event, as `onClick: " + prefix + "." + f.Name + "(…)`.")
 	case syntax.TypeScalar:
 		if f.Type.Name == "color" {
-			b.WriteString("\n\nA colour: a theme role or a `#rrggbb` literal.")
+			b.WriteString("\n\nA colour: a theme role, a name the app defines with `ui.SetCustomColor`, or a `#rrggbb` literal.")
 		} else if isNumericName(f.Type.Name) {
 			b.WriteString("\n\nA number: arithmetic, comparisons and `formatf` verbs all apply.")
 		} else if f.Type.Name == "bool" {
@@ -771,7 +771,8 @@ func valueItems(file *syntax.File, prop string, src []byte, off int, prefix stri
 					Label: v, Kind: kindColor,
 					Detail: "colour role",
 					Documentation: &doc{Kind: "markdown",
-						Value: "Theme role: follows the scheme. A `#rrggbb` literal stays fixed."},
+						Value: "Theme role: follows the scheme. A `#rrggbb` literal stays fixed, " +
+							"and a name the app defines with `ui.SetCustomColor` follows the app."},
 				})
 			}
 		case prop == "language" && elName == "Code":
@@ -1194,12 +1195,28 @@ func (s *Server) hover(raw json.RawMessage) any {
 		if isIconProp(prop.Name) {
 			summary = "Material Symbols icon `" + value + "`"
 		}
+		if prop.Type == schema.TypeColor {
+			summary = colourDoc(value)
+		}
 		return map[string]any{
 			"contents": doc{Kind: "markdown", Value: summary},
 			"range":    idx.at(start, end),
 		}
 	}
 	return nil
+}
+
+// colourDoc explains a colour value: a scheme role follows the theme, a custom
+// name follows the app, and anything else is a typo the runtime warns about.
+func colourDoc(name string) string {
+	if _, ok := (m3.Colors{}).Role(name); ok {
+		return "`" + name + "` is a theme role: it follows the light/dark scheme."
+	}
+	if strings.HasPrefix(name, "#") {
+		return "`" + name + "` is a fixed literal: it does not follow the scheme."
+	}
+	return "`" + name + "` is a custom colour: the app defines it with `ui.SetCustomColor`. " +
+		"If nothing defines it, the runtime logs a warning and draws `onSurface`."
 }
 
 // ---------------------------------------------------------------- formatting
@@ -2012,6 +2029,20 @@ func propDoc(el string, p schema.Prop) string {
 	if p.Common {
 		b.WriteString("\n\nAccepted by every element.")
 	}
+	if p.Type == schema.TypeColor {
+		b.WriteString("\n\nA theme role (`primary`, `onSurface`), a name the app defines with " +
+			"`ui.SetCustomColor`, or a `#rrggbb` literal.")
+	}
+	if p.Name == "src" {
+		switch el {
+		case "Image":
+			b.WriteString("\n\nA path next to the `.goi` file, or an `http`/`https` URL. " +
+				"A remote one is fetched in the background behind a placeholder.")
+		case "SVG":
+			b.WriteString("\n\nAn SVG path or an `http`/`https` URL. `currentColor` in the file " +
+				"takes the element's `color`, so one icon follows the theme.")
+		}
+	}
 	if p.Name == "template" {
 		b.WriteString("\n\nMarks a hidden row prototype: it is hidden when the tree is built, " +
 			"takes no space, and `ui.Fill` builds the rows from it. Copies made from it " +
@@ -2153,7 +2184,11 @@ func fragmentValueItems(file *syntax.File, prop string, frag *syntax.Prop, prefi
 				}
 			case "color":
 				for _, v := range m3.ColorRoles() {
-					out = append(out, completionResult{Label: v, Kind: kindColor, Detail: "colour role"})
+					out = append(out, completionResult{
+						Label: v, Kind: kindColor, Detail: "colour role",
+						Documentation: &doc{Kind: "markdown",
+							Value: "Theme role. A name the app defines with `ui.SetCustomColor` works here too."},
+					})
 				}
 				return out
 			}

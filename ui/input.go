@@ -196,6 +196,15 @@ func (i *interactor) resizeEdge(x, y float64) platform.HitTest {
 	return platform.HitTestNormal
 }
 
+// event logs one input event when DEBUG_UI is on. Pointer motion is left out on
+// purpose: it fires at the display rate and would drown every other line.
+func (i *interactor) event(name string, fields ...any) {
+	if i.app == nil || !i.app.debugUI {
+		return
+	}
+	logg().Debug(logCtx, "ui: input", append([]any{"event", name}, fields...)...)
+}
+
 func (i *interactor) MouseMove(x, y float64) {
 	i.cursorX, i.cursorY = x, y
 	if i.selecting && i.textSel != nil {
@@ -278,6 +287,7 @@ func (i *interactor) pointerAt(hit tree.Node) {
 }
 
 func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
+	i.event("MouseDown", "x", x, "y", y, "button", button, "shift", shift)
 	i.cursorX, i.cursorY = x, y
 	hit := i.hit(x, y)
 	i.pressX, i.pressY = x, y
@@ -362,6 +372,7 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 	_ = button
 }
 func (i *interactor) MouseUp(x, y float64, button int) {
+	i.event("MouseUp", "x", x, "y", y, "button", button)
 	defer func() {
 		i.pressed = nil
 		i.dragging = false
@@ -664,6 +675,7 @@ const scrollStep = 48
 // next one up when it has no room left. A short TextArea or a list at its end
 // must not swallow the wheel, or the pointer looks stuck over that component.
 func (i *interactor) Scroll(dx, dy float64, shift bool) {
+	i.event("Scroll", "dx", dx, "dy", dy, "shift", shift)
 	precise := preciseWheel(dx) || preciseWheel(dy)
 	if !precise {
 		// A notched wheel is one step on one axis. Shift turns the vertical
@@ -846,6 +858,7 @@ func scrollableAt(n tree.Node) tree.Node {
 }
 
 func (i *interactor) Key(k platform.Key, mods platform.Mods) {
+	i.event("Key", "key", int(k), "shift", mods.Shift, "ctrl", mods.Ctrl, "alt", mods.Alt, "super", mods.Super)
 	i.key(toTreeKey(k), tree.Mods{Shift: mods.Shift, Ctrl: mods.Ctrl, Alt: mods.Alt, Super: mods.Super})
 }
 
@@ -957,6 +970,7 @@ func (i *interactor) key(k tree.Key, mods tree.Mods) {
 // Char inserts committed text at the caret. IME commits arrive here as runes,
 // so a composed run is inserted over the selection like typed text.
 func (i *interactor) Char(r rune) {
+	i.event("Char", "rune", string(r))
 	f := i.focus
 	if f == nil || r < 32 {
 		return
@@ -967,6 +981,7 @@ func (i *interactor) Char(r rune) {
 // Preedit shows the IME composition in the focused field. It is not part of the
 // value until the input method commits it.
 func (i *interactor) Preedit(text string, caret int) {
+	i.event("Preedit", "text", text, "caret", caret)
 	f := i.focus
 	if f == nil || !isTextField(f) {
 		return
@@ -978,6 +993,7 @@ func (i *interactor) Preedit(text string, caret int) {
 
 // CommitText replaces the composition with finished text, over any selection.
 func (i *interactor) CommitText(text string) {
+	i.event("CommitText", "text", text)
 	f := i.focus
 	if f == nil || !isTextField(f) {
 		return
@@ -991,6 +1007,7 @@ func (i *interactor) CommitText(text string) {
 // DeleteSurrounding removes text around the caret on the input method's
 // request, which is how an IME corrects input it already committed.
 func (i *interactor) DeleteSurrounding(before, after int) {
+	i.event("DeleteSurrounding", "before", before, "after", after)
 	f := i.focus
 	if f == nil || !isTextField(f) {
 		return
@@ -1063,12 +1080,14 @@ func (i *interactor) imeSync() {
 }
 
 func (i *interactor) Focus(focused bool) {
+	i.event("Focus", "focused", focused)
 	if !focused {
 		i.setFocus(nil)
 	}
 }
 
 func (i *interactor) Resize(width, height int, scale float32) {
+	i.event("Resize", "width", width, "height", height, "scale", scale)
 	if width <= 0 || height <= 0 {
 		return
 	}
@@ -1086,19 +1105,26 @@ func (i *interactor) Resize(width, height int, scale float32) {
 
 // Expose asks for a frame without touching the tree: the window system needs a
 // buffer to finish an interactive resize, but nothing about the design changed.
-func (i *interactor) Expose() { i.app.needsFrame = true }
+func (i *interactor) Expose() {
+	i.event("Expose")
+	i.app.needsFrame = true
+}
 
 // ThemeChanged follows the desktop switching between light and dark: the tree
 // re-reads the preference and a design that said `theme: app.systemMode` picks
 // the other scheme on the next frame.
 func (i *interactor) ThemeChanged() {
+	i.event("ThemeChanged")
 	if i.tree != nil {
 		i.tree.SetSystemMode(systemMode())
 	}
 	i.app.needsFrame = true
 }
 
-func (i *interactor) Close() { i.app.Quit() }
+func (i *interactor) Close() {
+	i.event("Close")
+	i.app.Quit()
+}
 
 func (i *interactor) markDirty() {
 	// Every edit ends here, so this is the one place that keeps the input

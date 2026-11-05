@@ -183,22 +183,21 @@ func TestExpressionValues(t *testing.T) {
 	}
 }
 
-// TestColorRoles checks the role names a .goi file can use for a color, and that
-// a typo points at the nearest role instead of failing at paint time.
+// TestColorRoles checks the names a .goi file can use for a color. A bare word
+// may be a theme role or a name the app defines with ui.SetCustomColor, which
+// the schema cannot see, so both pass validation; the runtime warns about a
+// name nobody defined.
 func TestColorRoles(t *testing.T) {
 	_, diag := validate(t, `Window {
 		background: surface
 		Column {
 			Rectangle { id: a background: surfaceContainerHigh borderColor: outlineVariant }
 			Text { text: "hi" color: onSurfaceVariant }
-			Text { text: "typo" color: surfaceContanerHigh }
+			Text { text: "custom" color: myBrand }
 		}
 	}`)
-	if len(diag) != 1 {
-		t.Fatalf("want one diagnostic, got %v", diag)
-	}
-	if diag[0].Hint == "" || !strings.Contains(diag[0].Hint, "surfaceContainerHigh") {
-		t.Fatalf("hint = %q, want the nearest role", diag[0].Hint)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
 	}
 }
 

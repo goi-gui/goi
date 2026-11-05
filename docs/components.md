@@ -201,6 +201,35 @@ reports through `App.OnError`.
 follows the desktop setting, and `Window.SystemMode()` reports it from Go as a
 `ui.Mode` enum.
 
+### Custom colours
+
+An app can name its own colours and use them exactly where a role goes:
+
+```go
+win.SetCustomColors(map[string]uint32{
+	"myBrand":    0x411F89FF,
+	"otherColor": 0x2C165CFF,
+})
+win.SetCustomColor("myBrand", 0x53268AFF) // or one at a time
+```
+
+```goi
+Rectangle { background: myBrand }
+Text { color: otherColor }
+```
+
+A name resolves on every frame, so setting it again recolours every element that
+uses it, with no reload. Two rules keep the vocabulary honest:
+
+- A name the Material scheme already owns (`primary`, `onSurface`, …) is
+  **reserved**: the call logs an error and does nothing, so a design that says
+  `primary` keeps following the theme.
+- A name a design uses but nothing defines logs a **warning** once (with a "did
+  you mean" hint) and draws the scheme's `onSurface` until it is defined.
+
+A custom name must be a `.goi` identifier: a letter or `_`, then letters, digits
+or `_`.
+
 ## Finding elements from Go
 
 ```go

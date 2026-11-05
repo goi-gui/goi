@@ -17,8 +17,8 @@ window; Go finds elements by id and attaches behaviour.
 go build -ldflags=-linkmode=internal ./...   # required on Linux
 go vet ./...                                 # SDL picks Wayland/X11 at runtime
 gofmt -l .                                   # CI fails on any output
-go test -race ./ui ./internal/syntax ./internal/schema ./internal/layout ./internal/paint ./internal/text ./internal/hotreload ./internal/lsp ./internal/goifmt
-go test ./...                                # also fine locally
+go test -race -ldflags=-linkmode=internal ./ui ./internal/syntax ./internal/schema ./internal/layout ./internal/paint ./internal/text ./internal/hotreload ./internal/lsp ./internal/goifmt
+go test -ldflags=-linkmode=internal ./...    # test binaries link goffi too
 go run ./cmd/goicheck -layout -ops examples/*/*.goi   # headless render check
 go run ./cmd/goifmt -l .                              # CI fails on any output
 ```

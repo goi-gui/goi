@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ksckaan1/goi/internal/m3"
 	"github.com/ksckaan1/goi/internal/syntax"
 )
 
@@ -697,12 +696,12 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 				v.add(at, end, fmt.Sprintf("%s.%s is not a valid color: %q", e.Name, pd.Name, c.Val), "")
 			}
 		case *syntax.Ident:
-			// A bare word is a theme role such as surfaceContainerHigh.
-			if _, ok := (m3.Colors{}).Role(c.Val); !ok {
-				v.add(at, end,
-					fmt.Sprintf("%s.%s: %q is not a color role and not a #rrggbb literal", e.Name, pd.Name, c.Val),
-					syntax.Suggest(c.Val, m3.ColorRoles()))
-			}
+			// A bare word is a theme role such as surfaceContainerHigh, or a
+			// name the app defined with ui.SetCustomColor. The schema cannot
+			// see the latter, so an unknown name is accepted here and the
+			// runtime logs a warning with a "did you mean" hint if nobody
+			// defines it.
+			_ = c
 		default:
 			fail("a color like #3b82f6 or a role like surfaceContainerHigh")
 		}

@@ -208,7 +208,9 @@ go run ./cmd/goifmt -l .                        # list unformatted .goi files
   `app.dark`, `window.width`/`height` and any element's property by id
   (`searchField.text`) are readable from a design.
 - Colors by M3 role: `background: surfaceContainerHigh` follows the scheme,
-  while a hex literal stays a deliberate fixed color.
+  while a hex literal stays a deliberate fixed color. An app can also name its
+  own: `win.SetCustomColor("myBrand", 0x411F89FF)` makes `color: myBrand` work
+  in the design, and setting it again recolours every element that uses it.
 - Themes: the baseline `light` and `dark` schemes plus any scheme the app
   registers with `ui.WithTheme("brand", t)`, selected in the file with
   `theme: brand`. Start from `ui.LightTheme()`/`ui.DarkTheme()` and change the
@@ -228,6 +230,10 @@ go run ./cmd/goifmt -l .                        # list unformatted .goi files
   `ui.SaveFile` and `ui.OpenFolder` wrap the native file picker with a title,
   a start directory, a filename and type filters; canceling is
   `ui.ErrDialogCanceled`. `ui.Notify` sends a desktop notification.
+- Logging: startup, window load and hot reload log how long they took, and a
+  colour problem is a warning. `ui.SetLogger` takes a `ksckaan1/logger` logger;
+  without it the `LOGGER_*` environment variables configure the default.
+  `DEBUG_UI=1` logs every input event except pointer motion.
 - Lists from Go: a hidden template in the `.goi` file plus `ui.Instantiate` makes
   N rows without hand-building nodes; `ui.Remove` takes one away.
 - Motion: `app.Tween` and `app.Animate` ease a function or a `Prop` over time,

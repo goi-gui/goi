@@ -1323,3 +1323,23 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   A colour written from Go drops the role the design named for that cell
   (`Prop.Set` clears it), otherwise `ResolveColors` would rewrite the scheme's
   colour on the next frame and `Color.Set` would look like a no-op.
+- **Colour names are resolved in one lookup, so custom colours need no new
+  syntax.** `ResolveColors` already rewrote role-valued cells each frame; it now
+  asks the scheme first and the window's `SetCustomColor` map second. That keeps
+  the design language unchanged (`color: myBrand` is just a bare word), makes a
+  later `SetCustomColor` repaint on the next frame without a reload, and puts the
+  "reserved name" rule in one place: the setter rejects a name the scheme owns.
+  The schema no longer rejects an unknown colour identifier, because it cannot
+  see the app's map; the runtime warns once and falls back to `onSurface`, which
+  is a theme colour rather than transparent.
+- **`ksckaan1/logger` is the one logging dependency, and `ui` owns its default.**
+  `ui.SetLogger` lets an app supply its own; otherwise the library's `LOGGER_*`
+  environment variables configure it, with `service=goi` as the default name.
+  Logging is a side path: a bad config falls back to a disabled logger rather
+  than failing the window. `DEBUG_UI` logs every input event except pointer
+  motion, which fires at the display rate.
+  The library pulls in `mattn/go-isatty` and `rs/zerolog`, and with cgo enabled
+  that is enough to push the test binary onto the external linker, where
+  goffi's dynamic imports fail. Test commands therefore carry
+  `-ldflags=-linkmode=internal` on Linux, the same as builds; Make, CI and
+  `AGENTS.md` were updated together so the rule has one shape everywhere.

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/ksckaan1/goi/internal/platform"
 	"github.com/ksckaan1/goi/internal/tree"
@@ -17,6 +18,14 @@ type Window struct {
 	height  int
 	binding func(*Window) error
 	keys    tree.Event[tree.KeyEvent]
+
+	// customColors holds the names the app defined with SetCustomColor, and
+	// missingColors the names a design used that nobody defined, so the warning
+	// is logged once. Both are guarded because SetCustomColor may be called from
+	// any goroutine while a frame resolves colours.
+	colorMu       sync.RWMutex
+	customColors  map[string]uint32
+	missingColors map[string]bool
 }
 
 // OnKey subscribes to key presses in this window, whether or not a text field

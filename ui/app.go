@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/ksckaan1/goi/internal/hotreload"
 	"github.com/ksckaan1/goi/internal/img"
@@ -67,6 +68,9 @@ type App struct {
 	// second when it does not. Both default to "tied to the display".
 	vsync  bool
 	maxFPS int
+	// debugUI logs every input event except pointer motion; DEBUG_UI turns it
+	// on for a run.
+	debugUI bool
 
 	watcher *hotreload.Reloader
 
@@ -113,15 +117,17 @@ type driver interface {
 
 // NewApp creates an app with the platform driver for this OS.
 func NewApp() (*App, error) {
-	a := &App{vsync: true}
+	a := &App{vsync: true, debugUI: debugUI()}
+	logg().Info(logCtx, "ui: starting")
 	if err := a.initPlatform(); err != nil {
+		logg().Error(logCtx, "ui: platform init failed", "error", err)
 		return nil, err
 	}
 	return a, nil
 }
 
 // newHeadlessApp creates an app without a window, for tests.
-func newHeadlessApp() *App { return &App{vsync: true} }
+func newHeadlessApp() *App { return &App{vsync: true, debugUI: debugUI()} }
 
 // LoadWindow loads a design from an asset container: fsys is where the .goi files
 // live (an embed.FS in production, ui.DirFS in development) and path is the
@@ -130,6 +136,7 @@ func newHeadlessApp() *App { return &App{vsync: true} }
 // A file may import fragments, so the design is usually a directory rather than
 // one file. Call Bind afterwards.
 func (a *App) LoadWindow(fsys fs.FS, path string, opts ...Option) (*Window, error) {
+	start := time.Now()
 	o := Options{Width: 480, Height: 320}
 	for _, fn := range opts {
 		fn(&o)
@@ -137,6 +144,7 @@ func (a *App) LoadWindow(fsys fs.FS, path string, opts ...Option) (*Window, erro
 	name := cleanName(path)
 	b, err := loadBundle(fsys, name)
 	if err != nil {
+		logg().Error(logCtx, "ui: design failed to load", "file", name, "error", err)
 		return nil, err
 	}
 	tr, err := tree.Build(b.File, &tree.Hooks{Marked: a.markDirty, Error: a.reportError})
@@ -171,8 +179,10 @@ func (a *App) LoadWindow(fsys fs.FS, path string, opts ...Option) (*Window, erro
 	if err := a.initWindow(w); err != nil {
 		return nil, err
 	}
+	logg().Info(logCtx, "ui: window loaded", "file", name, "took", time.Since(start).String())
 	if o.HotReload {
 		if err := a.enableWatcher(); err != nil {
+			logg().Error(logCtx, "ui: hot reload unavailable", "error", err)
 			return nil, err
 		}
 	}

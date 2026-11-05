@@ -41,9 +41,17 @@ jobs:
           fi
 
       - name: Test
+        shell: bash
         # Headless packages only: the renderer and window need a display, so
-        # those are exercised by the examples.
-        run: go test -race ./internal/syntax/ ./internal/schema/ ./internal/layout/ ./internal/paint/ ./internal/text/ ./internal/hotreload/ ./ui/
+        # those are exercised by the examples. Linux links the internal linker
+        # because goffi's dynamic imports and the cgo SDL shim cannot share the
+        # external one.
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            go test -race -ldflags=-linkmode=internal ./internal/syntax/ ./internal/schema/ ./internal/layout/ ./internal/paint/ ./internal/text/ ./internal/hotreload/ ./internal/lsp/ ./internal/goifmt/ ./ui/
+          else
+            go test -race ./internal/syntax/ ./internal/schema/ ./internal/layout/ ./internal/paint/ ./internal/text/ ./internal/hotreload/ ./internal/lsp/ ./internal/goifmt/ ./ui/
+          fi
 
       - name: Build
         shell: bash

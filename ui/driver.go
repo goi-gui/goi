@@ -224,10 +224,11 @@ func (a *App) frame() {
 	// and the role then resolves in the same frame. They also run before the
 	// frame check, because a Go property change may be what an expression reads.
 	a.win.tree.ApplyExpressions()
-	// Role colors follow the scheme, so a theme change needs no per-component
-	// work and a role declared in .goi never goes stale. The theme is resolved
-	// again: an expression may have just changed it.
-	if a.win.tree.ResolveColors(themeFor(a.win).Colors.Role) {
+	// Role colors follow the scheme and custom colours follow SetCustomColor, so
+	// a theme change needs no per-component work and a name declared in .goi
+	// never goes stale. The theme is resolved again: an expression may have just
+	// changed it.
+	if a.resolveColors() {
 		a.needsFrame = true
 	}
 	// A role may just have given an SVG its colour, and Go may have changed it
@@ -272,11 +273,10 @@ func (a *App) frame() {
 // reportError prints a rendering problem instead of killing the app: a lost
 // surface or a transient validation error should not end the session.
 func (a *App) reportError(err error) {
+	logg().Error(logCtx, "ui: runtime error", "error", err)
 	if a.OnError != nil {
 		a.OnError(err)
-		return
 	}
-	println("goi:", err.Error())
 }
 
 func markAll(b *tree.NodeBase, kind tree.DirtyKind) {

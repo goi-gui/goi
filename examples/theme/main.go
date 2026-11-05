@@ -57,6 +57,15 @@ func main() {
 	name := "light"
 	count := 0
 
+	// Custom colours are plain names the design can read. Defining them here
+	// keeps the .goi file free of literals, and setting one again recolours
+	// whatever uses it.
+	accents := []uint32{0x411F89FF, 0x2C165CFF}
+	win.SetCustomColors(map[string]uint32{
+		"brandAccent": accents[0],
+		"brandTint":   0x2C165CFF,
+	})
+
 	if err := win.Bind(func(w *ui.Window) error {
 		apply := func(n string) {
 			name = n
@@ -86,6 +95,15 @@ func main() {
 					return
 				}
 				apply("light")
+			})
+		}
+		if shift, err := ui.ByID[*ui.Button](w, "shiftAccent"); err == nil {
+			shift.OnClick(func(ui.ClickEvent) {
+				accents[0], accents[1] = accents[1], accents[0]
+				w.SetCustomColors(map[string]uint32{
+					"brandAccent": accents[0],
+					"brandTint":   accents[1],
+				})
 			})
 		}
 		if add, err := ui.ByID[*ui.IconButton](w, "add"); err == nil {

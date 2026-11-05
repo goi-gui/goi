@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/ksckaan1/goi/internal/asset"
 	"github.com/ksckaan1/goi/internal/hotreload"
@@ -45,12 +46,15 @@ func (a *App) reloadNow() error {
 // applyReload builds a parsed file and swaps it in. It also gives tests a way to
 // reload without touching the file system.
 func (a *App) applyReload(f *syntax.File) error {
+	start := time.Now()
 	tr, err := tree.Build(f, &tree.Hooks{Marked: a.markDirty, Error: a.reportError})
 	if err != nil {
+		logg().Error(logCtx, "ui: hot reload failed", "error", err)
 		return fmt.Errorf("goi: reload: %w", err)
 	}
 	a.loadImages(tr)
 	a.swapTree(tr)
+	logg().Info(logCtx, "ui: hot reload", "file", a.path, "took", time.Since(start).String())
 	return nil
 }
 

@@ -138,6 +138,39 @@ Window {
 
 					Divider {}
 
+					// Names the app defines with ui.SetCustomColor, not roles:
+					// the design reads them like any other colour, and setting
+					// one again recolours every element that uses it.
+					Text {
+						text: "Custom colours"
+						role: "titleSmall"
+					}
+
+					Row {
+						spacing: 8
+
+						Rectangle {
+							width:      64
+							height:     32
+							radius:     8
+							background: brandAccent
+						}
+
+						Rectangle {
+							width:      64
+							height:     32
+							radius:     8
+							background: brandTint
+						}
+					}
+
+					Button {
+						id:    shiftAccent
+						label: "Recolour"
+					}
+
+					Divider {}
+
 					Row {
 						spacing:        12
 						crossAxisAlign: center
