@@ -159,6 +159,7 @@ make datalist  # bridge values in a for loop, with a row handler
 make format    # formatf, arithmetic and bridge zero values
 make bridge    # every event property, and a fragment fed from the bridge
 make svg       # one SVG recoloured by role, by Go, and loaded from a URL
+make window    # size limits, disableResize and fullscreen
 make search    # a button and a text field reading another node by id
 go run ./cmd/goicheck -layout examples/*/*.goi  # syntax plus a headless layout check
 go run ./cmd/goifmt -l .                        # list unformatted .goi files
@@ -180,8 +181,11 @@ go run ./cmd/goifmt -l .                        # list unformatted .goi files
   app bars, navigation, tabs, progress, pickers, carousel and toolbar. They ship
   with the light and dark baseline schemes, Roboto and Material Symbols.
 - Layout: Column, Row, Stack with `Positioned` anchoring, Wrap and Grid, flex
-  grow and shrink, padding, margin, min/max width, and `scroll: true` on any
-  container (Row sideways, the rest down).
+  grow and shrink, padding, margin, min/max width and height, and `scroll: true`
+  on any container (Row sideways, the rest down).
+- Window chrome: `minWidth`/`minHeight`/`maxWidth`/`maxHeight` bound the native
+  window, `disableResize: true` turns off the user's resize and maximize, and
+  `fullscreen: true` fills the display. All four are reactive from Go.
 - Responsive values per property: `padding: { base: 8, md: 16 }`, with
   Tailwind's `sm`/`md`/`lg`/`xl` min-width breakpoints applied on resize.
 - Text: the M3 type scale (`role`), explicit `fontSize` and `weight` (300/400/

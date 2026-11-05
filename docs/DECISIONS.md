@@ -1343,3 +1343,16 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   goffi's dynamic imports fail. Test commands therefore carry
   `-ldflags=-linkmode=internal` on Linux, the same as builds; Make, CI and
   `AGENTS.md` were updated together so the rule has one shape everywhere.
+- **Window chrome is a per-frame comparison, not a startup read.** `titleBar`
+  is applied once because changing it means recreating the frame, but
+  `minWidth`/`minHeight`/`maxWidth`/`maxHeight`, `disableResize` and `fullscreen`
+  are cheap to compare against the last applied state, so the frame loop does
+  exactly that. A `Set` from Go or an expression therefore reaches the platform
+  without a reload, with no change hook on `Prop[T]`. The size limits are also
+  enforced in `platform` rather than trusted to SDL's hints, because a tiling
+  compositor may ignore them; the clamped size is written back so the client
+  area and the tree never disagree.
+- **`minHeight`/`maxHeight` are common properties, matching `minWidth`/`maxWidth`.**
+  A height pair that only `Window` accepted would be the one asymmetry in the
+  common set; adding it costs two cells and the same `minSize`/`maxSize` branch
+  layout already had for width.

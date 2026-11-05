@@ -313,6 +313,48 @@ func TestSVGVocabulary(t *testing.T) {
 	t.Fatalf("completion does not offer SVG: %v", list.Items)
 }
 
+// TestWindowChromeVocabulary covers the window's own switches: they must not be
+// squiggled, and hover must explain what they do to the native window.
+func TestWindowChromeVocabulary(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tdisableResize: true\n\tfullscreen: false\n\tminWidth: 400\n\tmaxHeight: 900\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	// Completion inside the root offers both switches, so the schema the server
+	// imports really knows them.
+	comp := c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "\n\tdisableResize", 1),
+	})
+	var list completionList
+	if err := json.Unmarshal(comp, &list); err != nil {
+		t.Fatal(err)
+	}
+	labels := map[string]bool{}
+	for _, it := range list.Items {
+		labels[it.Label] = true
+	}
+	if !labels["disableResize"] || !labels["fullscreen"] || !labels["minHeight"] {
+		t.Fatalf("window properties missing from completion: %v", labels)
+	}
+
+	res := c.request("textDocument/hover", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "disableResize", 2),
+	})
+	var h struct {
+		Contents doc `json:"contents"`
+	}
+	if err := json.Unmarshal(res, &h); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.Contents.Value, "maximize") {
+		t.Fatalf("hover = %q", h.Contents.Value)
+	}
+}
+
 // TestTitleBarVocabulary keeps the editor honest about the custom title bar:
 // the element, its property on Window and the OS global must all be in the
 // schema the server imports, or a design that draws its own frame is covered in

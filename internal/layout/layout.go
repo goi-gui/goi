@@ -1181,14 +1181,16 @@ func minSize(b *tree.NodeBase, horizontal bool) float64 {
 	if horizontal {
 		return b.MinWidth()
 	}
-	return 0
+	return b.MinHeight()
 }
 
 func maxSize(b *tree.NodeBase, horizontal bool) float64 {
-	if horizontal {
-		if m := b.MaxWidth(); m >= 0 {
-			return m
-		}
+	m := b.MaxWidth()
+	if !horizontal {
+		m = b.MaxHeight()
+	}
+	if m >= 0 {
+		return m
 	}
 	return 1e9
 }

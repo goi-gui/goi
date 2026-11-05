@@ -307,6 +307,8 @@ func newNode(name string) Node {
 			height:        newProp(nil, "height", DirtyLayout, -1.0),
 			minWidth:      newProp(nil, "minWidth", DirtyLayout, 0.0),
 			maxWidth:      newProp(nil, "maxWidth", DirtyLayout, -1.0),
+			minHeight:     newProp(nil, "minHeight", DirtyLayout, 0.0),
+			maxHeight:     newProp(nil, "maxHeight", DirtyLayout, -1.0),
 			background:    newProp(nil, "background", DirtyPaint, uint32(0)),
 			borderColor:   newProp(nil, "borderColor", DirtyPaint, uint32(0)),
 			radius:        newProp(nil, "radius", DirtyPaint, 0.0),
@@ -315,10 +317,12 @@ func newNode(name string) Node {
 	switch name {
 	case "Window":
 		return &Window{
-			NodeBase: b(),
-			Title:    newProp(nil, "title", DirtyPaint, ""),
-			Theme:    newProp(nil, "theme", DirtyPaint, "light"),
-			TitleBar: newProp(nil, "titleBar", DirtyPaint, "system"),
+			NodeBase:      b(),
+			Title:         newProp(nil, "title", DirtyPaint, ""),
+			Theme:         newProp(nil, "theme", DirtyPaint, "light"),
+			TitleBar:      newProp(nil, "titleBar", DirtyPaint, "system"),
+			DisableResize: newProp(nil, "disableResize", DirtyPaint, false),
+			Fullscreen:    newProp(nil, "fullscreen", DirtyPaint, false),
 		}
 	case "Column", "Row", "Stack", "ClipRRect", "Wrap", "Grid", "TitleBar":
 		c := Container{

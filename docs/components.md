@@ -100,6 +100,7 @@ These apply to every element and are not repeated on the component pages.
 | `id` | string | assigned by the builder; the handle Go looks up |
 | `width, height` | number | declared size; `-1` (default) means auto |
 | `minWidth, maxWidth` | number | bounds for the resolved width |
+| `minHeight, maxHeight` | number | bounds for the resolved height |
 | `margin` | number | outer spacing on all sides |
 | `marginTop/Right/Bottom/Left` | number | per-side override; unset follows `margin` |
 | `padding` | number | inner spacing on all sides |

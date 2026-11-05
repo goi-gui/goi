@@ -5,6 +5,7 @@ package platform
 
 import (
 	"fmt"
+	"math"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -105,6 +106,14 @@ type Window struct {
 	// cursor/cursorSet skip re-setting the same shape on every mouse move.
 	cursor    Cursor
 	cursorSet bool
+
+	// resizable mirrors the design's `disableResize`: a non-resizable window
+	// also refuses to maximize. minW/minH/maxW/maxH are the design's size
+	// limits in logical points; a zero maximum means unbounded.
+	resizable  bool
+	minW, minH int
+	maxW, maxH int
+	fullscreen bool
 }
 
 // Cursor is the shape the pointer takes over the client area.
@@ -157,7 +166,7 @@ func New(title string, width, height int, decorated bool) (*Window, error) {
 	if err != nil {
 		return nil, err
 	}
-	p := &Window{win: win, width: width, height: height, scale: 1}
+	p := &Window{win: win, width: width, height: height, scale: 1, resizable: true}
 	if s := sdlWindowScale(win); s > 0 {
 		p.scale = s
 	}
@@ -237,7 +246,10 @@ func (p *Window) dispatch(ev rawEvent) {
 		if ev.width <= 0 || ev.height <= 0 {
 			return
 		}
-		p.width, p.height = ev.width, ev.height
+		// A tiling compositor may ignore SDL's size hints, so the limit is
+		// enforced here too: the clamped size is applied back to the window and
+		// reported, which keeps the client and the tree in step.
+		p.width, p.height = p.clamp(ev.width, ev.height)
 		if p.input != nil {
 			p.input.Resize(p.width, p.height, p.contentScale())
 		}
@@ -406,13 +418,115 @@ func (p *Window) SetTitle(title string) { sdlSetTitle(p.win, title) }
 func (p *Window) Minimize() { sdlMinimize(p.win) }
 
 // ToggleMaximize maximizes the window, or restores it when already maximized.
+// A window the design made non-resizable does not maximize, which is the same
+// rule the platform title bar's button follows.
 func (p *Window) ToggleMaximize() {
 	if p.Maximized() {
 		sdlRestore(p.win)
 		return
 	}
+	if !p.resizable {
+		return
+	}
 	sdlMaximize(p.win)
 }
+
+// SetResizable turns the user's resize and maximize off. A screen-filling
+// window is unaffected: fullscreen is a separate switch.
+func (p *Window) SetResizable(on bool) {
+	if p.win == nil || p.resizable == on {
+		return
+	}
+	p.resizable = on
+	sdlSetResizable(p.win, on)
+	if !on && p.Maximized() {
+		sdlRestore(p.win)
+	}
+}
+
+// SetSizeLimits constrains the window to minW..maxW and minH..maxH logical
+// points. A non-positive maximum means "no limit".
+func (p *Window) SetSizeLimits(minW, minH, maxW, maxH int) {
+	if p.win == nil {
+		return
+	}
+	if minW < 0 {
+		minW = 0
+	}
+	if minH < 0 {
+		minH = 0
+	}
+	p.minW, p.minH, p.maxW, p.maxH = minW, minH, maxW, maxH
+	sdlSetSizeLimits(p.win, minW, minH, maxW, maxH)
+	p.resizeToClamped()
+}
+
+// resizeToClamped brings the current size inside the limits, for a design that
+// declares a minimum larger than its start size.
+func (p *Window) resizeToClamped() {
+	w, h := p.FramebufferSize()
+	cw, ch := p.clamp(w, h)
+	if cw == w && ch == h {
+		return
+	}
+	p.setWindowPixels(cw, ch)
+}
+
+// clamp returns a pixel size inside the design's limits. SDL talks in logical
+// points, so the limits are scaled to pixels here.
+func (p *Window) clamp(pw, ph int) (int, int) {
+	// A fullscreen window fills the display, so the windowed limits must not
+	// pull it back: they apply again when it returns to a normal window.
+	if p.fullscreen {
+		return pw, ph
+	}
+	if p.minW <= 0 && p.minH <= 0 && p.maxW <= 0 && p.maxH <= 0 {
+		return pw, ph
+	}
+	s := float64(p.contentScale())
+	if s <= 0 {
+		s = 1
+	}
+	w, h := pw, ph
+	if p.minW > 0 && w < int(math.Round(float64(p.minW)*s)) {
+		w = int(math.Round(float64(p.minW) * s))
+	}
+	if p.minH > 0 && h < int(math.Round(float64(p.minH)*s)) {
+		h = int(math.Round(float64(p.minH) * s))
+	}
+	if p.maxW > 0 && w > int(math.Round(float64(p.maxW)*s)) {
+		w = int(math.Round(float64(p.maxW) * s))
+	}
+	if p.maxH > 0 && h > int(math.Round(float64(p.maxH)*s)) {
+		h = int(math.Round(float64(p.maxH) * s))
+	}
+	if w != pw || h != ph {
+		p.setWindowPixels(w, h)
+	}
+	return w, h
+}
+
+// setWindowPixels asks the platform for a client size given in pixels.
+func (p *Window) setWindowPixels(pw, ph int) {
+	s := float64(p.contentScale())
+	if s <= 0 {
+		s = 1
+	}
+	sdlSetWindowSize(p.win, int(math.Round(float64(pw)/s)), int(math.Round(float64(ph)/s)))
+}
+
+// SetFullscreen makes the window fill the display, or returns it to a normal
+// window. Fullscreen does not change the resizable flag.
+func (p *Window) SetFullscreen(on bool) {
+	if p.win == nil || p.fullscreen == on {
+		return
+	}
+	p.fullscreen = on
+	sdlSetFullscreen(p.win, on)
+}
+
+// Fullscreen reports whether the window fills the display.
+func (p *Window) Fullscreen() bool { return p.fullscreen }
 
 // Maximized reports whether the window is maximized.
 func (p *Window) Maximized() bool { return sdlWindowFlags(p.win)&flagMaximized != 0 }

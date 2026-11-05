@@ -161,6 +161,26 @@ func sdlMinimize(p unsafe.Pointer) { C.SDL_MinimizeWindow((*C.SDL_Window)(p)) }
 func sdlMaximize(p unsafe.Pointer) { C.SDL_MaximizeWindow((*C.SDL_Window)(p)) }
 func sdlRestore(p unsafe.Pointer)  { C.SDL_RestoreWindow((*C.SDL_Window)(p)) }
 
+func sdlSetResizable(p unsafe.Pointer, on bool) {
+	C.SDL_SetWindowResizable((*C.SDL_Window)(p), C.bool(on))
+}
+
+func sdlSetWindowSize(p unsafe.Pointer, w, h int) {
+	C.SDL_SetWindowSize((*C.SDL_Window)(p), C.int(w), C.int(h))
+}
+
+// sdlSetSizeLimits sets the minimum and maximum window size in window
+// coordinates (logical points). A zero maximum means "no limit", which is what
+// SDL uses to clear the constraint.
+func sdlSetSizeLimits(p unsafe.Pointer, minW, minH, maxW, maxH int) {
+	C.SDL_SetWindowMinimumSize((*C.SDL_Window)(p), C.int(minW), C.int(minH))
+	C.SDL_SetWindowMaximumSize((*C.SDL_Window)(p), C.int(maxW), C.int(maxH))
+}
+
+func sdlSetFullscreen(p unsafe.Pointer, on bool) {
+	C.SDL_SetWindowFullscreen((*C.SDL_Window)(p), C.bool(on))
+}
+
 func sdlInstallHitTest(p unsafe.Pointer) { C.goiInstallHitTest((*C.SDL_Window)(p)) }
 
 func sdlStartTextInput(p unsafe.Pointer) error {

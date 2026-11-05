@@ -8,17 +8,19 @@ bridge {
 }
 
 Window {
-	id:     main
-	title:  "SVG"
-	theme:  app.systemMode
-	width:  500
-	height: 740
+	id:       main
+	title:    "SVG"
+	theme:    app.systemMode
+	width:    500
+	height:   740
+	minWidth: 500
 
 	Column {
 		spacing: 0
 
 		TopAppBar {
 			label: "SVG"
+			icon:  home
 		}
 
 		Column {
@@ -41,7 +43,8 @@ Window {
 					}
 
 					Row {
-						spacing: 24
+						spacing:       24
+						mainAxisAlign: center
 
 						SVG {
 							src:    "star.svg"
@@ -100,7 +103,8 @@ Window {
 					}
 
 					Row {
-						spacing: 8
+						spacing:       8
+						mainAxisAlign: center
 
 						Button {
 							label:   "Primary"

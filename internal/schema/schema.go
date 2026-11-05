@@ -130,6 +130,8 @@ var common = []Prop{
 	{Name: "height", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
 	{Name: "minWidth", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0, Common: true},
 	{Name: "maxWidth", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
+	{Name: "minHeight", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0, Common: true},
+	{Name: "maxHeight", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
 	{Name: "margin", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0, Common: true},
 	{Name: "padding", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0, Common: true},
 	// -1 means "follow margin/padding", so a side can be set on its own.
@@ -177,6 +179,10 @@ var elements = func() []Element {
 			// system keeps the platform's title bar; custom hides it, so the
 			// design draws its own inside a TitleBar.
 			Prop{Name: "titleBar", Type: TypeEnum, Dirty: DirtyNone, Enum: []string{"system", "custom"}, Default: "system"},
+			// The window chrome: the platform reads both on every frame, so a
+			// design or Go can flip them without a reload.
+			Prop{Name: "disableResize", Type: TypeBool, Dirty: DirtyNone, Default: false},
+			Prop{Name: "fullscreen", Type: TypeBool, Dirty: DirtyNone, Default: false},
 		)},
 		{Name: "Column", Children: true, Attrs: withCommon(
 			Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},

@@ -71,6 +71,9 @@ type App struct {
 	// debugUI logs every input event except pointer motion; DEBUG_UI turns it
 	// on for a run.
 	debugUI bool
+	// chrome is the window state last applied to the platform, so a frame that
+	// did not change it costs one comparison.
+	chrome chromeState
 
 	watcher *hotreload.Reloader
 

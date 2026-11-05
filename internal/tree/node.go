@@ -63,6 +63,8 @@ type NodeBase struct {
 	height                                               Prop[float64]
 	minWidth                                             Prop[float64]
 	maxWidth                                             Prop[float64]
+	minHeight                                            Prop[float64]
+	maxHeight                                            Prop[float64]
 	background                                           Prop[uint32]
 	borderColor                                          Prop[uint32]
 	radius                                               Prop[float64]
@@ -216,6 +218,12 @@ func (b *NodeBase) MinWidth() float64 { return b.minWidth.Get() }
 
 // MaxWidth returns the declared maximum width, or -1 for unbounded.
 func (b *NodeBase) MaxWidth() float64 { return b.maxWidth.Get() }
+
+// MinHeight returns the declared minimum height, or 0.
+func (b *NodeBase) MinHeight() float64 { return b.minHeight.Get() }
+
+// MaxHeight returns the declared maximum height, or -1 for unbounded.
+func (b *NodeBase) MaxHeight() float64 { return b.maxHeight.Get() }
 
 // Background returns 0xRRGGBBAA.
 func (b *NodeBase) Background() uint32 { return b.background.Get() }

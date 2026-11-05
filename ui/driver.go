@@ -95,6 +95,10 @@ func (a *App) initWindow(w *Window) error {
 	}
 	pw.SetInput(d.input)
 	a.driver = d
+	// The window properties must hold from the first frame: a design that asks
+	// for a minimum larger than its start size is resized here, before layout.
+	a.chrome = chromeOf(w)
+	a.applyChrome(pw, a.chrome)
 
 	fw, fh := pw.FramebufferSize()
 	d.pendingW, d.pendingH, d.pendingScale = fw, fh, pw.Scale()
@@ -234,6 +238,9 @@ func (a *App) frame() {
 	// A role may just have given an SVG its colour, and Go may have changed it
 	// between frames. This runs before layout, so a changed src can still size.
 	a.syncSVGs()
+	// The window properties can change from Go or an expression, and the
+	// platform has to hear about them before the frame is measured.
+	a.syncChrome()
 
 	if !a.needsFrame {
 		return

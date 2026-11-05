@@ -2043,6 +2043,20 @@ func propDoc(el string, p schema.Prop) string {
 				"takes the element's `color`, so one icon follows the theme.")
 		}
 	}
+	switch p.Name {
+	case "disableResize":
+		b.WriteString("\n\n`true` turns off the user's resize and the title bar's maximize button. " +
+			"`fullscreen` is a separate switch and still works. Reactive: a `Set` from Go " +
+			"reaches the platform on the next frame.")
+	case "fullscreen":
+		b.WriteString("\n\n`true` fills the display. Reactive from Go, with no reload.")
+	case "minWidth", "minHeight":
+		b.WriteString("\n\nThe smallest the element may lay out, and on `Window` the smallest the user " +
+			"may drag the native window.")
+	case "maxWidth", "maxHeight":
+		b.WriteString("\n\nThe largest the element may lay out, and on `Window` the largest the user " +
+			"may drag the native window. `-1` means no limit.")
+	}
 	if p.Name == "template" {
 		b.WriteString("\n\nMarks a hidden row prototype: it is hidden when the tree is built, " +
 			"takes no space, and `ui.Fill` builds the rows from it. Copies made from it " +

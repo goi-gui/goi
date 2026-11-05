@@ -19,6 +19,8 @@ func commonProps(b *NodeBase) []NamedProp {
 		NumberProp(b, "height", DirtyLayout, &b.height),
 		NumberProp(b, "minWidth", DirtyLayout, &b.minWidth),
 		NumberProp(b, "maxWidth", DirtyLayout, &b.maxWidth),
+		NumberProp(b, "minHeight", DirtyLayout, &b.minHeight),
+		NumberProp(b, "maxHeight", DirtyLayout, &b.maxHeight),
 		NumberProp(b, "margin", DirtyLayout, &b.margin),
 		NumberProp(b, "padding", DirtyLayout, &b.padding),
 		NumberProp(b, "marginTop", DirtyLayout, &b.marginTop),
@@ -51,6 +53,11 @@ type Window struct {
 	// TitleBar is "system" (the platform's decorations) or "custom" (none, so
 	// the design draws a TitleBar of its own).
 	TitleBar Prop[string]
+	// DisableResize stops the user from resizing or maximizing the window.
+	// Fullscreen is a separate switch and still works.
+	DisableResize Prop[bool]
+	// Fullscreen fills the display instead of showing a normal window.
+	Fullscreen Prop[bool]
 }
 
 // Kind implements Node.
@@ -61,6 +68,8 @@ func (w *Window) namedProps() []NamedProp {
 		StringProp(&w.NodeBase, "title", &w.Title),
 		StringProp(&w.NodeBase, "theme", &w.Theme),
 		EnumProp(&w.NodeBase, "titleBar", DirtyPaint, &w.TitleBar, "system", "custom"),
+		BoolProp(&w.NodeBase, "disableResize", DirtyPaint, &w.DisableResize),
+		BoolProp(&w.NodeBase, "fullscreen", DirtyPaint, &w.Fullscreen),
 	)
 }
 
