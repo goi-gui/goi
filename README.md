@@ -96,6 +96,33 @@ win, _ := app.LoadWindow(assets, "ui/Main.goi")
 needs; a plain `os.DirFS` or an `embed.FS` works for loading but cannot be
 watched. `ui.LoadWindowFile(path)` is the single-file shortcut.
 
+## Dialogs and notifications
+
+The platform's file dialogs and notifications are wrapped in `ui`, so an app
+does not pull in a dialog or notification package of its own:
+
+```go
+path, err := ui.OpenFile(
+	ui.DialogTitle("Open a design"),
+	ui.DialogFilters(ui.FileFilter{Name: "Goi designs", Patterns: []string{"*.goi"}}),
+)
+if errors.Is(err, ui.ErrDialogCanceled) {
+	return // the user closed the dialog
+}
+ui.Notify("Opened", path)
+
+target, err := ui.SaveFile(ui.DialogFilename("design.goi"))
+if err == nil {
+	ui.Notify("Saved", target)
+}
+```
+
+`ui.OpenFiles` is the same dialog with multiple selection, and `ui.OpenFolder`
+picks a directory. `ui.DialogsAvailable()` reports whether the platform has a
+dialog tool; on Linux that is `zenity`, `matedialog` or `qarma`. The dialog calls
+block until the dialog closes, so from a UI handler the window stops repainting
+meanwhile.
+
 ## Requirements
 
 - Go 1.23 or newer (developed on 1.27).
@@ -104,6 +131,8 @@ watched. `ui.LoadWindowFile(path)` is the single-file shortcut.
   to choose.
 - A Vulkan, Metal, D3D12 or OpenGL ES driver. No `wgpu-native` binary is needed:
   the renderer is pure Go (`gogpu/wgpu`).
+- On Linux, `zenity` (or `matedialog`/`qarma`) on `PATH` if the app uses the
+  file dialogs. Notifications use D-Bus, falling back to `notify-send`.
 
 The renderer reaches the GPU through its own FFI, so the binary still needs the
 internal linker even though the only cgo left is the SDL shim:
@@ -190,6 +219,10 @@ go run ./cmd/goifmt -l .                        # list unformatted .goi files
   arguments evaluated when the event fires and `event` carrying the event's own
   payload; `ui.SetHandler` supplies the body. `examples/bridge`
   (`make bridge`) runs every event.
+- Platform dialogs and notifications: `ui.OpenFile`, `ui.OpenFiles`,
+  `ui.SaveFile` and `ui.OpenFolder` wrap the native file picker with a title,
+  a start directory, a filename and type filters; canceling is
+  `ui.ErrDialogCanceled`. `ui.Notify` sends a desktop notification.
 - Lists from Go: a hidden template in the `.goi` file plus `ui.Instantiate` makes
   N rows without hand-building nodes; `ui.Remove` takes one away.
 - Motion: `app.Tween` and `app.Animate` ease a function or a `Prop` over time,

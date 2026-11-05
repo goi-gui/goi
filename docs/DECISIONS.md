@@ -1294,3 +1294,13 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   `textDocument/formatting` with one whole-document edit, so any editor with
   format-on-save gets it with no per-editor configuration, and the rules live in
   one place (`internal/goifmt`) shared with the `goifmt` command.
+- **Dialogs and notifications are wrapped in `ui`, not left to the caller.**
+  File dialogs use `ncruces/zenity`: pure Go, no cgo, native on Windows and
+  macOS, and on Linux it drives `zenity`, `matedialog` or `qarma`. Notifications
+  use `gen2brain/beeep`, which sends over D-Bus on Linux (falling back to
+  `notify-send`), through the notification center on macOS and the toast API on
+  Windows. Zenity's own `Notify` blocks until the notification is dismissed,
+  which is why notifications do not use it. Both wrappers keep the third-party
+  types private: a caller imports `ui`, passes `ui.FileFilter`, and tests
+  `errors.Is(err, ui.ErrDialogCanceled)`. No cgo is added, so the Linux
+  `-linkmode=internal` rule is unchanged.
