@@ -145,29 +145,9 @@ A custom title bar (`Window { titleBar: custom }`) hides the platform
 decorations and lets the design draw and drag its own; see
 [docs/components/titlebar.md](docs/components/titlebar.md).
 
-## Run the examples
+## Examples
 
-The examples live in their own module next to this checkout
-([goi-gui/examples](../examples)); they build against this tree through a
-`replace` in their `go.mod`. The `make` targets below run them for you.
-
-```sh
-make counter   # counter with hot reload
-make gallery   # every Material 3 component, one category page at a time
-make hello     # rounded corners, borders, text
-make scroll    # scrolling page, horizontal strip, ripple
-make typography # type scale, five weights, wrapping
-make composition # one design split across Main.goi, Sidebar.goi and StatCard.goi
-make theme     # built-in schemes plus one registered by name
-make datalist  # bridge values in a for loop, with a row handler
-make format    # formatf, arithmetic and bridge zero values
-make bridge    # every event property, and a fragment fed from the bridge
-make svg       # one SVG recoloured by role, by Go, and loaded from a URL
-make window    # size limits, disableResize and fullscreen
-make search    # a button and a text field reading another node by id
-go run ./cmd/goicheck -layout ../examples/*/*.goi  # syntax plus a headless layout check
-go run ./cmd/goifmt -l .                            # list unformatted .goi files
-```
+[goi-gui/examples](https://github.com/goi-gui/examples)
 
 ## What it does
 
