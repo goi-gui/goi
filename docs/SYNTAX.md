@@ -29,7 +29,11 @@ Window {
 ## Splitting a design across files
 
 A file may start with `import` lines and one `props` block, before its root
-element. `props` declares the typed values the fragment expects, the way Go
+element. An import names the alias first, the way Go writes an import:
+
+```
+import Sidebar "./Sidebar.goi"
+``` `props` declares the typed values the fragment expects, the way Go
 declares a field; the fragment reads them as `props.Name`:
 
 ```
@@ -48,7 +52,7 @@ Column {
 
 ```
 // Main.goi
-import "./Sidebar.goi" as Sidebar
+import Sidebar "./Sidebar.goi"
 
 Window {
     Column {
@@ -112,7 +116,7 @@ Column {
 
 ```
 // Main.goi
-import "./Card.goi" as Card
+import Card "./Card.goi"
 
 Window {
     Card {
@@ -587,6 +591,30 @@ an enum-or-string position; feeding a `number` property is an error. It is
 re-evaluated on every frame, exactly like any other expression, so a
 `ui.SetData` write reaches the text without extra wiring.
 
+### Builtins
+
+Go's pure builtins are available in a value:
+
+| Call | Result |
+|---|---|
+| `formatf(pattern, …)` | a string built with Go's `fmt` verbs |
+| `len(x)` | the length of a string, a list or a map |
+| `cap(x)` | a list's capacity; a design list has no spare capacity, so this is its length |
+| `min(a, b, …)` | the smallest number or string |
+| `max(a, b, …)` | the largest number or string |
+
+`len` and `cap` are the one place a list is a value: everywhere else a list is
+walked with `for`. The builtins that allocate, mutate or touch the process have
+no meaning in a value that is re-read every frame, so `append`, `make`, `new`,
+`copy`, `delete`, `clear`, `close`, `panic`, `recover`, `print`, `println`,
+`complex`, `real` and `imag` are rejected with a message that names what a value
+may call.
+
+```
+Text { text: formatf("%d of %d", len(bridge.Done), len(bridge.Rows)) }
+Rectangle { width: max(120, min(window.width / 3, 480)) }
+```
+
 ## Responsive values
 
 Any property except `id` also accepts a map keyed by breakpoint:
@@ -624,6 +652,60 @@ another map.
 The tree stores the map; the frame loop rewrites those properties before layout
 whenever the window width changes. The file owns a responsive property: a value
 set from Go with `Prop.Set` is replaced on the next frame.
+
+## Formatting
+
+`goifmt` formats a design the way gofmt formats Go. It ships two ways: the
+`goifmt` command, and the language server, so an editor formats on save.
+
+```sh
+go run ./cmd/goifmt -w ui/        # rewrite every .goi under a directory
+go run ./cmd/goifmt -l .          # list the files that would change
+go run ./cmd/goifmt -d file.goi   # print a diff
+```
+
+The layout is fixed, and running it twice changes nothing:
+
+- An import names its alias first, and the imports are followed by one blank
+  line, then each of `props`, `bridge` and every `type` block separated by one
+  blank line.
+- A declaration's names and types line up in one column, the way gofmt aligns a
+  struct:
+
+  ```
+  props {
+      Title    string
+      LongName int
+  }
+  ```
+
+- An element body holds one property per line, with the values in one column:
+
+  ```
+  Column {
+      gap:     10
+      padding: 10
+
+      Text {
+          text: "example"
+      }
+
+      Text {}
+  }
+  ```
+
+- A property run and the children after it are separated by one blank line, and
+  so are two children. The closing brace follows the last member with no blank
+  line before it.
+- An element with no members is one token: `Text {}`.
+- A comment stays cuddled to what it explains — the line above a declaration, a
+  property or a child — and a comment written after a member stays on its line.
+- `if`, `else if`, `else` and `for` bodies are indented one level, and so is the
+  body of every element and fragment call.
+- Extra blank lines collapse to one.
+
+A file that does not parse is left exactly as it is, so saving a design
+mid-typing never reflows it.
 
 ## Rules and diagnostics
 

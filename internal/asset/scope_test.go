@@ -13,7 +13,7 @@ import (
 // id inside it can be used twice, because the instance's id namespaces it.
 func TestTwoInstancesKeepTheirOwnIDs(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./Card.goi" as Card
+		"Main.goi": `import Card "./Card.goi"
 Window {
 	Column {
 		Card { id: first label: "one" }
@@ -44,7 +44,7 @@ Column {
 // instance's own `side`, not at the other copy's.
 func TestScopedReferencesFollowTheInstance(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./Bar.goi" as Bar
+		"Main.goi": `import Bar "./Bar.goi"
 Window {
 	Column {
 		Bar { id: left }
@@ -98,7 +98,7 @@ Window {
 // the caller, so passing children does not move it into the instance.
 func TestCallerChildIDsAreNotScoped(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./Card.goi" as Card
+		"Main.goi": `import Card "./Card.goi"
 Window {
 	Card {
 		id: first

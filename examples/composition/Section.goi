@@ -1,5 +1,6 @@
 // Section: a titled block whose body comes from whoever instantiates it.
 // `$children` is the unnamed slot; `$actions` is a named one, next to the title.
+
 props {
 	title string
 }
@@ -9,10 +10,18 @@ Column {
 
 	Row {
 		spacing: 8
-		Text { text: props.title role: "titleMedium" }
-		Rectangle { flex: 1 }
-		$actions
+
+		Text {
+			text: props.title
+			role: "titleMedium"
+		}
+
+		Rectangle {
+			flex: 1
+		}
+
+		$actions {}
 	}
 
-	$children
+	$children {}
 }

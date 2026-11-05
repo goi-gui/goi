@@ -3,28 +3,28 @@ bridge {
 }
 
 Window {
-	title: "Example Search App"
-	width: 400
+	title:  "Example Search App"
+	width:  400
 	height: 600
 
 	Column {
-		padding: 10
-		gap: 10
+		padding:        10
+		gap:            10
 		crossAxisAlign: center
-		mainAxisAlign: center
+		mainAxisAlign:  center
 
 		TextField {
-			id: searchTF
-			label: "Insert search term"
-			width: 300
+			id:       searchTF
+			label:    "Insert search term"
+			width:    300
 			onSubmit: bridge.onSearch(searchTF.text)
 		}
 
 		Button {
 			variant: filled
-			label: "Search"
-			width: 300
-			height: 50
+			label:   "Search"
+			width:   300
+			height:  50
 			onClick: bridge.onSearch(searchTF.text)
 		}
 	}

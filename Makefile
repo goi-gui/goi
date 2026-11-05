@@ -40,6 +40,12 @@ bridge:
 format:
 	go run -ldflags=-linkmode=internal ./examples/format
 
+fmt:
+	go run ./cmd/goifmt -w .
+
+fmt-list:
+	go run ./cmd/goifmt -l .
+
 test:
 	go test -race ./...
 
@@ -49,4 +55,4 @@ vet:
 bench:
 	go test -run XXX -bench . -benchmem ./internal/layout/ ./internal/syntax/ ./internal/paint/
 
-.PHONY: build search spike counter gallery hello scroll typography composition theme titlebar datalist bridge format test vet bench
+.PHONY: build search spike counter gallery hello scroll typography composition theme titlebar datalist bridge format fmt fmt-list test vet bench

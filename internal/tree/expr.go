@@ -441,12 +441,24 @@ func (c *evalCtx) evalBinary(x *syntax.Binary, percent float64) (any, bool) {
 	return nil, false
 }
 
-// evalBuiltin runs a builtin call. formatf is the only one, and it formats its
-// arguments the way fmt.Sprintf does.
+// evalBuiltin runs a Go builtin call. The pure ones are available in a design;
+// the ones that allocate, mutate or touch the process (append, make, new, copy,
+// delete, clear, close, panic, print, println, recover, complex, real, imag)
+// have no meaning in a value that is re-read every frame.
 func (c *evalCtx) evalBuiltin(call *syntax.Call, percent float64) (any, bool) {
-	if call.Name != "formatf" {
-		return nil, false
+	switch call.Name {
+	case "formatf":
+		return c.evalFormatf(call, percent)
+	case "len", "cap":
+		return c.evalLenCall(call)
+	case "min", "max":
+		return c.evalMinMax(call, percent)
 	}
+	return nil, false
+}
+
+// evalFormatf formats its arguments with Go's fmt verbs.
+func (c *evalCtx) evalFormatf(call *syntax.Call, percent float64) (any, bool) {
 	if len(call.Args) == 0 {
 		return "", true
 	}
@@ -475,6 +487,107 @@ func (c *evalCtx) evalBuiltin(call *syntax.Call, percent float64) (any, bool) {
 		args = append(args, formatArg(v))
 	}
 	return fmt.Sprintf(pattern, args...), true
+}
+
+// evalLenCall is len and cap. A design list is not a value anywhere else, so the
+// argument is read raw: a bridge variable, a props value or a loop variable.
+func (c *evalCtx) evalLenCall(call *syntax.Call) (any, bool) {
+	if len(call.Args) != 1 {
+		return nil, false
+	}
+	v, ok := c.rawValue(call.Args[0])
+	if !ok {
+		return nil, false
+	}
+	switch x := v.(type) {
+	case string:
+		return float64(len([]rune(x))), true
+	case []any:
+		return float64(len(x)), true
+	case map[string]any:
+		return float64(len(x)), true
+	}
+	// Anything else is a single value: a scalar has no length, but a design
+	// asking for one is more likely to mean its text.
+	if items, isList := sliceItems(v); isList {
+		return float64(len(items)), true
+	}
+	if m, isMap := mapItems(v); isMap {
+		return float64(len(m)), true
+	}
+	if s, ok := formatValue(v); ok {
+		return float64(len([]rune(s))), true
+	}
+	return nil, false
+}
+
+// evalMinMax is min and max, over numbers or strings as in Go.
+func (c *evalCtx) evalMinMax(call *syntax.Call, percent float64) (any, bool) {
+	if len(call.Args) == 0 {
+		return nil, false
+	}
+	best, ok := c.eval(call.Args[0], percent)
+	if !ok {
+		return nil, false
+	}
+	for _, a := range call.Args[1:] {
+		v, ok := c.eval(a, percent)
+		if !ok {
+			return nil, false
+		}
+		less, ok := lessValue(v, best)
+		if !ok {
+			return nil, false
+		}
+		if (call.Name == "min") == less {
+			best = v
+		}
+	}
+	switch best.(type) {
+	case float64, string:
+		return best, true
+	}
+	return nil, false
+}
+
+// lessValue reports whether a sorts before b: numbers compare numerically,
+// strings lexically.
+func lessValue(a, b any) (bool, bool) {
+	if x, ok := a.(float64); ok {
+		y, ok := b.(float64)
+		return x < y, ok
+	}
+	if x, ok := a.(string); ok {
+		y, ok := b.(string)
+		return x < y, ok
+	}
+	return false, false
+}
+
+// rawValue evaluates a value without turning a list into "not a value", so len
+// and cap can count one.
+func (c *evalCtx) rawValue(v syntax.Value) (any, bool) {
+	ref, ok := v.(*syntax.Ref)
+	if !ok {
+		return c.eval(v, 0)
+	}
+	switch ref.ID {
+	case "bridge", "data":
+		if c.tree != nil {
+			if got, ok := c.tree.vars[ref.Prop]; ok {
+				return got, true
+			}
+		}
+		return nil, false
+	case "props":
+		return nil, false // props are substituted before the tree is built
+	}
+	if c.sc != nil {
+		if got, ok := scopeValueAll(c.sc, ref.ID, ref.Prop); ok {
+			return got, true
+		}
+	}
+	return c.eval(v, 0)
 }
 
 // integerVerbs reports, for each verb in a format string, whether it expects an

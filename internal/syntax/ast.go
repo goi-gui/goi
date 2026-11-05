@@ -34,13 +34,40 @@ type File struct {
 	// too: it is opened on its own only to preview it, without children.
 	Fragment bool
 	Root     *Element
+	// Comments lists every comment in source order. The parser keeps them only
+	// for the formatter; nothing downstream reads them.
+	Comments []Comment
+	// PropsAt and BridgeAt are the positions of the `props` and `bridge`
+	// keywords, so a comment before the block stays outside it.
+	PropsAt, BridgeAt Pos
+}
+
+// Comment is one `// …` or `/* … */` with its span in the source.
+type Comment struct {
+	At, End Pos
+	Text    string
+	// Block distinguishes `/* … */` from a line comment.
+	Block bool
+}
+
+// CommentAt returns the comment that starts at pos.
+func (f *File) CommentAt(pos Pos) *Comment {
+	if f == nil {
+		return nil
+	}
+	for i := range f.Comments {
+		if f.Comments[i].At == pos {
+			return &f.Comments[i]
+		}
+	}
+	return nil
 }
 
 // IsFragment reports whether the file is meant to be imported rather than
 // opened as a window: it declares props or a `$children` slot.
 func (f *File) IsFragment() bool { return len(f.Props) > 0 || f.Fragment }
 
-// Import is `import "./Sidebar.goi" as Sidebar`.
+// Import is `import Sidebar "./Sidebar.goi"`.
 type Import struct {
 	Path  string // as written, relative to the importing file
 	Alias string // the element name that instantiates the fragment

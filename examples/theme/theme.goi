@@ -1,45 +1,86 @@
 // Theme: pick a scheme by name and see every role follow it.
+
 Window {
-	id: main
-	title: "Theme"
-	width: 560
+	id:     main
+	title:  "Theme"
+	width:  560
 	height: 740
-	theme: app.systemMode
+	theme:  app.systemMode
 
 	Column {
 		spacing: 0
 
-		TopAppBar { label: "Theme" }
+		TopAppBar {
+			label: "Theme"
+		}
 
 		Column {
-			flex: 1
-			padding: 24
-			spacing: 20
+			flex:           1
+			padding:        24
+			spacing:        20
 			crossAxisAlign: center
 
 			Card {
-				width: 440
+				width:   440
 				variant: filled
 
 				Column {
-					spacing: 16
+					spacing:        16
 					crossAxisAlign: center
 
-					Text { text: "Colour scheme" role: "titleMedium" }
+					Text {
+						text: "Colour scheme"
+						role: "titleMedium"
+					}
+
 					Row {
-						width: 300
+						width:     300
 						alignSelf: center
-						SegmentedButton { id: segLight label: "Light" width: 100 variant: single selected: true }
-						SegmentedButton { id: segDark label: "Dark" width: 100 variant: single }
-						SegmentedButton { id: segBrand label: "Brand" width: 100 variant: single }
+
+						SegmentedButton {
+							id:       segLight
+							label:    "Light"
+							width:    100
+							variant:  single
+							selected: true
+						}
+
+						SegmentedButton {
+							id:      segDark
+							label:   "Dark"
+							width:   100
+							variant: single
+						}
+
+						SegmentedButton {
+							id:      segBrand
+							label:   "Brand"
+							width:   100
+							variant: single
+						}
 					}
+
 					Row {
-						spacing: 6
+						spacing:        6
 						crossAxisAlign: center
-						Text { text: "Active:" role: "bodySmall" }
-						Text { id: current text: "light" role: "labelLarge" color: primary }
+
+						Text {
+							text: "Active:"
+							role: "bodySmall"
+						}
+
+						Text {
+							id:    current
+							text:  "light"
+							role:  "labelLarge"
+							color: primary
+						}
 					}
-					Switch { id: darkSwitch label: "Dark mode" }
+
+					Switch {
+						id:    darkSwitch
+						label: "Dark mode"
+					}
 				}
 			}
 
@@ -48,32 +89,90 @@ Window {
 				width: 440
 
 				Column {
-					spacing: 12
+					spacing:       12
 					paddingBottom: 12
 
-					Text { text: "Roles" role: "titleSmall" }
+					Text {
+						text: "Roles"
+						role: "titleSmall"
+					}
 
 					Row {
 						spacing: 8
-						Rectangle { width: 64 height: 32 radius: 8 background: primary }
-						Rectangle { width: 64 height: 32 radius: 8 background: primaryContainer }
-						Rectangle { width: 64 height: 32 radius: 8 background: secondaryContainer }
-						Rectangle { width: 64 height: 32 radius: 8 background: tertiaryContainer }
-						Rectangle { width: 64 height: 32 radius: 8 background: errorContainer }
+
+						Rectangle {
+							width:      64
+							height:     32
+							radius:     8
+							background: primary
+						}
+
+						Rectangle {
+							width:      64
+							height:     32
+							radius:     8
+							background: primaryContainer
+						}
+
+						Rectangle {
+							width:      64
+							height:     32
+							radius:     8
+							background: secondaryContainer
+						}
+
+						Rectangle {
+							width:      64
+							height:     32
+							radius:     8
+							background: tertiaryContainer
+						}
+
+						Rectangle {
+							width:      64
+							height:     32
+							radius:     8
+							background: errorContainer
+						}
 					}
 
-					Divider { }
+					Divider {}
 
 					Row {
-						spacing: 12
+						spacing:        12
 						crossAxisAlign: center
-						IconButton { id: add icon: add variant: filled }
-						Text { id: count text: "0" role: "headlineMedium" }
+
+						IconButton {
+							id:      add
+							icon:    add
+							variant: filled
+						}
+
+						Text {
+							id:   count
+							text: "0"
+							role: "headlineMedium"
+						}
 					}
-					Button { label: "Filled" }
-					Button { label: "Tonal" variant: tonal }
-					Button { label: "Outlined" variant: outlined }
-					TextField { label: "A field" supporting: "Roles follow the scheme." }
+
+					Button {
+						label: "Filled"
+					}
+
+					Button {
+						label:   "Tonal"
+						variant: tonal
+					}
+
+					Button {
+						label:   "Outlined"
+						variant: outlined
+					}
+
+					TextField {
+						label:      "A field"
+						supporting: "Roles follow the scheme."
+					}
 				}
 			}
 		}

@@ -4,50 +4,72 @@
 // `tickets`) and the handlers Go supplies (`onReload`, `onOpen`). Go sets the
 // values with ui.SetData and the handlers with ui.SetHandler; the `for`
 // loop builds one row per item and rebuilds when the list changes.
+
 bridge {
-	count int
-	loading bool
-	tickets []ticket
+	count    int
+	loading  bool
+	tickets  []ticket
 	onReload func()
-	onOpen func(title string)
+	onOpen   func(title string)
 }
 
 type ticket {
-	title string
+	title     string
 	requester string
-	unread bool
+	unread    bool
 }
 
 Window {
-	id: main
+	id:    main
 	title: "Data"
+
 	Column {
 		padding: 16
 		spacing: 12
 
 		Row {
 			spacing: 12
-			Text { text: "Tickets" role: "titleLarge" flex: 1 }
-			Button { id: reload label: "Refresh" variant: tonal onClick: bridge.onReload() }
+
+			Text {
+				text: "Tickets"
+				role: "titleLarge"
+				flex: 1
+			}
+
+			Button {
+				id:      reload
+				label:   "Refresh"
+				variant: tonal
+				onClick: bridge.onReload()
+			}
 		}
 
 		if bridge.loading {
 			Row {
-				spacing: 12
+				spacing:        12
 				crossAxisAlign: center
-				CircularProgress { }
-				Text { text: "Loading…" color: onSurfaceVariant }
+
+				CircularProgress {}
+
+				Text {
+					text:  "Loading…"
+					color: onSurfaceVariant
+				}
 			}
 		} else {
-			Text { text: formatf("%d tickets", bridge.count) role: "labelMedium" color: onSurfaceVariant }
+			Text {
+				text:  formatf("%d tickets", bridge.count)
+				role:  "labelMedium"
+				color: onSurfaceVariant
+			}
 
 			for _, ticket := range bridge.tickets {
 				ListItem {
-					label: ticket.title
+					label:      ticket.title
 					supporting: ticket.requester
-					selected: ticket.unread
-					icon: mail
-					onClick: bridge.onOpen(ticket.title)
+					selected:   ticket.unread
+					icon:       mail
+					onClick:    bridge.onOpen(ticket.title)
 				}
 			}
 		}

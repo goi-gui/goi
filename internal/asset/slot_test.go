@@ -41,7 +41,7 @@ Column {
 // fragment writes a bare `$header`, and plain children still go to `$children`.
 func TestNamedSlotReceivesItsElements(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./Card.goi" as Card
+		"Main.goi": `import Card "./Card.goi"
 Window {
 	Card {
 		$header {
@@ -73,7 +73,7 @@ Window {
 // TestUnknownNamedSlotIsAnError points at the call, not at the fragment.
 func TestUnknownNamedSlotIsAnError(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./Card.goi" as Card
+		"Main.goi": `import Card "./Card.goi"
 Window {
 	Card {
 		$footer {
@@ -99,7 +99,7 @@ Window {
 // filling the slot, so a conditional header can be written as nothing.
 func TestNamedSlotWithNoElementsIsFine(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./Card.goi" as Card
+		"Main.goi": `import Card "./Card.goi"
 Window {
 	Card {
 		$header {

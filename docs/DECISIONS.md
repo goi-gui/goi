@@ -433,7 +433,7 @@ batch. This is what the display list will feed.
   an `embed.FS` gives a single executable. Expansion happens in `internal/asset`
   *before* the schema, validator and tree builder run, so none of them knows what
   a fragment is — they see one ordinary tree.
-- **Imports are structural, props are values.** `import "./x.goi" as X` replaces
+- **Imports are structural, props are values.** `import X "./x.goi"` replaces
   `X { ... }` with the fragment's root element, so the fragment owns its layout and
   the instance places it like any child. A prop always has a default or the type's
   zero value, so an instance never has to pass one; `props.name` is replaced
@@ -1261,3 +1261,36 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   `{:else}` arm: an empty list draws nothing, which is what a Go `for` does, so a
   design that wants an empty state switches on a bool the app sets
   (`if bridge.Empty { … }`).
+
+- **An import reads like Go's.** `import Sidebar "./Sidebar.goi"` names the alias
+  first, which is the order a Go import uses and the order the reader already
+  knows. `as` is gone from the grammar, so the token no longer means two things
+  (an import keyword and a value word), and the parser has one shape to check.
+
+- **Only the pure Go builtins are callable.** `formatf` is ours; `len`, `cap`,
+  `min` and `max` are Go's. `len` is also the one place a list is a value,
+  because counting a list is a common need and the alternative (`bridge.N`) means
+  the app has to keep a second variable in sync. The rest of Go's builtins
+  allocate, mutate, or talk to the process (`append`, `make`, `new`, `copy`,
+  `delete`, `clear`, `close`, `panic`, `recover`, `print`, `println`, `complex`,
+  `real`, `imag`). A design value is re-read every frame, so those have no
+  meaning; the validator rejects them by name and lists what a value may call.
+
+- **`goifmt` rewrites the layout, never the meaning.** It prints from the AST and
+  the comment list, so a file formats to bytes that re-parse to the same tree —
+  the test asserts a second run changes nothing. A file that does not parse is
+  returned untouched, which is the difference between a formatter and a data
+  loss bug on a half-typed save.
+- **The layout mirrors Go's, because that is the shape a reader expects.** A
+  declaration's names and types align in one column like a struct; an element
+  body puts one property per line with the values in one column; a property run
+  and the children after it are one blank line apart, and so are two children;
+  an element with no members collapses to `Text {}`. Comments are the one thing
+  the file still owns: a comment above a member stays cuddled to it, and one
+  written after a member stays on that line. The formatter records comments in
+  the lexer rather than threading them through the AST, so the parser stays
+  ignorant of them and every other consumer is unaffected.
+- **Formatting is an LSP method, not an editor setting.** `goipls` answers
+  `textDocument/formatting` with one whole-document edit, so any editor with
+  format-on-save gets it with no per-editor configuration, and the rules live in
+  one place (`internal/goifmt`) shared with the `goifmt` command.

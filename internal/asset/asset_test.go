@@ -45,7 +45,7 @@ func (e *errText) Error() string { return e.s }
 
 func TestImportExpandsToFragmentRoot(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./Sidebar.goi" as Sidebar
+		"Main.goi": `import Sidebar "./Sidebar.goi"
 Window {
 	Row {
 		Sidebar { }
@@ -75,7 +75,7 @@ Window {
 // the fragment.
 func TestImportPassesProps(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./Sidebar.goi" as Sidebar
+		"Main.goi": `import Sidebar "./Sidebar.goi"
 Window {
 	Sidebar { title: "Inbox" }
 }`,
@@ -96,7 +96,7 @@ Column {
 
 func TestPropIsZeroWhenNotPassed(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./Sidebar.goi" as Sidebar
+		"Main.goi": `import Sidebar "./Sidebar.goi"
 Window {
 	Sidebar { }
 }`,
@@ -117,7 +117,7 @@ Column { Text { text: props.title } }`,
 // to guard for a missing value.
 func TestPropWithoutDefaultGetsZeroValue(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./Part.goi" as Part
+		"Main.goi": `import Part "./Part.goi"
 Window {
 	Column {
 		Part { id: one label: "set" show: true }
@@ -160,7 +160,7 @@ Column {
 // over the fragment's own width without producing a duplicate property.
 func TestInstancePropsOverrideFragmentProps(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./Sidebar.goi" as Sidebar
+		"Main.goi": `import Sidebar "./Sidebar.goi"
 Window {
 	Sidebar { width: 300 }
 }`,
@@ -178,7 +178,7 @@ Window {
 
 func TestParamInsideResponsiveMap(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./Sidebar.goi" as Sidebar
+		"Main.goi": `import Sidebar "./Sidebar.goi"
 Window {
 	Sidebar { accent: #FF0000 }
 }`,
@@ -204,7 +204,7 @@ Column {
 
 func TestTwoInstancesDoNotShareNodes(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./Part.goi" as Part
+		"Main.goi": `import Part "./Part.goi"
 Window {
 	Column {
 		Part { label: "one" }
@@ -231,9 +231,9 @@ Text { text: props.label }`,
 
 func TestNestedImport(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./parts/Page.goi" as Page
+		"Main.goi": `import Page "./parts/Page.goi"
 Window { Page { } }`,
-		"parts/Page.goi": `import "./Card.goi" as Card
+		"parts/Page.goi": `import Card "./Card.goi"
 Column { Card { } }`,
 		"parts/Card.goi": `Rectangle { width: 10 height: 10 }`,
 	})
@@ -254,11 +254,11 @@ Column { Card { } }`,
 
 func TestImportCycleIsReported(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./A.goi" as A
+		"Main.goi": `import A "./A.goi"
 Window { A { } }`,
-		"A.goi": `import "./B.goi" as B
+		"A.goi": `import B "./B.goi"
 Column { B { } }`,
-		"B.goi": `import "./A.goi" as A
+		"B.goi": `import A "./A.goi"
 Row { A { } }`,
 	})
 	_, err := load(t, dir, "Main.goi")
@@ -269,7 +269,7 @@ Row { A { } }`,
 
 func TestMissingImportPointsAtTheImport(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./Nope.goi" as Nope
+		"Main.goi": `import Nope "./Nope.goi"
 Window { Nope { } }`,
 	})
 	_, err := load(t, dir, "Main.goi")
@@ -284,7 +284,7 @@ Window { Nope { } }`,
 
 func TestImportOutsideRootIsRejected(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "../evil.goi" as Evil
+		"Main.goi": `import Evil "../evil.goi"
 Window { Evil { } }`,
 	})
 	_, err := load(t, dir, "Main.goi")
@@ -295,7 +295,7 @@ Window { Evil { } }`,
 
 func TestUnknownPropIsReported(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./Part.goi" as Part
+		"Main.goi": `import Part "./Part.goi"
 Window { Part { } }`,
 		"Part.goi": `Column { Text { text: props.nope } }`,
 	})
@@ -309,7 +309,7 @@ Window { Part { } }`,
 // must fail against the fragment root's schema.
 func TestUnknownInstancePropertyIsReported(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./Part.goi" as Part
+		"Main.goi": `import Part "./Part.goi"
 Window { Part { widht: 10 } }`,
 		"Part.goi": `Column { }`,
 	})
@@ -325,7 +325,7 @@ Window { Part { widht: 10 } }`,
 
 func TestDuplicateIDAcrossInstancesIsReported(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./Part.goi" as Part
+		"Main.goi": `import Part "./Part.goi"
 Window {
 	Column {
 		Part { }
@@ -342,7 +342,7 @@ Window {
 
 func TestDataOnlyValuesInFragment(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./Part.goi" as Part
+		"Main.goi": `import Part "./Part.goi"
 Window { Part { label: "x" } }`,
 		"Part.goi": `props { label string }
 Column { Text { text: props.label } }`,
@@ -362,7 +362,7 @@ Column { Text { text: props.label } }`,
 // the shape its {#each} walks; the app still sets it by name from the entry.
 func TestFragmentDataMergesIntoTheEntry(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./List.goi" as List
+		"Main.goi": `import List "./List.goi"
 Window {
 	List { }
 }`,
@@ -419,8 +419,8 @@ func dump(tr *tree.Tree) string {
 // they were written in, not in the fragment.
 func TestChildrenLandAtTheSlot(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./Card.goi" as Card
-import "./Stripe.goi" as Stripe
+		"Main.goi": `import Card "./Card.goi"
+import Stripe "./Stripe.goi"
 Window {
 	Card {
 		width: 300
@@ -455,7 +455,7 @@ Window {
 // dropped, and points at the children in the file that passed them.
 func TestChildrenWithoutASlotIsAnError(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./Card.goi" as Card
+		"Main.goi": `import Card "./Card.goi"
 Window {
 	Card { Text { text: "x" } }
 }`,
@@ -499,7 +499,7 @@ func TestSlotWithoutChildrenDrawsNothing(t *testing.T) {
 // root, so the row is hidden and ui.Fill can copy it.
 func TestFragmentInstanceCanBeATemplateRow(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./Row.goi" as Row
+		"Main.goi": `import Row "./Row.goi"
 Window {
 	List {
 		id: list
@@ -533,7 +533,7 @@ ListItem {
 // a fragment must reach the tree, with its arms, props and slots intact.
 func TestBlockSurvivesImportExpansion(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./Card.goi" as Card
+		"Main.goi": `import Card "./Card.goi"
 Window {
 	Card {
 		mode: "fancy"
@@ -585,7 +585,7 @@ func shown(n tree.Node) bool {
 // that value, so instance-id scoping stays off for it.
 func TestPropNamedIDOwnsTheInstanceProperty(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./Card.goi" as Card
+		"Main.goi": `import Card "./Card.goi"
 Window {
 	Column {
 		Card { id: "one" }
@@ -613,7 +613,7 @@ Column {
 // the instance pass a bridge list, which its {#each} then walks.
 func TestPropCanCarryAList(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./List.goi" as List
+		"Main.goi": `import List "./List.goi"
 bridge { rows []ticket }
 type ticket { title string }
 Window {
@@ -649,7 +649,7 @@ Column {
 // event calls.
 func TestPropCanCarryAHandler(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./Row.goi" as Row
+		"Main.goi": `import Row "./Row.goi"
 bridge { onOpen func(id string) }
 Window {
 	Column {
@@ -682,7 +682,7 @@ Text { id: row text: "row" onClick: props.onOpen("7") }`,
 // value and calls the handler, and never names `bridge` itself.
 func TestFragmentTakesAValueAndAHandler(t *testing.T) {
 	dir := design(t, map[string]string{
-		"Main.goi": `import "./Counter.goi" as Counter
+		"Main.goi": `import Counter "./Counter.goi"
 bridge {
 	Step   int
 	onStep func(delta int)

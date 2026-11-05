@@ -12,7 +12,7 @@ import (
 // an embed.FS looks like to the framework.
 func TestLoadWindowFromFS(t *testing.T) {
 	fsys := fstest.MapFS{
-		"ui/Main.goi": &fstest.MapFile{Data: []byte(`import "./parts/Header.goi" as Header
+		"ui/Main.goi": &fstest.MapFile{Data: []byte(`import Header "./parts/Header.goi"
 Window {
 	title: "From FS"
 	Column {
@@ -51,7 +51,7 @@ Text { text: props.heading role: "headlineSmall" }`)},
 // file and the line inside it.
 func TestLoadWindowReportsFragmentErrors(t *testing.T) {
 	fsys := fstest.MapFS{
-		"Main.goi": &fstest.MapFile{Data: []byte(`import "./Part.goi" as Part
+		"Main.goi": &fstest.MapFile{Data: []byte(`import Part "./Part.goi"
 Window { Part { } }`)},
 		"Part.goi": &fstest.MapFile{Data: []byte("Column {\n  nope: 1\n}\n")},
 	}

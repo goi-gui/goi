@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/ksckaan1/goi/internal/asset"
+	"github.com/ksckaan1/goi/internal/goifmt"
 	"github.com/ksckaan1/goi/internal/highlight"
 	"github.com/ksckaan1/goi/internal/m3"
 	"github.com/ksckaan1/goi/internal/schema"
@@ -338,6 +339,30 @@ var propTypes = []string{
 	"float32", "float64", "byte", "rune",
 }
 
+// builtinItems lists the Go builtins a value can call, with the signature and
+// one line that explains it.
+func builtinItems() []completionResult {
+	type entry struct{ name, insert, doc string }
+	entries := []entry{
+		{"formatf", `formatf("", )`, `formatf("%d items", bridge.Count) — build a string with Go's fmt verbs: ` + "`%d`" + ` counts, ` + "`%s`" + ` text, ` + "`%v`" + ` any value, ` + "`%0.2f`" + ` money.`},
+		{"len", "len()", "len(x) — the length of a string, a list or a map. A list is a value here, unlike anywhere else."},
+		{"cap", "cap()", "cap(x) — a design list has no spare capacity, so this is its length."},
+		{"min", "min()", "min(a, b, …) — the smallest number or string."},
+		{"max", "max()", "max(a, b, …) — the largest number or string."},
+	}
+	out := make([]completionResult, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, completionResult{
+			Label:         e.name,
+			InsertText:    e.insert,
+			Kind:          kindFunction,
+			Detail:        "builtin",
+			Documentation: &doc{Kind: "markdown", Value: e.doc},
+		})
+	}
+	return out
+}
+
 // blockItems offers the control statements a body can contain, written the way
 // Go writes them.
 func blockItems(file *syntax.File) []completionResult {
@@ -433,6 +458,9 @@ func namedSlotDoc(name string) string {
 // listVars lists every collection a design can range over: bridge variables and
 // props whose type is a slice, written as the reference a loop takes.
 func listVars(file *syntax.File) []string {
+	if file == nil {
+		return nil
+	}
 	var out []string
 	for _, dv := range file.Vars {
 		if dv.Type.Kind == syntax.TypeSlice {
@@ -769,14 +797,7 @@ func valueItems(file *syntax.File, prop string, src []byte, off int, prefix stri
 		})
 	}
 	if pd := el.Prop(prop); !isIconProp(prop) && (pd == nil || pd.Type == schema.TypeString || pd.Type == schema.TypeEnum) {
-		out = append(out, completionResult{
-			Label:      "formatf",
-			InsertText: `formatf("", )`,
-			Kind:       kindFunction,
-			Detail:     "builtin",
-			Documentation: &doc{Kind: "markdown", Value: "**formatf(\"Count is %d\", bridge.Count)**\n\n" +
-				"Builds a string with Go's `fmt` verbs: `%d` counts, `%s` text, `%v` any value, `%0.2f` money."},
-		})
+		out = append(out, builtinItems()...)
 	}
 	if _, ok := schema.Event(prop); ok && el.HasEvent(prop) {
 		for _, f := range file.Props {
@@ -1179,6 +1200,33 @@ func (s *Server) hover(raw json.RawMessage) any {
 		}
 	}
 	return nil
+}
+
+// ---------------------------------------------------------------- formatting
+
+// textEdit is one edit the client applies. goifmt rewrites the whole document,
+// so the server answers with one edit covering every byte.
+type textEdit struct {
+	Range   rng    `json:"range"`
+	NewText string `json:"newText"`
+}
+
+// formatting formats a whole document. A file that does not parse comes back
+// untouched, which is what a save mid-edit needs.
+func (s *Server) formatting(raw json.RawMessage) any {
+	d := s.docFor(raw)
+	if d == nil {
+		return nil
+	}
+	out := goifmt.Source(d.text)
+	if string(out) == string(d.text) {
+		return []textEdit{}
+	}
+	idx := newLineIndex(d.text)
+	return []textEdit{{
+		Range:   idx.at(0, len(d.text)),
+		NewText: string(out),
+	}}
 }
 
 // ---------------------------------------------------------------- symbols
@@ -2121,14 +2169,7 @@ func fragmentValueItems(file *syntax.File, prop string, frag *syntax.Prop, prefi
 		})
 	}
 	if frag == nil || frag.Type.Kind == syntax.TypeScalar {
-		out = append(out, completionResult{
-			Label:      "formatf",
-			InsertText: `formatf("", )`,
-			Kind:       kindFunction,
-			Detail:     "builtin",
-			Documentation: &doc{Kind: "markdown", Value: "**formatf(\"Count is %d\", bridge.Count)**\n\n" +
-				"Builds a string with Go's `fmt` verbs: `%d` counts, `%s` text, `%v` any value, `%0.2f` money."},
-		})
+		out = append(out, builtinItems()...)
 	}
 	for _, id := range fileIDElements(file) {
 		out = append(out, completionResult{Label: id.name, Kind: kindVariable, Detail: "id · " + id.kind})

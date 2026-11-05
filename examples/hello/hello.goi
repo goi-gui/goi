@@ -1,12 +1,13 @@
 // Nested boxes: radius, border, padding and alignment.
+
 Window {
-	id: main
-	title: "goi hello"
-	width: 640
-	height: 400
+	id:         main
+	title:      "goi hello"
+	width:      640
+	height:     400
 	// Every colour below is a literal, so the scheme only supplies the default
 	// text colour; `theme: dark` keeps that readable on the dark panel.
-	theme: dark
+	theme:      dark
 	background: surface
 
 	Column {
@@ -14,59 +15,74 @@ Window {
 		spacing: 16
 
 		Text {
-			text: "Rounded corners, borders, real text"
+			text:     "Rounded corners, borders, real text"
 			fontSize: 20
-			color: #e6e9ef
+			color:    #e6e9ef
 		}
 
 		Row {
 			spacing: 16
-			height: 120
+			height:  120
 
 			Rectangle {
-				width: 160
-				height: 120
-				radius: 18
-				background: #3b82f6
+				width:       160
+				height:      120
+				radius:      18
+				background:  #3b82f6
 				borderColor: #ffffff
 				borderWidth: 3
 			}
 
 			Rectangle {
-				width: 160
-				height: 120
-				radius: 60
+				width:      160
+				height:     120
+				radius:     60
 				background: #22c55e
 			}
 
 			Column {
-				width: 160
-				height: 120
-				radius: 8
-				background: #1b1d22
+				width:       160
+				height:      120
+				radius:      8
+				background:  #1b1d22
 				borderColor: #a78bfa
 				borderWidth: 2
-				padding: 16
-				spacing: 6
+				padding:     16
+				spacing:     6
 
-				Text { text: "Bordered" fontSize: 16 color: #a78bfa }
-				Text { text: "and padded" fontSize: 14 color: #7c8496 }
+				Text {
+					text:     "Bordered"
+					fontSize: 16
+					color:    #a78bfa
+				}
+
+				Text {
+					text:     "and padded"
+					fontSize: 14
+					color:    #7c8496
+				}
 			}
 		}
 
 		Stack {
-			height: 120
+			height:         120
 			crossAxisAlign: center
 
-			Rectangle { width: 320 height: 120 radius: 12 background: #2a2d34 }
+			Rectangle {
+				width:      320
+				height:     120
+				radius:     12
+				background: #2a2d34
+			}
+
 			// The Stack centres on the cross axis (horizontal); the label's own
 			// `align` centres the text inside the box it is given.
 			Text {
-				text: "centered in a stack"
+				text:     "centered in a stack"
 				fontSize: 18
-				color: #d0d4dc
-				height: 120
-				align: center
+				color:    #d0d4dc
+				height:   120
+				align:    center
 			}
 		}
 	}

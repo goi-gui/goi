@@ -10,6 +10,7 @@ func Parse(src []byte) (*File, Diagnostics) {
 	if f == nil {
 		return nil, p.diag
 	}
+	f.Comments = lx.comments
 	return f, p.diag
 }
 
@@ -118,7 +119,7 @@ func (p *parser) sync() {
 
 func (p *parser) parseFile() *File {
 	f := &File{}
-	// The preamble: `import ... as ...`, the `props` block, `bridge` and `type`
+	// The preamble: `import Alias "path"`, the `props` block, `bridge` and `type`
 	// may appear in any order before the root element.
 	for {
 		t := p.peek()
@@ -179,39 +180,30 @@ func (p *parser) parseTrailer() {
 	}
 }
 
-// parseImport reads `import "path" as Alias`.
+// parseImport reads `import Sidebar "./Sidebar.goi"`, the order Go writes an
+// import alias in.
 func (p *parser) parseImport() (Import, bool) {
 	kw := p.next() // import
 	imp := Import{At: kw.pos}
-	t := p.peek()
-	if t.kind != tokString {
-		p.errorf(t, "expected a quoted path after import")
-		p.sync()
-		return imp, false
-	}
-	imp.Path = p.next().text
-	as := p.peek()
-	if as.kind != tokIdent || as.text != "as" {
-		p.errorf(as, `expected "as" after the import path`)
-		p.sync()
-		return imp, false
-	}
-	p.next()
 	alias := p.peek()
 	if alias.kind != tokIdent {
-		p.errorf(alias, "expected an alias after \"as\"")
+		p.errorf(alias, "expected an alias after import: import Sidebar \"./Sidebar.goi\"")
 		p.sync()
 		return imp, false
 	}
 	p.next()
-	// Newlines are not tokens, so `import "x" as` followed by the root element
-	// would silently take the element name as the alias. An alias is always
-	// followed by another preamble line or the root, never by '{'.
-	if p.peek().kind == tokLBrace {
-		p.errorf(alias, "expected an alias after \"as\"")
+	imp.Alias, imp.AliasAt = alias.text, alias.pos
+	t := p.peek()
+	if t.kind != tokString {
+		p.errorf(t, "expected a quoted path after the import alias")
+		p.sync()
 		return imp, false
 	}
-	imp.Alias, imp.AliasAt = alias.text, alias.pos
+	p.next()
+	imp.Path = t.text
+	if p.peek().kind == tokSemicolon {
+		p.next()
+	}
 	return imp, true
 }
 
@@ -223,6 +215,7 @@ func (p *parser) parseImport() (Import, bool) {
 //		Rows  []ticket
 //	}
 func (p *parser) parseProps(f *File) {
+	f.PropsAt = p.peek().pos
 	p.next() // props
 	if p.peek().kind != tokLBrace {
 		p.errorf(p.peek(), "expected '{' after props")
@@ -387,6 +380,9 @@ func (p *parser) parseData(f *File) {
 	kw := p.next() // "data", "bridge" or "type"
 	name := p.peek()
 	if name.kind == tokLBrace {
+		if kw.text == "bridge" || kw.text == "data" {
+			f.BridgeAt = kw.pos
+		}
 		p.next()
 		p.parseFields(&f.Vars, "variable")
 		return

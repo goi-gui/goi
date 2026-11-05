@@ -1,12 +1,18 @@
 Window {
-    id: main
-    title: "Escapes \u00e7 \\ \"quoted\""
-    width: -1
-    height: 320.25
-    visible: true
-    background: #12345678
-    borderColor: #abc
-    Stack {
-        Rectangle { id: r; width: 10; height: 10; radius: 4 }
-    }
+	id:          main
+	title:       "Escapes ç \\ \"quoted\""
+	width:       -1
+	height:      320.25
+	visible:     true
+	background:  #12345678
+	borderColor: #aabbcc
+
+	Stack {
+		Rectangle {
+			id:     r
+			width:  10
+			height: 10
+			radius: 4
+		}
+	}
 }

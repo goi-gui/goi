@@ -1,65 +1,72 @@
 // The counter example window: a filled card with the count and a stepper, plus
 // a small text field to show editing.
+
 Window {
-	id: main
-	title: "Counter"
-	width: 480
+	id:     main
+	title:  "Counter"
+	width:  480
 	height: 560
-	theme: light
+	theme:  light
 
 	Column {
 		spacing: 0
 
 		TopAppBar {
-			id: appbar
+			id:    appbar
 			label: "Counter"
 		}
 
 		Column {
-			flex: 1
-			padding: 32
-			spacing: 24
+			flex:           1
+			padding:        32
+			spacing:        24
 			crossAxisAlign: center
 
 			Card {
 				variant: filled
-				width: 360
+				width:   360
 
 				Column {
-					spacing: 12
+					spacing:        12
 					crossAxisAlign: center
 
-					Text { text: "Total" role: "labelLarge" color: onSurfaceVariant }
+					Text {
+						text:  "Total"
+						role:  "labelLarge"
+						color: onSurfaceVariant
+					}
 
 					Text {
-						id: label
-						text: "0"
-						role: "displayLarge"
+						id:    label
+						text:  "0"
+						role:  "displayLarge"
 						color: primary
 					}
 
 					// A Row fills the column's width, so the stepper declares
 					// its own: two 40dp buttons plus the 12dp gap.
 					Row {
-						width: 92
+						width:     92
 						alignSelf: center
-						spacing: 12
+						spacing:   12
+
 						IconButton {
-							id: dec
-							icon: remove
+							id:      dec
+							icon:    remove
 							variant: outlined
 						}
+
 						IconButton {
-							id: inc
-							icon: add
+							id:      inc
+							icon:    add
 							variant: filled
 						}
 					}
 
 					Button {
-						id: reset
-						label: "Reset"
-						variant: text
+						id:       reset
+						label:    "Reset"
+						variant:  text
 						disabled: true
 					}
 				}

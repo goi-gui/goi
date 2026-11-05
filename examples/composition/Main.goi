@@ -4,12 +4,13 @@
 // with props. Run with:
 //
 //	go run -ldflags=-linkmode=internal ./examples/composition
-import "./Sidebar.goi" as Sidebar
-import "./StatCard.goi" as StatCard
-import "./Section.goi" as Section
+
+import Sidebar "./Sidebar.goi"
+import StatCard "./StatCard.goi"
+import Section "./Section.goi"
 
 Window {
-	id: main
+	id:    main
 	title: "Composition"
 	theme: light
 
@@ -17,53 +18,87 @@ Window {
 		spacing: 0
 
 		Sidebar {
-			title: "Mail"
+			title:    "Mail"
 			subtitle: "12 unread"
-			active: "inbox"
+			active:   "inbox"
 		}
 
 		Column {
-			flex: 1
+			flex:    1
 			padding: 24
 			spacing: 24
 
 			TopAppBar {
 				label: "Composition"
-				icon: "dashboard"
+				icon:  "dashboard"
 			}
 
-			Text { text: "Fragments" role: "titleMedium" }
 			Text {
-				text: "Sidebar.goi, StatCard.goi and Section.goi are separate files. Main.goi imports them, passes props, overrides ordinary properties such as width, and gives Section its children."
-				wrap: true
+				text: "Fragments"
+				role: "titleMedium"
+			}
+
+			Text {
+				text:  "Sidebar.goi, StatCard.goi and Section.goi are separate files. Main.goi imports them, passes props, overrides ordinary properties such as width, and gives Section its children."
+				wrap:  true
 				width: 520
 			}
 
 			// The same fragment twice, with different props.
 			Row {
 				spacing: 16
-				StatCard { id: inbox label: "Inbox" value: "12" tone: #6750A4 }
-				StatCard { id: starred label: "Starred" value: "3" tone: #7D5260 }
-				StatCard { id: drafts label: "Drafts" value: "1" tone: #00658F }
+
+				StatCard {
+					id:    inbox
+					label: "Inbox"
+					value: "12"
+					tone:  #6750a4
+				}
+
+				StatCard {
+					id:    starred
+					label: "Starred"
+					value: "3"
+					tone:  #7d5260
+				}
+
+				StatCard {
+					id:    drafts
+					label: "Drafts"
+					value: "1"
+					tone:  #00658f
+				}
 			}
 
 			// Section.goi takes children: its $children slot is where the Row
 			// and the Text below appear.
 			Section {
 				title: "Overrides"
+
 				// $actions is a named slot: only this instance fills it.
 				$actions {
-					Chip { label: "New" icon: add }
+					Chip {
+						label: "New"
+						icon:  add
+					}
 				}
+
 				Row {
 					spacing: 16
+
 					// A prop is a value; width is the fragment root's own property.
-					StatCard { id: override label: "Override" value: "300" width: 300 }
+					StatCard {
+						id:    override
+						label: "Override"
+						value: "300"
+						width: 300
+					}
 				}
+
 				Text {
-					text: "The card above passes width: 300, which replaces the fragment's own width instead of duplicating it."
-					role: "bodySmall"
-					wrap: true
+					text:  "The card above passes width: 300, which replaces the fragment's own width instead of duplicating it."
+					role:  "bodySmall"
+					wrap:  true
 					width: 520
 				}
 			}

@@ -64,6 +64,9 @@ type lexer struct {
 	off  int
 	toks []token
 	diag Diagnostics
+	// comments records every comment with its span, so the formatter can put
+	// it back where the design wrote it. The parser ignores them.
+	comments []Comment
 }
 
 func newLexer(src []byte) *lexer { return &lexer{src: src} }
@@ -240,9 +243,11 @@ func (l *lexer) skipSpaceAndComments() {
 		case c == ' ' || c == '\t' || c == '\r' || c == '\n':
 			l.off++
 		case c == '/' && l.off+1 < len(l.src) && l.src[l.off+1] == '/':
+			start := l.off
 			for l.off < len(l.src) && l.src[l.off] != '\n' {
 				l.off++
 			}
+			l.comments = append(l.comments, Comment{At: Pos(start), End: Pos(l.off), Text: string(l.src[start:l.off])})
 		case c == '/' && l.off+1 < len(l.src) && l.src[l.off+1] == '*':
 			start := l.off
 			l.off += 2
@@ -255,6 +260,10 @@ func (l *lexer) skipSpaceAndComments() {
 				return
 			}
 			l.off += 2
+			l.comments = append(l.comments, Comment{
+				At: Pos(start), End: Pos(l.off),
+				Text: string(l.src[start:l.off]), Block: true,
+			})
 		default:
 			return
 		}

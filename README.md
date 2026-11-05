@@ -36,11 +36,11 @@ app.Run()
 ## One design, several files
 
 A `.goi` file can import fragments and pass them values, so a page does not have
-to be one long file:
+to be one long file. An import names its alias first, as in Go:
 
 ```go
 // Main.goi
-import "./Sidebar.goi" as Sidebar
+import Sidebar "./Sidebar.goi"
 
 Window {
     Row {
@@ -108,13 +108,14 @@ make format    # formatf, arithmetic and bridge zero values
 make bridge    # every event property, and a fragment fed from the bridge
 make search    # a button and a text field reading another node by id
 go run ./cmd/goicheck -layout examples/*/*.goi  # syntax plus a headless layout check
+go run ./cmd/goifmt -l .                        # list unformatted .goi files
 ```
 
 ## What it does
 
 - `.goi` files: literals only, no scripting. Elements, properties, ids, with
   diagnostics that point at `file:line:col`.
-- Composable designs: `import "./Sidebar.goi" as Sidebar`, a typed `props`
+- Composable designs: `import Sidebar "./Sidebar.goi"`, a typed `props`
   block the instance fills (`props.Title`, zero value when it passes nothing,
   plus lists and handlers), named slots (`$header`) and `$children`, loaded
   from an `io/fs.FS` so `embed.FS` and `os.DirFS` both work. An instance's `id`
@@ -133,6 +134,13 @@ go run ./cmd/goicheck -layout examples/*/*.goi  # syntax plus a headless layout 
 - Text: the M3 type scale (`role`), explicit `fontSize` and `weight` (300/400/
   500/700/900 Roboto; other numbers snap to the nearest), and `wrap: true` for
   real word wrapping that reserves the height of every line.
+- `goifmt`: a gofmt for `.goi`. It aligns declaration fields and property
+  values in one column, puts one property per line, separates imports and
+  declaration blocks by one blank line, indents every body, keeps a comment
+  cuddled to what it explains, and collapses extra blank lines. It runs on save
+  through `goipls` and as `go run ./cmd/goifmt -w`.
+- Go's pure builtins in a value: `len`, `cap`, `min`, `max`, plus `formatf` for
+  the `fmt` verbs.
 - Go-shaped declarations and control flow: `bridge { Count int }`,
   `type Row { Title string }`, `if x { } else { }` and
   `for i, row := range bridge.Rows { }` read exactly like Go.

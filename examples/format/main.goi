@@ -3,17 +3,18 @@
 // A bridge variable starts at its type's zero value; this design only reads
 // them, and Go writes the real ones with ui.SetData. `+` adds two numbers but
 // joins anything else, so `price * count` is money arithmetic.
+
 bridge {
-	price float64
-	count int
-	label string
+	price    float64
+	count    int
+	label    string
 	discount bool
 }
 
 Window {
-	id: main
-	title: "formatf"
-	width: 420
+	id:     main
+	title:  "formatf"
+	width:  420
 	height: 320
 
 	Column {
@@ -21,30 +22,46 @@ Window {
 		spacing: 10
 
 		Text {
-			text: "formatf reads the bridge on every frame."
+			text:  "formatf reads the bridge on every frame."
+			role:  "bodyMedium"
+			color: onSurfaceVariant
+		}
+
+		Text {
+			text: formatf("%s: %d", bridge.label, bridge.count)
+			role: "titleLarge"
+		}
+
+		Text {
+			text: formatf("Unit price: %0.2f", bridge.price)
+			role: "bodyLarge"
+		}
+
+		Text {
+			text: formatf("Total: %0.2f", bridge.price * bridge.count)
+			role: "bodyLarge"
+		}
+
+		Text {
+			text: formatf("%d × %0.2f = %0.2f", bridge.count, bridge.price, bridge.price * bridge.count)
 			role: "bodyMedium"
+		}
+
+		Text {
+			text:  bridge.discount ? "Discount applied" : "No discount"
+			role:  "labelLarge"
 			color: onSurfaceVariant
 		}
 
-		Text { text: formatf("%s: %d", bridge.label, bridge.count) role: "titleLarge" }
-
-		Text { text: formatf("Unit price: %0.2f", bridge.price) role: "bodyLarge" }
-
-		Text { text: formatf("Total: %0.2f", bridge.price *  bridge.count) role: "bodyLarge" }
-
-		Text { text: formatf("%d × %0.2f = %0.2f", bridge.count, bridge.price, bridge.price *  bridge.count) role: "bodyMedium" }
-
-		Text {
-			text: bridge.discount ? "Discount applied" : "No discount"
-			role: "labelLarge"
-			color: onSurfaceVariant
+		Button {
+			id:    more
+			label: "Add one"
+			icon:  add
 		}
 
-		Button { id: more label: "Add one" icon: add }
-
 		Text {
-			text: "Go may override any of these with ui.SetData."
-			role: "labelSmall"
+			text:  "Go may override any of these with ui.SetData."
+			role:  "labelSmall"
 			color: onSurfaceVariant
 		}
 	}

@@ -1,16 +1,17 @@
 // Sidebar: a navigation panel. The three props let each instance say what it
 // shows; everything else (width, visible, ...) is an ordinary property the
 // instance can override.
+
 props {
-	title string
+	title    string
 	subtitle string
-	active string
+	active   string
 }
 
 Column {
-	width: 280
-	padding: 12
-	spacing: 6
+	width:      280
+	padding:    12
+	spacing:    6
 	background: surfaceContainer
 
 	Text {
@@ -19,22 +20,48 @@ Column {
 	}
 
 	Text {
-		text: props.subtitle
-		role: "bodySmall"
+		text:  props.subtitle
+		role:  "bodySmall"
 		color: onSurfaceVariant
 	}
 
 	// An empty rectangle draws nothing but still reserves its height, which is
 	// the smallest way to open a gap that spacing alone cannot express.
-	Rectangle { height: 8 }
+	Rectangle {
+		height: 8
+	}
 
-	NavigationItem { label: "Inbox" icon: inbox selected: true }
-	NavigationItem { label: "Starred" icon: star }
-	NavigationItem { label: "Sent" icon: send }
-	NavigationItem { label: "Trash" icon: delete }
+	NavigationItem {
+		label:    "Inbox"
+		icon:     inbox
+		selected: true
+	}
 
-	Divider { }
+	NavigationItem {
+		label: "Starred"
+		icon:  star
+	}
 
-	Text { text: "Active: " role: "labelSmall" color: onSurfaceVariant }
-	Text { text: props.active role: "labelMedium" }
+	NavigationItem {
+		label: "Sent"
+		icon:  send
+	}
+
+	NavigationItem {
+		label: "Trash"
+		icon:  delete
+	}
+
+	Divider {}
+
+	Text {
+		text:  "Active: "
+		role:  "labelSmall"
+		color: onSurfaceVariant
+	}
+
+	Text {
+		text: props.active
+		role: "labelMedium"
+	}
 }

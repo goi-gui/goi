@@ -3,6 +3,7 @@ package schema
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -573,6 +574,9 @@ func (v *validator) checkPropRef(e *syntax.Element, pd *Prop, x *syntax.Ref, at,
 			fmt.Sprintf("%s.%s: props.%s is a handler; call it in an event, as onClick: props.%s(...)", e.Name, pd.Name, pr.Name, pr.Name), "")
 		return
 	case syntax.TypeSlice, syntax.TypeMap:
+		if pd == lenProp {
+			return // len and cap take a list
+		}
 		v.add(at, end,
 			fmt.Sprintf("%s.%s: props.%s is not a value; walk it with for i, row := range props.%s", e.Name, pd.Name, pr.Name, pr.Name), "")
 		return
@@ -801,8 +805,80 @@ func (v *validator) walkRefs(e *syntax.Element) {
 	}
 }
 
+// lenProp stands in for the argument of len and cap, where a list is a value
+// like any other.
+var lenProp = &Prop{Name: "len", Type: TypeNumber}
+
+// builtinSigs is the arity of each Go builtin a design may call: formatf is
+// ours, the rest are the pure ones. -1 means "any number".
+var builtinSigs = map[string]struct {
+	min, max int
+	detail   string
+}{
+	"formatf": {1, -1, `formatf("%d items", count) — Go's fmt verbs`},
+	"len":     {1, 1, "len(x) — the length of a string, a list or a map"},
+	"cap":     {1, 1, "cap(x) — a design list has no spare capacity, so this is its length"},
+	"min":     {1, -1, "min(a, b, …) — the smallest number or string"},
+	"max":     {1, -1, "max(a, b, …) — the largest number or string"},
+}
+
+// checkBuiltin validates a call in a value position: the name is a builtin, the
+// argument count fits, and each argument can be a value. len and cap accept a
+// list, which no other value position does.
+func (v *validator) checkBuiltin(e *syntax.Element, call *syntax.Call) {
+	at := call.At
+	end := at + syntax.Pos(len(call.Name)+2)
+	sig, ok := builtinSigs[call.Name]
+	if !ok {
+		names := make([]string, 0, len(builtinSigs))
+		for n := range builtinSigs {
+			names = append(names, n+"(…)")
+		}
+		sort.Strings(names)
+		v.add(at, end,
+			fmt.Sprintf("%s.%s: %q is not a builtin; a value can call %s", e.Name, condName(call), call.Name, strings.Join(names, ", ")),
+			syntax.Suggest(call.Name, builtinNames()))
+		return
+	}
+	if len(call.Args) < sig.min || (sig.max >= 0 && len(call.Args) > sig.max) {
+		want := fmt.Sprintf("%d", sig.min)
+		if sig.max < 0 {
+			want = fmt.Sprintf("at least %d", sig.min)
+		} else if sig.max != sig.min {
+			want = fmt.Sprintf("%d to %d", sig.min, sig.max)
+		}
+		v.add(at, end, fmt.Sprintf("%s.%s: %s takes %s argument(s), got %d", e.Name, condName(call), call.Name, want, len(call.Args)), "")
+		return
+	}
+	argProp := anyProp
+	if call.Name == "len" || call.Name == "cap" {
+		argProp = lenProp
+	}
+	for _, a := range call.Args {
+		v.checkRefs(e, argProp, a)
+	}
+}
+
+// condName names the property a call was found in, for a diagnostic.
+func condName(call *syntax.Call) string {
+	if call.Name == "" {
+		return "value"
+	}
+	return call.Name
+}
+
+// builtinNames lists the builtins, for suggestions.
+func builtinNames() []string {
+	out := make([]string, 0, len(builtinSigs))
+	for n := range builtinSigs {
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // boolProp stands in for the property a block condition reads, so a reference
-// in `{#if id.prop}` is type-checked exactly like a bool property value.
+// in an `if` condition is type-checked exactly like a bool property value.
 var boolProp = &Prop{Name: "condition", Type: TypeBool}
 
 // condElement names a block condition in diagnostics: "{#if}.condition: ...".
@@ -883,18 +959,14 @@ func (v *validator) checkRefs(e *syntax.Element, pd *Prop, val syntax.Value) {
 		v.checkRefs(e, pd, x.Then)
 		v.checkRefs(e, pd, x.Else)
 	case *syntax.Call:
-		// A builtin such as formatf formats its arguments itself, so nothing
-		// inside is checked against the consuming property.
-		for _, a := range x.Args {
-			v.checkRefs(e, anyProp, a)
-		}
+		v.checkBuiltin(e, x)
 	case *syntax.Ref:
 		if pd == nil {
 			return
 		}
 		at := x.At
 		end := at + syntax.Pos(len(x.ID)+1+len(x.Prop))
-		free := pd == anyProp
+		free := pd == anyProp || pd == lenProp
 		if x.ID == "props" {
 			v.checkPropRef(e, pd, x, at, end, free)
 			return
@@ -1052,6 +1124,9 @@ func (v *validator) checkDataRef(e *syntax.Element, pd *Prop, x *syntax.Ref, at,
 				e.Name, pd.Name, x.ID, x.Prop, x.Prop), "")
 		return
 	case syntax.TypeSlice, syntax.TypeMap:
+		if pd == lenProp {
+			return // len and cap take a list
+		}
 		v.add(at, end,
 			fmt.Sprintf("%s.%s: %s.%s is not a value; walk it with for i, row := range %s.%s",
 				e.Name, pd.Name, x.ID, x.Prop, x.ID, x.Prop), "")
@@ -1084,7 +1159,7 @@ func (v *validator) checkFieldRef(e *syntax.Element, pd *Prop, x *syntax.Ref, sh
 			syntax.Suggest(x.Prop, names))
 		return
 	}
-	if field.Type.Kind == syntax.TypeSlice || field.Type.Kind == syntax.TypeMap {
+	if (field.Type.Kind == syntax.TypeSlice || field.Type.Kind == syntax.TypeMap) && pd != lenProp {
 		v.add(at, end,
 			fmt.Sprintf("%s.%s: %s.%s is not a value; walk it with for i, row := range %s.%s",
 				e.Name, pd.Name, sh.Name, x.Prop, x.ID, x.Prop), "")

@@ -2,7 +2,7 @@
 //
 // A file may pull in fragments:
 //
-//	import "./Sidebar.goi" as Sidebar
+//	import Sidebar "./Sidebar.goi"
 //
 //	Window { Row { Sidebar { title: "Mail" } } }
 //

@@ -110,6 +110,8 @@ func (s *Server) handle(m *message) error {
 		return s.reply(m, s.foldingRanges(m.Params))
 	case "textDocument/definition":
 		return s.reply(m, s.definition(m.Params))
+	case "textDocument/formatting":
+		return s.reply(m, s.formatting(m.Params))
 	}
 	return s.fail(m, codeMethodNotFound, "unknown method "+m.Method)
 }
@@ -143,10 +145,11 @@ func (s *Server) initialize(json.RawMessage) any {
 				"triggerCharacters": []string{":", " ", "$", "."},
 				"resolveProvider":   false,
 			},
-			"hoverProvider":          true,
-			"definitionProvider":     true,
-			"documentSymbolProvider": true,
-			"foldingRangeProvider":   true,
+			"hoverProvider":              true,
+			"definitionProvider":         true,
+			"documentSymbolProvider":     true,
+			"documentFormattingProvider": true,
+			"foldingRangeProvider":       true,
 		},
 		"serverInfo": map[string]any{
 			"name":    "goipls",

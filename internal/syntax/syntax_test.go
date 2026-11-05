@@ -246,8 +246,8 @@ func TestSuggest(t *testing.T) {
 }
 
 func TestParsePreamble(t *testing.T) {
-	f, diag := Parse([]byte(`import "./Sidebar.goi" as Sidebar
-import "parts/Card.goi" as Card
+	f, diag := Parse([]byte(`import Sidebar "./Sidebar.goi"
+import Card "parts/Card.goi"
 props {
 	Title  string
 	Accent color
@@ -286,10 +286,10 @@ Column { Text { text: props.Title } }`))
 
 func TestParsePreambleErrors(t *testing.T) {
 	cases := []struct{ name, src, want string }{
-		{"missing as", `import "./a.goi"
-Window { }`, `expected "as"`},
-		{"missing alias", `import "./a.goi" as
-Window { }`, "expected an alias"},
+		{"path first", `import "./a.goi" as A
+Window { }`, "expected an alias after import"},
+		{"missing path", `import A
+Window { }`, "expected a quoted path"},
 		{"missing brace", "props Title string\nWindow { }", "expected '{' after props"},
 		{"missing type", "props { Title }\nWindow { }", "expected a type"},
 		{"bad slice", "props { Rows [] }\nWindow { }", "expected a type"},
@@ -309,7 +309,7 @@ Window { }`, "expected an alias"},
 }
 
 func TestParseDumpKeepsPreamble(t *testing.T) {
-	f, diag := Parse([]byte(`import "./S.goi" as S
+	f, diag := Parse([]byte(`import S "./S.goi"
 props {
 	N     int
 	Label string
@@ -321,7 +321,7 @@ Column { }`))
 		t.Fatalf("%v", diag)
 	}
 	got := Dump(f)
-	for _, want := range []string{`import "./S.goi" as S`, "props N int", "props Label string", "bridge Rows []S", "type S", "  Name string"} {
+	for _, want := range []string{`import S "./S.goi"`, "props N int", "props Label string", "bridge Rows []S", "type S", "  Name string"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("dump is missing %q:\n%s", want, got)
 		}

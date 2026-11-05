@@ -159,3 +159,46 @@ Window {
 		t.Fatalf("after a map set: %v, want %v", got, want)
 	}
 }
+
+// TestGoBuiltins covers the pure Go builtins a design can call: len and cap
+// count a string, a list and a map, and min and max work over numbers and
+// strings.
+func TestGoBuiltins(t *testing.T) {
+	tr, diag := BuildSource([]byte(`bridge {
+	Rows  []Row
+	Table map[string]string
+	Name  string
+	Count int
+}
+type Row { title string }
+Window {
+	Column {
+		Text { id: rows text: formatf("%d", len(bridge.Rows)) }
+		Text { id: caps text: formatf("%d", cap(bridge.Rows)) }
+		Text { id: table text: formatf("%d", len(bridge.Table)) }
+		Text { id: name text: formatf("%d", len(bridge.Name)) }
+		Text { id: hi text: formatf("%d", max(1, bridge.Count, 3)) }
+		Text { id: lo text: formatf("%d", min(1, bridge.Count, 3)) }
+		Text { id: word text: max("apple", "pear") }
+	}
+}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	tr.SetData("Rows", []map[string]any{{"title": "a"}, {"title": "b"}})
+	tr.SetData("Table", map[string]string{"x": "1"})
+	tr.SetData("Name", "ada")
+	tr.SetData("Count", 9)
+	tr.ApplyExpressions()
+
+	want := map[string]string{
+		"rows": "2", "caps": "2", "table": "1", "name": "3",
+		"hi": "9", "lo": "1", "word": "pear",
+	}
+	for id, w := range want {
+		got, _ := tr.ids[id].Base().PropValue("text")
+		if got != w {
+			t.Fatalf("%s = %v, want %q", id, got, w)
+		}
+	}
+}

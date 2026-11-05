@@ -220,7 +220,7 @@ func TestDiagnosticsLandInTheFragment(t *testing.T) {
 	dir := t.TempDir()
 	frag := "props { title string }\nColumn {\n\tbogus: 1\n}\n"
 	fragURI := writeDesign(t, dir, "Side.goi", frag)
-	src := "import \"./Side.goi\" as Side\nWindow {\n\tid: main\n\tSide { title: \"x\" }\n}\n"
+	src := "import Side \"./Side.goi\"\nWindow {\n\tid: main\n\tSide { title: \"x\" }\n}\n"
 	uri := writeDesign(t, dir, "main.goi", src)
 	c.openDoc(uri, src)
 
@@ -237,7 +237,7 @@ func TestCompletionOffersImportedFragments(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()
 	writeDesign(t, dir, "Side.goi", "props { title string }\nColumn { }\n")
-	src := "import \"./Side.goi\" as Side\nWindow {\n\t\n}\n"
+	src := "import Side \"./Side.goi\"\nWindow {\n\t\n}\n"
 	uri := writeDesign(t, dir, "main.goi", src)
 	c.openDoc(uri, src)
 
@@ -591,7 +591,7 @@ func TestDefinitionFollowsAnImport(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()
 	fragURI := writeDesign(t, dir, "Side.goi", "props { title string }\nColumn { }\n")
-	src := "import \"./Side.goi\" as Side\nWindow {\n\tid: main\n}\n"
+	src := "import Side \"./Side.goi\"\nWindow {\n\tid: main\n}\n"
 	uri := writeDesign(t, dir, "main.goi", src)
 	c.openDoc(uri, src)
 
@@ -612,7 +612,7 @@ func TestDefinitionFollowsAFragmentCall(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()
 	fragURI := writeDesign(t, dir, "Side.goi", "props { title string }\nColumn { }\n")
-	src := "import \"./Side.goi\" as Side\nWindow {\n\tSide { }\n}\n"
+	src := "import Side \"./Side.goi\"\nWindow {\n\tSide { }\n}\n"
 	uri := writeDesign(t, dir, "main.goi", src)
 	c.openDoc(uri, src)
 
@@ -1492,7 +1492,7 @@ Column {
 }
 `
 	fragURI := writeDesign(t, dir, "Counter.goi", frag)
-	src := `import "./Counter.goi" as Counter
+	src := `import Counter "./Counter.goi"
 bridge { Step int }
 Window {
 	Column {
@@ -1554,7 +1554,7 @@ Window {
 
 	// Hover explains the instance and the prop. It works off the AST, so it
 	// needs a file that parses; the completion file above does not.
-	clean := `import "./Counter.goi" as Counter
+	clean := `import Counter "./Counter.goi"
 bridge { Step int }
 Window {
 	Column {
@@ -1604,5 +1604,71 @@ Column { }
 	}
 	if _, ok := body["Label"]; ok {
 		t.Fatal("a prop the buffer removed is still offered")
+	}
+}
+
+// TestFormattingAnswersWithOneEdit covers save-on-format: the server formats the
+// whole document, and answers with no edits when the file is already clean.
+func TestFormattingAnswersWithOneEdit(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := `props {
+Title string
+Long  int
+}
+Window {
+Column {
+gap: 10
+padding: 10
+Text { text: "x" }
+}
+}
+`
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/formatting", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"options":      map[string]any{"tabSize": 4, "insertSpaces": false},
+	})
+	var edits []textEdit
+	if err := json.Unmarshal(res, &edits); err != nil {
+		t.Fatal(err)
+	}
+	if len(edits) != 1 {
+		t.Fatalf("edits = %d, want one whole-document edit", len(edits))
+	}
+	want := `props {
+	Title string
+	Long  int
+}
+
+Window {
+	Column {
+		gap:     10
+		padding: 10
+
+		Text {
+			text: "x"
+		}
+	}
+}
+`
+	if edits[0].NewText != want {
+		t.Fatalf("formatted:\n%s\n--- want ---\n%s", edits[0].NewText, want)
+	}
+
+	// Saving a clean file asks for no work.
+	c.changeDoc(uri, want)
+	res = c.request("textDocument/formatting", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"options":      map[string]any{"tabSize": 4},
+	})
+	edits = nil
+	if err := json.Unmarshal(res, &edits); err != nil {
+		t.Fatal(err)
+	}
+	if len(edits) != 0 {
+		t.Fatalf("a clean file produced %d edit(s)", len(edits))
 	}
 }

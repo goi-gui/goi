@@ -1,8 +1,9 @@
 // Typography: the M3 type scale, explicit size and weight, and text wrapping.
 // Every sample is a Text element, so this page is also the visual check for the
 // shaper: the same string in five weights must advance differently.
+
 Window {
-	id: main
+	id:    main
 	title: "Typography"
 	theme: light
 
@@ -12,50 +13,142 @@ Window {
 		// The bar stays put; the content below it scrolls.
 		TopAppBar {
 			label: "Typography"
-			icon: "text_fields"
+			icon:  "text_fields"
 		}
 
 		Column {
-			id: page
-			flex: 1
-			scroll: true
+			id:      page
+			flex:    1
+			scroll:  true
 			spacing: 24
 			padding: 24
 
 			// ---------------------------------------------------- type scale
 			Column {
 				spacing: 4
-				width: 520
+				width:   520
 
-				Text { text: "Type scale" role: "titleMedium" }
-				Text { text: "Roles, not sizes" role: "displayLarge" }
-				Text { text: "Roles, not sizes" role: "displayMedium" }
-				Text { text: "Roles, not sizes" role: "displaySmall" }
-				Text { text: "Headline large" role: "headlineLarge" }
-				Text { text: "Headline medium" role: "headlineMedium" }
-				Text { text: "Headline small" role: "headlineSmall" }
-				Text { text: "Title large" role: "titleLarge" }
-				Text { text: "Title medium" role: "titleMedium" }
-				Text { text: "Title small" role: "titleSmall" }
-				Text { text: "Body large. The quick brown fox jumps over the lazy dog." role: "bodyLarge" }
-				Text { text: "Body medium. The quick brown fox jumps over the lazy dog." role: "bodyMedium" }
-				Text { text: "Body small. The quick brown fox jumps over the lazy dog." role: "bodySmall" }
-				Text { text: "Label large" role: "labelLarge" }
-				Text { text: "Label medium" role: "labelMedium" }
-				Text { text: "Label small" role: "labelSmall" }
+				Text {
+					text: "Type scale"
+					role: "titleMedium"
+				}
+
+				Text {
+					text: "Roles, not sizes"
+					role: "displayLarge"
+				}
+
+				Text {
+					text: "Roles, not sizes"
+					role: "displayMedium"
+				}
+
+				Text {
+					text: "Roles, not sizes"
+					role: "displaySmall"
+				}
+
+				Text {
+					text: "Headline large"
+					role: "headlineLarge"
+				}
+
+				Text {
+					text: "Headline medium"
+					role: "headlineMedium"
+				}
+
+				Text {
+					text: "Headline small"
+					role: "headlineSmall"
+				}
+
+				Text {
+					text: "Title large"
+					role: "titleLarge"
+				}
+
+				Text {
+					text: "Title medium"
+					role: "titleMedium"
+				}
+
+				Text {
+					text: "Title small"
+					role: "titleSmall"
+				}
+
+				Text {
+					text: "Body large. The quick brown fox jumps over the lazy dog."
+					role: "bodyLarge"
+				}
+
+				Text {
+					text: "Body medium. The quick brown fox jumps over the lazy dog."
+					role: "bodyMedium"
+				}
+
+				Text {
+					text: "Body small. The quick brown fox jumps over the lazy dog."
+					role: "bodySmall"
+				}
+
+				Text {
+					text: "Label large"
+					role: "labelLarge"
+				}
+
+				Text {
+					text: "Label medium"
+					role: "labelMedium"
+				}
+
+				Text {
+					text: "Label small"
+					role: "labelSmall"
+				}
 			}
 
 			// -------------------------------------------------------- weights
 			Column {
 				spacing: 6
-				width: 520
+				width:   520
 
-				Text { text: "Weights" role: "titleMedium" }
-				Text { text: "300 Light — the quick brown fox" fontSize: 20 weight: 300 }
-				Text { text: "400 Regular — the quick brown fox" fontSize: 20 weight: 400 }
-				Text { text: "500 Medium — the quick brown fox" fontSize: 20 weight: 500 }
-				Text { text: "700 Bold — the quick brown fox" fontSize: 20 weight: 700 }
-				Text { text: "900 Black — the quick brown fox" fontSize: 20 weight: 900 }
+				Text {
+					text: "Weights"
+					role: "titleMedium"
+				}
+
+				Text {
+					text:     "300 Light — the quick brown fox"
+					fontSize: 20
+					weight:   300
+				}
+
+				Text {
+					text:     "400 Regular — the quick brown fox"
+					fontSize: 20
+					weight:   400
+				}
+
+				Text {
+					text:     "500 Medium — the quick brown fox"
+					fontSize: 20
+					weight:   500
+				}
+
+				Text {
+					text:     "700 Bold — the quick brown fox"
+					fontSize: 20
+					weight:   700
+				}
+
+				Text {
+					text:     "900 Black — the quick brown fox"
+					fontSize: 20
+					weight:   900
+				}
+
 				Text {
 					text: "Roboto ships in these five weights; 600 or 800 snap to the nearest, so layout and paint still agree."
 					role: "bodySmall"
@@ -64,86 +157,171 @@ Window {
 
 				// Weight is an override on a role, so one role can carry a heading
 				// and its emphasis without a second size.
-				Text { text: "Headline small, weight 900" role: "headlineSmall" weight: 900 }
-				Text { text: "Body large, weight 300" role: "bodyLarge" weight: 300 }
-				Text { text: "Body large, weight 700" role: "bodyLarge" weight: 700 }
+				Text {
+					text:   "Headline small, weight 900"
+					role:   "headlineSmall"
+					weight: 900
+				}
+
+				Text {
+					text:   "Body large, weight 300"
+					role:   "bodyLarge"
+					weight: 300
+				}
+
+				Text {
+					text:   "Body large, weight 700"
+					role:   "bodyLarge"
+					weight: 700
+				}
 			}
 
 			// --------------------------------------------------------- sizes
 			Column {
 				spacing: 6
-				width: 520
+				width:   520
 
-				Text { text: "Explicit sizes" role: "titleMedium" }
-				Text { text: "11px" fontSize: 11 }
-				Text { text: "13px" fontSize: 13 }
-				Text { text: "16px" fontSize: 16 }
-				Text { text: "21px" fontSize: 21 }
-				Text { text: "28px" fontSize: 28 }
-				Text { text: "36px" fontSize: 36 }
-				Text { text: "48px" fontSize: 48 }
-				Text { text: "14px tabular-ish digits: 0123456789" fontSize: 14 }
+				Text {
+					text: "Explicit sizes"
+					role: "titleMedium"
+				}
+
+				Text {
+					text:     "11px"
+					fontSize: 11
+				}
+
+				Text {
+					text:     "13px"
+					fontSize: 13
+				}
+
+				Text {
+					text:     "16px"
+					fontSize: 16
+				}
+
+				Text {
+					text:     "21px"
+					fontSize: 21
+				}
+
+				Text {
+					text:     "28px"
+					fontSize: 28
+				}
+
+				Text {
+					text:     "36px"
+					fontSize: 36
+				}
+
+				Text {
+					text:     "48px"
+					fontSize: 48
+				}
+
+				Text {
+					text:     "14px tabular-ish digits: 0123456789"
+					fontSize: 14
+				}
 			}
 
 			// ---------------------------------------------------------- wrap
 			Column {
 				spacing: 12
 
-				Text { text: "Wrapping" role: "titleMedium" }
-
 				Text {
-					text: "Narrow column, wrapping on. Long paragraphs break at word boundaries and the element reports the height of every line it needs, so the block below stays where it belongs."
-					width: 280
-					wrap: true
+					text: "Wrapping"
+					role: "titleMedium"
 				}
-				Text { text: "Above: width 280, wrap true." role: "labelMedium" }
 
 				Text {
-					text: "Same text with wrap false: it does not break, so it runs past the column and is clipped by the scroll viewport instead."
+					text:  "Narrow column, wrapping on. Long paragraphs break at word boundaries and the element reports the height of every line it needs, so the block below stays where it belongs."
 					width: 280
-					wrap: false
+					wrap:  true
 				}
-				Text { text: "Above: width 280, wrap false." role: "labelMedium" }
 
 				Text {
-					text: "Wide column, so the same paragraph needs fewer lines and the page reflows around it."
+					text: "Above: width 280, wrap true."
+					role: "labelMedium"
+				}
+
+				Text {
+					text:  "Same text with wrap false: it does not break, so it runs past the column and is clipped by the scroll viewport instead."
+					width: 280
+					wrap:  false
+				}
+
+				Text {
+					text: "Above: width 280, wrap false."
+					role: "labelMedium"
+				}
+
+				Text {
+					text:  "Wide column, so the same paragraph needs fewer lines and the page reflows around it."
 					width: 640
-					wrap: true
+					wrap:  true
 				}
 
 				Text {
-					text: "Supercalifragilisticexpialidocious is one word wider than a narrow column, so it is broken between runes rather than overflow."
+					text:  "Supercalifragilisticexpialidocious is one word wider than a narrow column, so it is broken between runes rather than overflow."
 					width: 180
-					wrap: true
+					wrap:  true
 				}
 
 				Text {
 					text: "One\nTwo\nThree"
 					wrap: true
 				}
-				Text { text: "Above: explicit newlines." role: "labelMedium" }
+
+				Text {
+					text: "Above: explicit newlines."
+					role: "labelMedium"
+				}
 			}
 
 			// -------------------------------------------------------------- row
 			Column {
 				spacing: 8
 
-				Text { text: "Wrapped next to other content" role: "titleMedium" }
+				Text {
+					text: "Wrapped next to other content"
+					role: "titleMedium"
+				}
+
 				Row {
-					spacing: 16
+					spacing:        16
 					crossAxisAlign: start
 
 					Column {
 						spacing: 6
-						flex: 1
-						Text { text: "A column with flex takes the remaining space; the paragraph inside wraps to that width instead of the parent's." wrap: true }
-						Text { text: "second line of the same block" role: "bodySmall" }
+						flex:    1
+
+						Text {
+							text: "A column with flex takes the remaining space; the paragraph inside wraps to that width instead of the parent's."
+							wrap: true
+						}
+
+						Text {
+							text: "second line of the same block"
+							role: "bodySmall"
+						}
 					}
+
 					Column {
-						width: 200
+						width:   200
 						spacing: 6
-						Text { text: "Fixed 200dp sidebar with a wrapped note that needs three or four lines." wrap: true }
-						Text { text: "sidebar" role: "labelSmall" }
+
+						Text {
+							text: "Fixed 200dp sidebar with a wrapped note that needs three or four lines."
+							wrap: true
+						}
+
+						Text {
+							text: "sidebar"
+							role: "labelSmall"
+						}
 					}
 				}
 			}

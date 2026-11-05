@@ -14,7 +14,7 @@ func Dump(f *File) string {
 	}
 	var b strings.Builder
 	for _, imp := range f.Imports {
-		fmt.Fprintf(&b, "import %q as %s\n", imp.Path, imp.Alias)
+		fmt.Fprintf(&b, "import %s %q\n", imp.Alias, imp.Path)
 	}
 	for _, pr := range f.Props {
 		fmt.Fprintf(&b, "props %s %s\n", pr.Name, pr.Type.String())
