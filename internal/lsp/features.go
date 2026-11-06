@@ -386,6 +386,13 @@ func blockItems(file *syntax.File) []completionResult {
 				"value, and a number counts from zero. `_` ignores a name you do not need."},
 		},
 		{
+			Label: "switch", Kind: kindKeyword, Detail: "control",
+			InsertText: "switch ",
+			Documentation: &doc{Kind: "markdown", Value: "**switch value { case a, b: … default: … }**\n\n" +
+				"Shows the first arm holding a value equal to the subject. Arms take a comma-separated " +
+				"list of values; `default` shows when none matches. A block adds no box of its own."},
+		},
+		{
 			Label: "formatf", Kind: kindFunction, Detail: "builtin",
 			InsertText: `formatf("", )`,
 			Documentation: &doc{Kind: "markdown", Value: "**formatf(\"Count is %d\", bridge.count)**\n\n" +
@@ -1300,6 +1307,11 @@ func symbolOfBlock(idx lineIndex, blk *syntax.Block, src []byte) symbol {
 		name = "for"
 		if blk.Range != nil {
 			name = "for " + sourceSpan(src, int(blk.RangeAt))
+		}
+	case blk.Kind == syntax.BlockSwitch:
+		name = "switch"
+		if blk.Subject != nil {
+			name = "switch " + sourceSpan(src, int(blk.SubjectAt))
 		}
 	case len(blk.Branches) > 0 && blk.Branches[0].Cond != nil:
 		name = "if " + sourceSpan(src, int(blk.Branches[0].Cond.Pos()))

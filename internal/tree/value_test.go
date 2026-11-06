@@ -113,6 +113,7 @@ func TestRangeLoopForms(t *testing.T) {
 	tr, diag := BuildSource([]byte(`bridge {
 	Rows  []Row
 	Table map[string]string
+	Count int
 }
 type Row { Title string }
 Window {
@@ -132,6 +133,12 @@ Window {
 		for i := range 3 {
 			Text { text: formatf("n%d", i) }
 		}
+		for i := range len(bridge.Rows) {
+			Text { text: formatf("L%d", i) }
+		}
+		for i := range bridge.Count {
+			Text { text: formatf("C%d", i) }
+		}
 	}
 }`), nil)
 	if !diag.Empty() {
@@ -139,6 +146,7 @@ Window {
 	}
 	tr.SetData("Rows", []map[string]any{{"title": "a"}, {"title": "b"}})
 	tr.SetData("Table", map[string]string{"x": "1", "y": "2"})
+	tr.SetData("Count", 2)
 	tr.ApplyExpressions()
 
 	sorted := func() []string {
@@ -146,7 +154,7 @@ Window {
 		sort.Strings(got)
 		return got
 	}
-	want := []string{"#0", "#1", "0:a", "1:b", "a", "b", "n0", "n1", "n2", "x=1", "y=2"}
+	want := []string{"#0", "#1", "0:a", "1:b", "C0", "C1", "L0", "L1", "a", "b", "n0", "n1", "n2", "x=1", "y=2"}
 	if got := sorted(); fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("texts = %v, want %v", got, want)
 	}
@@ -154,7 +162,7 @@ Window {
 	// Setting the map alone rebuilds only the loop that walks it.
 	tr.SetData("Table", map[string]string{"z": "9"})
 	tr.ApplyExpressions()
-	want = []string{"#0", "#1", "0:a", "1:b", "a", "b", "n0", "n1", "n2", "z=9"}
+	want = []string{"#0", "#1", "0:a", "1:b", "C0", "C1", "L0", "L1", "a", "b", "n0", "n1", "n2", "z=9"}
 	if got := sorted(); fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("after a map set: %v, want %v", got, want)
 	}

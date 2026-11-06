@@ -249,6 +249,29 @@ func (p *printer) block(b *syntax.Block) {
 		p.b.WriteString("}\n")
 		return
 	}
+	if b.Kind == syntax.BlockSwitch {
+		p.commentsBefore(b.At)
+		p.indent()
+		p.b.WriteString("switch " + printValue(b.Subject) + " {\n")
+		for _, br := range b.Branches {
+			p.indent()
+			if len(br.Vals) == 0 {
+				p.b.WriteString("default:\n")
+			} else {
+				vals := make([]string, len(br.Vals))
+				for i, v := range br.Vals {
+					vals[i] = printValue(v)
+				}
+				p.b.WriteString("case " + strings.Join(vals, ", ") + ":\n")
+			}
+			p.depth++
+			p.members(br.Members)
+			p.depth--
+		}
+		p.indent()
+		p.b.WriteString("}\n")
+		return
+	}
 	for i, br := range b.Branches {
 		p.indent()
 		switch {

@@ -359,6 +359,41 @@ func TestIfBlockValidation(t *testing.T) {
 	}
 }
 
+// TestSwitchBlockValidation checks what Go rejects about a switch: an arm holds
+// elements, and there is at most one default.
+func TestSwitchBlockValidation(t *testing.T) {
+	bad := map[string]string{
+		"Window {\n\tColumn {\n\t\tswitch app.os {\n\t\tdefault:\n\t\t\tText { text: \"a\" }\n\t\tdefault:\n\t\t\tText { text: \"b\" }\n\t\t}\n\t}\n}": "at most one default",
+		"Window {\n\tColumn {\n\t\tswitch app.os {\n\t\tcase \"x\":\n\t\t\ttext: \"a\"\n\t\t}\n\t}\n}":                                                 "cannot declare the property",
+		"Window {\n\tText {\n\t\tswitch app.os {\n\t\tcase \"x\":\n\t\t\tText { text: \"a\" }\n\t\t}\n\t}\n}":                                          "cannot contain child elements",
+	}
+	for src, want := range bad {
+		_, diag := validate(t, src)
+		if diag.Empty() {
+			t.Errorf("%q was accepted", src)
+			continue
+		}
+		if got := diag.Format("<src>", []byte(src)); !strings.Contains(got, want) {
+			t.Errorf("%q gave %s, want %q", src, got, want)
+		}
+	}
+
+	good := []string{
+		"Window {\n\tColumn {\n\t\tswitch app.os {\n\t\tcase \"linux\", \"darwin\":\n\t\t\tText { text: \"unix\" }\n\t\tdefault:\n\t\t\tText { text: \"other\" }\n\t\t}\n\t}\n}",
+		"Window {\n\tColumn {\n\t\tswitch window.width > 900 ? \"wide\" : \"narrow\" {\n\t\tcase \"wide\":\n\t\t\tText { text: \"a\" }\n\t\t}\n\t}\n}",
+		"Window {\n\tColumn {\n\t\tfor _, row := range bridge.rows {\n\t\t\tswitch row.title {\n\t\t\tcase \"a\":\n\t\t\t\tText { text: row.title }\n\t\t\t}\n\t\t}\n\t}\n}",
+	}
+	for _, src := range good {
+		full := "bridge { rows []row }\ntype row { title string }\n"
+		if !strings.Contains(src, "bridge.rows") {
+			full = ""
+		}
+		if _, diag := validate(t, full+src); !diag.Empty() {
+			t.Errorf("%s: %v", src, diag.Format("<src>", []byte(full+src)))
+		}
+	}
+}
+
 // TestBlockSamplesAreTheShippedDocs guards the examples in the docs site's
 // syntax page: they are what a reader copies, so they must validate. A snippet
 // may be a fragment of a file (the `data` block alone, a Window alone), so the
@@ -390,7 +425,7 @@ func TestBlockSamplesAreTheShippedDocs(t *testing.T) {
 	}
 	for _, block := range blocks {
 		src := block[1]
-		if !strings.Contains(src, "if ") && !strings.Contains(src, "for ") {
+		if !strings.Contains(src, "if ") && !strings.Contains(src, "for ") && !strings.Contains(src, "switch ") {
 			continue
 		}
 		if !strings.Contains(src, "Window") {

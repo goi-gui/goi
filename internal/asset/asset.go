@@ -512,10 +512,16 @@ func walkMembers(members []syntax.Member, props map[string]syntax.Value, from st
 			if v.Kind == syntax.BlockFor && v.Range != nil {
 				v.Range, *diag = substValue(v.Range, props, v.Src, from, *diag)
 			}
+			if v.Kind == syntax.BlockSwitch && v.Subject != nil {
+				v.Subject, *diag = substValue(v.Subject, props, v.Src, from, *diag)
+			}
 			for i := range v.Branches {
 				br := &v.Branches[i]
 				if br.Cond != nil {
 					br.Cond, *diag = substValue(br.Cond, props, v.Src, from, *diag)
+				}
+				for j, val := range br.Vals {
+					br.Vals[j], *diag = substValue(val, props, v.Src, from, *diag)
 				}
 				walkMembers(br.Members, props, from, f, diag, walk)
 			}
@@ -649,11 +655,17 @@ func copyBlock(b *syntax.Block) *syntax.Block {
 		Kind: b.Kind, At: b.At, Close: b.Close, Src: b.Src,
 		KeyVar: b.KeyVar, KeyAt: b.KeyAt, ValVar: b.ValVar, ValAt: b.ValAt,
 		Range: copyValue(b.Range), RangeAt: b.RangeAt,
+		Subject: copyValue(b.Subject), SubjectAt: b.SubjectAt,
 	}
 	out.Branches = make([]syntax.Branch, len(b.Branches))
 	for i, br := range b.Branches {
+		vals := make([]syntax.Value, len(br.Vals))
+		for j, v := range br.Vals {
+			vals[j] = copyValue(v)
+		}
 		out.Branches[i] = syntax.Branch{
 			Cond:    copyValue(br.Cond),
+			Vals:    vals,
 			At:      br.At,
 			Members: copyMembers(br.Members),
 		}

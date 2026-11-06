@@ -75,9 +75,11 @@ Tests that enforce the above: `TestEveryComponentValidates`,
 
 ## Design-file language
 
-- `.goi` is literals only: no loops, no scripting, no conditionals beyond
-  expressions (`app.dark ? "light_mode" : "dark_mode"`). Behaviour belongs in Go.
-- Lists come from a hidden template plus `ui.Instantiate`; there is no `for`.
+- `.goi` has no scripting: `if`/`else`, `for … range` and `switch … case` only
+  choose which children show or repeat, and an expression picks a value
+  (`app.dark ? "light_mode" : "dark_mode"`). Behaviour belongs in Go.
+- A list comes from `for … range` over a bridge slice, whose rows are rebuilt by
+  `ui.SetData`; `ui.Instantiate`/`ui.Fill` are for a fixed set of children.
 - Colours as M3 role names (`primary`, `surfaceContainer`, `onSurfaceVariant`)
   follow the scheme; hex literals are deliberately fixed. Prefer roles.
 - `spacing` and `gap` are the same cell; the only intentional alias.

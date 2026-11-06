@@ -64,14 +64,33 @@ func (t *Tree) SetData(name string, v any) {
 	}
 }
 
-// walks reports whether the loop's range expression names the bridge variable
-// name, so setting that variable rebuilds this loop.
+// walks reports whether the loop's range expression reads the bridge variable
+// name, so setting that variable rebuilds this loop. It looks inside a call, so
+// `range len(bridge.rows)` follows the list it counts.
 func (eb *eachBlock) walks(name string) bool {
-	if eb.src == name {
-		return true
+	return eb.src == name || mentions(eb.rng, name)
+}
+
+// mentions reports whether v reads the bridge or data variable name, however
+// deeply the reference is nested.
+func mentions(v syntax.Value, name string) bool {
+	switch x := v.(type) {
+	case *syntax.Ref:
+		return (x.ID == "bridge" || x.ID == "data") && x.Prop == name
+	case *syntax.Call:
+		for _, a := range x.Args {
+			if mentions(a, name) {
+				return true
+			}
+		}
+	case *syntax.Binary:
+		return mentions(x.Left, name) || mentions(x.Right, name)
+	case *syntax.Unary:
+		return mentions(x.X, name)
+	case *syntax.Ternary:
+		return mentions(x.Cond, name) || mentions(x.Then, name) || mentions(x.Else, name)
 	}
-	ref, ok := eb.rng.(*syntax.Ref)
-	return ok && (ref.ID == "bridge" || ref.ID == "data") && ref.Prop == name
+	return false
 }
 
 // Data returns the current value of a data variable.
@@ -285,8 +304,12 @@ func (t *Tree) rangePairs(eb *eachBlock) ([]rangePair, bool) {
 		}
 		return out, true
 	}
-	if n, isNum := v.(float64); isNum {
-		count := int(n)
+	if n, ok := normalize(v); ok {
+		f, isNum := n.(float64)
+		if !isNum {
+			return nil, false
+		}
+		count := int(f)
 		if count < 0 {
 			count = 0
 		}

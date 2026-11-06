@@ -373,11 +373,31 @@ func (v *validator) walkBlock(blk *syntax.Block, parent string) {
 		v.walkFor(blk, parent)
 		return
 	}
+	if blk.Kind == syntax.BlockSwitch {
+		v.checkSwitch(blk)
+	}
 	for _, br := range blk.Branches {
 		if br.Cond != nil {
 			v.checkCond(br)
 		}
 		v.walkArm(br.Members, parent)
+	}
+}
+
+// checkSwitch rejects what Go rejects about a switch's arms: at most one
+// default. The subject and the case values are ordinary expressions, so their
+// types are left to the comparison at runtime.
+func (v *validator) checkSwitch(blk *syntax.Block) {
+	seenDefault := false
+	for _, br := range blk.Branches {
+		if br.Vals != nil {
+			continue
+		}
+		if seenDefault {
+			v.add(br.At, br.At+1, "a switch has at most one default", "")
+			continue
+		}
+		seenDefault = true
 	}
 }
 
@@ -423,9 +443,13 @@ func (v *validator) checkForRange(blk *syntax.Block) (keyShape, valShape *syntax
 	}
 	ref, ok := blk.Range.(*syntax.Ref)
 	if !ok {
-		switch blk.Range.(type) {
+		switch x := blk.Range.(type) {
 		case *syntax.Number, *syntax.Binary:
 			return nil, nil // `for i := range 5`
+		case *syntax.Call:
+			if x.Name == "len" || x.Name == "cap" {
+				return nil, nil // `for i := range len(bridge.rows)`
+			}
 		}
 		v.add(at, end, "a for loop ranges over a list, a map or a number", "")
 		return nil, nil
@@ -437,6 +461,9 @@ func (v *validator) checkForRange(blk *syntax.Block) (keyShape, valShape *syntax
 			v.add(at, end, fmt.Sprintf("no bridge variable %q", ref.Prop),
 				syntax.Suggest(ref.Prop, varNames(v.file)))
 			return nil, nil
+		}
+		if dv.Type.Kind == syntax.TypeScalar && isNumericType(dv.Type.Name) {
+			return nil, nil // `for i := range bridge.count`
 		}
 		if dv.Type.Kind != syntax.TypeSlice && dv.Type.Kind != syntax.TypeMap {
 			v.add(at, end, fmt.Sprintf("cannot range over bridge.%s: it is %s, not a slice, a map or a number",
@@ -450,6 +477,9 @@ func (v *validator) checkForRange(blk *syntax.Block) (keyShape, valShape *syntax
 			v.add(at, end, fmt.Sprintf("no prop %q", ref.Prop),
 				syntax.Suggest(ref.Prop, declaredPropNames(v.file)))
 			return nil, nil
+		}
+		if pr.Type.Kind == syntax.TypeScalar && isNumericType(pr.Type.Name) {
+			return nil, nil // `for i := range props.count`
 		}
 		if pr.Type.Kind != syntax.TypeSlice && pr.Type.Kind != syntax.TypeMap {
 			v.add(at, end, fmt.Sprintf("cannot range over props.%s: it is %s, not a slice, a map or a number",
@@ -893,9 +923,15 @@ func (v *validator) walkBlockRefs(blk *syntax.Block) {
 		v.walkForRefs(blk)
 		return
 	}
+	if blk.Kind == syntax.BlockSwitch {
+		v.checkRefs(condElement, anyProp, blk.Subject)
+	}
 	for _, br := range blk.Branches {
 		if br.Cond != nil {
 			v.checkRefs(condElement, boolProp, br.Cond)
+		}
+		for _, val := range br.Vals {
+			v.checkRefs(condElement, anyProp, val)
 		}
 		for _, m := range br.Members {
 			switch x := m.(type) {

@@ -110,9 +110,13 @@ func walkValues(body *syntax.Element, fn func(*syntax.Ref)) {
 			case *syntax.Element:
 				members(x.Members)
 			case *syntax.Block:
+				val(x.Subject)
 				for i := range x.Branches {
 					if x.Branches[i].Cond != nil {
 						val(x.Branches[i].Cond)
+					}
+					for _, v := range x.Branches[i].Vals {
+						val(v)
 					}
 					members(x.Branches[i].Members)
 				}

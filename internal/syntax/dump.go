@@ -55,8 +55,27 @@ func dumpBlock(b *strings.Builder, blk *Block, depth int) {
 		if blk.ValVar != "" {
 			names += ", " + blk.ValVar
 		}
-		fmt.Fprintf(b, "%sfor %s := range %s\n", indent, names, dumpValue(blk.Range))
+		if names != "" {
+			names += " := "
+		}
+		fmt.Fprintf(b, "%sfor %srange %s\n", indent, names, dumpValue(blk.Range))
 		dumpMembers(b, blk.Branches[0].Members, depth+1)
+		return
+	}
+	if blk.Kind == BlockSwitch {
+		fmt.Fprintf(b, "%sswitch %s\n", indent, dumpValue(blk.Subject))
+		for _, br := range blk.Branches {
+			if len(br.Vals) == 0 {
+				fmt.Fprintf(b, "%sdefault\n", indent)
+			} else {
+				vals := make([]string, len(br.Vals))
+				for i, v := range br.Vals {
+					vals[i] = dumpValue(v)
+				}
+				fmt.Fprintf(b, "%scase %s\n", indent, strings.Join(vals, ", "))
+			}
+			dumpMembers(b, br.Members, depth+1)
+		}
 		return
 	}
 	for i, br := range blk.Branches {

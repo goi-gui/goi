@@ -218,6 +218,8 @@ const (
 	BlockIf BlockKind = iota
 	// BlockFor is `for i, v := range list { ... }`.
 	BlockFor
+	// BlockSwitch is `switch expr { case a, b: ... default: ... }`.
+	BlockSwitch
 )
 
 // Block is a control block inside an element body. Its arms are built and
@@ -232,7 +234,8 @@ type Block struct {
 	Src string
 	// Branches holds the `if`, `else if` and `else` arms in source order. Only
 	// the last one may have a nil Cond, which is the else arm. A for block has
-	// exactly one arm with a nil Cond.
+	// exactly one arm with a nil Cond; a switch block's arms carry Vals instead,
+	// and its default arm has neither.
 	Branches []Branch
 	// KeyVar, ValVar and Range belong to BlockFor: `for key, val := range X`.
 	// A name is "" when the design did not write it and "_" when it is
@@ -245,13 +248,20 @@ type Block struct {
 	// a number. RangeAt is its position.
 	Range   Value
 	RangeAt Pos
+	// Subject and SubjectAt belong to BlockSwitch: the value every case arm is
+	// compared against.
+	Subject   Value
+	SubjectAt Pos
 }
 
 // Branch is one arm of a block.
 type Branch struct {
 	// Cond is the arm's condition, or nil for `else`.
 	Cond Value
-	// At is the position of the arm's '{'.
+	// Vals are a switch arm's case values, in source order. Nil on the default
+	// arm, and on every arm of an if or a for.
+	Vals []Value
+	// At is the position of the arm's '{', or of its `case`/`default` keyword.
 	At Pos
 	// Members are the arm's properties, elements and blocks, in source order.
 	Members []Member

@@ -90,6 +90,17 @@ Text { text: "light" }
 for i, row := range bridge.rows {
 Button { label: row.title onClick: bridge.onOpen(row.id) }
 }
+for range 3 {
+Rectangle { height: 1 }
+}
+switch bridge.role {
+case "admin", "owner":
+Text { text: "admin" }
+case "guest":
+Text { text: "guest" }
+default:
+Text { text: "member" }
+}
 }
 }
 `
@@ -117,6 +128,27 @@ Window {
 			Button {
 				label:   row.title
 				onClick: bridge.onOpen(row.id)
+			}
+		}
+
+		for range 3 {
+			Rectangle {
+				height: 1
+			}
+		}
+
+		switch bridge.role {
+		case "admin", "owner":
+			Text {
+				text: "admin"
+			}
+		case "guest":
+			Text {
+				text: "guest"
+			}
+		default:
+			Text {
+				text: "member"
 			}
 		}
 	}

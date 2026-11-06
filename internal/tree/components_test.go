@@ -126,6 +126,61 @@ func TestIfBlockTogglesItsArm(t *testing.T) {
 	}
 }
 
+// A switch shows the first arm holding a value equal to its subject, and falls
+// back to default when none does.
+func TestSwitchPicksItsArm(t *testing.T) {
+	src := `bridge { job string }
+Window {
+	Column {
+		switch bridge.job {
+		case "swe", "eee", "fe":
+			Text { id: eng text: "engineer" }
+		case "teacher":
+			Text { id: teach text: "teacher" }
+		default:
+			Text { id: other text: "other" }
+		}
+	}
+}`
+	tr, diag := BuildSource([]byte(src), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	eng, _ := tr.ByID("eng")
+	teach, _ := tr.ByID("teach")
+	other, _ := tr.ByID("other")
+	if eng == nil || teach == nil || other == nil {
+		t.Fatal("an arm was not built")
+	}
+	shown := func() string {
+		tr.ApplyExpressions()
+		switch {
+		case eng.Base().Visible():
+			return "eng"
+		case teach.Base().Visible():
+			return "teach"
+		case other.Base().Visible():
+			return "other"
+		}
+		return ""
+	}
+
+	if got := shown(); got != "other" {
+		t.Fatalf("empty subject showed %q, want the default arm", got)
+	}
+	for job, want := range map[string]string{
+		"eee":     "eng",
+		"fe":      "eng",
+		"teacher": "teach",
+		"doctor":  "other",
+	} {
+		tr.SetData("job", job)
+		if got := shown(); got != want {
+			t.Fatalf("%q showed %q, want %q", job, got, want)
+		}
+	}
+}
+
 // A nested block shows only inside a shown outer arm, and a hidden subtree is
 // skipped by layout, so it takes no space.
 func TestNestedIfBlockNeedsItsOuterArm(t *testing.T) {

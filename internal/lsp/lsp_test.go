@@ -1014,7 +1014,7 @@ func TestCompletionOffersBlockTags(t *testing.T) {
 	}
 
 	inner := labels(at(t, src, "\t\t\t\n\t\t}", 3))
-	if !inner["if"] || !inner["for"] || !inner["formatf"] {
+	if !inner["if"] || !inner["for"] || !inner["switch"] || !inner["formatf"] {
 		t.Fatalf("control statements missing inside a body: %v", inner)
 	}
 	outer := labels(at(t, src, "\t\t\n\t}\n}\n", 2))
@@ -1093,6 +1093,11 @@ Window {
 	Column {
 		for _, r := range bridge.rows {
 			ListItem { label: r.title selected: r.unread }
+
+			switch r.title {
+			case "a":
+				Text { text: "a" }
+			}
 		}
 	}
 }
@@ -1115,7 +1120,16 @@ Window {
 	if each == nil || !strings.Contains(each.Name, "rows") {
 		t.Fatalf("outline has no for loop over bridge.rows: %+v", syms[0].Children[0].Children)
 	}
-	if len(each.Children) != 1 || each.Children[0].Name != "ListItem" {
+	var sw *symbol
+	for i := range each.Children {
+		if strings.HasPrefix(each.Children[i].Name, "switch") {
+			sw = &each.Children[i]
+		}
+	}
+	if sw == nil || !strings.Contains(sw.Name, "r.title") {
+		t.Fatalf("outline has no switch on r.title: %+v", each.Children)
+	}
+	if len(each.Children) != 2 || each.Children[0].Name != "ListItem" {
 		t.Fatalf("each arm children = %+v", each.Children)
 	}
 }

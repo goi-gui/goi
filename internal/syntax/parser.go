@@ -70,6 +70,9 @@ type parser struct {
 	diag Diagnostics
 	// slot records a `$children` marker, which makes the file a fragment.
 	slot bool
+	// caseDepth is non-zero inside a switch arm's member list, where `case` and
+	// `default` end the arm instead of starting a member.
+	caseDepth int
 }
 
 func (p *parser) peek() token  { return p.toks[min(p.i, len(p.toks)-1)] }
@@ -445,6 +448,18 @@ type memberList struct {
 
 // parseMembers reads members until the body's '}'.
 func (p *parser) parseMembers() memberList {
+	// An element or an if/for body is a body of its own: a `case` in there is
+	// not the end of an enclosing switch arm.
+	saved := p.caseDepth
+	p.caseDepth = 0
+	ml := p.parseMemberList()
+	p.caseDepth = saved
+	return ml
+}
+
+// parseMemberList is parseMembers without the case-depth guard, for a switch
+// arm, whose own `case` and `default` do end it.
+func (p *parser) parseMemberList() memberList {
 	var out memberList
 	for {
 		t := p.peek()
@@ -464,6 +479,10 @@ func (p *parser) parseMembers() memberList {
 				out.members = append(out.members, blk)
 			}
 		case tokIdent:
+			if p.caseDepth > 0 && (t.text == "case" || t.text == "default") {
+				out.close = t.pos
+				return out // the switch takes over from here
+			}
 			if p.peek2().kind == tokColon {
 				// `Ident :` is a property, `Ident {` is a child element.
 				prop, ok := p.parseProperty()
@@ -483,6 +502,11 @@ func (p *parser) parseMembers() memberList {
 					out.members = append(out.members, blk)
 				}
 				continue
+			case "switch":
+				if blk := p.parseSwitchBlock(); blk != nil {
+					out.members = append(out.members, blk)
+				}
+				continue
 			}
 			child := p.parseElement()
 			if child != nil {
@@ -493,7 +517,7 @@ func (p *parser) parseMembers() memberList {
 				out.members = append(out.members, slot)
 			}
 		default:
-			p.errorf(t, "expected a property, a child element, if or for")
+			p.errorf(t, "expected a property, a child element, if, for or switch")
 			if !p.recoverMember() {
 				p.next()
 			}
@@ -635,12 +659,105 @@ func (p *parser) parseForBlock() *Block {
 	return blk
 }
 
+// parseSwitchBlock reads Go's switch, with comma-separated case values:
+//
+//	switch bridge.job {
+//	case "swe", "eee":
+//		Text { text: "engineer" }
+//	default:
+//		Text { text: "other" }
+//	}
+func (p *parser) parseSwitchBlock() *Block {
+	kw := p.next() // switch
+	blk := &Block{Kind: BlockSwitch, At: kw.pos, SubjectAt: p.peek().pos}
+	subj, ok := p.parseValue()
+	if !ok {
+		p.sync()
+		return nil
+	}
+	blk.Subject = subj
+	if p.peek().kind != tokLBrace {
+		p.errorf(p.peek(), "expected '{' to open the switch body")
+		p.sync()
+		return nil
+	}
+	p.next()
+
+	for {
+		t := p.peek()
+		switch {
+		case t.kind == tokRBrace:
+			blk.Close = p.next().pos
+			return blk
+		case t.kind == tokEOF:
+			p.errorf(t, "unexpected end of file: missing '}'")
+			blk.Close = t.pos
+			return blk
+		case t.kind == tokIdent && t.text == "case":
+			p.next()
+			br := Branch{At: t.pos}
+			for {
+				v, ok := p.parseValue()
+				if !ok {
+					p.sync()
+					return blk
+				}
+				br.Vals = append(br.Vals, v)
+				if p.peek().kind != tokComma {
+					break
+				}
+				p.next()
+			}
+			if p.peek().kind != tokColon {
+				p.errorf(p.peek(), "expected ':' after a case value")
+				p.sync()
+				return blk
+			}
+			p.next()
+			arm := p.parseArm()
+			br.Members = arm.members
+			blk.Branches = append(blk.Branches, br)
+			if arm.closed {
+				blk.Close = arm.close
+				return blk
+			}
+		case t.kind == tokIdent && t.text == "default":
+			p.next()
+			if p.peek().kind != tokColon {
+				p.errorf(p.peek(), "expected ':' after default")
+				p.sync()
+				return blk
+			}
+			p.next()
+			arm := p.parseArm()
+			blk.Branches = append(blk.Branches, Branch{At: t.pos, Members: arm.members})
+			if arm.closed {
+				blk.Close = arm.close
+				return blk
+			}
+		default:
+			p.errorf(t, "expected case, default or '}' in a switch body")
+			p.sync()
+			return blk
+		}
+	}
+}
+
+// parseArm reads one case arm's members, up to the next `case`, `default` or the
+// switch's closing '}'.
+func (p *parser) parseArm() memberList {
+	p.caseDepth++
+	ml := p.parseMemberList()
+	p.caseDepth--
+	return ml
+}
+
 // parseOldBlock reads the `{#if ...}` / `{#each ...}` spelling, which is gone,
 // and reports it with the Go form that replaces it.
 func (p *parser) parseOldBlock() *Block {
 	open := p.next() // '{'
 	if p.peek().kind != tokHash {
-		p.errorf(open, "unexpected '{': a member is a property, a child element, an if or a for")
+		p.errorf(open, "unexpected '{': a member is a property, a child element, an if, a for or a switch")
 		p.sync()
 		return nil
 	}

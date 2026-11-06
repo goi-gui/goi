@@ -1382,3 +1382,11 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   document the way it notices a new colour, and the rasterizer stays in `ui`
   instead of `tree` learning how SVG is drawn. Neither survives a hot reload,
   which is why both are documented as "call it from Bind".
+- **`switch` is a block like `if`, not a value expression.** Its arms are built
+  with the window and only the chosen one is shown, so a switch costs no layout
+  for the arms it hides, and it nests in an `if` or a `for` the way a reader
+  expects. The subject and the cases are compared at runtime with the same loose
+  equality `==` uses, so `switch bridge.job` follows `SetData` a frame later
+  instead of being read once at build. A case may therefore hold an expression
+  where Go would require a constant; nothing folds duplicate cases, and only
+  `default` is checked for uniqueness because a second one is unreachable.

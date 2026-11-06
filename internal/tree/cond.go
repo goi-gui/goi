@@ -12,6 +12,12 @@ import "github.com/goi-gui/goi/internal/syntax"
 type condBranch struct {
 	conds []syntax.Value
 	arm   int
+	// subject, cases and isSwitch belong to a switch block: every arm compares
+	// the same subject against its own case values, and a nil entry in cases is
+	// the default arm.
+	subject  syntax.Value
+	cases    [][]syntax.Value
+	isSwitch bool
 	// parent is the arm of the enclosing block, if any: a nested {#if} only
 	// shows inside a shown outer arm.
 	parent *condBranch
@@ -27,6 +33,23 @@ type condBranch struct {
 // buildBlock builds every arm of blk into parent and registers it for the
 // per-frame pass.
 func (t *Tree) buildBlock(blk *syntax.Block, parent *NodeBase, hooks *Hooks, outer *condBranch) error {
+	if blk.Kind == syntax.BlockSwitch {
+		cases := make([][]syntax.Value, len(blk.Branches))
+		for i, br := range blk.Branches {
+			cases[i] = br.Vals
+		}
+		for i, br := range blk.Branches {
+			cb := &condBranch{
+				subject: blk.Subject, cases: cases, isSwitch: true,
+				arm: i, parent: outer, scope: t.scope,
+			}
+			t.conds = append(t.conds, cb)
+			if err := t.buildMembers(br.Members, parent, hooks, cb); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	var conds []syntax.Value
 	for _, br := range blk.Branches {
 		if br.Cond != nil {
@@ -82,6 +105,9 @@ func (t *Tree) branchOK(cb *condBranch, done map[*condBranch]bool) bool {
 }
 
 func (t *Tree) chainOK(cb *condBranch) bool {
+	if cb.isSwitch {
+		return t.switchArm(cb) == cb.arm
+	}
 	first := -1
 	for i, cond := range cb.conds {
 		c := evalCtx{tree: t, sc: cb.scope, seen: map[refKey]bool{}}
@@ -92,4 +118,28 @@ func (t *Tree) chainOK(cb *condBranch) bool {
 		}
 	}
 	return first == cb.arm
+}
+
+// switchArm returns the arm a switch subject selects: the first case holding a
+// value equal to it, otherwise the default arm, otherwise -1. Equality is the
+// same loose comparison a `==` in a design uses, so a string case matches a
+// string bridge value and a number case a number.
+func (t *Tree) switchArm(cb *condBranch) int {
+	c := evalCtx{tree: t, sc: cb.scope, seen: map[refKey]bool{}}
+	if subject, ok := c.eval(cb.subject, 0); ok {
+		for i, vals := range cb.cases {
+			for _, v := range vals {
+				vv, ok := c.eval(v, 0)
+				if ok && valuesEqual(subject, vv) {
+					return i
+				}
+			}
+		}
+	}
+	for i, vals := range cb.cases {
+		if vals == nil {
+			return i
+		}
+	}
+	return -1
 }

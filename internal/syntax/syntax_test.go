@@ -551,6 +551,62 @@ func TestParseForForms(t *testing.T) {
 	}
 }
 
+func TestParseSwitchBlock(t *testing.T) {
+	src := `bridge { job string }
+Window {
+	Column {
+		switch bridge.job {
+		case "swe", "eee", "fe":
+			Text { text: "engineer" }
+			Text { text: "builds" }
+		case "teacher":
+			Text { text: "teaches" }
+		default:
+			Text { text: "other" }
+		}
+	}
+}`
+	f, diag := Parse([]byte(src))
+	if !diag.Empty() {
+		t.Fatalf("unexpected diagnostics: %v", diag)
+	}
+	blk, ok := f.Root.Children()[0].Members[0].(*Block)
+	if !ok || blk.Kind != BlockSwitch {
+		t.Fatalf("block = %+v", f.Root.Children()[0].Members[0])
+	}
+	if ref, ok := blk.Subject.(*Ref); !ok || ref.ID != "bridge" || ref.Prop != "job" {
+		t.Fatalf("subject = %#v", blk.Subject)
+	}
+	if len(blk.Branches) != 3 {
+		t.Fatalf("branches = %d", len(blk.Branches))
+	}
+	if first := blk.Branches[0]; len(first.Vals) != 3 || len(first.Members) != 2 {
+		t.Fatalf("first arm = %+v", first)
+	}
+	if def := blk.Branches[2]; def.Vals != nil || len(def.Members) != 1 {
+		t.Fatalf("default arm = %+v", def)
+	}
+}
+
+func TestParseSwitchErrors(t *testing.T) {
+	cases := map[string]string{
+		`Window { Column { switch bridge.job case "x": } }`:    "expected '{' to open the switch body",
+		`Window { Column { switch bridge.job { case "x" } } }`: "expected ':' after a case value",
+		`Window { Column { switch bridge.job { default } } }`:  "expected ':' after default",
+		`Window { Column { switch bridge.job { "x": } } }`:     "expected case, default or '}'",
+	}
+	for src, want := range cases {
+		_, diag := Parse([]byte(src))
+		if diag.Empty() {
+			t.Errorf("%q was accepted", src)
+			continue
+		}
+		if got := diag.Format("<src>", []byte(src)); !strings.Contains(got, want) {
+			t.Errorf("%q gave %s, want %q", src, got, want)
+		}
+	}
+}
+
 func TestParseDataErrors(t *testing.T) {
 	cases := map[string]string{
 		"data { rows [] }\nWindow { }":            "expected a type",
