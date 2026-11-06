@@ -1390,3 +1390,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   instead of being read once at build. A case may therefore hold an expression
   where Go would require a constant; nothing folds duplicate cases, and only
   `default` is checked for uniqueness because a second one is unreachable.
+- **A builtin call is an expression value.** `width: max(120, min(window.width
+  / 3, 480))` was documented and evaluated at runtime, but the validator judged a
+  call by its syntax kind and called it a handler call, so a legitimately
+  responsive design did not pass `goicheck`. A call is now an expression like
+  any other, and in a number position only the builtins that return a number
+  (`len`, `cap`, `min`, `max`) pass, so `width: formatf(…)` stays an error
+  instead of failing silently at runtime.

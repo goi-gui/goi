@@ -394,6 +394,24 @@ func TestSwitchBlockValidation(t *testing.T) {
 	}
 }
 
+// TestBuiltinCallInANumberProperty is the docs bug: `width: max(120, …)` is a
+// number at runtime, so the validator must not call it a handler call.
+func TestBuiltinCallInANumberProperty(t *testing.T) {
+	for _, src := range []string{
+		"Window {\n\tRectangle { width: max(120, min(window.width / 3, 480)) }\n}",
+		"Window {\n\tRectangle { height: min(80, window.height) }\n}",
+	} {
+		if _, diag := validate(t, src); !diag.Empty() {
+			t.Errorf("%s: %v", src, diag.Format("<src>", []byte(src)))
+		}
+	}
+	// A handler call is still not a number.
+	src := "bridge {\nonOpen func()\n}\nWindow {\n\tRectangle { width: bridge.onOpen() }\n}"
+	if _, diag := validate(t, src); diag.Empty() {
+		t.Error("a handler call was accepted as a width")
+	}
+}
+
 // TestBlockSamplesAreTheShippedDocs guards the examples in the docs site's
 // syntax page: they are what a reader copies, so they must validate. A snippet
 // may be a fragment of a file (the `data` block alone, a Window alone), so the

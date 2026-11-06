@@ -767,6 +767,14 @@ func (v *validator) checkNumeric(e *syntax.Element, pd *Prop, val syntax.Value) 
 		return true
 	case *syntax.Ref:
 		return true // the target is checked in walkRefs, after every id exists
+	case *syntax.Call:
+		// `width: max(120, window.width / 3)` is a number at runtime; formatf
+		// builds a string, so it is not one here.
+		switch x.Name {
+		case "len", "cap", "min", "max":
+			return true
+		}
+		return false
 	case *syntax.Binary, *syntax.Unary, *syntax.Ternary:
 		if valueHasPercent(val) {
 			if pd.Name != "width" && pd.Name != "height" {
@@ -804,7 +812,9 @@ func typeName(t ValueType) string { return t.String() }
 // isExprValue reports whether a value is computed rather than a literal.
 func isExprValue(v syntax.Value) bool {
 	switch v.(type) {
-	case *syntax.Ref, *syntax.Binary, *syntax.Unary, *syntax.Ternary:
+	// A builtin call is a value too: `width: max(120, min(window.width / 3, 480))`
+	// is evaluated at runtime like any other expression.
+	case *syntax.Ref, *syntax.Binary, *syntax.Unary, *syntax.Ternary, *syntax.Call:
 		return true
 	}
 	return false
