@@ -112,6 +112,15 @@ func printInner(v syntax.Value) string {
 		return x.Op + printPrec(x.X, precUnary)
 	case *syntax.Ternary:
 		return printPrec(x.Cond, precOr) + " ? " + printPrec(x.Then, precTernary) + " : " + printPrec(x.Else, precTernary)
+	case *syntax.Shadow:
+		if len(x.Layers) == 0 {
+			return "none"
+		}
+		parts := make([]string, len(x.Layers))
+		for i, l := range x.Layers {
+			parts[i] = printShadowLayer(l)
+		}
+		return strings.Join(parts, ", ")
 	}
 	return ""
 }
@@ -138,4 +147,24 @@ func quote(s string) string {
 	}
 	b.WriteByte('"')
 	return b.String()
+}
+
+// printShadowLayer writes one shadow the way CSS writes it, omitting the parts
+// the design left out.
+func printShadowLayer(l syntax.ShadowLayer) string {
+	num := func(v float64) string { return strconv.FormatFloat(v, 'g', -1, 64) }
+	parts := []string{num(l.X), num(l.Y)}
+	if l.Blur != 0 || l.Spread != 0 {
+		parts = append(parts, num(l.Blur))
+		if l.Spread != 0 {
+			parts = append(parts, num(l.Spread))
+		}
+	}
+	if l.Color != nil {
+		parts = append(parts, printInner(l.Color))
+	}
+	if l.Inset {
+		parts = append(parts, "inset")
+	}
+	return strings.Join(parts, " ")
 }

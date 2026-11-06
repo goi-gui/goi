@@ -1,11 +1,13 @@
 package syntax
 
+import "bytes"
+
 // Parse parses src into a File. It always returns as many diagnostics as it can
 // find; File is nil when nothing parseable was produced (no root element).
 func Parse(src []byte) (*File, Diagnostics) {
 	lx := newLexer(src)
 	toks, diag := lx.run()
-	p := &parser{toks: toks, diag: diag}
+	p := &parser{toks: toks, diag: diag, src: src}
 	f := p.parseFile()
 	if f == nil {
 		return nil, p.diag
@@ -65,6 +67,7 @@ func markSrcIn(members []Member, src string) {
 }
 
 type parser struct {
+	src  []byte // the same source the lexer read, for line-aware literals
 	toks []token
 	i    int
 	diag Diagnostics
@@ -811,7 +814,13 @@ func (p *parser) parseProperty() (*Property, bool) {
 	prop := &Property{Name: name.text, NameAt: name.pos}
 	p.next() // ':'
 
-	v, ok := p.parseValue()
+	var v Value
+	var ok bool
+	if name.text == "shadow" {
+		v, ok = p.parseShadowValue()
+	} else {
+		v, ok = p.parseValue()
+	}
 	if !ok {
 		p.sync()
 		return nil, false
@@ -824,6 +833,113 @@ func (p *parser) parseProperty() (*Property, bool) {
 		p.next()
 	}
 	return prop, true
+}
+
+// sameLine reports whether a token at pos starts on the line the previous token
+// ended on. A shadow is the one literal written as juxtaposed tokens, and
+// newlines are not tokens, so without this it would swallow the next member.
+func (p *parser) sameLine(pos Pos) bool {
+	if p.i == 0 {
+		return true
+	}
+	last := int(p.toks[p.i-1].end)
+	if last > int(pos) {
+		return true
+	}
+	return !bytes.ContainsRune(p.src[last:int(pos)], '\n')
+}
+
+// parseShadowValue reads a shadow list, or `none` for no shadow at all.
+func (p *parser) parseShadowValue() (Value, bool) {
+	if t := p.peek(); t.kind == tokIdent && t.text == "none" {
+		p.next()
+		return &Shadow{At: t.pos}, true
+	}
+	return p.parseShadow()
+}
+
+// parseShadow reads one or more CSS-style shadows, separated by commas:
+//
+//	x y [blur [spread]] [color] [inset]
+func (p *parser) parseShadow() (Value, bool) {
+	sh := &Shadow{At: p.peek().pos}
+	for {
+		layer, ok := p.parseShadowLayer()
+		if !ok {
+			return nil, false
+		}
+		sh.Layers = append(sh.Layers, layer)
+		if p.peek().kind != tokComma {
+			break
+		}
+		p.next()
+	}
+	return sh, true
+}
+
+// parseShadowLayer reads one shadow. The two offsets are required; blur, spread,
+// colour and the `inset` keyword are optional, in that order, as in CSS.
+func (p *parser) parseShadowLayer() (ShadowLayer, bool) {
+	layer := ShadowLayer{At: p.peek().pos}
+	x, ok := p.shadowNumber()
+	if !ok {
+		p.errorf(p.peek(), "a shadow starts with two offsets: `x y`, then an optional blur, spread, colour and inset")
+		return layer, false
+	}
+	y, ok := p.shadowNumber()
+	if !ok {
+		p.errorf(p.peek(), "a shadow needs a second offset: `x y`")
+		return layer, false
+	}
+	layer.X, layer.Y = x, y
+	if n, ok := p.shadowNumber(); ok {
+		layer.Blur = n
+		if m, ok := p.shadowNumber(); ok {
+			layer.Spread = m
+		}
+	}
+	if t := p.peek(); p.sameLine(t.pos) {
+		switch t.kind {
+		case tokColor:
+			p.next()
+			layer.Color = &Color{At: t.pos, RGBA: t.rgba}
+		case tokIdent:
+			p.next()
+			if t.text == "inset" {
+				layer.Inset = true
+			} else {
+				layer.Color = &Ident{At: t.pos, Val: t.text}
+			}
+		}
+	}
+	if t := p.peek(); t.kind == tokIdent && t.text == "inset" && p.sameLine(t.pos) {
+		p.next()
+		layer.Inset = true
+	}
+	return layer, true
+}
+
+// shadowNumber reads one number of a shadow, including a negative offset. A
+// `-` after a value is the subtraction operator everywhere else, so it is read
+// here explicitly.
+func (p *parser) shadowNumber() (float64, bool) {
+	t := p.peek()
+	if !p.sameLine(t.pos) {
+		return 0, false
+	}
+	if t.kind == tokNumber {
+		p.next()
+		return t.num, true
+	}
+	if t.kind == tokMinus {
+		n := p.peek2()
+		if n.kind == tokNumber && p.sameLine(n.pos) {
+			p.next()
+			p.next()
+			return -n.num, true
+		}
+	}
+	return 0, false
 }
 
 func (p *parser) parseValue() (Value, bool) {

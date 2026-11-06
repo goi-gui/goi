@@ -2073,6 +2073,17 @@ func propDoc(el string, p schema.Prop) string {
 	case "maxWidth", "maxHeight":
 		b.WriteString("\n\nThe largest the element may lay out, and on `Window` the largest the user " +
 			"may drag the native window. `-1` means no limit.")
+	case "shadow":
+		where := "the element's box, like CSS `box-shadow`"
+		if el == "Text" {
+			where = "the glyphs, like CSS `text-shadow`"
+		}
+		b.WriteString("\n\nShadows " + where + ":\n\n" +
+			"`x y [blur [spread]] [color] [inset]`, and several comma separated. " +
+			"`x y` is the offset, `blur` softens the edge, `spread` grows the shape " +
+			"(box only), and `inset` paints inside it. A colour is a `#rrggbb` " +
+			"literal, a theme role, or left out for the scheme's shadow. " +
+			"`shadow: none` removes it.")
 	}
 	if p.Name == "template" {
 		b.WriteString("\n\nMarks a hidden row prototype: it is hidden when the tree is built, " +

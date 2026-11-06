@@ -15,8 +15,10 @@ type Tree struct {
 	responsive []*NodeBase
 	// exprNodes lists the nodes with at least one expression property.
 	exprNodes []*NodeBase
-	// colorNodes lists the nodes with at least one role-valued color.
-	colorNodes []*NodeBase
+	// colorNodes lists the nodes with at least one role-valued color, and
+	// shadowNodes the ones whose shadow names a role.
+	colorNodes  []*NodeBase
+	shadowNodes []*NodeBase
 	// viewW and viewH are the last viewport in logical pixels, so an expression
 	// can read window.width and window.height.
 	viewW, viewH float64

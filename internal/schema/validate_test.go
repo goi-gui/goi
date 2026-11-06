@@ -253,6 +253,8 @@ func plainValue(pd Prop) syntax.Value {
 		if len(pd.Enum) > 0 {
 			return &syntax.Ident{Val: pd.Enum[0]}
 		}
+	case TypeShadow:
+		return &syntax.Shadow{Layers: []syntax.ShadowLayer{{X: 1, Y: 1}}}
 	}
 	return &syntax.Ident{Val: "start"}
 }

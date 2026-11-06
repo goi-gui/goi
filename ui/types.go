@@ -41,6 +41,10 @@ type Node = tree.Node
 // Rect is a layout rectangle in logical pixels.
 type Rect = tree.Rect
 
+// Shadow is one shadow layer, the same value `shadow:` writes: an offset, an
+// optional blur and spread, a colour and whether it paints inside the shape.
+type Shadow = tree.ShadowLayer
+
 // Theme is a complete Material 3 colour scheme. Start from LightTheme or
 // DarkTheme and change the roles you want, then register it with WithTheme.
 type Theme = m3.Theme

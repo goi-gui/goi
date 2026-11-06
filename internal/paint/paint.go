@@ -67,6 +67,17 @@ type Op struct {
 
 	// Blur is the shadow falloff in logical pixels.
 	Blur float32
+	// Inset draws the shadow inside the shape instead of behind it, the way
+	// CSS `box-shadow: … inset` does. OffsetX/OffsetY and Spread are only read
+	// for an inset shadow.
+	Inset   bool
+	OffsetX float32
+	OffsetY float32
+	Spread  float32
+
+	// TextShadows are drawn behind a text run's glyphs, one offset copy per
+	// layer. They are ignored by every other kind.
+	TextShadows []tree.ShadowLayer
 
 	// Arc fields, in radians, 0 at 12 o'clock and growing clockwise.
 	StartAngle float32
@@ -148,23 +159,7 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 	empty := br.W <= 0 || br.H <= 0
 
 	if !empty {
-		if c, ok := b.Node().(componentNode); ok {
-			l.paintComponent(c.M3(), r, clip)
-		} else if b.Background() != 0 || b.BorderWidth() > 0 {
-			l.fillRect(r, b.Background(), b.Radius(), b.BorderColor(), b.BorderWidth(), clip)
-		}
-	}
-
-	if !empty {
-		if t, ok := b.Node().(*tree.Text); ok {
-			l.paintText(t, r, clip)
-		}
-		if im, ok := b.Node().(*tree.Image); ok {
-			l.paintImage(im, r, clip)
-		}
-		if s, ok := b.Node().(*tree.SVG); ok {
-			l.paintSVG(s, r, clip)
-		}
+		l.paintContent(b, r, clip)
 	}
 	inner := b.ContentBox(r)
 	childClip := clip
@@ -194,22 +189,7 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 	empty := bounds.W <= 0 || bounds.H <= 0
 
 	if !empty {
-		if c, ok := b.Node().(componentNode); ok {
-			l.paintComponent(c.M3(), r, clip)
-		} else if b.Background() != 0 || b.BorderWidth() > 0 {
-			l.fillRect(r, b.Background(), b.Radius(), b.BorderColor(), b.BorderWidth(), clip)
-		}
-	}
-	if !empty {
-		if t, ok := b.Node().(*tree.Text); ok {
-			l.paintText(t, r, clip)
-		}
-		if im, ok := b.Node().(*tree.Image); ok {
-			l.paintImage(im, r, clip)
-		}
-		if s, ok := b.Node().(*tree.SVG); ok {
-			l.paintSVG(s, r, clip)
-		}
+		l.paintContent(b, r, clip)
 	}
 
 	inner := b.ContentBox(r)
@@ -227,6 +207,36 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 	}
 	l.paintScrollbar(b, r, inner, clip)
 	l.roundClip(b, r, from)
+}
+
+// paintContent draws one node's own visuals: its shadow, its fill and its
+// text, image or SVG. Children are the caller's job, because they need the
+// clip and the scroll offset.
+func (l *List) paintContent(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
+	// Text shadows its glyphs, not its box, so it opts out of the box shadow.
+	_, isText := b.Node().(*tree.Text)
+	if !isText {
+		l.paintBoxShadows(b, r, clip, false)
+	}
+	if c, ok := b.Node().(componentNode); ok {
+		l.paintComponent(c.M3(), r, clip)
+	} else if b.Background() != 0 || b.BorderWidth() > 0 {
+		l.fillRect(r, b.Background(), b.Radius(), b.BorderColor(), b.BorderWidth(), clip)
+	}
+	if !isText {
+		// An inset shadow belongs on top of the fill and below the content, the
+		// way CSS paints it inside the padding box.
+		l.paintBoxShadows(b, r, clip, true)
+	}
+	if t, ok := b.Node().(*tree.Text); ok {
+		l.paintText(t, r, clip)
+	}
+	if im, ok := b.Node().(*tree.Image); ok {
+		l.paintImage(im, r, clip)
+	}
+	if s, ok := b.Node().(*tree.SVG); ok {
+		l.paintSVG(s, r, clip)
+	}
 }
 
 // roundClip rounds the clip of every op a subtree produced, which is what a

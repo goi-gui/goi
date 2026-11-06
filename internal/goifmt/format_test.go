@@ -196,3 +196,28 @@ func TestFormatKeepsBrokenSource(t *testing.T) {
 		t.Fatalf("a broken file was rewritten:\n%s", got)
 	}
 }
+
+// TestFormatShadow keeps the CSS-style literal on one line and stable.
+func TestFormatShadow(t *testing.T) {
+	src := `Window {
+		Text {
+			text: "x"
+			shadow: 2 2 5 #FF0000, -2 -2 5 primary, 0 0 8 #000000 inset
+		}
+	}
+`
+	want := `Window {
+	Text {
+		text:   "x"
+		shadow: 2 2 5 #ff0000, -2 -2 5 primary, 0 0 8 #000000 inset
+	}
+}
+`
+	got := string(Source([]byte(src)))
+	if got != want {
+		t.Fatalf("format:\n%s\n--- want ---\n%s", got, want)
+	}
+	if again := string(Source([]byte(got))); again != got {
+		t.Fatalf("not idempotent:\n%s", again)
+	}
+}

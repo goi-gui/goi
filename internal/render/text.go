@@ -31,8 +31,9 @@ type textRenderer struct {
 
 	// quads holds this frame's glyphs, and spans maps a text op index to its
 	// slice of them. Both are reused between frames.
-	quads []glyphQuad
-	spans []glyphSpan
+	quads  []glyphQuad
+	spans  []glyphSpan
+	placed []placedGlyph
 
 	gpu *GPU // back-reference for buffers and the atlas library
 }
@@ -46,6 +47,15 @@ type glyphQuad struct {
 	clip    [4]float32
 	clipBox [4]float32
 	clipR   float32
+	// blur is the text-shadow softness in atlas texels; 0 is a solid glyph.
+	blur float32
+}
+
+// placedGlyph is one glyph's quad and atlas slot, before the shadow copies are
+// derived from it.
+type placedGlyph struct {
+	rect [4]float32
+	slot image.Rectangle
 }
 
 // glyphSpan is a text op's range inside textRenderer.quads.
@@ -159,26 +169,51 @@ func (t *textRenderer) shapeOp(op paint.Op, atlas *text.Atlas) int {
 	clip := clipVec(op.Clip)
 	clipBox := clipVec(op.ClipBox)
 
-	n := 0
+	placed := t.placed[:0]
 	for _, gl := range out.Glyphs {
 		if slot, ok := atlas.Slot(face, uint16(gl.GlyphID)); ok {
 			x := math.Round((penX+float64(slot.Offset.X)/scale)*scale) / scale
 			y := (penY + float64(slot.Offset.Y)) / scale
 			w := float64(slot.Rect.Dx()) / scale
 			h := float64(slot.Rect.Dy()) / scale
-			t.quads = append(t.quads, glyphQuad{
-				rect:    [4]float32{float32(x), float32(y), float32(w), float32(h)},
-				slot:    slot.Rect,
-				color:   col,
-				clip:    clip,
-				clipBox: clipBox,
-				clipR:   op.ClipRadius,
+			placed = append(placed, placedGlyph{
+				rect: [4]float32{float32(x), float32(y), float32(w), float32(h)},
+				slot: slot.Rect,
 			})
-			n++
 		}
 		penX += float64(gl.Advance) / 64 / scale
 	}
-	return n
+	t.placed = placed
+
+	// A text shadow is the whole run offset, painted before the glyphs so the
+	// glyphs sit on top, exactly as CSS paints text-shadow.
+	for _, sh := range op.TextShadows {
+		dx, dy := float32(sh.X), float32(sh.Y)
+		scol := rgba(sh.Color)
+		blur := float32(sh.Blur * scale)
+		for _, p := range placed {
+			t.quads = append(t.quads, glyphQuad{
+				rect:    [4]float32{p.rect[0] + dx, p.rect[1] + dy, p.rect[2], p.rect[3]},
+				slot:    p.slot,
+				color:   scol,
+				clip:    clip,
+				clipBox: clipBox,
+				clipR:   op.ClipRadius,
+				blur:    blur,
+			})
+		}
+	}
+	for _, p := range placed {
+		t.quads = append(t.quads, glyphQuad{
+			rect:    p.rect,
+			slot:    p.slot,
+			color:   col,
+			clip:    clip,
+			clipBox: clipBox,
+			clipR:   op.ClipRadius,
+		})
+	}
+	return len(placed) + len(op.TextShadows)*len(placed)
 }
 
 // emit appends the quads prepared for op i, in display-list order.
@@ -197,7 +232,7 @@ func (t *textRenderer) emit(i int) {
 			// kind 4 is a glyph quad: params.zw is the UV origin, misc.xy is
 			// the UV far corner and misc.z the rounded clip.
 			Params: [4]float32{
-				4, 0,
+				4, q.blur,
 				float32(q.slot.Min.X) / float32(t.atlasW),
 				float32(q.slot.Min.Y) / float32(t.atlasH),
 			},

@@ -392,6 +392,14 @@ func (t *Tree) prune() {
 	}
 	t.colorNodes = keepColors
 
+	keepShadows := t.shadowNodes[:0]
+	for _, b := range t.shadowNodes {
+		if live(b) {
+			keepShadows = append(keepShadows, b)
+		}
+	}
+	t.shadowNodes = keepShadows
+
 	// An {#each} inside a rebuilt row is gone with the row: a new one was built
 	// while the rows were made.
 	keepEachs := t.eachs[:0]

@@ -22,7 +22,9 @@ import (
 //	kind 1: filled circle
 //	kind 2: ring or arc (thickness in misc, sweep in params.zw)
 //	kind 3: drop shadow (rounded rect with a soft falloff)
-//	kind 4: glyph quad sampling the atlas (text and icons)
+//	kind 4: glyph quad sampling the atlas (text and icons), optionally blurred
+//	kind 5: bitmap
+//	kind 6: inset shadow (a soft band inside a rounded rect)
 const shaderWGSL = `
 struct Instance {
 	rect: vec4f,    // x, y, w, h in logical pixels
@@ -131,6 +133,28 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 	let aa = 0.5 / max(viewport.size.z, 1.0);
 	let kind = in.params.x;
 
+	if (kind > 5.5) {
+		// Inset shadow: a soft band inside the shape. Spread shrinks the hole,
+		// the offset moves it, and the signed distance to the hole decides the
+		// band, so the shadow fades inward from the edge exactly as CSS paints
+		// an inset box-shadow.
+		let blur = max(in.params.y, 0.5);
+		let spread = in.misc.w;
+		let hole = in.size - vec2f(2.0 * spread);
+		let holeC = in.local - in.size * 0.5 - vec2f(in.params.z, in.params.w);
+		let hr = max(corner_radius(in.radius, in.local, in.size) - spread, 0.0);
+		let dh = sd_round_rect(holeC, hole, hr);
+		// Outside the hole is where the shadow is: dh >= 0, and the edge of the
+		// hole is the darkest point before the fade inward.
+		let cov = smoothstep(-blur, 0.0, dh);
+		if (cov <= 0.0) { discard; }
+		// Keep the band inside the shape itself.
+		let dr = sd_round_rect(in.local, in.size, corner_radius(in.radius, in.local, in.size));
+		let inside = 1.0 - smoothstep(-aa, aa, dr);
+		if (inside <= 0.0) { discard; }
+		return vec4f(in.color.rgb, in.color.a * cov * inside);
+	}
+
 	if (kind > 4.5) {
 		// Bitmap: the image atlas holds straight RGBA. params.y is the corner
 		// radius, so a rounded Image is cropped rather than drawn as a box.
@@ -144,9 +168,31 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 	}
 
 	if (kind > 3.5) {
-		// Glyph: the atlas holds one coverage value per texel.
-		let a = textureSample(atlas, samp, in.uv).r;
-		return vec4f(in.color.rgb, in.color.a * a);
+		// Glyph: the atlas holds one coverage value per texel. A text shadow
+		// wants that coverage blurred, which is a small disc of taps; a plain
+		// glyph takes the single sample it always did.
+		let blur = in.params.y;
+		if (blur <= 0.0) {
+			let a = textureSample(atlas, samp, in.uv).r;
+			return vec4f(in.color.rgb, in.color.a * a);
+		}
+		let texel = vec2f(1.0) / vec2f(textureDimensions(atlas));
+		let step = texel * blur;
+		// Clamped to the glyph's own slot: the atlas packs neighbours tightly,
+		// so a tap that wandered outside would ghost the next glyph in.
+		let uvMin = in.params.zw;
+		let uvMax = in.misc.xy;
+		var acc = 0.0;
+		// Two rings plus the centre: enough for a readable soft edge without a
+		// second pass or a mip chain.
+		for (var i = 0; i < 8; i = i + 1) {
+			let ang = f32(i) * PI / 4.0;
+			let dir = vec2f(cos(ang), sin(ang));
+			acc = acc + textureSample(atlas, samp, clamp(in.uv + dir * step * 0.55, uvMin, uvMax)).r;
+			acc = acc + textureSample(atlas, samp, clamp(in.uv + dir * step, uvMin, uvMax)).r;
+		}
+		acc = acc / 16.0;
+		return vec4f(in.color.rgb, in.color.a * acc);
 	}
 
 	if (kind > 2.5) {
@@ -554,13 +600,18 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 				Misc:    [4]float32{op.Thickness, 0, op.ClipRadius, 0},
 			})
 		case paint.Shadow:
+			kind := float32(3)
+			if op.Inset {
+				kind = 6
+			}
 			g.instances = append(g.instances, gpuInstance{
 				Rect:    snapRect(op.Rect, g.scale),
 				Radius:  op.Radius,
 				Color:   rgba(op.Color),
 				Clip:    clipVec(op.Clip),
 				ClipBox: clipVec(op.ClipBox),
-				Params:  [4]float32{3, op.Blur, 0, 0},
+				Params:  [4]float32{kind, op.Blur, op.OffsetX, op.OffsetY},
+				Misc:    [4]float32{0, 0, op.ClipRadius, op.Spread},
 			})
 		case paint.Text:
 			if g.text != nil {

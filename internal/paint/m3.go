@@ -1652,7 +1652,16 @@ func (l *List) paintText(t *tree.Text, r tree.Rect, clip tree.Rect) {
 				})
 			}
 		}
+		before := len(l.Ops)
 		l.textIn(line.Text, st, color, box, align, clip)
+		// Text draws its own shadow: each layer is an offset copy of the glyphs,
+		// softened by Blur. An inset layer has no meaning for a glyph run, so it
+		// is skipped rather than drawn as a box.
+		if len(l.Ops) > before {
+			if shadows := l.textShadows(t); len(shadows) > 0 {
+				l.Ops[len(l.Ops)-1].TextShadows = shadows
+			}
+		}
 	}
 }
 
@@ -1686,4 +1695,19 @@ func textWidth(l *List, s string, st m3.TextStyle) float64 {
 		return l.Measure(s, st.Size, st.Weight)
 	}
 	return float64(len([]rune(s))) * st.Size * 0.55
+}
+
+// textShadows returns the layers a Text run draws, without the inset ones: CSS
+// text-shadow has no inset keyword.
+func (l *List) textShadows(t *tree.Text) []tree.ShadowLayer {
+	all := t.Base().Shadow()
+	out := make([]tree.ShadowLayer, 0, len(all))
+	for _, s := range all {
+		if s.Inset {
+			continue
+		}
+		s.Color = shadowColor(s, l.Theme)
+		out = append(out, s)
+	}
+	return out
 }

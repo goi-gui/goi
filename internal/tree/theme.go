@@ -78,5 +78,11 @@ func (t *Tree) ResolveColors(lookup func(string) (uint32, bool)) bool {
 			}
 		}
 	}
+	for _, b := range t.shadowNodes {
+		if b.resolveShadows(lookup) {
+			b.mark(DirtyPaint)
+			changed = true
+		}
+	}
 	return changed
 }

@@ -395,10 +395,11 @@ const (
 	UnaryKind
 	TernaryKind
 	CallKind
+	ShadowKind
 )
 
 // Value is a property literal. The concrete type is one of *String,
-// *Number, *Bool, *Color, *Ident, *Map, *Percent, *Ref or *Binary.
+// *Number, *Bool, *Color, *Ident, *Map, *Percent, *Ref, *Binary or *Shadow.
 type Value interface {
 	Kind() ValueKind
 	Pos() Pos
@@ -490,6 +491,31 @@ type Unary struct {
 	X  Value
 }
 
+// Shadow is the value of a `shadow:` property: one or more layers separated by
+// commas. It is written the way CSS writes a shadow, without quotes:
+//
+//	shadow: 2 2 5 primary, 0 0 8 #FF0000 inset
+//
+// A layer is `x y [blur [spread]] [color] [inset]`, so the examples in the docs
+// read exactly like the CSS it borrows from.
+type Shadow struct {
+	At     Pos
+	Layers []ShadowLayer
+}
+
+// ShadowLayer is one shadow in a Shadow value. Zero Blur is a hard edge, zero
+// Spread keeps the shape's size, and a nil Color means the theme's shadow
+// colour.
+type ShadowLayer struct {
+	At           Pos
+	X, Y         float64
+	Blur, Spread float64
+	Color        Value // *Color or *Ident; nil for the theme's shadow colour
+	// Inset is the trailing keyword: the shadow is drawn inside the shape, the
+	// way CSS box-shadow paints it.
+	Inset bool
+}
+
 // Ternary is `cond ? then : else`.
 type Ternary struct {
 	At         Pos
@@ -511,6 +537,7 @@ func (b *Binary) Kind() ValueKind  { return BinaryKind }
 func (u *Unary) Kind() ValueKind   { return UnaryKind }
 func (t *Ternary) Kind() ValueKind { return TernaryKind }
 func (c *Call) Kind() ValueKind    { return CallKind }
+func (s *Shadow) Kind() ValueKind  { return ShadowKind }
 
 // Pos implementations.
 
@@ -526,3 +553,4 @@ func (b *Binary) Pos() Pos  { return b.At }
 func (u *Unary) Pos() Pos   { return u.At }
 func (t *Ternary) Pos() Pos { return t.At }
 func (c *Call) Pos() Pos    { return c.At }
+func (s *Shadow) Pos() Pos  { return s.At }

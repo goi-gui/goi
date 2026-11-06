@@ -68,6 +68,10 @@ type NodeBase struct {
 	background                                           Prop[uint32]
 	borderColor                                          Prop[uint32]
 	radius                                               Prop[float64]
+	// shadow is the CSS-style shadow list. It paints outside the layout box, so
+	// a change only repaints; Text draws it behind its glyphs and every other
+	// node draws it around its box.
+	shadow ShadowProp
 
 	node   Node
 	props  []NamedProp
@@ -89,6 +93,9 @@ type NodeBase struct {
 	// scheme changes.
 	colors      []colorSpec
 	colorListed bool
+	// shadowListed marks a node whose shadow has a role colour, so the frame
+	// loop resolves it with the rest of the theme.
+	shadowListed bool
 	// scope binds the {#each} loop variables an expression inside this subtree
 	// may read.
 	scope *scope
@@ -247,6 +254,31 @@ func (b *NodeBase) BorderColor() uint32 { return b.borderColor.Get() }
 
 // Radius returns the corner radius.
 func (b *NodeBase) Radius() float64 { return b.radius.Get() }
+
+// Shadow returns the node's shadow layers, in paint order.
+func (b *NodeBase) Shadow() []ShadowLayer { return b.shadow.layers }
+
+// SetShadow replaces the node's shadows with the same layers a `.goi` file
+// writes. A role colour is resolved per frame, so it still follows the theme.
+//
+// Call it from Bind: a hot reload rebuilds the nodes, and the design's own value
+// wins again.
+func (b *NodeBase) SetShadow(layers ...ShadowLayer) {
+	b.shadow.set(layers)
+	b.shadow.goSet = true
+	if b.shadow.hasRole() {
+		b.listShadow()
+	}
+	b.mark(DirtyPaint)
+}
+
+// ClearShadow removes every shadow.
+func (b *NodeBase) ClearShadow() {
+	if len(b.shadow.layers) == 0 {
+		return
+	}
+	b.SetShadow()
+}
 
 // Dirty reports the pending work kind and whether any work is pending.
 func (b *NodeBase) Dirty() (DirtyKind, bool) { return b.kind, b.dirty }

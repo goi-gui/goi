@@ -68,6 +68,21 @@ func LiteralEqual(a, b syntax.Value) bool {
 			}
 		}
 		return true
+	case *syntax.Shadow:
+		y, ok := b.(*syntax.Shadow)
+		if !ok || len(x.Layers) != len(y.Layers) {
+			return false
+		}
+		for i := range x.Layers {
+			p, q := x.Layers[i], y.Layers[i]
+			if p.X != q.X || p.Y != q.Y || p.Blur != q.Blur || p.Spread != q.Spread || p.Inset != q.Inset {
+				return false
+			}
+			if !LiteralEqual(p.Color, q.Color) {
+				return false
+			}
+		}
+		return true
 	}
 	return false
 }

@@ -99,6 +99,15 @@ func dumpMembers(b *strings.Builder, members []Member, depth int) {
 
 func dumpValue(v Value) string {
 	switch v := v.(type) {
+	case *Shadow:
+		if len(v.Layers) == 0 {
+			return "none"
+		}
+		parts := make([]string, len(v.Layers))
+		for i, l := range v.Layers {
+			parts[i] = dumpShadowLayer(l)
+		}
+		return strings.Join(parts, ", ")
 	case *String:
 		return strconv.Quote(v.Val)
 	case *Number:
@@ -140,4 +149,23 @@ func dumpValue(v Value) string {
 		return "{ " + strings.Join(parts, ", ") + " }"
 	}
 	return "?"
+}
+
+// dumpShadowLayer writes one shadow in its CSS spelling.
+func dumpShadowLayer(l ShadowLayer) string {
+	num := func(v float64) string { return strconv.FormatFloat(v, 'g', -1, 64) }
+	parts := []string{num(l.X), num(l.Y)}
+	if l.Blur != 0 || l.Spread != 0 {
+		parts = append(parts, num(l.Blur))
+		if l.Spread != 0 {
+			parts = append(parts, num(l.Spread))
+		}
+	}
+	if l.Color != nil {
+		parts = append(parts, dumpValue(l.Color))
+	}
+	if l.Inset {
+		parts = append(parts, "inset")
+	}
+	return strings.Join(parts, " ")
 }

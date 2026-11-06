@@ -21,6 +21,8 @@ const (
 	TypeColor
 	TypeEnum
 	TypeID
+	// TypeShadow is the CSS-style shadow list: `2 2 5 #000000 inset`.
+	TypeShadow
 )
 
 func (t ValueType) String() string {
@@ -37,6 +39,8 @@ func (t ValueType) String() string {
 		return "identifier"
 	case TypeID:
 		return "id"
+	case TypeShadow:
+		return "shadow"
 	}
 	return "unknown"
 }
@@ -147,6 +151,9 @@ var common = []Prop{
 	{Name: "borderColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
 	{Name: "borderWidth", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0, Common: true},
 	{Name: "radius", Type: TypeNumber, Dirty: DirtyPaint, Default: 0.0, Common: true},
+	// A CSS-style shadow: on Text it shadows the glyphs, everywhere else the
+	// box. It paints outside the layout box, so it never changes layout.
+	{Name: "shadow", Type: TypeShadow, Dirty: DirtyPaint, Common: true},
 	{Name: "visible", Type: TypeBool, Dirty: DirtyLayout, Default: true, Common: true},
 	{Name: "flex", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0, Common: true},
 	{Name: "alignSelf", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "", Common: true},

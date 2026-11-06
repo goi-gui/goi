@@ -181,6 +181,50 @@ Window {
 	}
 }
 
+// TestShadowResolvesItsRole keeps a themed shadow honest: `shadow: 2 2 primary`
+// follows the scheme, and a Go-set shadow reaches the painter.
+func TestShadowResolvesItsRole(t *testing.T) {
+	tr, diag := BuildSource([]byte(`Window {
+	Column {
+		Rectangle { id: box width: 10 height: 10 shadow: 2 2 primary }
+	}
+}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	box, _ := tr.ByID("box")
+	if got := box.Base().Shadow(); len(got) != 1 || got[0].Role != "primary" {
+		t.Fatalf("shadow = %+v", got)
+	}
+	// The role is not a colour yet.
+	if box.Base().Shadow()[0].Color != 0 {
+		t.Fatal("a role was resolved before the theme ran")
+	}
+	if !tr.ResolveColors(func(name string) (uint32, bool) {
+		if name == "primary" {
+			return 0x6750A4FF, true
+		}
+		return 0, false
+	}) {
+		t.Fatal("ResolveColors reported no change")
+	}
+	if got := box.Base().Shadow()[0].Color; got != 0x6750A4FF {
+		t.Fatalf("resolved colour = %08x", got)
+	}
+	if _, dirty := box.Base().Dirty(); !dirty {
+		t.Fatal("a resolved shadow did not mark the node")
+	}
+
+	box.Base().SetShadow(ShadowLayer{X: 0, Y: 0, Blur: 4, Color: 0xFF0000FF})
+	if got := box.Base().Shadow(); len(got) != 1 || got[0].Blur != 4 {
+		t.Fatalf("after SetShadow = %+v", got)
+	}
+	box.Base().ClearShadow()
+	if len(box.Base().Shadow()) != 0 {
+		t.Fatal("ClearShadow left a layer")
+	}
+}
+
 // A nested block shows only inside a shown outer arm, and a hidden subtree is
 // skipped by layout, so it takes no space.
 func TestNestedIfBlockNeedsItsOuterArm(t *testing.T) {

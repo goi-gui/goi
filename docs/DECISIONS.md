@@ -1397,3 +1397,34 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   any other, and in a number position only the builtins that return a number
   (`len`, `cap`, `min`, `max`) pass, so `width: formatf(…)` stays an error
   instead of failing silently at runtime.
+- **`shadow` is one property with CSS's two models, chosen by the node.** On
+  `Text` the layers copy the glyphs, because a box behind a line of text is not
+  what anyone means by a text shadow; everywhere else they follow the box. The
+  syntax is CSS's — `x y [blur [spread]] [color] [inset]`, comma separated — so
+  nothing has to be relearned, and the property rides the common set so every
+  element (including a future one) gets it without an entry in `componentdef`.
+- **A shadow is the one literal written as juxtaposed tokens, so it ends at the
+  line break.** The lexer drops newlines, which is what lets a property and a
+  child share a line; a shadow literal has no closing delimiter of its own, so
+  the parser reads it until a token starts on a new line (or the arm closes).
+  Every other value is one literal or an expression with brackets, so this is the
+  only place that needs line info.
+- **The box shadow reuses the existing soft-shadow shader; only `inset` is new.**
+  The shader already rebuilds a shape from a quad grown by the blur, so spread is
+  baked into the quad and the radius and the blur stays the falloff width. Inset
+  needed a kind of its own: the band is the distance from a hole shrunk by spread
+  and moved by the offset, masked by the shape. A shadow colour resolves through
+  the same lookup as a colour property, so a role follows the theme and a
+  `ui.SetCustomColor` name works; with no colour it falls back to the scheme's
+  shadow role instead of CSS's black, which is why a dark theme does not get a
+  black smudge.
+- **A text shadow is the glyph quads offset and blurred in the fragment shader.**
+  A real Gaussian would need a second atlas pass or a mip chain; sixteen taps
+  clamped to the glyph's own atlas slot are enough for a readable edge and cost
+  nothing when no shadow is set. `spread` and `inset` have no glyph meaning and
+  are ignored on `Text`.
+- **A box shadow's corner radius comes from the node, or from its component's M3
+  shape.** A `Button` is a pill and a `Card` keeps its medium corners, so a shadow
+  matches the box it is behind without the design repeating the radius. The small
+  table in `paint/shadow.go` has to be kept in step with the painters; a component
+  that grows a new default shape belongs there.

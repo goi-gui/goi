@@ -551,6 +551,119 @@ func TestParseForForms(t *testing.T) {
 	}
 }
 
+func TestParseShadow(t *testing.T) {
+	cases := []struct {
+		src    string
+		layers int
+		check  func(t *testing.T, l ShadowLayer)
+	}{
+		{"shadow: 2 2", 1, func(t *testing.T, l ShadowLayer) {
+			if l.X != 2 || l.Y != 2 || l.Blur != 0 || l.Color != nil || l.Inset {
+				t.Fatalf("layer = %+v", l)
+			}
+		}},
+		{"shadow: 2 2 #FF0000", 1, func(t *testing.T, l ShadowLayer) {
+			if c, ok := l.Color.(*Color); !ok || c.RGBA != 0xFF0000FF {
+				t.Fatalf("color = %#v", l.Color)
+			}
+		}},
+		{"shadow: 2 2 primary", 1, func(t *testing.T, l ShadowLayer) {
+			if c, ok := l.Color.(*Ident); !ok || c.Val != "primary" {
+				t.Fatalf("color = %#v", l.Color)
+			}
+		}},
+		{"shadow: 2 2 5 #000000", 1, func(t *testing.T, l ShadowLayer) {
+			if l.Blur != 5 || l.Spread != 0 {
+				t.Fatalf("blur/spread = %v/%v", l.Blur, l.Spread)
+			}
+		}},
+		{"shadow: 10 10 5 12 #FF0000", 1, func(t *testing.T, l ShadowLayer) {
+			if l.Spread != 12 {
+				t.Fatalf("spread = %v", l.Spread)
+			}
+		}},
+		{"shadow: 10 10 5 #FF0000 inset", 1, func(t *testing.T, l ShadowLayer) {
+			if !l.Inset || l.Blur != 5 {
+				t.Fatalf("layer = %+v", l)
+			}
+		}},
+		{"shadow: 2 2 5 #FF0000, -2 -2 5 #0000FF", 2, func(t *testing.T, l ShadowLayer) {
+			if l.X != -2 || l.Y != -2 {
+				t.Fatalf("second layer = %+v", l)
+			}
+		}},
+		{"shadow: -1 0 #000000, 0 1 #000000, 1 0 #000000, 0 -1 #000000", 4, nil},
+		{"shadow: none", 0, nil},
+	}
+	for _, tc := range cases {
+		src := "Window {\n\tText { text: \"x\"\n\t" + tc.src + "\n\t}\n}"
+		f, diag := Parse([]byte(src))
+		if !diag.Empty() {
+			t.Errorf("%q: %v", tc.src, diag)
+			continue
+		}
+		p := f.Root.Children()[0].Prop("shadow")
+		sh, ok := p.Value.(*Shadow)
+		if !ok {
+			t.Errorf("%q parsed as %#v", tc.src, p.Value)
+			continue
+		}
+		if len(sh.Layers) != tc.layers {
+			t.Errorf("%q: %d layers, want %d", tc.src, len(sh.Layers), tc.layers)
+			continue
+		}
+		if tc.check != nil && len(sh.Layers) > 0 {
+			tc.check(t, sh.Layers[len(sh.Layers)-1])
+		}
+	}
+}
+
+// TestShadowStopsAtTheLineEnd guards the one literal written as juxtaposed
+// tokens: without it, the next element's name would be read as a colour.
+func TestShadowStopsAtTheLineEnd(t *testing.T) {
+	f, diag := Parse([]byte(`Window {
+	Column {
+		Column {
+			shadow: 2 2
+		}
+		Text { text: "next" }
+	}
+}`))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	col := f.Root.Children()[0].Children()[0]
+	sh := col.Prop("shadow").Value.(*Shadow)
+	if len(sh.Layers) != 1 || sh.Layers[0].Color != nil {
+		t.Fatalf("layers = %+v", sh.Layers)
+	}
+	if len(f.Root.Children()[0].Children()) != 2 {
+		t.Fatal("the shadow swallowed the next element")
+	}
+}
+
+func TestParseShadowErrors(t *testing.T) {
+	cases := map[string]string{
+		"shadow: \"2 2\"":                   "starts with two offsets",
+		"shadow: 2":                         "second offset",
+		"shadow: 2 2 5 12 #000 inset extra": "",
+	}
+	for prop, want := range cases {
+		if want == "" {
+			continue
+		}
+		src := "Window {\n\tText { text: \"x\"\n\t" + prop + "\n\t}\n}"
+		_, diag := Parse([]byte(src))
+		if diag.Empty() {
+			t.Errorf("%q was accepted", prop)
+			continue
+		}
+		if got := diag.Format("<src>", []byte(src)); !strings.Contains(got, want) {
+			t.Errorf("%q gave %s, want %q", prop, got, want)
+		}
+	}
+}
+
 func TestParseSwitchBlock(t *testing.T) {
 	src := `bridge { job string }
 Window {

@@ -676,6 +676,14 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 	}
 
 	switch pd.Type {
+	case TypeShadow:
+		sh, ok := val.(*syntax.Shadow)
+		if !ok {
+			fail("a shadow, written `x y [blur [spread]] [color] [inset]`")
+			return
+		}
+		v.checkShadow(e, pd, sh)
+		return
 	case TypeID:
 		txt, ok := literalText(val)
 		if !ok {
@@ -785,6 +793,35 @@ func (v *validator) checkNumeric(e *syntax.Element, pd *Prop, val syntax.Value) 
 		return true
 	}
 	return false
+}
+
+// checkShadow checks a shadow list: offsets, a non-negative blur and spread, and
+// a colour that is a hex literal or a name. A shadow is CSS-shaped, so the
+// validator's job is the shape, not the numbers: a negative offset is how every
+// text shadow works.
+func (v *validator) checkShadow(e *syntax.Element, pd *Prop, sh *syntax.Shadow) {
+	for _, l := range sh.Layers {
+		if l.Blur < 0 || l.Spread < 0 {
+			v.add(l.At, l.At+1,
+				fmt.Sprintf("%s.%s: blur and spread cannot be negative", e.Name, pd.Name), "")
+		}
+		switch c := l.Color.(type) {
+		case nil, *syntax.Color:
+		case *syntax.String:
+			if _, ok := parseColor(c.Val); !ok {
+				v.add(c.At, c.At+syntax.Pos(len(c.Val)+2),
+					fmt.Sprintf("%s.%s is not a valid shadow color: %q", e.Name, pd.Name, c.Val), "")
+			}
+		case *syntax.Ident:
+			// A theme role or a name the app defines with ui.SetCustomColor;
+			// the latter is invisible here, so any bare word is accepted and an
+			// unknown one warns at runtime, exactly like a colour property.
+			_ = c
+		default:
+			v.add(l.At, l.At+1,
+				fmt.Sprintf("%s.%s: a shadow color is a hex literal or a role name", e.Name, pd.Name), "")
+		}
+	}
 }
 
 // globalProp validates the two namespaces an expression can read besides node
