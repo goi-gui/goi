@@ -79,6 +79,9 @@ static int goiTranslate(SDL_Event *e, goiEvent *o) {
 	case SDL_EVENT_SYSTEM_THEME_CHANGED:
 		o->type = GOI_EV_THEME;
 		return 1;
+	case SDL_EVENT_LOCALE_CHANGED:
+		o->type = GOI_EV_LOCALE;
+		return 1;
 	}
 	return 0;
 }
@@ -185,6 +188,23 @@ int goiSetTextInputArea(SDL_Window *win, int x, int y, int w, int h) {
 
 char *goiClipboardText(void) {
 	return SDL_GetClipboardText();
+}
+
+char *goiSystemLanguage(void) {
+	int n = 0;
+	SDL_Locale **locales = SDL_GetPreferredLocales(&n);
+	if (locales == NULL || n == 0) {
+		if (locales != NULL) {
+			SDL_free(locales);
+		}
+		return SDL_strdup("");
+	}
+	// The first entry is the user's most preferred language. Only the language
+	// subtag is reported, because "which language" is the question a design asks.
+	const char *lang = locales[0]->language != NULL ? locales[0]->language : "";
+	char *out = SDL_strdup(lang);
+	SDL_free(locales);
+	return out;
 }
 
 int goiSystemTheme(void) {

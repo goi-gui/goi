@@ -188,7 +188,16 @@ var elements = func() []Element {
 			Prop{Name: "titleBar", Type: TypeEnum, Dirty: DirtyNone, Enum: []string{"system", "custom"}, Default: "system"},
 			// The window chrome: the platform reads both on every frame, so a
 			// design or Go can flip them without a reload.
+			// `resizable` is the readable spelling; `disableResize` is kept so an
+			// older design keeps working. Either false turns resizing off.
+			Prop{Name: "resizable", Type: TypeBool, Dirty: DirtyNone, Default: true},
 			Prop{Name: "disableResize", Type: TypeBool, Dirty: DirtyNone, Default: false},
+			Prop{Name: "minimizable", Type: TypeBool, Dirty: DirtyNone, Default: true},
+			Prop{Name: "maximizable", Type: TypeBool, Dirty: DirtyNone, Default: true},
+			// The two state props: writing one asks the window to move there, and
+			// the platform reports the real state back every frame.
+			Prop{Name: "minimized", Type: TypeBool, Dirty: DirtyNone, Default: false},
+			Prop{Name: "maximized", Type: TypeBool, Dirty: DirtyNone, Default: false},
 			Prop{Name: "fullscreen", Type: TypeBool, Dirty: DirtyNone, Default: false},
 		)},
 		{Name: "Column", Children: true, Attrs: withCommon(

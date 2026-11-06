@@ -1436,3 +1436,25 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   matches the box it is behind without the design repeating the radius. The small
   table in `paint/shadow.go` has to be kept in step with the painters; a component
   that grows a new default shape belongs there.
+- **The window state is a request and a report, so they are kept apart.** Writing
+  `minimized`, `maximized` or `fullscreen` asks the window to move; what the
+  window actually is comes from `SDL_GetWindowFlags` every frame. Echoing the
+  report back into the request prop would fight the compositor — a maximize it
+  applies one frame after the request would be reverted by the next frame — so
+  the report lives in separate fields, and both `window.*` and the Go getters
+  prefer it once the platform has reported. A headless window has no report, so
+  the request stands in.
+- **`resizable` is the readable spelling of `disableResize`, not a replacement.**
+  A design may write either; when they disagree, "off" wins, because asking for
+  a resizable window while the old flag says no is the mistake worth forgiving.
+  Keeping the old name means no design or Go call needs an edit.
+- **`minimizable`/`maximizable` gate the framework's requests only.** SDL has no
+  flag to disable one title bar button, and no portable way to ask a compositor
+  to grey it out, so claiming the platform button follows the switch would be a
+  lie. What they do control — `Window.Minimize`, `Window.ToggleMaximize` and the
+  equivalent setters, which is what a custom title bar calls — is the part the
+  framework owns.
+- **`app.systemLanguage` is the language, not the locale.** `SDL_GetPreferredLocales`
+  returns a language and a country; the design question is "which language",
+  so only the ISO 639-1 subtag is exposed (`tr-TR` reads `tr`) and it is
+  re-read on `SDL_EVENT_LOCALE_CHANGED`.

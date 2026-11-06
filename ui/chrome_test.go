@@ -18,7 +18,12 @@ func TestChromeOfReadsTheDesign(t *testing.T) {
 		fullscreen: true
 	}`)
 	got := chromeOf(w)
-	want := chromeState{disableResize: true, fullscreen: true, minW: 400, minH: 300, maxW: 900, maxH: 0}
+	// Two switches default to on: resizable and minimizable/maximizable, which a
+	// design only writes when it wants them off.
+	want := chromeState{
+		resizable: false, minimizable: true, maximizable: true,
+		fullscreen: true, minW: 400, minH: 300, maxW: 900,
+	}
 	if got != want {
 		t.Fatalf("chrome = %+v, want %+v", got, want)
 	}
@@ -35,6 +40,70 @@ func TestChromeFollowsGo(t *testing.T) {
 
 	if chromeOf(w) == a.chrome {
 		t.Fatal("a Go change did not reach the window state")
+	}
+}
+
+// TestChromeStateAndSwitches covers the window controls added with the state
+// props: the design's request reaches the chrome, and the platform's echo lands
+// back on the props.
+func TestChromeStateAndSwitches(t *testing.T) {
+	a, w := reloadApp(t, `Window {
+		resizable: false
+		minimizable: false
+		maximizable: false
+		minimized: true
+		maximized: true
+	}`)
+	got := chromeOf(w)
+	if got.resizable || got.minimizable || got.maximizable {
+		t.Fatalf("switches = %+v, want all off", got)
+	}
+	if !got.minimized || !got.maximized {
+		t.Fatalf("state = %+v, want both requested", got)
+	}
+
+	// The platform reports the truth back: the echo updates the props without
+	// marking the tree, and reports that something changed.
+	a.chrome = chromeOf(w)
+	if !w.Root().SetPlatformState(false, false, false) {
+		t.Fatal("echo reported no change")
+	}
+	if w.Minimized() || w.Maximized() {
+		t.Fatal("echo did not land on the props")
+	}
+	if _, dirty := w.Root().Base().Dirty(); dirty {
+		t.Fatal("reporting the platform state dirtied the tree")
+	}
+	if w.Root().SetPlatformState(false, false, false) {
+		t.Fatal("a second identical echo reported a change")
+	}
+}
+
+// TestWindowGoSetters is the Go-facing half of the new properties.
+func TestWindowGoSetters(t *testing.T) {
+	_, w := reloadApp(t, `Window { }`)
+	for _, tc := range []struct {
+		name string
+		set  func(bool)
+		get  func() bool
+	}{
+		{"minimized", w.SetMinimized, w.Minimized},
+		{"minimizable", w.SetMinimizable, w.Minimizable},
+		{"maximized", w.SetMaximized, w.Maximized},
+		{"maximizable", w.SetMaximizable, w.Maximizable},
+		{"fullscreen", w.SetFullscreen, w.Fullscreen},
+		{"resizable", w.SetResizable, w.Resizable},
+	} {
+		// resizable defaults to true, the rest to false.
+		want := tc.name == "resizable" || tc.name == "minimizable" || tc.name == "maximizable"
+		if got := tc.get(); got != want {
+			t.Fatalf("%s default = %v, want %v", tc.name, got, want)
+		}
+		tc.set(!want)
+		if got := tc.get(); got != !want {
+			t.Fatalf("%s after Set(%v) = %v", tc.name, !want, got)
+		}
+		tc.set(want)
 	}
 }
 
@@ -62,7 +131,10 @@ func TestChromeSettersReachThePlatform(t *testing.T) {
 	r.DisableResize.Set(true)
 	r.Fullscreen.Set(true)
 
-	want := chromeState{disableResize: true, fullscreen: true, minW: 480, minH: 320, maxW: 1280, maxH: 720}
+	want := chromeState{
+		resizable: false, minimizable: true, maximizable: true,
+		fullscreen: true, minW: 480, minH: 320, maxW: 1280, maxH: 720,
+	}
 	if got := chromeOf(w); got != want {
 		t.Fatalf("chrome = %+v, want %+v", got, want)
 	}

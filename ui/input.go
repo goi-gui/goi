@@ -1122,6 +1122,16 @@ func (i *interactor) ThemeChanged() {
 	i.app.needsFrame = true
 }
 
+// LocaleChanged follows the desktop's language setting: the tree re-reads it and
+// a design that reads `app.systemLanguage` sees the new value on the next frame.
+func (i *interactor) LocaleChanged() {
+	i.event("LocaleChanged")
+	if i.tree != nil {
+		i.tree.SetSystemLanguage(systemLanguage())
+	}
+	i.app.needsFrame = true
+}
+
 func (i *interactor) Close() {
 	i.event("Close")
 	i.app.Quit()

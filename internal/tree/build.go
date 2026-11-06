@@ -31,6 +31,9 @@ type Tree struct {
 	// systemMode is the desktop's preference, or ModeUnknown when the platform
 	// does not report one. A design follows it with `theme: app.systemMode`.
 	systemMode Mode
+	// systemLanguage is the desktop's preferred language code, read once at
+	// startup and again on a locale change. `app.systemLanguage` exposes it.
+	systemLanguage string
 	// cloning is set while Instantiate builds a copy: ids stay on the nodes so
 	// an app can find them, but they are not registered, because a copy would
 	// otherwise collide with the template's own ids.
@@ -324,6 +327,11 @@ func newNode(name string) Node {
 			Theme:         newProp(nil, "theme", DirtyPaint, "light"),
 			TitleBar:      newProp(nil, "titleBar", DirtyPaint, "system"),
 			DisableResize: newProp(nil, "disableResize", DirtyPaint, false),
+			Resizable:     newProp(nil, "resizable", DirtyPaint, true),
+			Minimizable:   newProp(nil, "minimizable", DirtyPaint, true),
+			Maximizable:   newProp(nil, "maximizable", DirtyPaint, true),
+			Minimized:     newProp(nil, "minimized", DirtyPaint, false),
+			Maximized:     newProp(nil, "maximized", DirtyPaint, false),
 			Fullscreen:    newProp(nil, "fullscreen", DirtyPaint, false),
 		}
 	case "Column", "Row", "Stack", "ClipRRect", "Wrap", "Grid", "TitleBar":

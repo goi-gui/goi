@@ -7,22 +7,31 @@ import (
 // chromeState is the Window's platform-side state: what the design asked of the
 // native window rather than of the client area.
 type chromeState struct {
-	disableResize bool
-	fullscreen    bool
-	minW, minH    int
-	maxW, maxH    int // 0 means unbounded
+	resizable   bool
+	minimizable bool
+	maximizable bool
+	fullscreen  bool
+	minimized   bool
+	maximized   bool
+	minW, minH  int
+	maxW, maxH  int // 0 means unbounded
 }
 
 // chromeOf reads the root's window properties.
 func chromeOf(w *Window) chromeState {
 	r := w.tree.Root
 	return chromeState{
-		disableResize: r.DisableResize.Get(),
-		fullscreen:    r.Fullscreen.Get(),
-		minW:          points(r.MinWidth()),
-		minH:          points(r.MinHeight()),
-		maxW:          points(r.MaxWidth()),
-		maxH:          points(r.MaxHeight()),
+		// Either spelling turns resizing off.
+		resizable:   r.Resizable.Get() && !r.DisableResize.Get(),
+		minimizable: r.Minimizable.Get(),
+		maximizable: r.Maximizable.Get(),
+		fullscreen:  r.Fullscreen.Get(),
+		minimized:   r.Minimized.Get(),
+		maximized:   r.Maximized.Get(),
+		minW:        points(r.MinWidth()),
+		minH:        points(r.MinHeight()),
+		maxW:        points(r.MaxWidth()),
+		maxH:        points(r.MaxHeight()),
 	}
 }
 
@@ -43,12 +52,16 @@ func (a *App) applyChrome(pw *platform.Window, st chromeState) {
 		return
 	}
 	pw.SetSizeLimits(st.minW, st.minH, st.maxW, st.maxH)
-	pw.SetResizable(!st.disableResize)
+	pw.SetResizable(st.resizable)
+	pw.SetMinimizable(st.minimizable)
+	pw.SetMaximizable(st.maximizable)
 	pw.SetFullscreen(st.fullscreen)
+	pw.SetMaximized(st.maximized)
+	pw.SetMinimized(st.minimized)
 	// A borderless window resizes from its own edges, so that path follows the
 	// same switch as the platform's title bar.
 	if d, ok := a.driver.(*gpuDriver); ok && d.input != nil {
-		d.input.resizeEdges = a.win.tree.Root.TitleBar.Get() == "custom" && !st.disableResize
+		d.input.resizeEdges = a.win.tree.Root.TitleBar.Get() == "custom" && st.resizable
 	}
 }
 
@@ -62,6 +75,13 @@ func (a *App) syncChrome() {
 	d, ok := a.driver.(*gpuDriver)
 	if !ok || d.win == nil {
 		return
+	}
+	// The platform is the authority on whether the window is minimized or
+	// maximized, so report it back before comparing: a design reading
+	// `window.maximized` sees the truth, and clicking the title bar button does
+	// not look like a design change on the next frame.
+	if a.win.tree.Root.SetPlatformState(d.win.Minimized(), d.win.Maximized(), d.win.Fullscreen()) {
+		a.needsFrame = true
 	}
 	st := chromeOf(a.win)
 	if st == a.chrome {

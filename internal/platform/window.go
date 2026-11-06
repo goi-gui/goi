@@ -35,6 +35,9 @@ type Input interface {
 	// ThemeChanged reports that the desktop switched between light and dark.
 	// A design may follow it with `theme: app.systemMode`.
 	ThemeChanged()
+	// LocaleChanged reports that the desktop's language setting changed, so a
+	// design reading `app.systemLanguage` can pick it up.
+	LocaleChanged()
 	Close()
 }
 
@@ -114,6 +117,13 @@ type Window struct {
 	minW, minH int
 	maxW, maxH int
 	fullscreen bool
+	// minimizable and maximizable have no SDL flag: SDL can always ask the
+	// window manager for either. The framework honours them at its own request
+	// paths, which covers the design's own title bar and the Go API; the
+	// platform's title bar buttons still work, because a compositor gives no way
+	// to disable just one of them.
+	minimizable bool
+	maximizable bool
 }
 
 // Cursor is the shape the pointer takes over the client area.
@@ -166,7 +176,7 @@ func New(title string, width, height int, decorated bool) (*Window, error) {
 	if err != nil {
 		return nil, err
 	}
-	p := &Window{win: win, width: width, height: height, scale: 1, resizable: true}
+	p := &Window{win: win, width: width, height: height, scale: 1, resizable: true, minimizable: true, maximizable: true}
 	if s := sdlWindowScale(win); s > 0 {
 		p.scale = s
 	}
@@ -247,6 +257,10 @@ func (p *Window) dispatch(ev rawEvent) {
 	case evTheme:
 		if p.input != nil {
 			p.input.ThemeChanged()
+		}
+	case evLocale:
+		if p.input != nil {
+			p.input.LocaleChanged()
 		}
 	case evExpose:
 		// During an interactive resize Wayland holds an implicit grab: SDL
@@ -432,8 +446,75 @@ func SystemTheme() Theme {
 // SetTitle updates the window title.
 func (p *Window) SetTitle(title string) { sdlSetTitle(p.win, title) }
 
-// Minimize hides the window in the platform's task bar.
-func (p *Window) Minimize() { sdlMinimize(p.win) }
+// Minimize hides the window in the platform's task bar. A window the design made
+// non-minimizable ignores it.
+func (p *Window) Minimize() {
+	if p.win == nil || !p.minimizable {
+		return
+	}
+	sdlMinimize(p.win)
+}
+
+// SetMinimized minimizes or restores the window. Restoring a minimized window
+// uses the same call the title bar's button does.
+func (p *Window) SetMinimized(on bool) {
+	if p.win == nil {
+		return
+	}
+	if on {
+		p.Minimize()
+		return
+	}
+	if p.Minimized() {
+		sdlRestore(p.win)
+	}
+}
+
+// Minimized reports whether the window is minimized.
+func (p *Window) Minimized() bool { return sdlWindowFlags(p.win)&flagMinimized != 0 }
+
+// SetMinimizable controls whether the framework minimizes on request.
+func (p *Window) SetMinimizable(on bool) {
+	if p.win == nil || p.minimizable == on {
+		return
+	}
+	p.minimizable = on
+}
+
+// Minimizable reports whether the framework may minimize the window.
+func (p *Window) Minimizable() bool { return p.minimizable }
+
+// SetMaximized maximizes or restores the window. Maximizing needs a resizable
+// window, because a non-resizable one has no size the user may change.
+func (p *Window) SetMaximized(on bool) {
+	if p.win == nil {
+		return
+	}
+	if !on {
+		if p.Maximized() {
+			sdlRestore(p.win)
+		}
+		return
+	}
+	if p.maximizable && p.resizable && !p.hasMax() {
+		sdlMaximize(p.win)
+	}
+}
+
+// SetMaximizable controls whether the framework maximizes on request. A window
+// that becomes non-maximizable while maximized is restored.
+func (p *Window) SetMaximizable(on bool) {
+	if p.win == nil || p.maximizable == on {
+		return
+	}
+	p.maximizable = on
+	if !on && p.Maximized() {
+		sdlRestore(p.win)
+	}
+}
+
+// Maximizable reports whether the framework may maximize the window.
+func (p *Window) Maximizable() bool { return p.maximizable }
 
 // ToggleMaximize maximizes the window, or restores it when already maximized.
 // A window the design made non-resizable does not maximize, which is the same
@@ -443,7 +524,7 @@ func (p *Window) ToggleMaximize() {
 		sdlRestore(p.win)
 		return
 	}
-	if !p.resizable || p.hasMax() {
+	if !p.maximizable || !p.resizable || p.hasMax() {
 		return
 	}
 	sdlMaximize(p.win)
@@ -464,6 +545,9 @@ func (p *Window) SetResizable(on bool) {
 		sdlRestore(p.win)
 	}
 }
+
+// Resizable reports whether the user may resize the window.
+func (p *Window) Resizable() bool { return p.resizable }
 
 // SetSizeLimits constrains the window to minW..maxW and minH..maxH logical
 // points. A non-positive maximum means "no limit".
@@ -548,8 +632,13 @@ func (p *Window) SetFullscreen(on bool) {
 	sdlSetFullscreen(p.win, on)
 }
 
-// Fullscreen reports whether the window fills the display.
-func (p *Window) Fullscreen() bool { return p.fullscreen }
+// Fullscreen reports whether the window fills the display, as the platform sees
+// it: a compositor that refuses the request is reported truthfully.
+func (p *Window) Fullscreen() bool { return sdlWindowFlags(p.win)&flagFullscreen != 0 }
+
+// SystemLanguage returns the desktop's preferred language as an ISO 639-1 code
+// ("tr", "en"), or "" when the platform does not report one.
+func SystemLanguage() string { return sdlSystemLanguage() }
 
 // Maximized reports whether the window is maximized.
 func (p *Window) Maximized() bool { return sdlWindowFlags(p.win)&flagMaximized != 0 }

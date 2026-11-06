@@ -99,6 +99,8 @@ func (a *App) initWindow(w *Window) error {
 	// for a minimum larger than its start size is resized here, before layout.
 	a.chrome = chromeOf(w)
 	a.applyChrome(pw, a.chrome)
+	// The language is a startup read; a locale change event updates it.
+	w.tree.SetSystemLanguage(systemLanguage())
 
 	fw, fh := pw.FramebufferSize()
 	d.pendingW, d.pendingH, d.pendingScale = fw, fh, pw.Scale()
@@ -321,6 +323,12 @@ func modeFor(t *m3.Theme) tree.Mode {
 		return tree.ModeDark
 	}
 	return tree.ModeLight
+}
+
+// systemLanguage reads the desktop's preferred language code. It runs on the UI
+// goroutine, which is where SDL may be called.
+func systemLanguage() string {
+	return platform.SystemLanguage()
 }
 
 // systemMode reads the desktop's preference. It runs on the UI goroutine, which

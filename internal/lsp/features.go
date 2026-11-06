@@ -512,8 +512,9 @@ func hasSlot(el *syntax.Element) bool {
 }
 
 // globalItems lists the members of a reserved namespace. A design can read
-// `app.theme`, `app.dark`, `app.os` and `window.width`/`window.height`; nothing
-// else is accepted, so completing the closed set is the whole story.
+// `app.theme`, `app.dark`, `app.os`, `app.systemLanguage` and the `window.*`
+// state; nothing else is accepted, so completing the closed set is the whole
+// story.
 func globalItems(ref string) []completionResult {
 	type member struct {
 		name, typ, doc string
@@ -525,6 +526,7 @@ func globalItems(ref string) []completionResult {
 			{"theme", "string", "the resolved scheme: light, dark or a registered name"},
 			{"mode", "light | dark", "the resolved scheme's mood; feed an enum or compare it"},
 			{"systemMode", "light | dark", "the desktop's preference; `theme: app.systemMode` follows it"},
+			{"systemLanguage", "string", "the desktop's language as an ISO 639-1 code, e.g. tr or en"},
 			{"dark", "bool", "true when the resolved scheme is dark"},
 			{"os", "string", "runtime.GOOS: linux, darwin, windows, freebsd"},
 		}
@@ -532,6 +534,12 @@ func globalItems(ref string) []completionResult {
 		names = []member{
 			{"width", "number", "logical client width, updated on resize"},
 			{"height", "number", "logical client height, updated on resize"},
+			{"minimized", "bool", "whether the window is minimized, reported by the platform"},
+			{"minimizable", "bool", "whether the framework may minimize the window"},
+			{"maximized", "bool", "whether the window is maximized, reported by the platform"},
+			{"maximizable", "bool", "whether the framework may maximize the window"},
+			{"resizable", "bool", "whether the user may resize the window"},
+			{"fullscreen", "bool", "whether the window fills the display"},
 		}
 	default:
 		return nil
@@ -2063,10 +2071,32 @@ func propDoc(el string, p schema.Prop) string {
 	switch p.Name {
 	case "disableResize":
 		b.WriteString("\n\n`true` turns off the user's resize and the title bar's maximize button. " +
-			"`fullscreen` is a separate switch and still works. Reactive: a `Set` from Go " +
-			"reaches the platform on the next frame.")
+			"`resizable` is the same switch read the other way round. `fullscreen` is a " +
+			"separate switch and still works. Reactive: a `Set` from Go reaches the " +
+			"platform on the next frame.")
+	case "resizable":
+		b.WriteString("\n\n`false` turns off the user's resize and the title bar's maximize " +
+			"button. `disableResize: true` is the older spelling of the same thing. " +
+			"Reactive from Go with `SetResizable`.")
+	case "minimizable":
+		b.WriteString("\n\n`false` makes the framework refuse minimize requests, so a " +
+			"custom title bar can hide its button. SDL has no flag for the platform's " +
+			"own title bar button. Reactive from Go with `SetMinimizable`.")
+	case "maximizable":
+		b.WriteString("\n\n`false` makes the framework refuse maximize requests, and restores " +
+			"a window that is already maximized. Reactive from Go with `SetMaximizable`.")
+	case "minimized":
+		b.WriteString("\n\na request: `true` asks the window to minimize and `false` to " +
+			"restore. Read the live state as `window.minimized` or with `Window.Minimized`, " +
+			"which follow the user's title bar and task bar actions too.")
+	case "maximized":
+		b.WriteString("\n\na request: `true` asks the window to maximize and `false` to " +
+			"restore. Read the live state as `window.maximized` or with `Window.Maximized`, " +
+			"which follow the user's title bar actions too.")
 	case "fullscreen":
-		b.WriteString("\n\n`true` fills the display. Reactive from Go, with no reload.")
+		b.WriteString("\n\n`true` fills the display. A request when written; read the live " +
+			"state as `window.fullscreen` or with `Window.Fullscreen`. Reactive from Go, " +
+			"with no reload.")
 	case "minWidth", "minHeight":
 		b.WriteString("\n\nThe smallest the element may lay out, and on `Window` the smallest the user " +
 			"may drag the native window.")

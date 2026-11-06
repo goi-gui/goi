@@ -99,3 +99,49 @@ func TestModeString(t *testing.T) {
 		}
 	}
 }
+
+// TestWindowStateAndLanguage covers the design-side reads for the window state
+// and the desktop language. A design sees the platform's report, not the last
+// request, for the two state members.
+func TestWindowStateAndLanguage(t *testing.T) {
+	tr, diag := BuildSource([]byte(`Window {
+	minimized: true
+	maximized: false
+	Text { id: mini text: window.minimized ? "mini" : "shown" }
+	Text { id: maxi text: window.maximized ? "max" : "normal" }
+	Text { id: lang text: app.systemLanguage }
+	Text { id: resize text: window.resizable ? "yes" : "no" }
+}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	tr.SetSystemLanguage("tr")
+	tr.ApplyExpressions()
+
+	mini, _ := tr.ByID("mini")
+	lang, _ := tr.ByID("lang")
+	resize, _ := tr.ByID("resize")
+	// No platform report yet, so the request stands in.
+	if got := mini.(*Text).Text.Get(); got != "mini" {
+		t.Fatalf("window.minimized = %q before the platform reported", got)
+	}
+	if got := lang.(*Text).Text.Get(); got != "tr" {
+		t.Fatalf("app.systemLanguage = %q", got)
+	}
+	if got := resize.(*Text).Text.Get(); got != "yes" {
+		t.Fatalf("window.resizable = %q", got)
+	}
+
+	// The platform says the window is restored; `window.minimized` follows it.
+	if !tr.Root.SetPlatformState(false, true, false) {
+		t.Fatal("the first platform report did not count as a change")
+	}
+	tr.ApplyExpressions()
+	if got := mini.(*Text).Text.Get(); got != "shown" {
+		t.Fatalf("window.minimized = %q after the platform restored it", got)
+	}
+	maxi, _ := tr.ByID("maxi")
+	if got := maxi.(*Text).Text.Get(); got != "max" {
+		t.Fatalf("window.maximized = %q", got)
+	}
+}

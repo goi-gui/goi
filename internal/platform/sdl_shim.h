@@ -36,7 +36,8 @@ enum {
 	GOI_EV_TEXT,
 	GOI_EV_EDITING,
 	GOI_EV_USER,
-	GOI_EV_THEME
+	GOI_EV_THEME,
+	GOI_EV_LOCALE
 };
 
 int goiPollEvent(goiEvent *o);
@@ -65,5 +66,10 @@ char *goiClipboardText(void);
 // goiSystemTheme reports the desktop's light/dark preference as 1 (light),
 // 2 (dark), or 0 when the platform does not say.
 int goiSystemTheme(void);
+
+// goiSystemLanguage returns the desktop's preferred language as an ISO 639-1
+// code ("tr", "en"), or an empty string when the platform does not say. The
+// caller frees it with SDL_free.
+char *goiSystemLanguage(void);
 
 #endif

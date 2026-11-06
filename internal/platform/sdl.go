@@ -29,6 +29,7 @@ const (
 	evEditing
 	evUser
 	evTheme
+	evLocale
 )
 
 // rawEvent is one translated SDL event.
@@ -181,6 +182,13 @@ func sdlSetFullscreen(p unsafe.Pointer, on bool) {
 	C.SDL_SetWindowFullscreen((*C.SDL_Window)(p), C.bool(on))
 }
 
+// sdlSystemLanguage returns the desktop's preferred language code, or "".
+func sdlSystemLanguage() string {
+	cstr := C.goiSystemLanguage()
+	defer C.SDL_free(unsafe.Pointer(cstr))
+	return C.GoString(cstr)
+}
+
 func sdlInstallHitTest(p unsafe.Pointer) { C.goiInstallHitTest((*C.SDL_Window)(p)) }
 
 func sdlStartTextInput(p unsafe.Pointer) error {
@@ -230,9 +238,10 @@ func sdlX11Handles(p unsafe.Pointer) (display unsafe.Pointer, window uintptr) {
 
 // Window flag bits, mirrored so the rest of the package needs no cgo.
 const (
-	flagHidden    = uint64(C.SDL_WINDOW_HIDDEN)
-	flagMinimized = uint64(C.SDL_WINDOW_MINIMIZED)
-	flagMaximized = uint64(C.SDL_WINDOW_MAXIMIZED)
+	flagHidden     = uint64(C.SDL_WINDOW_HIDDEN)
+	flagMinimized  = uint64(C.SDL_WINDOW_MINIMIZED)
+	flagMaximized  = uint64(C.SDL_WINDOW_MAXIMIZED)
+	flagFullscreen = uint64(C.SDL_WINDOW_FULLSCREEN)
 )
 
 // Modifier and scancode values, mirrored so the event translation in window.go

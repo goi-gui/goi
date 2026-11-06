@@ -56,12 +56,8 @@ func (w *Window) native() *platform.Window {
 	return d.win
 }
 
-// Minimize hides the window in the task bar.
-func (w *Window) Minimize() {
-	if p := w.native(); p != nil {
-		p.Minimize()
-	}
-}
+// Minimize hides the window in the task bar. It is SetMinimized(true).
+func (w *Window) Minimize() { w.SetMinimized(true) }
 
 // ToggleMaximize maximizes the window, or restores it when already maximized.
 func (w *Window) ToggleMaximize() {
@@ -70,11 +66,145 @@ func (w *Window) ToggleMaximize() {
 	}
 }
 
-// Maximized reports whether the window is maximized. A headless window is
-// never maximized.
+// Minimized reports whether the window is minimized. The platform reports the
+// state back every frame, so this is the real one, not just the last request.
+func (w *Window) Minimized() bool {
+	r := w.root()
+	if r == nil {
+		return false
+	}
+	if min, _, _, known := r.PlatformState(); known {
+		return min
+	}
+	return r.Minimized.Get()
+}
+
+// SetMinimized minimizes or restores the window. A design can do the same by
+// writing `minimized: true` on the Window element.
+func (w *Window) SetMinimized(on bool) {
+	if r := w.root(); r != nil {
+		w.requestState(&r.Minimized, on, (*platform.Window).SetMinimized)
+	}
+}
+
+// Minimizable reports whether the framework may minimize the window.
+func (w *Window) Minimizable() bool {
+	r := w.root()
+	return r != nil && r.Minimizable.Get()
+}
+
+// SetMinimizable allows or refuses the framework's minimize requests. The
+// platform's own title bar button cannot be disabled through SDL, so this is
+// what a design's custom title bar follows.
+func (w *Window) SetMinimizable(on bool) {
+	if w == nil || w.tree == nil {
+		return
+	}
+	w.tree.Root.Minimizable.Set(on)
+}
+
+// Maximized reports whether the window is maximized.
 func (w *Window) Maximized() bool {
-	p := w.native()
-	return p != nil && p.Maximized()
+	r := w.root()
+	if r == nil {
+		return false
+	}
+	if _, max, _, known := r.PlatformState(); known {
+		return max
+	}
+	return r.Maximized.Get()
+}
+
+// SetMaximized maximizes or restores the window.
+func (w *Window) SetMaximized(on bool) {
+	if r := w.root(); r != nil {
+		w.requestState(&r.Maximized, on, (*platform.Window).SetMaximized)
+	}
+}
+
+// requestState writes a state prop, which the frame loop then applies. When the
+// prop already holds the value — the user maximized from the title bar, so the
+// prop is behind the window — the platform is nudged directly, otherwise the
+// request would look like "nothing changed" and never reach it.
+func (w *Window) requestState(p *tree.Prop[bool], on bool, apply func(*platform.Window, bool)) {
+	if p.Get() == on {
+		if pw := w.native(); pw != nil {
+			apply(pw, on)
+		}
+		return
+	}
+	p.Set(on)
+}
+
+// Maximizable reports whether the framework may maximize the window.
+func (w *Window) Maximizable() bool {
+	r := w.root()
+	return r != nil && r.Maximizable.Get()
+}
+
+// SetMaximizable allows or refuses the framework's maximize requests. A window
+// that becomes non-maximizable while maximized is restored.
+func (w *Window) SetMaximizable(on bool) {
+	if w == nil || w.tree == nil {
+		return
+	}
+	w.tree.Root.Maximizable.Set(on)
+}
+
+// Resizable reports whether the user may resize the window.
+func (w *Window) Resizable() bool {
+	if w == nil || w.tree == nil {
+		return false
+	}
+	return w.tree.Root.Resizable.Get() && !w.tree.Root.DisableResize.Get()
+}
+
+// SetResizable allows or refuses the user's resize. It follows `resizable` in the
+// design, and `disableResize` still works as its inverse.
+func (w *Window) SetResizable(on bool) {
+	if w == nil || w.tree == nil {
+		return
+	}
+	w.tree.Root.Resizable.Set(on)
+}
+
+// Fullscreen reports whether the window fills the display.
+func (w *Window) Fullscreen() bool {
+	r := w.root()
+	if r == nil {
+		return false
+	}
+	if _, _, full, known := r.PlatformState(); known {
+		return full
+	}
+	return r.Fullscreen.Get()
+}
+
+// SetFullscreen makes the window fill the display, or returns it to a normal
+// window.
+func (w *Window) SetFullscreen(on bool) {
+	if w == nil || w.tree == nil {
+		return
+	}
+	w.tree.Root.Fullscreen.Set(on)
+}
+
+// root returns the Window node, or nil when the window has no tree yet.
+func (w *Window) root() *tree.Window {
+	if w == nil || w.tree == nil {
+		return nil
+	}
+	return w.tree.Root
+}
+
+// SystemLanguage returns the desktop's preferred language as an ISO 639-1 code
+// ("tr", "en"), or "" when the platform does not report one. The design side
+// reads the same value as `app.systemLanguage`.
+func (w *Window) SystemLanguage() string {
+	if w == nil || w.tree == nil {
+		return ""
+	}
+	return w.tree.SystemLanguage()
 }
 
 // Close asks the window to close, as the platform's close button would. The

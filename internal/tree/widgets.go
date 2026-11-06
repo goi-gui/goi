@@ -59,14 +59,55 @@ type Window struct {
 	// the design draws a TitleBar of its own).
 	TitleBar Prop[string]
 	// DisableResize stops the user from resizing or maximizing the window.
-	// Fullscreen is a separate switch and still works.
+	// Resizable is the same switch read the other way round, and is the one a
+	// design or Go is expected to write.
 	DisableResize Prop[bool]
+	// Resizable lets the user resize the window; `disableResize: true` is its
+	// old spelling and still works.
+	Resizable Prop[bool]
+	// Minimizable and Maximizable gate the framework's own minimize and maximize
+	// requests. A design that draws its own title bar uses them to disable its
+	// buttons.
+	Minimizable Prop[bool]
+	Maximizable Prop[bool]
+	// Minimized and Maximized are requests: writing one asks the native window to
+	// move to that state. What the window actually is lives in the platform
+	// report below, which is what `window.minimized` and the Go getters read.
+	Minimized Prop[bool]
+	Maximized Prop[bool]
+
+	// platformMin/Max/Full are the state the platform last reported, and
+	// platformKnown says whether it has reported yet. They are deliberately
+	// separate from the request props: echoing into the request would undo a
+	// maximize a compositor applies one frame later.
+	platformMin, platformMax, platformFull bool
+	platformKnown                          bool
 	// Fullscreen fills the display instead of showing a normal window.
 	Fullscreen Prop[bool]
 }
 
 // Kind implements Node.
 func (w *Window) Kind() string { return "Window" }
+
+// SetPlatformState records the state the platform actually reported, so a design
+// reading `window.minimized` sees the truth, and reports whether either value
+// changed. It does not mark the node dirty: the caller decides whether a repaint
+// is owed.
+func (w *Window) SetPlatformState(minimized, maximized, fullscreen bool) bool {
+	changed := !w.platformKnown || w.platformMin != minimized ||
+		w.platformMax != maximized || w.platformFull != fullscreen
+	w.platformMin, w.platformMax, w.platformFull = minimized, maximized, fullscreen
+	w.platformKnown = true
+	return changed
+}
+
+// PlatformState returns the minimized, maximized and fullscreen state the
+// platform last reported, plus whether it has reported at all. Before the first
+// report the request props are the best answer, which is what a headless window
+// has.
+func (w *Window) PlatformState() (minimized, maximized, fullscreen, known bool) {
+	return w.platformMin, w.platformMax, w.platformFull, w.platformKnown
+}
 
 func (w *Window) namedProps() []NamedProp {
 	return append(
@@ -75,6 +116,11 @@ func (w *Window) namedProps() []NamedProp {
 		StringProp(&w.NodeBase, "theme", &w.Theme),
 		EnumProp(&w.NodeBase, "titleBar", DirtyPaint, &w.TitleBar, "system", "custom"),
 		BoolProp(&w.NodeBase, "disableResize", DirtyPaint, &w.DisableResize),
+		BoolProp(&w.NodeBase, "resizable", DirtyPaint, &w.Resizable),
+		BoolProp(&w.NodeBase, "minimizable", DirtyPaint, &w.Minimizable),
+		BoolProp(&w.NodeBase, "maximizable", DirtyPaint, &w.Maximizable),
+		BoolProp(&w.NodeBase, "minimized", DirtyPaint, &w.Minimized),
+		BoolProp(&w.NodeBase, "maximized", DirtyPaint, &w.Maximized),
 		BoolProp(&w.NodeBase, "fullscreen", DirtyPaint, &w.Fullscreen),
 	)
 }

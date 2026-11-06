@@ -230,6 +230,14 @@ func (t *Tree) SystemMode() Mode { return t.systemMode }
 // `theme: app.systemMode`.
 func (t *Tree) SetSystemMode(m Mode) { t.systemMode = m }
 
+// SystemLanguage returns the desktop's preferred language code ("tr", "en"), or
+// "" when the platform does not report one. A design reads it as
+// `app.systemLanguage`.
+func (t *Tree) SystemLanguage() string { return t.systemLanguage }
+
+// SetSystemLanguage records the desktop's preferred language.
+func (t *Tree) SetSystemLanguage(lang string) { t.systemLanguage = lang }
+
 // OS returns the operating system the app runs on, which is what `app.os`
 // exposes to a design: linux, darwin, windows, freebsd.
 func (t *Tree) OS() string { return runtime.GOOS }
@@ -738,6 +746,8 @@ func (c *evalCtx) evalRef(r *syntax.Ref) (any, bool) {
 			return c.tree.Mode().String(), true
 		case "systemMode":
 			return c.tree.SystemMode().String(), true
+		case "systemLanguage":
+			return c.tree.SystemLanguage(), true
 		case "dark":
 			return c.tree.Dark(), true
 		case "os":
@@ -745,11 +755,37 @@ func (c *evalCtx) evalRef(r *syntax.Ref) (any, bool) {
 		}
 		return nil, false
 	case "window":
+		root := c.tree.Root
+		if root == nil {
+			return nil, false
+		}
 		switch r.Prop {
 		case "width":
 			return c.tree.viewW, true
 		case "height":
 			return c.tree.viewH, true
+		case "minimized":
+			if min, _, _, known := root.PlatformState(); known {
+				return min, true
+			}
+			return root.Minimized.Get(), true
+		case "minimizable":
+			return root.Minimizable.Get(), true
+		case "maximized":
+			if _, max, _, known := root.PlatformState(); known {
+				return max, true
+			}
+			return root.Maximized.Get(), true
+		case "maximizable":
+			return root.Maximizable.Get(), true
+		case "resizable":
+			// Either spelling can turn resizing off.
+			return root.Resizable.Get() && !root.DisableResize.Get(), true
+		case "fullscreen":
+			if _, _, full, known := root.PlatformState(); known {
+				return full, true
+			}
+			return root.Fullscreen.Get(), true
 		}
 		return nil, false
 	}
