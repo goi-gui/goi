@@ -1,6 +1,10 @@
 package tree
 
-import "github.com/goi-gui/goi/internal/img"
+import (
+	"image"
+
+	"github.com/goi-gui/goi/internal/img"
+)
 
 // Node is any element in the tree. The interface is intentionally narrow: all
 // state lives in NodeBase, and namedProps is the only per-type hook.
@@ -233,6 +237,23 @@ type Image struct {
 // Kind implements Node.
 func (i *Image) Kind() string { return "Image" }
 
+// SetImage shows an image that already exists in Go: a chart, a screenshot, a
+// picture decoded from somewhere the framework does not read. It replaces
+// whatever `src` loaded, and needs no file at all.
+//
+// Call it from Bind, which runs again after every hot reload; the bitmap itself
+// is not carried across a reload.
+func (i *Image) SetImage(src image.Image) {
+	if src == nil {
+		i.Data = nil
+	} else {
+		i.Data = img.FromImage(src)
+	}
+	i.LoadErr = nil
+	i.Loading = false
+	i.Base().MarkDirty(DirtyPaint)
+}
+
 func (i *Image) namedProps() []NamedProp {
 	return append(
 		commonProps(&i.NodeBase),
@@ -266,10 +287,34 @@ type SVG struct {
 	// opacity, advanced per frame by the ui layer.
 	Loading bool
 	Phase   float64
+	// Inline is SVG source set from Go with SetDataString/SetDataBytes. While it
+	// is set it replaces `src`. InlineGen counts the sets and RenderedGen is the
+	// one the ui layer last rasterized, so a frame can tell a new document from
+	// the one already on the GPU.
+	Inline      []byte
+	InlineGen   int
+	RenderedGen int
 }
 
 // Kind implements Node.
 func (s *SVG) Kind() string { return "SVG" }
+
+// SetDataString draws an SVG document held in Go as a string, instead of
+// loading `src`. `color` still replaces the document's currentColor.
+//
+// Call it from Bind; the document is not carried across a hot reload.
+func (s *SVG) SetDataString(v string) { s.SetDataBytes([]byte(v)) }
+
+// SetDataBytes is SetDataString for bytes an icon was embedded as.
+func (s *SVG) SetDataBytes(b []byte) {
+	s.Inline = b
+	s.InlineGen++
+	s.LoadErr = nil
+	s.Loading = false
+	// The new document may have a different viewBox, so the element's size can
+	// change; the rasterizer fills IntrinsicW/H on the next frame.
+	s.Base().MarkDirty(DirtyLayout)
+}
 
 func (s *SVG) namedProps() []NamedProp {
 	return append(

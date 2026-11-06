@@ -143,8 +143,8 @@ func TestRemoteImageIsSharedAndCached(t *testing.T) {
 	}
 }
 
-// TestLocalImageNeedsNoHTTP guards the other branch: a path is read from the
-// asset container and never treated as a URL.
+// TestLocalImageNeedsNoHTTP guards the other branch: a path is read from disk
+// and never treated as a URL.
 func TestLocalImageNeedsNoHTTP(t *testing.T) {
 	var hits int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits++ }))

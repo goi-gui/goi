@@ -25,7 +25,9 @@ func TestReadmeExamplesValidate(t *testing.T) {
 	if len(blocks) == 0 {
 		t.Fatal("README.md has no goi example")
 	}
-	name := regexp.MustCompile(`(?m)^// (\w+\.goi)$`)
+	// A labelled block may name a path (`// ui/Main.goi`), because the design's
+	// imports are relative to that directory.
+	name := regexp.MustCompile(`(?m)^// ([\w./-]+\.goi)$`)
 	dir := t.TempDir()
 	var names []string
 	for _, block := range blocks {
@@ -38,7 +40,11 @@ func TestReadmeExamplesValidate(t *testing.T) {
 			t.Errorf("README.md example has no `// name.goi` line:\n%s", src)
 			continue
 		}
-		if err := os.WriteFile(filepath.Join(dir, m[1]), []byte(src), 0o644); err != nil {
+		target := filepath.Join(dir, filepath.FromSlash(m[1]))
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(target, []byte(src), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		names = append(names, m[1])

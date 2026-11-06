@@ -22,18 +22,23 @@ type Data struct {
 // Decode reads a PNG, JPEG or GIF. Anything else is an error naming the format,
 // so a typo in a path does not look like a decode failure.
 func Decode(b []byte) (*Data, error) {
-	src, format, err := image.Decode(bytes.NewReader(b))
+	src, _, err := image.Decode(bytes.NewReader(b))
 	if err != nil {
 		return nil, fmt.Errorf("img: decode: %w", err)
 	}
-	_ = format
+	return FromImage(src), nil
+}
+
+// FromImage converts any decoded image into the renderer's pixel format, which
+// is what Image.SetImage accepts from Go.
+func FromImage(src image.Image) *Data {
 	rgba, ok := src.(*image.RGBA)
 	if !ok {
 		bd := src.Bounds()
 		rgba = image.NewRGBA(image.Rect(0, 0, bd.Dx(), bd.Dy()))
 		draw.Draw(rgba, rgba.Bounds(), src, bd.Min, draw.Src)
 	}
-	return &Data{W: rgba.Rect.Dx(), H: rgba.Rect.Dy(), Pix: rgba.Pix}, nil
+	return &Data{W: rgba.Rect.Dx(), H: rgba.Rect.Dy(), Pix: rgba.Pix}
 }
 
 // Shelf is a simple rectangle packer: images are placed in rows on shelves, and

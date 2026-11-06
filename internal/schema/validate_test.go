@@ -359,12 +359,21 @@ func TestIfBlockValidation(t *testing.T) {
 	}
 }
 
-// TestBlockSamplesAreTheShippedDocs guards the examples in docs/SYNTAX.md: they
-// are what a reader copies, so they must validate. A snippet may be a fragment
-// of a file (the `data` block alone, a Window alone), so the page's own
-// declarations are read once and prepended when the snippet needs them.
+// TestBlockSamplesAreTheShippedDocs guards the examples in the docs site's
+// syntax page: they are what a reader copies, so they must validate. A snippet
+// may be a fragment of a file (the `data` block alone, a Window alone), so the
+// page's own declarations are read once and prepended when the snippet needs
+// them. The docs live in the sibling goi-gui/docs repository, so CI without
+// that checkout skips the test.
 func TestBlockSamplesAreTheShippedDocs(t *testing.T) {
-	body, err := os.ReadFile("../../docs/SYNTAX.md")
+	pagePath := "../../../docs/docs/syntax.md"
+	if _, err := os.Stat(pagePath); err != nil {
+		if os.IsNotExist(err) {
+			t.Skip("docs site is not checked out next to the repo")
+		}
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(pagePath)
 	if err != nil {
 		t.Fatal(err)
 	}

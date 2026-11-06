@@ -34,7 +34,7 @@ func svgApp(t *testing.T, src string) (*App, *Window) {
 func TestSVGLoadsAndFollowsColor(t *testing.T) {
 	a, w := svgApp(t, `Window {
 		Column {
-			SVG { id: icon src: "icon.svg" color: #ff0000 }
+			SVG { id: icon src: "goi://icon.svg" color: #ff0000 }
 		}
 	}`)
 	n := MustByID[*SVG](w, "icon")
@@ -125,7 +125,7 @@ func TestSVGRemoteFailureStopsLoading(t *testing.T) {
 func TestSVGColorBeatsRole(t *testing.T) {
 	a, w := svgApp(t, `Window {
 		Column {
-			SVG { id: icon src: "icon.svg" color: primary }
+			SVG { id: icon src: "goi://icon.svg" color: primary }
 		}
 	}`)
 	n := MustByID[*SVG](w, "icon")
@@ -148,7 +148,7 @@ func TestSVGColorBeatsRole(t *testing.T) {
 func TestSVGUsesViewBoxAsIntrinsicSize(t *testing.T) {
 	_, w := svgApp(t, `Window {
 		Column {
-			SVG { id: icon src: "icon.svg" }
+			SVG { id: icon src: "goi://icon.svg" }
 		}
 	}`)
 	n := MustByID[*SVG](w, "icon")

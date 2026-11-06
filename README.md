@@ -93,15 +93,15 @@ The label follows the value without a manual repaint.
 ```goi
 // inbox.goi
 
+bridge {
+	Loading  bool
+	Messages []Message
+}
+
 type Message {
 	From    string
 	Subject string
 	Unread  bool
-}
-
-bridge {
-	Loading  bool
-	Messages []Message
 }
 
 Window {
@@ -242,8 +242,8 @@ For a single binary, pass an embedded filesystem instead:
 - **Renderer.** Instanced WebGPU drawing below a small SDL3 platform layer,
   HiDPI aware, Wayland and X11 from one binary.
 
-See [docs/SYNTAX.md](docs/SYNTAX.md) for the language and
-[docs/components.md](docs/components.md) for every element.
+See the [documentation](https://goi-gui.github.io/docs/) for the language and
+every element.
 
 ## Contributing
 

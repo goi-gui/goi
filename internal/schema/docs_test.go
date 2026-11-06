@@ -8,10 +8,19 @@ import (
 )
 
 // TestComponentDocsExamplesValidate keeps the reference honest: every page in
-// docs/components has one .goi block, and the language accepts it. A property
-// that the schema and the node disagree about showed up here first.
+// the docs site's components folder has one .goi block, and the language
+// accepts it. A property that the schema and the node disagree about showed up
+// here first. The docs live in the sibling goi-gui/docs repository, so CI
+// without that checkout skips the test.
 func TestComponentDocsExamplesValidate(t *testing.T) {
-	pages, err := filepath.Glob("../../docs/components/*.md")
+	dir := "../../../docs/docs/components"
+	if _, err := os.Stat(dir); err != nil {
+		if os.IsNotExist(err) {
+			t.Skip("docs site is not checked out next to the repo")
+		}
+		t.Fatal(err)
+	}
+	pages, err := filepath.Glob(filepath.Join(dir, "*.md"))
 	if err != nil {
 		t.Fatal(err)
 	}

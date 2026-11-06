@@ -2038,13 +2038,14 @@ func propDoc(el string, p schema.Prop) string {
 			"`ui.SetCustomColor`, or a `#rrggbb` literal.")
 	}
 	if p.Name == "src" {
+		b.WriteString("\n\n`goi://path` reads the design's asset container, `./path` or an absolute " +
+			"path reads this machine, and `http(s)://` is fetched in the background.")
 		switch el {
 		case "Image":
-			b.WriteString("\n\nA path next to the `.goi` file, or an `http`/`https` URL. " +
-				"A remote one is fetched in the background behind a placeholder.")
+			b.WriteString(" `SetImage` from Go skips the file entirely.")
 		case "SVG":
-			b.WriteString("\n\nAn SVG path or an `http`/`https` URL. `currentColor` in the file " +
-				"takes the element's `color`, so one icon follows the theme.")
+			b.WriteString(" `currentColor` in the file takes the element's `color`, so one icon " +
+				"follows the theme; `SetDataString`/`SetDataBytes` supply the document from Go.")
 		}
 	}
 	switch p.Name {

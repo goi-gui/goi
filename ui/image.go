@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"math"
 	"net/http"
+	"os"
 	"path"
 	"strings"
 	"time"
@@ -23,11 +24,33 @@ const maxRemoteImageBytes = 32 << 20
 // timeout keeps a hanging host from leaving a placeholder pulsing forever.
 var remoteImageClient = &http.Client{Timeout: 20 * time.Second}
 
-// isRemoteSrc reports whether src is an absolute http(s) URL rather than a path
-// inside the design's asset container.
+// assetScheme marks a src that lives in the design's asset container: the fs.FS
+// passed to LoadWindow, so an embed.FS in production and a directory in
+// development.
+const assetScheme = "goi://"
+
+// isRemoteSrc reports whether src is an absolute http(s) URL rather than a local
+// one.
 func isRemoteSrc(src string) bool {
 	s := strings.ToLower(src)
 	return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://")
+}
+
+// isAssetSrc reports whether src names a file inside the design's container.
+func isAssetSrc(src string) bool { return strings.HasPrefix(src, assetScheme) }
+
+// readSrc returns the bytes behind a local src. `goi://path` reads the design's
+// asset container; anything else is a path on this machine, relative to the
+// working directory or absolute. Remote URLs never reach here: they are fetched
+// in the background.
+func (a *App) readSrc(src string) ([]byte, error) {
+	if isAssetSrc(src) {
+		if a.assets == nil {
+			return nil, fmt.Errorf("%s: no asset container", src)
+		}
+		return fs.ReadFile(a.assets, path.Clean(strings.TrimPrefix(src, assetScheme)))
+	}
+	return os.ReadFile(src)
 }
 
 // loadImages fills in every Image and SVG element in a freshly built tree.
@@ -66,12 +89,9 @@ func (a *App) loadImages(tr *tree.Tree) {
 			a.loadRemoteImage(im, src)
 			continue
 		}
-		if a.assets == nil {
-			continue
-		}
 		d, cached := a.images[src]
 		if !cached {
-			b, err := fs.ReadFile(a.assets, path.Clean(src))
+			b, err := a.readSrc(src)
 			if err != nil {
 				im.LoadErr = err
 				continue
@@ -94,6 +114,16 @@ func (a *App) cacheImage(src string, d *img.Data) {
 	a.images[src] = d
 }
 
+// svgColor normalises a design colour for the rasterizer. SVG colours have no
+// alpha channel, so 0 means "the design named none" and gets black; the alpha of
+// a real colour becomes drawing opacity.
+func svgColor(color uint32) uint32 {
+	if color == 0 {
+		return 0x000000FF
+	}
+	return color
+}
+
 // svgKey identifies a rasterized SVG: the same file in the same colour is one
 // bitmap on the GPU atlas, however many nodes use it.
 type svgKey struct {
@@ -101,11 +131,39 @@ type svgKey struct {
 	color uint32
 }
 
-// loadSVG rasterizes one SVG node. An empty src leaves the node as it is.
+// loadSVG rasterizes one SVG node. A document set from Go wins over `src`, and
+// an empty src leaves the node as it is.
 func (a *App) loadSVG(n *tree.SVG) {
+	if n.InlineGen > 0 {
+		a.renderSVGData(n, n.Inline, n.Color.Get())
+		return
+	}
 	if src := n.Src.Get(); src != "" {
 		a.renderSVG(n, src, n.Color.Get())
 	}
+}
+
+// renderSVGData rasterizes SVG source held in Go. It is not cached: the bytes
+// belong to one node, and a set arrives once, not once per frame.
+func (a *App) renderSVGData(n *tree.SVG, b []byte, color uint32) {
+	n.RenderedGen = n.InlineGen
+	n.RenderedColor = color
+	n.LoadErr = nil
+	n.Loading = false
+	source, err := svg.Parse(b)
+	if err != nil {
+		n.Data = nil
+		n.LoadErr = err
+		return
+	}
+	n.IntrinsicW, n.IntrinsicH = source.Intrinsic()
+	d, err := source.Render(svgColor(color))
+	if err != nil {
+		n.Data = nil
+		n.LoadErr = err
+		return
+	}
+	n.Data = d
 }
 
 // renderSVG resolves src, parses it and rasterizes it with color as
@@ -140,12 +198,7 @@ func (a *App) renderSVG(n *tree.SVG, src string, color uint32) {
 	n.Loading = false
 	n.IntrinsicW, n.IntrinsicH = source.Intrinsic()
 
-	// SVG colours have no alpha channel, so 0 means "the design named none"
-	// and gets black; the alpha of a real colour becomes drawing opacity.
-	c := color
-	if c == 0 {
-		c = 0x000000FF
-	}
+	c := svgColor(color)
 	key := svgKey{src: src, color: c}
 	d, ok := a.svgData[key]
 	if !ok {
@@ -177,12 +230,8 @@ func (a *App) svgSource(src string) (*svg.SVG, error) {
 	var err error
 	if isRemoteSrc(src) {
 		b = a.svgRemote[src]
-	} else if a.assets != nil {
-		if b, err = fs.ReadFile(a.assets, path.Clean(src)); err != nil {
-			return nil, err
-		}
-	} else {
-		return nil, nil
+	} else if b, err = a.readSrc(src); err != nil {
+		return nil, err
 	}
 	s, err := svg.Parse(b)
 	if err != nil {
@@ -252,7 +301,13 @@ func (a *App) finishSVGLoad(src string, b []byte, err error) {
 // syncSVGs re-rasterizes an SVG whose src or colour changed from Go. It runs
 // once per frame and only walks the tree while the design has an SVG.
 func (a *App) syncSVGs() {
-	if !a.hasSVG || a.win == nil || a.win.tree == nil {
+	if a.win == nil || a.win.tree == nil {
+		return
+	}
+	// The walk is free only while nothing is pending: a design with an SVG needs
+	// it every frame for a colour change, and a document set from Go marks the
+	// tree dirty, which is the frame this has to run on.
+	if !a.hasSVG && !a.needsFrame {
 		return
 	}
 	a.win.tree.Walk(func(n tree.Node) {
@@ -260,7 +315,17 @@ func (a *App) syncSVGs() {
 		if !ok {
 			return
 		}
-		src, color := s.Src.Get(), s.Color.Get()
+		color := s.Color.Get()
+		if s.InlineGen > 0 {
+			// A document from Go owns the node until another set replaces it.
+			if s.InlineGen == s.RenderedGen && color == s.RenderedColor {
+				return
+			}
+			a.renderSVGData(s, s.Inline, color)
+			s.Base().MarkDirty(tree.DirtyLayout)
+			return
+		}
+		src := s.Src.Get()
 		if src == s.RenderedSrc && color == s.RenderedColor {
 			return
 		}
