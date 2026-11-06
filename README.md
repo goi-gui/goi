@@ -1,302 +1,202 @@
 <p align="center">
-  <img src="./goi-logo.svg" alt="Logo" width="200">
+  <img src="./goi-logo-simple.svg" alt="goi logo" width="140">
 </p>
 
-A declarative GUI framework for Go, rendered with WebGPU. The window is described
-in a small QML-like file; Go finds elements by id and attaches behaviour.
+<h1 align="center">goi</h1>
+
+<p align="center">A declarative GUI framework for Go, rendered with WebGPU.</p>
+
+goi describes a window in `.goi` files: elements, properties and ids, with no
+loops or scripting. Go finds elements by id, holds the state and attaches the
+behaviour.
+
+## Counter
+
+The design declares the values it reads and the handlers it calls in a `bridge`
+block. Go supplies both.
 
 ```goi
-// app.goi
+// counter.goi
+
+bridge {
+	Count int
+	onInc func()
+	onDec func()
+}
 
 Window {
 	title: "Counter"
 
 	Column {
 		padding:        24
-		spacing:        12
+		spacing:        16
 		crossAxisAlign: center
 
 		Text {
-			id:   label
-			text: "0"
+			text: formatf("%d", bridge.Count)
 			role: displayLarge
 		}
 
-		Button {
-			id:    inc
-			label: "Increase"
-			icon:  add
+		Row {
+			spacing: 12
+
+			Button {
+				id:      dec
+				label:   "−"
+				variant: outlined
+				onClick: bridge.onDec()
+			}
+
+			Button {
+				id:      inc
+				label:   "+"
+				onClick: bridge.onInc()
+			}
 		}
 	}
 }
 ```
 
 ```go
-app, _ := ui.NewApp()
-win, _ := app.LoadWindowFile("app.goi", ui.WithHotReload(true))
+var count int // outside Bind: Bind runs again after every hot reload
 
-count := 0 // outside Bind: survives hot reload
-win.Bind(func(w *ui.Window) error {
-	label := ui.MustByID[*ui.Text](w, "label")
-	ui.MustByID[*ui.Button](w, "inc").OnClick(func(ui.ClickEvent) {
-		count++
-		label.Text.Set(strconv.Itoa(count))
+func main() {
+	app, _ := ui.NewApp()
+	win, _ := app.LoadWindowFile("counter.goi", ui.WithHotReload(true))
+
+	win.Bind(func(w *ui.Window) error {
+		ui.SetData(w, "Count", count)
+		if err := ui.SetHandler(w, "onInc", func() {
+			count++
+			ui.SetData(w, "Count", count)
+		}); err != nil {
+			return err
+		}
+		return ui.SetHandler(w, "onDec", func() {
+			count--
+			ui.SetData(w, "Count", count)
+		})
 	})
-	return nil
-})
-app.Run()
+
+	app.Run()
+}
 ```
 
-## One design, several files
+`SetData` feeds `bridge.Count`; `SetHandler` supplies the body a bridge call runs.
+The label follows the value without a manual repaint.
 
-A `.goi` file can import fragments and pass them values, so a page does not have
-to be one long file. An import names its alias first, as in Go:
+## Several files
+
+A design can import fragments and pass them values, so a page does not have to be
+one long file.
 
 ```goi
-// Main.goi
+// ui/Main.goi
 
 import Sidebar "./Sidebar.goi"
 
 Window {
+	id:    main
+	title: "Mail"
+
 	Row {
 		Sidebar {
-			title: "Mail"
-			width: 300
+			title: "Inbox"
+		}
+
+		Column {
+			flex:    1
+			padding: 24
+
+			Text {
+				text: "Select a message"
+				role: titleLarge
+			}
 		}
 	}
 }
 ```
 
 ```goi
-// Sidebar.goi
+// ui/Sidebar.goi
 
 props {
 	title string
 }
 
 Column {
+	width:      280
+	padding:    12
+	spacing:    6
+	background: surfaceContainer
+
 	Text {
 		text: props.title
-		role: "titleLarge"
+		role: titleLarge
+	}
+
+	NavigationItem {
+		label:    "Inbox"
+		icon:     inbox
+		selected: true
+	}
+
+	NavigationItem {
+		label: "Starred"
+		icon:  star
+	}
+
+	NavigationItem {
+		label: "Sent"
+		icon:  send
 	}
 }
 ```
 
-Designs load from an **asset container**, an `io/fs.FS` plus a path inside it:
+The directory is the asset container, and hot reload watches every file the
+design reads:
 
 ```go
-// Development: real files, hot reload watches every file the design reads.
 win, _ := app.LoadWindow(ui.DirFS("ui"), "Main.goi", ui.WithHotReload(true))
-
-// Production: one executable, no files on disk.
-//go:embed ui
-var assets embed.FS
-win, _ := app.LoadWindow(assets, "ui/Main.goi")
 ```
 
-`ui.DirFS` is `os.DirFS` that remembers its directory, which is what hot reload
-needs; a plain `os.DirFS` or an `embed.FS` works for loading but cannot be
-watched. `ui.LoadWindowFile(path)` is the single-file shortcut.
+For a single binary, pass an embedded filesystem instead:
+`app.LoadWindow(assets, "ui/Main.goi")`.
 
-## Dialogs and notifications
+## Features
 
-The platform's file dialogs and notifications are wrapped in `ui`, so an app
-does not pull in a dialog or notification package of its own:
+- **Declarative design files.** Elements, properties and ids; diagnostics point
+  at `file:line:col`.
+- **State and events in Go.** `bridge` declarations, `ui.SetData`,
+  `ui.SetHandler`, typed `Prop[T]`, `Event[E]` and `ByID[T]`.
+- **Composition.** Imports, typed `props`, named slots and `$children`, scoped
+  ids, loading from any `io/fs.FS`.
+- **Material 3.** Buttons, text fields, cards, dialogs, sheets, menus, navigation,
+  progress and more, with light and dark schemes, Roboto and Material Symbols.
+- **Layout.** Column, Row and Stack, Wrap, Grid, flex sizing, responsive
+  breakpoints, padding and margin, and scrolling containers.
+- **Text and media.** M3 type scale, word wrapping, bidirectional shaping, PNG,
+  JPEG, GIF and SVG with theme colours.
+- **Native shell.** Window chrome control, file dialogs, notifications, keyboard
+  input and hot reload.
+- **Tooling.** `goipls` for diagnostics, completion, hover and go-to-definition
+  in the [Zed extension](https://github.com/goi-gui/zed-goi), plus `goifmt`.
+- **Renderer.** Instanced WebGPU drawing below a small SDL3 platform layer,
+  HiDPI aware, Wayland and X11 from one binary.
 
-```go
-path, err := ui.OpenFile(
-	ui.DialogTitle("Open a design"),
-	ui.DialogFilters(ui.FileFilter{Name: "Goi designs", Patterns: []string{"*.goi"}}),
-)
-if errors.Is(err, ui.ErrDialogCanceled) {
-	return // the user closed the dialog
-}
-ui.Notify("Opened", path)
+See [docs/SYNTAX.md](docs/SYNTAX.md) for the language and
+[docs/components.md](docs/components.md) for every element.
 
-target, err := ui.SaveFile(ui.DialogFilename("design.goi"))
-if err == nil {
-	ui.Notify("Saved", target)
-}
-```
+## Contributing
 
-`ui.OpenFiles` is the same dialog with multiple selection, and `ui.OpenFolder`
-picks a directory. `ui.DialogsAvailable()` reports whether the platform has a
-dialog tool; on Linux that is `zenity`, `matedialog` or `qarma`. The dialog calls
-block until the dialog closes, so from a UI handler the window stops repainting
-meanwhile.
-
-## Requirements
-
-- Go 1.23 or newer (developed on 1.27).
-- A C toolchain and SDL3 on the machine (`sdl3` via pkg-config). SDL picks
-  Wayland or X11 at runtime, so one binary runs on both and there is no build tag
-  to choose.
-- A Vulkan, Metal, D3D12 or OpenGL ES driver. No `wgpu-native` binary is needed:
-  the renderer is pure Go (`gogpu/wgpu`).
-- On Linux, `zenity` (or `matedialog`/`qarma`) on `PATH` if the app uses the
-  file dialogs. Notifications use D-Bus, falling back to `notify-send`.
-
-The renderer reaches the GPU through its own FFI, so the binary still needs the
-internal linker even though the only cgo left is the SDL shim:
+Contributions are welcome: open an issue or a pull request. Keep changes focused
+and match the surrounding style, then run:
 
 ```sh
-go build -ldflags=-linkmode=internal ./...
-```
-
-A custom title bar (`Window { titleBar: custom }`) hides the platform
-decorations and lets the design draw and drag its own; see
-[docs/components/titlebar.md](docs/components/titlebar.md).
-
-## Examples
-
-[goi-gui/examples](https://github.com/goi-gui/examples)
-
-## What it does
-
-- `.goi` files: literals only, no scripting. Elements, properties, ids, with
-  diagnostics that point at `file:line:col`.
-- Composable designs: `import Sidebar "./Sidebar.goi"`, a typed `props`
-  block the instance fills (`props.Title`, zero value when it passes nothing,
-  plus lists and handlers), named slots (`$header`) and `$children`, loaded
-  from an `io/fs.FS` so `embed.FS` and `os.DirFS` both work. An instance's `id`
-  scopes the fragment's own ids (`first.title`), so one fragment can be used
-  many times with behaviour attached to each copy.
-- Typed Go API: `Prop[T]` cells, `Event[E]`, `ByID[T]`.
-- Material 3 components as core elements: buttons, FABs, chips, selection
-  controls, sliders, text fields, cards, dialogs, sheets, lists, menus,
-  app bars, navigation, tabs, progress, pickers, carousel and toolbar. They ship
-  with the light and dark baseline schemes, Roboto and Material Symbols.
-- Layout: Column, Row, Stack with `Positioned` anchoring, Wrap and Grid, flex
-  grow and shrink, padding, margin, min/max width and height, and `scroll: true`
-  on any container (Row sideways, the rest down).
-- Window chrome: `minWidth`/`minHeight`/`maxWidth`/`maxHeight` bound the native
-  window, `disableResize: true` turns off the user's resize and maximize, and
-  `fullscreen: true` fills the display. All four are reactive from Go.
-- Responsive values per property: `padding: { base: 8, md: 16 }`, with
-  Tailwind's `sm`/`md`/`lg`/`xl` min-width breakpoints applied on resize.
-- Text: the M3 type scale (`role`), explicit `fontSize` and `weight` (300/400/
-  500/700/900 Roboto; other numbers snap to the nearest), and `wrap: true` for
-  real word wrapping that reserves the height of every line.
-- `goifmt`: a gofmt for `.goi`. It aligns declaration fields and property
-  values in one column, puts one property per line, separates imports and
-  declaration blocks by one blank line, indents every body, keeps a comment
-  cuddled to what it explains, and collapses extra blank lines. It runs on save
-  through `goipls` and as `go run ./cmd/goifmt -w`.
-- Go's pure builtins in a value: `len`, `cap`, `min`, `max`, plus `formatf` for
-  the `fmt` verbs.
-- Go-shaped declarations and control flow: `bridge { Count int }`,
-  `type Row { Title string }`, `if x { } else { }` and
-  `for i, row := range bridge.Rows { }` read exactly like Go.
-  `formatf("%d items", bridge.Count)` formats with Go's verbs, and `+` adds
-  numbers but joins anything else. Every primitive type, `[]T`, `map[string]T`
-  and `func(...)` work; a variable starts at its type's zero value. A Go struct
-  reaches a design through its `goi` tag (`goi:"fullName"`; `goi:"-"` hides a
-  field, and so does leaving it unexported).
-- Value expressions on every property type: `width: side.width / 2`,
-  `width: 50%` of the parent, comparisons and `&& || !`, and a conditional
-  (`trailingIcon: app.dark ? "light_mode" : "dark_mode"`). `app.theme`,
-  `app.dark`, `window.width`/`height` and any element's property by id
-  (`searchField.text`) are readable from a design.
-- Colors by M3 role: `background: surfaceContainerHigh` follows the scheme,
-  while a hex literal stays a deliberate fixed color. An app can also name its
-  own: `win.SetCustomColor("myBrand", 0x411F89FF)` makes `color: myBrand` work
-  in the design, and setting it again recolours every element that uses it.
-- Themes: the baseline `light` and `dark` schemes plus any scheme the app
-  registers with `ui.WithTheme("brand", t)`, selected in the file with
-  `theme: brand`. Start from `ui.LightTheme()`/`ui.DarkTheme()` and change the
-  roles you need; `app.dark` follows the resolved scheme's mood, not its name.
-- Images: `Image { src: "photo.png" fit: cover }` decodes PNG, JPEG or GIF once
-  and packs every bitmap into one GPU atlas.
-- SVG: `SVG { src: "logo.svg" color: primary }` rasterizes an SVG file and
-  substitutes the design's colour for its `currentColor`, so theme roles and
-  `Color.Set` from Go reach the icon. A local path or an `http`/`https` URL
-  works, with the same background fetch and breathing placeholder as `Image`.
-- Bridge: `bridge { OnOpen func(id string) }` declares the handlers a design
-  calls from any event property (`onClick: bridge.OnOpen(row.ID)`), with the
-  arguments evaluated when the event fires and `event` carrying the event's own
-  payload; `ui.SetHandler` supplies the body. The `bridge` example
-  (`make bridge`) runs every event.
-- Platform dialogs and notifications: `ui.OpenFile`, `ui.OpenFiles`,
-  `ui.SaveFile` and `ui.OpenFolder` wrap the native file picker with a title,
-  a start directory, a filename and type filters; canceling is
-  `ui.ErrDialogCanceled`. `ui.Notify` sends a desktop notification.
-- Logging: startup, window load and hot reload log how long they took, and a
-  colour problem is a warning. `ui.SetLogger` takes a `ksckaan1/logger` logger;
-  without it the `LOGGER_*` environment variables configure the default.
-  `DEBUG_UI=1` logs every input event except pointer motion.
-- Lists from Go: a hidden template in the `.goi` file plus `ui.Instantiate` makes
-  N rows without hand-building nodes; `ui.Remove` takes one away.
-- Motion: `app.Tween` and `app.Animate` ease a function or a `Prop` over time,
-  and the loop sleeps again when the last one finishes.
-- Scrolling containers draw the M3 thumb, so a long page shows where it is.
-- Visibility on every element, components included: `visible: false` (also
-  responsive) or `SetVisible` from Go removes it from layout, paint and input.
-- Rendering: instanced SDF rounded rects, circles, arcs and shadows with borders
-  and anti-aliasing, text through HarfBuzz-quality shaping and a grayscale
-  atlas, HiDPI aware.
-- Input: clicks with Material ripples, hover, text editing with selection and
-  clipboard shortcuts, wheel and drag scrolling. Tab and Shift+Tab walk the
-  visible controls, Enter and Space press the focused one, and focus draws the
-  M3 outline. Any node can take a click (`OnClick`), not only a component, so a
-  scrim or a custom hit area needs no extra element type.
-- Overlays in order: shapes and glyphs share one instance buffer, so a drawer, a
-  dialog or a snackbar paints over the page exactly as the tree orders it.
-- Window-level keys: `win.OnKey` sees every key press, focused or not, which is
-  how a modal drawer closes on Escape.
-- Text editing: selection, clipboard, word and line keys, a value that scrolls
-  to keep the caret in view, and IME composition drawn as underlined preedit.
-  Text is shaped in bidirectional runs, so Arabic and Hebrew join and read
-  right to left.
-- Hot reload: edit the file, the window updates; broken files keep the last good
-  tree and print diagnostics.
-
-## Editor support
-
-The Zed extension lives in [goi-gui/zed-goi](https://github.com/goi-gui/zed-goi):
-syntax highlighting, brackets, indentation and an element outline. It starts
-`goipls`, the language server in `cmd/goipls`, which adds diagnostics (including
-errors inside an imported fragment), completion for elements, properties,
-values, icon names, ids, declaration types, `bridge.`/`props.` values, handler
-calls, `if`/`for` statements, the Go builtins, formatting on save, and a
-fragment instance's props (read from the imported file), hover docs for every
-declaration and fragment, a document outline and go-to-definition for imports
-and id references:
-
-```sh
-go install github.com/goi-gui/goi/cmd/goipls@latest
-```
-
-The module lives in a private repository, so Go needs a credential for it;
-`GOPRIVATE=github.com/goi-gui/*` (or `GONOSUMDB`) keeps the toolchain from
-asking the public proxy for it.
-
-See [goi-gui/zed-goi](https://github.com/goi-gui/zed-goi) for the local install
-steps.
-
-See [docs/components.md](docs/components.md) for every element with its
-properties and Go examples, and [docs/SYNTAX.md](docs/SYNTAX.md),
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
-[docs/DECISIONS.md](docs/DECISIONS.md) for the language, the internals and the
-reasoning.
-
-## Not in v1
-
-Bindings that push Go state back into `.goi` values (the file is evaluated, not
-observed), dynamic color and custom themes, an accessibility tree, multiple
-windows, drag and drop, required fragment props (a prop always has a default or
-the type's zero value), state and styles declared inside a fragment,
-drag-to-fling (the wheel does coast), and caret mapping inside right-to-left
-text. IME composition shows as underlined preedit on Wayland.
-`go run ./cmd/goicheck -layout` lays a design out headlessly and reports nodes
-that cannot draw; a fragment is previewed on its own by filling its props with
-their defaults.
-
-## Tests
-
-```sh
-make test   # go test -race ./...
+make test
 make vet
 ```
 
-Parser, schema, tree, layout and paint are pure Go and run headless; only the
-renderer and the window need a display.
+## License
+
+[MIT](LICENSE) © ksckaan1
