@@ -401,7 +401,7 @@ func TestBlockSamplesAreTheShippedDocs(t *testing.T) {
 			full = src
 		}
 		if _, diag := validate(t, full); !diag.Empty() {
-			t.Errorf("docs/SYNTAX.md block:\n%s\n%v", src, diag.Format("doc", []byte(full)))
+			t.Errorf("../docs/docs/syntax.md block:\n%s\n%v", src, diag.Format("doc", []byte(full)))
 		}
 	}
 }
