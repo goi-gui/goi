@@ -6,9 +6,10 @@
 
 <p align="center">A declarative GUI framework for Go, rendered with WebGPU.</p>
 
-goi describes a window in `.goi` files: elements, properties and ids, with no
-loops or scripting. Go finds elements by id, holds the state and attaches the
-behaviour.
+goi describes a window in `.goi` files: elements, properties, ids, `if`/`else`
+and `for` loops. Go finds elements by id, holds the
+state and attaches the behaviour. Edit a `.goi` file and the window updates
+without a restart: hot reload is built in.
 
 ## Counter
 
@@ -84,6 +85,56 @@ func main() {
 
 `SetData` feeds `bridge.Count`; `SetHandler` supplies the body a bridge call runs.
 The label follows the value without a manual repaint.
+
+## Conditionals and loops
+
+`if`/`else` and `for ... range` read like Go, and a list comes from the bridge:
+
+```goi
+// inbox.goi
+
+type Message {
+	From    string
+	Subject string
+	Unread  bool
+}
+
+bridge {
+	Loading  bool
+	Messages []Message
+}
+
+Window {
+	title: "Inbox"
+
+	Column {
+		padding: 24
+		spacing: 8
+
+		if bridge.Loading {
+			Text {
+				text: "Loading…"
+			}
+		} else {
+			for _, message := range bridge.Messages {
+				ListItem {
+					label:      message.From
+					supporting: message.Subject
+					selected:   message.Unread
+				}
+			}
+		}
+	}
+}
+```
+
+```go
+ui.SetData(w, "Loading", false)
+ui.SetData(w, "Messages", messages) // any slice of structs
+```
+
+The rows rebuild when the list is set; a scalar such as `bridge.Loading` only
+toggles what the `if` shows.
 
 ## Several files
 
@@ -165,8 +216,8 @@ For a single binary, pass an embedded filesystem instead:
 
 ## Features
 
-- **Declarative design files.** Elements, properties and ids; diagnostics point
-  at `file:line:col`.
+- **Declarative design files.** Elements, properties, ids, `if`/`else` and
+  `for ... range`; diagnostics point at `file:line:col`.
 - **State and events in Go.** `bridge` declarations, `ui.SetData`,
   `ui.SetHandler`, typed `Prop[T]`, `Event[E]` and `ByID[T]`.
 - **Composition.** Imports, typed `props`, named slots and `$children`, scoped
@@ -179,8 +230,15 @@ For a single binary, pass an embedded filesystem instead:
   JPEG, GIF and SVG with theme colours.
 - **Native shell.** Window chrome control, file dialogs, notifications, keyboard
   input and hot reload.
-- **Tooling.** `goipls` for diagnostics, completion, hover and go-to-definition
-  in the [Zed extension](https://github.com/goi-gui/zed-goi), plus `goifmt`.
+- **Language server.** `goipls` adds diagnostics (including inside imported
+  fragments), completion, hover docs, document outline and go-to-definition,
+  plus formatting on save.
+- **Editor extension.** A [Zed extension](https://github.com/goi-gui/zed-goi)
+  brings syntax highlighting, brackets, indentation, an element outline and the
+  `.goi` file icon. It is the only editor extension so far; elsewhere the
+  language server still works over stdio.
+- **Formatter.** `goifmt` aligns fields and properties, one property per line,
+  and runs through the language server or as `go run ./cmd/goifmt -w`.
 - **Renderer.** Instanced WebGPU drawing below a small SDL3 platform layer,
   HiDPI aware, Wayland and X11 from one binary.
 
