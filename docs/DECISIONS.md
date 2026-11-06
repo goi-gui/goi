@@ -1365,3 +1365,20 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   tree. A declared maximum also undoes a maximize, since the compositor owns
   that button and an xdg `max_size` hint is only a hint; fullscreen stays
   exempt so it can fill the display.
+- **A `src` says where it lives, so `goi://` marks the asset container.** A bare
+  path used to mean the container, which left no way to point at a file the user
+  picked or one next to the binary. Now `goi://path` reads the `fs.FS` given to
+  `LoadWindow`, `./path` and `path` read the working directory, an absolute path
+  reads itself, and `http(s)://` still fetches in the background. The scheme is
+  explicit rather than inferred, because `assets/logo.svg` and `./logo.svg` are
+  both plausible and a heuristic would silently read the wrong file. The cache
+  is keyed by the whole string, so one name under two schemes stays two bitmaps.
+- **`Image.SetImage` and `SVG.SetDataString`/`SetDataBytes` are node methods, not
+  options on the loader.** A picture that exists in Go (a chart, a screenshot, an
+  `//go:embed`) never passes through `src`, so the loader would need a parallel
+  path for something the node already stores. `SetImage` converts through the
+  same `img.FromImage` the decoder uses; the SVG setters keep the document on
+  the node and bump a generation counter, so the frame loop notices a new
+  document the way it notices a new colour, and the rasterizer stays in `ui`
+  instead of `tree` learning how SVG is drawn. Neither survives a hot reload,
+  which is why both are documented as "call it from Bind".
