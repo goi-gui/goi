@@ -124,6 +124,9 @@ type List struct {
 	// a debug overlay; the app turns it on with App.ShowFPS.
 	ShowFPS bool
 	FPS     int
+	// suppressElev drops a component's own M3 elevation shadow for the node
+	// being painted, so an explicit `shadow` replaces it instead of stacking.
+	suppressElev bool
 }
 
 // Reset empties the list but keeps its capacity.
@@ -219,7 +222,9 @@ func (l *List) paintContent(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
 		l.paintBoxShadows(b, r, clip, false)
 	}
 	if c, ok := b.Node().(componentNode); ok {
+		l.suppressElev = b.ShadowSet()
 		l.paintComponent(c.M3(), r, clip)
+		l.suppressElev = false
 	} else if b.Background() != 0 || b.BorderWidth() > 0 {
 		l.fillRect(r, b.Background(), b.Radius(), b.BorderColor(), b.BorderWidth(), clip)
 	}

@@ -41,11 +41,14 @@ type Atlas struct {
 // without bound. 4096² of coverage is 16MB.
 const maxAtlasDim = 4096
 
-// GlyphKey identifies one rasterized glyph.
+// GlyphKey identifies one rasterized glyph. Blur is 0 for the glyph itself and
+// the blur radius in device pixels for a shadow copy, which is a distinct atlas
+// entry because its bitmap is grown and softened.
 type GlyphKey struct {
 	Font uint8
 	Size int // size in 1/4 pixel
 	GID  uint16
+	Blur int
 }
 
 // GlyphSlot is where a glyph lives in the atlas.
@@ -80,7 +83,30 @@ func (a *Atlas) BeginFrame() { a.frame++ }
 // The bool is false only when the glyph has no bitmap (a space) — a full atlas
 // is handled by compacting or growing, never by skipping.
 func (a *Atlas) Slot(face *Face, gid uint16) (GlyphSlot, bool) {
-	key := GlyphKey{Font: face.Tag(), Size: int(face.Size() * 4), GID: gid}
+	return a.slot(face, gid, 0)
+}
+
+// maxShadowBlur caps the cached blur so a wild value cannot allocate without
+// bound. A text shadow past 40px is past readable anyway.
+const maxShadowBlur = 40
+
+// ShadowSlot returns the atlas location of a glyph's shadow: the glyph's
+// coverage blurred by blur device pixels, in a bitmap grown to hold the soft
+// edge. The returned Offset already includes that growth, so laying it out like
+// a normal glyph puts the blurred copy exactly where the glyph sits.
+func (a *Atlas) ShadowSlot(face *Face, gid uint16, blur int) (GlyphSlot, bool) {
+	if blur <= 0 {
+		return a.slot(face, gid, 0)
+	}
+	if blur > maxShadowBlur {
+		blur = maxShadowBlur
+	}
+	return a.slot(face, gid, blur)
+}
+
+// slot is Slot for a glyph, or its shadow when blur is positive.
+func (a *Atlas) slot(face *Face, gid uint16, blur int) (GlyphSlot, bool) {
+	key := GlyphKey{Font: face.Tag(), Size: int(face.Size() * 4), GID: gid, Blur: blur}
 	a.stamp[key] = a.frame
 	if e, ok := a.entries[key]; ok {
 		return e.GlyphSlot, e.Rect.Dx() > 0
@@ -90,6 +116,12 @@ func (a *Atlas) Slot(face *Face, gid uint16) (GlyphSlot, bool) {
 		// Cache the miss so a space does not rasterize every frame.
 		a.entries[key] = glyphEntry{}
 		return GlyphSlot{}, false
+	}
+	if blur > 0 {
+		var pad int
+		gimg, pad = blurGray(gimg, blur)
+		off.X -= pad
+		off.Y -= pad
 	}
 	slot, ok := a.place(key, face, gimg, off)
 	if !ok {

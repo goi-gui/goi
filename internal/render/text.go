@@ -11,7 +11,6 @@ import (
 	"github.com/gogpu/wgpu"
 	"github.com/goi-gui/goi/internal/paint"
 	"github.com/goi-gui/goi/internal/text"
-	"github.com/goi-gui/goi/internal/tree"
 )
 
 // textRenderer owns the glyph atlas. Glyph quads go into the same instance
@@ -51,10 +50,13 @@ type glyphQuad struct {
 }
 
 // placedGlyph is one glyph's quad and atlas slot, before the shadow copies are
-// derived from it.
+// derived from it. pen is the position the glyph was advanced to, so a shadow
+// can resolve its own (blurred) atlas slot at the same spot.
 type placedGlyph struct {
 	rect [4]float32
 	slot image.Rectangle
+	gid  uint16
+	pen  float64
 }
 
 // glyphSpan is a text op's range inside textRenderer.quads.
@@ -170,39 +172,50 @@ func (t *textRenderer) shapeOp(op paint.Op, atlas *text.Atlas) int {
 
 	placed := t.placed[:0]
 	for _, gl := range out.Glyphs {
-		if slot, ok := atlas.Slot(face, uint16(gl.GlyphID)); ok {
-			x := math.Round((penX+float64(slot.Offset.X)/scale)*scale) / scale
-			y := (penY + float64(slot.Offset.Y)) / scale
-			w := float64(slot.Rect.Dx()) / scale
-			h := float64(slot.Rect.Dy()) / scale
+		gid := uint16(gl.GlyphID)
+		if slot, ok := atlas.Slot(face, gid); ok {
 			placed = append(placed, placedGlyph{
-				rect: [4]float32{float32(x), float32(y), float32(w), float32(h)},
+				rect: glyphRect(penX, penY, scale, slot),
 				slot: slot.Rect,
+				gid:  gid,
+				pen:  penX,
 			})
 		}
 		penX += float64(gl.Advance) / 64 / scale
 	}
 	t.placed = placed
 
-	// A text shadow is the whole run offset, painted before the glyphs so the
-	// glyphs sit on top, exactly as CSS paints text-shadow. Blur is a handful of
-	// offset copies rather than atlas taps: the atlas packs glyphs edge to edge,
-	// so sampling past a slot would pick up its neighbour.
+	// A text shadow is the run offset and painted before the glyphs, so the
+	// glyphs sit on top, exactly as CSS paints text-shadow. Its blur comes from
+	// a blurred copy of the glyph in the atlas: a second, padded slot instead of
+	// a fragment-shader blur, because the atlas packs glyphs edge to edge and a
+	// shader tap would sample the neighbour.
 	n := 0
 	for _, sh := range op.TextShadows {
-		for _, tap := range shadowTaps(sh, scale) {
-			scol := rgba(scaleAlpha(sh.Color, tap.alpha))
-			for _, p := range placed {
-				t.quads = append(t.quads, glyphQuad{
-					rect:    [4]float32{p.rect[0] + tap.dx, p.rect[1] + tap.dy, p.rect[2], p.rect[3]},
-					slot:    p.slot,
-					color:   scol,
-					clip:    clip,
-					clipBox: clipBox,
-					clipR:   op.ClipRadius,
-				})
-				n++
+		blur := int(math.Round(sh.Blur * scale))
+		scol := rgba(sh.Color)
+		for _, p := range placed {
+			rect := p.rect
+			slot := p.slot
+			if blur > 0 {
+				ss, ok := atlas.ShadowSlot(face, p.gid, blur)
+				if !ok {
+					continue
+				}
+				rect = glyphRect(p.pen, penY, scale, ss)
+				slot = ss.Rect
 			}
+			rect[0] += float32(sh.X)
+			rect[1] += float32(sh.Y)
+			t.quads = append(t.quads, glyphQuad{
+				rect:    rect,
+				slot:    slot,
+				color:   scol,
+				clip:    clip,
+				clipBox: clipBox,
+				clipR:   op.ClipRadius,
+			})
+			n++
 		}
 	}
 	for _, p := range placed {
@@ -218,55 +231,15 @@ func (t *textRenderer) shapeOp(op paint.Op, atlas *text.Atlas) int {
 	return n + len(placed)
 }
 
-// scaleAlpha multiplies a colour's alpha, keeping its channels.
-func scaleAlpha(c uint32, a float32) uint32 {
-	old := float32(c & 0xFF)
-	na := uint32(old*a + 0.5)
-	if na > 0xFF {
-		na = 0xFF
-	}
-	return c&0xFFFFFF00 | na
-}
-
-// shadowTap is one copy of a glyph run that stands in for a blurred shadow.
-type shadowTap struct {
-	dx, dy, alpha float32
-}
-
-// shadowRings is how many copies a blurred shadow is built from: two rings plus
-// the centre, which reads as a soft edge without a second pass.
-var shadowRings = []struct {
-	radius, weight float32
-	stops          int
-}{
-	{0, 1.0, 1},
-	{0.45, 0.55, 6},
-	{0.85, 0.4, 10},
-}
-
-// shadowTaps lays a shadow layer out as offset copies. A layer without blur is a
-// single copy, which is the hard shadow CSS draws for `text-shadow: x y color`.
-func shadowTaps(sh tree.ShadowLayer, scale float64) []shadowTap {
-	if sh.Blur <= 0 {
-		return []shadowTap{{dx: float32(sh.X), dy: float32(sh.Y), alpha: 1}}
-	}
-	blur := float32(sh.Blur) * float32(scale)
-	var total float32
-	for _, r := range shadowRings {
-		total += r.weight * float32(r.stops)
-	}
-	out := make([]shadowTap, 0, int(total))
-	for _, r := range shadowRings {
-		for i := 0; i < r.stops; i++ {
-			ang := 2 * math.Pi * float64(i) / float64(r.stops)
-			out = append(out, shadowTap{
-				dx:    float32(sh.X) + blur*r.radius*float32(math.Cos(ang)),
-				dy:    float32(sh.Y) + blur*r.radius*float32(math.Sin(ang)),
-				alpha: r.weight / total * 2,
-			})
-		}
-	}
-	return out
+// glyphRect is the quad a slot covers, given the run's pen position. The x is
+// snapped to the physical pixel grid so a centred run does not smear a stem
+// across two columns; the slot's own offset already carries any blur growth.
+func glyphRect(penX, penY, scale float64, slot text.GlyphSlot) [4]float32 {
+	x := math.Round((penX+float64(slot.Offset.X)/scale)*scale) / scale
+	y := (penY + float64(slot.Offset.Y)) / scale
+	w := float64(slot.Rect.Dx()) / scale
+	h := float64(slot.Rect.Dy()) / scale
+	return [4]float32{float32(x), float32(y), float32(w), float32(h)}
 }
 
 // emit appends the quads prepared for op i, in display-list order.

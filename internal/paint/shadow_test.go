@@ -148,3 +148,42 @@ func TestShadowFollowsComponentShape(t *testing.T) {
 		t.Fatalf("button shadow radius = %v, want a pill", radii[0])
 	}
 }
+
+// TestShadowReplacesComponentElevation pins the rule the user asked for: an
+// explicit shadow stands in for the component's M3 elevation instead of drawing
+// on top of it, and `none` drops the elevation too.
+func TestShadowReplacesComponentElevation(t *testing.T) {
+	count := func(src string) int {
+		l := list(t, src, 400, 400)
+		n := 0
+		for _, op := range l.Ops {
+			if op.Kind == Shadow {
+				n++
+			}
+		}
+		return n
+	}
+
+	// A Card carries an M3 elevation shadow on its own.
+	if got := count(`Window { Card { label: "x" } }`); got != 1 {
+		t.Fatalf("plain Card shadows = %d, want its elevation", got)
+	}
+	// An explicit shadow replaces that elevation: exactly the design's layer.
+	l := list(t, `Window { Card { label: "x" shadow: 2 2 #ff0000 } }`, 400, 400)
+	var shadows []Op
+	for _, op := range l.Ops {
+		if op.Kind == Shadow {
+			shadows = append(shadows, op)
+		}
+	}
+	if len(shadows) != 1 {
+		t.Fatalf("Card shadows = %d, want just the explicit layer:\n%s", len(shadows), l.Dump())
+	}
+	if shadows[0].Color != 0xFF0000FF {
+		t.Fatalf("shadow color = %08x, want the design's red", shadows[0].Color)
+	}
+	// `none` is explicit too, so the elevation is gone.
+	if got := count(`Window { Card { label: "x" shadow: none } }`); got != 0 {
+		t.Fatalf("shadow: none left %d shadows", got)
+	}
+}

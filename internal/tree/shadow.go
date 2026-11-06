@@ -26,6 +26,10 @@ type ShadowLayer struct {
 type ShadowProp struct {
 	layers []ShadowLayer
 	goSet  bool
+	// explicit is true once the design or Go set the property, which is what
+	// lets an explicit `shadow: none` replace a component's M3 elevation
+	// instead of being indistinguishable from "not written".
+	explicit bool
 }
 
 // set replaces the layers without marking the node: callers do that.
@@ -59,6 +63,7 @@ func shadowProp(b *NodeBase, name string, p *ShadowProp) NamedProp {
 			}
 			p.set(shadowLayers(sh))
 			p.goSet = false
+			p.explicit = true
 			if p.hasRole() {
 				b.listShadow()
 			}
@@ -71,6 +76,7 @@ func shadowProp(b *NodeBase, name string, p *ShadowProp) NamedProp {
 			}
 			p.set(layers)
 			p.goSet = true
+			p.explicit = true
 			if p.hasRole() {
 				b.listShadow()
 			}

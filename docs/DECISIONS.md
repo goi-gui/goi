@@ -1418,11 +1418,19 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   `ui.SetCustomColor` name works; with no colour it falls back to the scheme's
   shadow role instead of CSS's black, which is why a dark theme does not get a
   black smudge.
-- **A text shadow is the glyph quads offset and blurred in the fragment shader.**
-  A real Gaussian would need a second atlas pass or a mip chain; sixteen taps
-  clamped to the glyph's own atlas slot are enough for a readable edge and cost
-  nothing when no shadow is set. `spread` and `inset` have no glyph meaning and
-  are ignored on `Text`.
+- **A text shadow blurs the glyph's coverage on the CPU and caches it in the
+  atlas.** Two earlier shapes failed visibly: offset copies of the glyph read as
+  a stack of ghost letters (frosted glass), and a fragment-shader blur sampled
+  the neighbouring glyph because the atlas packs glyphs edge to edge. A blurred
+  glyph is a second atlas entry keyed by its blur radius, with the bitmap grown
+  by 1.5×blur so the soft edge is not clipped; a separable Gaussian costs two
+  passes and is paid once per (glyph, blur), not per frame. `spread` and `inset`
+  have no glyph meaning and are ignored on `Text`.
+- **An explicit `shadow` replaces a component's M3 elevation rather than stacking
+  on it.** A `Button` already has an elevation, and drawing the design's shadow
+  in addition made it look smudged. `shadow: none` counts as explicit, so it is
+  how a design removes the elevation, and the painter suppresses the component's
+  own shadow for that node only.
 - **A box shadow's corner radius comes from the node, or from its component's M3
   shape.** A `Button` is a pill and a `Card` keeps its medium corners, so a shadow
   matches the box it is behind without the design repeating the radius. The small

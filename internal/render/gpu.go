@@ -170,31 +170,10 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 	}
 
 	if (kind > 3.5) {
-		// Glyph: the atlas holds one coverage value per texel. A text shadow
-		// wants that coverage blurred, which is a small disc of taps; a plain
-		// glyph takes the single sample it always did.
-		let blur = in.params.y;
-		if (blur <= 0.0) {
-			let a = textureSample(atlas, samp, in.uv).r;
-			return vec4f(in.color.rgb, in.color.a * a);
-		}
-		let texel = vec2f(1.0) / vec2f(textureDimensions(atlas));
-		let step = texel * blur;
-		// Clamped to the glyph's own slot: the atlas packs neighbours tightly,
-		// so a tap that wandered outside would ghost the next glyph in.
-		let uvMin = in.params.zw;
-		let uvMax = in.misc.xy;
-		var acc = 0.0;
-		// Two rings plus the centre: enough for a readable soft edge without a
-		// second pass or a mip chain.
-		for (var i = 0; i < 8; i = i + 1) {
-			let ang = f32(i) * PI / 4.0;
-			let dir = vec2f(cos(ang), sin(ang));
-			acc = acc + textureSample(atlas, samp, clamp(in.uv + dir * step * 0.55, uvMin, uvMax)).r;
-			acc = acc + textureSample(atlas, samp, clamp(in.uv + dir * step, uvMin, uvMax)).r;
-		}
-		acc = acc / 16.0;
-		return vec4f(in.color.rgb, in.color.a * acc);
+		// Glyph: the atlas holds one coverage value per texel. A text shadow is
+		// a separately blurred entry in the same atlas, so this stays one sample.
+		let a = textureSample(atlas, samp, in.uv).r;
+		return vec4f(in.color.rgb, in.color.a * a);
 	}
 
 	if (kind > 2.5) {

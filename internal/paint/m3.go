@@ -100,7 +100,9 @@ func (l *List) shadow(r tree.Rect, radius float64, dp int, clip tree.Rect) {
 
 // shadowRadii is shadow for a shape whose corners differ, like a split button.
 func (l *List) shadowRadii(r tree.Rect, radii [4]float32, dp int, clip tree.Rect) {
-	if dp <= 0 {
+	// An explicit `shadow` on the node stands in for the component's elevation,
+	// including `shadow: none`, which drops it.
+	if dp <= 0 || l.suppressElev {
 		return
 	}
 	blur := float64(dp) * 2.0

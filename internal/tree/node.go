@@ -258,6 +258,11 @@ func (b *NodeBase) Radius() float64 { return b.radius.Get() }
 // Shadow returns the node's shadow layers, in paint order.
 func (b *NodeBase) Shadow() []ShadowLayer { return b.shadow.layers }
 
+// ShadowSet reports whether the design or Go set `shadow`, even to `none`. A
+// component uses it to drop its own M3 elevation: an explicit shadow replaces
+// that default rather than stacking on top of it.
+func (b *NodeBase) ShadowSet() bool { return b.shadow.explicit }
+
 // SetShadow replaces the node's shadows with the same layers a `.goi` file
 // writes. A role colour is resolved per frame, so it still follows the theme.
 //
@@ -266,15 +271,16 @@ func (b *NodeBase) Shadow() []ShadowLayer { return b.shadow.layers }
 func (b *NodeBase) SetShadow(layers ...ShadowLayer) {
 	b.shadow.set(layers)
 	b.shadow.goSet = true
+	b.shadow.explicit = true
 	if b.shadow.hasRole() {
 		b.listShadow()
 	}
 	b.mark(DirtyPaint)
 }
 
-// ClearShadow removes every shadow.
+// ClearShadow removes every shadow, including a component's default elevation.
 func (b *NodeBase) ClearShadow() {
-	if len(b.shadow.layers) == 0 {
+	if len(b.shadow.layers) == 0 && b.shadow.explicit {
 		return
 	}
 	b.SetShadow()
