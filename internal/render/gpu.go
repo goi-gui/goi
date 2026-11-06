@@ -140,10 +140,12 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 		// an inset box-shadow.
 		let blur = max(in.params.y, 0.5);
 		let spread = in.misc.w;
-		let hole = in.size - vec2f(2.0 * spread);
-		let holeC = in.local - in.size * 0.5 - vec2f(in.params.z, in.params.w);
+		// The hole is the shape shrunk by spread, moved by the offset. sd_round_rect
+		// measures from a box's top-left, so the hole's own origin is subtracted.
+		let hole = max(in.size - vec2f(2.0 * spread), vec2f(0.0));
+		let holeOrigin = (in.size - hole) * 0.5 + vec2f(in.params.z, in.params.w);
 		let hr = max(corner_radius(in.radius, in.local, in.size) - spread, 0.0);
-		let dh = sd_round_rect(holeC, hole, hr);
+		let dh = sd_round_rect(in.local - holeOrigin, hole, hr);
 		// Outside the hole is where the shadow is: dh >= 0, and the edge of the
 		// hole is the darkest point before the fade inward.
 		let cov = smoothstep(-blur, 0.0, dh);

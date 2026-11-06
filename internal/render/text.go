@@ -11,6 +11,7 @@ import (
 	"github.com/gogpu/wgpu"
 	"github.com/goi-gui/goi/internal/paint"
 	"github.com/goi-gui/goi/internal/text"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // textRenderer owns the glyph atlas. Glyph quads go into the same instance
@@ -47,8 +48,6 @@ type glyphQuad struct {
 	clip    [4]float32
 	clipBox [4]float32
 	clipR   float32
-	// blur is the text-shadow softness in atlas texels; 0 is a solid glyph.
-	blur float32
 }
 
 // placedGlyph is one glyph's quad and atlas slot, before the shadow copies are
@@ -186,21 +185,24 @@ func (t *textRenderer) shapeOp(op paint.Op, atlas *text.Atlas) int {
 	t.placed = placed
 
 	// A text shadow is the whole run offset, painted before the glyphs so the
-	// glyphs sit on top, exactly as CSS paints text-shadow.
+	// glyphs sit on top, exactly as CSS paints text-shadow. Blur is a handful of
+	// offset copies rather than atlas taps: the atlas packs glyphs edge to edge,
+	// so sampling past a slot would pick up its neighbour.
+	n := 0
 	for _, sh := range op.TextShadows {
-		dx, dy := float32(sh.X), float32(sh.Y)
-		scol := rgba(sh.Color)
-		blur := float32(sh.Blur * scale)
-		for _, p := range placed {
-			t.quads = append(t.quads, glyphQuad{
-				rect:    [4]float32{p.rect[0] + dx, p.rect[1] + dy, p.rect[2], p.rect[3]},
-				slot:    p.slot,
-				color:   scol,
-				clip:    clip,
-				clipBox: clipBox,
-				clipR:   op.ClipRadius,
-				blur:    blur,
-			})
+		for _, tap := range shadowTaps(sh, scale) {
+			scol := rgba(scaleAlpha(sh.Color, tap.alpha))
+			for _, p := range placed {
+				t.quads = append(t.quads, glyphQuad{
+					rect:    [4]float32{p.rect[0] + tap.dx, p.rect[1] + tap.dy, p.rect[2], p.rect[3]},
+					slot:    p.slot,
+					color:   scol,
+					clip:    clip,
+					clipBox: clipBox,
+					clipR:   op.ClipRadius,
+				})
+				n++
+			}
 		}
 	}
 	for _, p := range placed {
@@ -213,7 +215,58 @@ func (t *textRenderer) shapeOp(op paint.Op, atlas *text.Atlas) int {
 			clipR:   op.ClipRadius,
 		})
 	}
-	return len(placed) + len(op.TextShadows)*len(placed)
+	return n + len(placed)
+}
+
+// scaleAlpha multiplies a colour's alpha, keeping its channels.
+func scaleAlpha(c uint32, a float32) uint32 {
+	old := float32(c & 0xFF)
+	na := uint32(old*a + 0.5)
+	if na > 0xFF {
+		na = 0xFF
+	}
+	return c&0xFFFFFF00 | na
+}
+
+// shadowTap is one copy of a glyph run that stands in for a blurred shadow.
+type shadowTap struct {
+	dx, dy, alpha float32
+}
+
+// shadowRings is how many copies a blurred shadow is built from: two rings plus
+// the centre, which reads as a soft edge without a second pass.
+var shadowRings = []struct {
+	radius, weight float32
+	stops          int
+}{
+	{0, 1.0, 1},
+	{0.45, 0.55, 6},
+	{0.85, 0.4, 10},
+}
+
+// shadowTaps lays a shadow layer out as offset copies. A layer without blur is a
+// single copy, which is the hard shadow CSS draws for `text-shadow: x y color`.
+func shadowTaps(sh tree.ShadowLayer, scale float64) []shadowTap {
+	if sh.Blur <= 0 {
+		return []shadowTap{{dx: float32(sh.X), dy: float32(sh.Y), alpha: 1}}
+	}
+	blur := float32(sh.Blur) * float32(scale)
+	var total float32
+	for _, r := range shadowRings {
+		total += r.weight * float32(r.stops)
+	}
+	out := make([]shadowTap, 0, int(total))
+	for _, r := range shadowRings {
+		for i := 0; i < r.stops; i++ {
+			ang := 2 * math.Pi * float64(i) / float64(r.stops)
+			out = append(out, shadowTap{
+				dx:    float32(sh.X) + blur*r.radius*float32(math.Cos(ang)),
+				dy:    float32(sh.Y) + blur*r.radius*float32(math.Sin(ang)),
+				alpha: r.weight / total * 2,
+			})
+		}
+	}
+	return out
 }
 
 // emit appends the quads prepared for op i, in display-list order.
@@ -232,7 +285,7 @@ func (t *textRenderer) emit(i int) {
 			// kind 4 is a glyph quad: params.zw is the UV origin, misc.xy is
 			// the UV far corner and misc.z the rounded clip.
 			Params: [4]float32{
-				4, q.blur,
+				4, 0,
 				float32(q.slot.Min.X) / float32(t.atlasW),
 				float32(q.slot.Min.Y) / float32(t.atlasH),
 			},
