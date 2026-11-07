@@ -63,16 +63,16 @@ func main() {
 			fail = true
 			continue
 		}
-		// A file with props or a slot is a fragment, and so is one that a
-		// sibling imports: it draws part of a design and gets its values from
-		// whoever imports it, so it has no window root.
-		fragment := b.File.IsFragment() || asset.IsImported(file)
-		if fragment {
-			if _, diag := schema.Validate(b.File); !diag.Empty() {
-				fmt.Fprintln(os.Stderr, diag.FormatFiles(name, b.Sources[name], b.Sources))
-				fail = true
-				continue
-			}
+		// Anything without a Window root is a fragment: it draws part of a
+		// design and gets its values from whoever imports it. goicheck checks
+		// such a file after wrapping it in a Window; only the runtime requires
+		// a program's entry point to be one.
+		if _, diag := schema.Validate(b.File); !diag.Empty() {
+			fmt.Fprintln(os.Stderr, diag.FormatFiles(name, b.Sources[name], b.Sources))
+			fail = true
+			continue
+		}
+		if b.File.IsFragment() || b.File.Root.Name != "Window" {
 			if !*checkLayout && !*ops {
 				fmt.Printf("%s: ok (fragment, %d props, %d files)\n", file, len(b.File.Props), len(b.Files))
 				continue
@@ -89,10 +89,6 @@ func main() {
 			preview.Root = &syntax.Element{Name: "Window", Src: body.Src,
 				Members: []syntax.Member{body.Root}}
 			b.File = &preview
-		} else if _, diag := schema.ValidateEntry(b.File); !diag.Empty() {
-			fmt.Fprintln(os.Stderr, diag.FormatFiles(name, b.Sources[name], b.Sources))
-			fail = true
-			continue
 		}
 		tr, err := tree.Build(b.File, nil)
 		if err != nil {

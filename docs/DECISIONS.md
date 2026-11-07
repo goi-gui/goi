@@ -1517,10 +1517,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   bottom (or right) padding is reached only after the last child. Layout and
   `ScrollMax` are unchanged, so the same 10dp still lands after the last child
   at the end.
-- **An imported file is a fragment even without props or a slot.** Runtime only
-  cares that something instantiated it, but `goicheck` and the language server
-  open a file alone, so they see no Window root and reported an entry-point
-  error (the gallery's `MotionPage.goi` was one). `asset.IsImported` scans
-  siblings for an import that resolves to the file, and both tools accept the
-  non-Window root when it finds one. The scan stays in the same folder, which is
-  where designs keep their fragments; walk up if shared subfolders become usual.
+- **Only the runtime requires a Window root.** A design split into pages has
+  many roots, and a tool that opens one file cannot tell a page from a mistake:
+  guessing by looking at the folder's imports was brittle and still wrong for
+  files nobody imported yet. So `ui.loadBundle` keeps `ValidateEntry`, and
+  `goipls` and `goicheck` validate every file as a fragment and never name the
+  root rule. `goicheck` wraps a non-Window root in a Window before laying it out,
+  which is what the preview already did for declared fragments.

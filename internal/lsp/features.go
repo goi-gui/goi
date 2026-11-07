@@ -43,12 +43,9 @@ func (s *Server) validate(d *document) {
 		s.publishDiagSet(d, idx, diag, bundle)
 		return
 	}
-	var vdiag syntax.Diagnostics
-	if bundle.File.IsFragment() || asset.IsImported(d.path) {
-		_, vdiag = schema.Validate(bundle.File)
-	} else {
-		_, vdiag = schema.ValidateEntry(bundle.File)
-	}
+	// The editor never requires a Window root: a design split into pages has
+	// many roots, and the runtime is where the entry point is checked.
+	_, vdiag := schema.Validate(bundle.File)
 	s.publishDiagSet(d, idx, vdiag, bundle)
 }
 

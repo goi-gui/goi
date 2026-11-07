@@ -833,19 +833,17 @@ func TestChildrenSlotIsAFragment(t *testing.T) {
 	}
 }
 
-// TestImportedFragmentWithoutMarker covers a fragment that declares neither
-// props nor a slot, like a page split out of the gallery: a caller in the same
-// folder is the only sign it is not an entry point.
-func TestImportedFragmentWithoutMarker(t *testing.T) {
+// TestNonWindowRootIsNotAnEntryError pins the editor rule: goipls validates
+// every file as a fragment, so a page split out of a window may have any root.
+// Only the runtime requires a program's entry point to be a Window.
+func TestNonWindowRootIsNotAnEntryError(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()
-	frag := "Column {\n\tbogus: 1\n}\n"
-	fragURI := writeDesign(t, dir, "Page.goi", frag)
-	main := "import Page \"./Page.goi\"\nWindow {\n\tid: main\n\tPage { }\n}\n"
-	writeDesign(t, dir, "main.goi", main)
-	c.openDoc(fragURI, frag)
+	src := "Column {\n\tbogus: 1\n}\n"
+	uri := writeDesign(t, dir, "Page.goi", src)
+	c.openDoc(uri, src)
 
-	diags := c.diagnostics(fragURI)
+	diags := c.diagnostics(uri)
 	if len(diags) != 1 || !strings.Contains(diags[0].Message, "unknown property") {
 		t.Fatalf("diagnostics = %v, want only the unknown property", diags)
 	}

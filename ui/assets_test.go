@@ -64,6 +64,22 @@ Window { Part { } }`)},
 	}
 }
 
+// TestLoadWindowRequiresAWindowRoot is the one place the rule applies: the file
+// a program opens must be a Window. The editor and goicheck stay quiet about it
+// because a design split into pages has many roots.
+func TestLoadWindowRequiresAWindowRoot(t *testing.T) {
+	fsys := fstest.MapFS{
+		"Main.goi": &fstest.MapFile{Data: []byte("Column {\n\tid: page\n}\n")},
+	}
+	_, err := loadBundle(fsys, "Main.goi")
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), "root element must be Window") {
+		t.Fatalf("err = %v, want the Window rule", err)
+	}
+}
+
 // TestHotReloadRequiresDirectoryContainer checks the failure users will hit:
 // os.DirFS hides its path, so it cannot be watched.
 func TestHotReloadRequiresDirectoryContainer(t *testing.T) {

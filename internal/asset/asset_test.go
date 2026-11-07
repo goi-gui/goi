@@ -742,23 +742,3 @@ Card {
 		t.Fatalf("label after SetData = %q", got)
 	}
 }
-
-// TestIsImported covers the marker-less fragment: a file with a non-Window root
-// is a fragment only when a sibling calls it.
-func TestIsImported(t *testing.T) {
-	dir := design(t, map[string]string{
-		"Page.goi":   "Column { }",
-		"main.goi":   "import Page \"./Page.goi\"\nWindow { Page { } }",
-		"Loose.goi":  "Column { }",
-		"broken.goi": "import X ",
-	})
-	if !IsImported(filepath.Join(dir, "Page.goi")) {
-		t.Fatal("a called page was not reported as imported")
-	}
-	if IsImported(filepath.Join(dir, "Loose.goi")) {
-		t.Fatal("an uncalled page was reported as imported")
-	}
-	if IsImported(filepath.Join(dir, "main.goi")) {
-		t.Fatal("a window entry was reported as imported")
-	}
-}
