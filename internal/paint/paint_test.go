@@ -367,3 +367,35 @@ func TestScrollChromeIgnoresPadding(t *testing.T) {
 		t.Fatalf("shadow x/w = %v/%v, want 0/100 (padding ignored)", bottom.Rect[0], bottom.Rect[2])
 	}
 }
+
+// TestScrollClipDropsEndPaddingAtRest checks that bottom padding is not a
+// permanent band: at the top the content clips to the frame bottom, and the
+// same 10dp only shows after the last child at the end of the scroll.
+func TestScrollClipDropsEndPaddingAtRest(t *testing.T) {
+	l := list(t, `Window { Column {
+		id: page
+		scroll: true
+		padding: 10
+		width: 100
+		height: 100
+		Rectangle { id: body width: 80 height: 300 background: #ff0000 }
+	} }`, 100, 100)
+	var body Op
+	for _, op := range l.Ops {
+		if op.Kind == Fill && op.Color == 0xFF0000FF {
+			body = op
+			break
+		}
+	}
+	if body.Rect[0] == 0 {
+		t.Fatalf("no body op:\n%s", l.Dump())
+	}
+	// x is inset by the left padding, but the clip runs to the frame bottom so
+	// the bottom padding is not visible while the content still overflows there.
+	if body.Rect[0] != 10 {
+		t.Fatalf("body x = %v, want the 10 padding start", body.Rect[0])
+	}
+	if got := body.Clip[1] + body.Clip[3]; got != 100 {
+		t.Fatalf("clip bottom = %v, want the frame bottom 100", got)
+	}
+}

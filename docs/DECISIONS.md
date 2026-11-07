@@ -1509,3 +1509,11 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   Using `ContentBox` inset them by the padding, which made a padded scroller look
   like it had a floating bar and a shadow band in the middle of the gutter.
   Hit-testing uses the same rect, so the drawn bar and the grab target agree.
+- **A scroller clips to its start padding and to the frame at the end edge.**
+  Reserving the end padding in the viewport (the content box) leaves a permanent
+  empty band at the bottom even at rest, while CSS-style readers expect that
+  gutter to belong to the content. `ScrollClip` keeps left/right and the start
+  edge from `ContentBox` and extends the end edge to `ScrollViewport`, so the
+  bottom (or right) padding is reached only after the last child. Layout and
+  `ScrollMax` are unchanged, so the same 10dp still lands after the last child
+  at the end.

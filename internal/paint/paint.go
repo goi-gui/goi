@@ -177,7 +177,7 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 	if !empty {
 		l.paintContent(b, r, clip)
 	}
-	inner := b.ContentBox(r)
+	inner := b.ScrollClip(r)
 	childClip := clip
 	if b.ClipsChildren() {
 		childClip = intersect(clip, inner)
@@ -212,7 +212,7 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 		l.paintContent(b, r, clip)
 	}
 
-	inner := b.ContentBox(r)
+	inner := b.ScrollClip(r)
 	childClip := clip
 	if b.ClipsChildren() {
 		childClip = intersect(clip, inner)

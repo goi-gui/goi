@@ -916,7 +916,7 @@ func (i *interactor) scrollbarAt(x, y float64) (tree.Node, tree.Rect) {
 		ox += br.X
 		oy += br.Y
 		box := tree.Rect{X: ox, Y: oy, W: br.W, H: br.H}
-		innerBox := b.ContentBox(box)
+		innerBox := b.ScrollClip(box)
 		kidClip := clip
 		if b.ClipsChildren() {
 			kidClip = intersectRect(clip, innerBox)
@@ -1349,7 +1349,7 @@ func walkHit(b *tree.NodeBase, ox, oy float64, x, y float64, clip tree.Rect, fou
 	oy += br.Y
 	box := tree.Rect{X: ox, Y: oy, W: br.W, H: br.H}
 
-	inner := b.ContentBox(box)
+	inner := b.ScrollClip(box)
 	kidClip := clip
 	if b.ClipsChildren() {
 		kidClip = intersectRect(clip, inner)
@@ -1377,7 +1377,7 @@ func walkHitOffset(b *tree.NodeBase, ox, oy float64, bounds tree.Rect, x, y floa
 	ox += bounds.X
 	oy += bounds.Y
 	box := tree.Rect{X: ox, Y: oy, W: bounds.W, H: bounds.H}
-	inner := b.ContentBox(box)
+	inner := b.ScrollClip(box)
 	kidClip := clip
 	if b.ClipsChildren() {
 		kidClip = intersectRect(clip, inner)

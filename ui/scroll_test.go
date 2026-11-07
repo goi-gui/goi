@@ -135,3 +135,23 @@ func TestOpacityPercent(t *testing.T) {
 		t.Fatalf("opacity = %v, want 0.5", got)
 	}
 }
+
+// TestScrollHitReachesTheEndEdge checks hit-testing uses the same clip as
+// paint: the end padding is not a dead band, so a point in the bottom gutter
+// still belongs to the overflowing content.
+func TestScrollHitReachesTheEndEdge(t *testing.T) {
+	_, _, in := inputFixture(t, `Window { Column {
+		id: page
+		scroll: true
+		padding: 10
+		width: 100
+		height: 100
+		Rectangle { id: body width: 80 height: 300 background: #ff0000 }
+	} }`, 100, 100)
+	if got := in.hit(50, 95); got == nil || got.Kind() != "Rectangle" {
+		t.Fatalf("hit at the bottom edge = %v, want the scrolled body", got)
+	}
+	if got := in.hit(5, 50); got == nil || got.Kind() != "Column" {
+		t.Fatalf("hit in the left padding = %v, want the page", got)
+	}
+}
