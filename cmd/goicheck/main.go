@@ -63,9 +63,10 @@ func main() {
 			fail = true
 			continue
 		}
-		// A file with props or a slot is a fragment: it draws part of a design
-		// and gets its values from whoever imports it, so it has no window root.
-		fragment := b.File.IsFragment()
+		// A file with props or a slot is a fragment, and so is one that a
+		// sibling imports: it draws part of a design and gets its values from
+		// whoever imports it, so it has no window root.
+		fragment := b.File.IsFragment() || asset.IsImported(file)
 		if fragment {
 			if _, diag := schema.Validate(b.File); !diag.Empty() {
 				fmt.Fprintln(os.Stderr, diag.FormatFiles(name, b.Sources[name], b.Sources))

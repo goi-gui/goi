@@ -44,7 +44,7 @@ func (s *Server) validate(d *document) {
 		return
 	}
 	var vdiag syntax.Diagnostics
-	if bundle.File.IsFragment() {
+	if bundle.File.IsFragment() || asset.IsImported(d.path) {
 		_, vdiag = schema.Validate(bundle.File)
 	} else {
 		_, vdiag = schema.ValidateEntry(bundle.File)

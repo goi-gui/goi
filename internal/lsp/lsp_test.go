@@ -833,6 +833,24 @@ func TestChildrenSlotIsAFragment(t *testing.T) {
 	}
 }
 
+// TestImportedFragmentWithoutMarker covers a fragment that declares neither
+// props nor a slot, like a page split out of the gallery: a caller in the same
+// folder is the only sign it is not an entry point.
+func TestImportedFragmentWithoutMarker(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	frag := "Column {\n\tbogus: 1\n}\n"
+	fragURI := writeDesign(t, dir, "Page.goi", frag)
+	main := "import Page \"./Page.goi\"\nWindow {\n\tid: main\n\tPage { }\n}\n"
+	writeDesign(t, dir, "main.goi", main)
+	c.openDoc(fragURI, frag)
+
+	diags := c.diagnostics(fragURI)
+	if len(diags) != 1 || !strings.Contains(diags[0].Message, "unknown property") {
+		t.Fatalf("diagnostics = %v, want only the unknown property", diags)
+	}
+}
+
 // TestCompletionOffersChildrenSlot keeps the slot discoverable where it is
 // valid: a container body, once, and never inside a leaf.
 func TestCompletionOffersChildrenSlot(t *testing.T) {
