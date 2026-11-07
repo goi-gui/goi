@@ -23,18 +23,25 @@ func (m realMeasurer) MeasureWeight(s string, size float64, weight int) (float64
 	return f.Measure(s, 0)
 }
 
-// galleryTree loads the gallery design, which is the widest real page: every
-// component kind, nested containers and a lot of text. It lives in the sibling
-// examples module, so this skips when that checkout is not next to this one.
+// galleryTree loads one gallery page, the widest real design: every component
+// kind, nested containers and a lot of text. It is a single file because
+// BuildSource does not resolve imports. It lives in the sibling examples
+// module, so this skips when that checkout is not next to this one.
 func galleryTree(b *testing.B) *tree.Tree {
 	b.Helper()
-	src, err := os.ReadFile("../../../examples/gallery/gallery.goi")
+	src, err := os.ReadFile("../../../examples/gallery/SurfacesPage.goi")
 	if err != nil {
 		b.Skipf("gallery design not available: %v", err)
 	}
-	tr, diag := tree.BuildSource(src, nil)
+	// A gallery page is a fragment root, so wrap it in the window the app uses.
+	tr, diag := tree.BuildSource(append(append([]byte("Window {\n"), src...), '\n', '}'), nil)
 	if !diag.Empty() {
 		b.Fatal(diag)
+	}
+	// The app shows one page at a time, so the file ships hidden; the benchmark
+	// measures it as the page on screen.
+	if kids := tr.Root.Kids(); len(kids) > 0 {
+		kids[0].SetVisible(true)
 	}
 	return tr
 }

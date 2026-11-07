@@ -2,7 +2,7 @@
 //
 // The examples are a sibling module, so their designs are checked by path:
 //
-//	go run ./cmd/goicheck ../examples/gallery/gallery.goi
+//	go run ./cmd/goicheck ../examples/gallery/MainPage.goi
 //	go run ./cmd/goicheck -layout ../examples/*/*.goi
 //
 // With -layout it also lays the design out headlessly and reports nodes that
