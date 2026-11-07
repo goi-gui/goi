@@ -1509,14 +1509,14 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   Using `ContentBox` inset them by the padding, which made a padded scroller look
   like it had a floating bar and a shadow band in the middle of the gutter.
   Hit-testing uses the same rect, so the drawn bar and the grab target agree.
-- **A scroller clips to its start padding and to the frame at the end edge.**
-  Reserving the end padding in the viewport (the content box) leaves a permanent
-  empty band at the bottom even at rest, while CSS-style readers expect that
-  gutter to belong to the content. `ScrollClip` keeps left/right and the start
-  edge from `ContentBox` and extends the end edge to `ScrollViewport`, so the
-  bottom (or right) padding is reached only after the last child. Layout and
-  `ScrollMax` are unchanged, so the same 10dp still lands after the last child
-  at the end.
+- **A scroller clips to its frame, never to its padding.** Reserving any edge of
+  the content box in the viewport leaves a permanent empty band there while the
+  content scrolls under it: first the bottom, and the same is true of the top,
+  left and right. So `ScrollClip` is `ScrollViewport` for a scrolling node and
+  `ContentBox` only for one that does not scroll (a Card's padding is a real
+  inset for what it draws). Padding still spaces layout and `ScrollMax` still
+  counts it, so the gap at the start shows at rest and the gap at the end is
+  reached at the end of the scroll, without either becoming a fixed gutter.
 - **Only the runtime requires a Window root.** A design split into pages has
   many roots, and a tool that opens one file cannot tell a page from a mistake:
   guessing by looking at the folder's imports was brittle and still wrong for

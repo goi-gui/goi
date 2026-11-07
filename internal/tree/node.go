@@ -222,25 +222,17 @@ func (b *NodeBase) ContentBox(r Rect) Rect {
 	return Rect{X: r.X + pe.Left + bw, Y: r.Y + pe.Top + bw, W: w, H: h}
 }
 
-// ScrollClip is the box children clip to while scrolling. The start padding
-// stays a gutter, but the end edge follows the frame: the end padding is only
-// reached after the last child, when the area is scrolled all the way there.
+// ScrollClip is the box children clip to. A scrolling node clips to its frame:
+// padding belongs to the moving content, so it scrolls away instead of leaving
+// a fixed gutter at any edge. At rest the start padding is visible because the
+// content is laid out after it, and the end padding appears once the area is
+// scrolled all the way there. A node that does not scroll keeps the content box,
+// because its padding is a permanent inset for what it draws.
 func (b *NodeBase) ScrollClip(r Rect) Rect {
-	c := b.ContentBox(r)
-	f := b.ScrollViewport(r)
-	switch b.ScrollAxis() {
-	case AxisY:
-		c.H = f.Bottom() - c.Y
-	case AxisX:
-		c.W = f.Right() - c.X
+	if b.ScrollAxis() == AxisNone {
+		return b.ContentBox(r)
 	}
-	if c.W < 0 {
-		c.W = 0
-	}
-	if c.H < 0 {
-		c.H = 0
-	}
-	return c
+	return b.ScrollViewport(r)
 }
 
 // ScrollViewport is the box the scrollbar and scroll shadows attach to: the

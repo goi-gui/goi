@@ -368,10 +368,10 @@ func TestScrollChromeIgnoresPadding(t *testing.T) {
 	}
 }
 
-// TestScrollClipDropsEndPaddingAtRest checks that bottom padding is not a
-// permanent band: at the top the content clips to the frame bottom, and the
-// same 10dp only shows after the last child at the end of the scroll.
-func TestScrollClipDropsEndPaddingAtRest(t *testing.T) {
+// TestScrollClipIgnoresPaddingOnEveryEdge checks that no edge of a padded
+// scroller keeps a permanent band: content clips to the frame, so the 10dp only
+// shows where the scroll boundary is (above the first child, below the last).
+func TestScrollClipIgnoresPaddingOnEveryEdge(t *testing.T) {
 	l := list(t, `Window { Column {
 		id: page
 		scroll: true
@@ -390,13 +390,45 @@ func TestScrollClipDropsEndPaddingAtRest(t *testing.T) {
 	if body.Rect[0] == 0 {
 		t.Fatalf("no body op:\n%s", l.Dump())
 	}
-	// x is inset by the left padding, but the clip runs to the frame bottom so
-	// the bottom padding is not visible while the content still overflows there.
-	if body.Rect[0] != 10 {
-		t.Fatalf("body x = %v, want the 10 padding start", body.Rect[0])
+	// Layout still places the body after the left and top padding.
+	if body.Rect[0] != 10 || body.Rect[1] != 10 {
+		t.Fatalf("body at %v,%v, want the 10 padding start", body.Rect[0], body.Rect[1])
 	}
-	if got := body.Clip[1] + body.Clip[3]; got != 100 {
-		t.Fatalf("clip bottom = %v, want the frame bottom 100", got)
+	// The clip is the frame on all four edges, so a scrolled page slides under
+	// the start padding instead of leaving a fixed gutter there.
+	if body.Clip[1] != 0 || body.Clip[1]+body.Clip[3] != 100 {
+		t.Fatalf("clip y = %v..%v, want the frame 0..100", body.Clip[1], body.Clip[1]+body.Clip[3])
+	}
+	if body.Clip[0] != 0 || body.Clip[0]+body.Clip[2] != 100 {
+		t.Fatalf("clip x = %v..%v, want the frame 0..100", body.Clip[0], body.Clip[0]+body.Clip[2])
+	}
+
+	// Scrolled down, the body slides under the top padding; no fixed 10dp line
+	// clips it away.
+	tr, diag := tree.BuildSource([]byte(`Window { Column {
+		id: page
+		scroll: true
+		padding: 10
+		width: 100
+		height: 100
+		Rectangle { id: body width: 80 height: 300 background: #ff0000 }
+	} }`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 100, 100)
+	page, _ := tr.ByID("page")
+	page.Base().SetScrollOffset(20)
+	scrolled := &List{}
+	scrolled.Build(tr, 100, 100)
+	var top float32 = 1000
+	for _, op := range scrolled.Ops {
+		if op.Kind == Fill && op.Color == 0xFF0000FF && op.Rect[1] < top {
+			top = op.Rect[1]
+		}
+	}
+	if top > 0 {
+		t.Fatalf("scrolled body starts at y=%v, want it under the frame top", top)
 	}
 }
 
@@ -442,5 +474,42 @@ func TestZIndexOrdersSiblings(t *testing.T) {
 		if op.Kind == Fill && op.Color == 0x00FF00FF && op.Rect[3] != 100 {
 			t.Fatalf("height changed with zIndex: %v", op.Rect)
 		}
+	}
+}
+
+// TestHorizontalScrollIgnoresPadding is the same rule on a Row: the left
+// padding is the gap before the first chip and scrolls away, not a stuck inset.
+func TestHorizontalScrollIgnoresPadding(t *testing.T) {
+	src := `Window { Row {
+		id: strip
+		scroll: true
+		padding: 10
+		width: 100
+		height: 40
+		Rectangle { id: chip width: 300 height: 20 background: #ff0000 }
+	} }`
+	tr, diag := tree.BuildSource([]byte(src), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 100, 100)
+	strip, _ := tr.ByID("strip")
+	left := func() float32 {
+		l := &List{}
+		l.Build(tr, 100, 100)
+		for _, op := range l.Ops {
+			if op.Kind == Fill && op.Color == 0xFF0000FF {
+				return op.Rect[0]
+			}
+		}
+		t.Fatalf("no chip:\n%s", l.Dump())
+		return 0
+	}
+	if got := left(); got != 10 {
+		t.Fatalf("chip x at rest = %v, want the 10 padding start", got)
+	}
+	strip.Base().SetScrollOffset(20)
+	if got := left(); got != -10 {
+		t.Fatalf("chip x scrolled = %v, want it under the left padding", got)
 	}
 }
