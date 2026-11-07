@@ -79,7 +79,10 @@ func NewLibrary() *Library {
 	l := &Library{
 		fonts: map[Weight]*font.Face{},
 		faces: map[faceKey]*Face{},
-		atlas: NewAtlas(2048, 2048),
+		// A small window fits in 1024² with room to spare, and the atlas grows
+		// when a page needs more. Starting at the maximum spent 4MB on every
+		// app, most of it never touched.
+		atlas: NewAtlas(1024, 1024),
 	}
 	load := func(w Weight, data []byte) {
 		if len(data) == 0 {
@@ -310,7 +313,11 @@ func (f *Face) advance(s string) float64 {
 		return w
 	}
 	w := float64(f.Shape(s).Advance) / 64
-	if f.adv == nil || len(f.adv) > 8192 {
+	// The bound is a memory cap, not a speed one: every entry is a prefix string
+	// a wrap measured once, and the wrap caches upstream mean a page rarely asks
+	// for the same prefix twice. 2048 keeps a long page fast without holding
+	// thousands of dead strings per face.
+	if f.adv == nil || len(f.adv) > 2048 {
 		f.adv = make(map[string]float64)
 	}
 	f.adv[s] = w

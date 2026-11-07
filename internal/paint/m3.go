@@ -1617,29 +1617,28 @@ func (l *List) paintText(t *tree.Text, r tree.Rect, clip tree.Rect) {
 	// Wrapped text is one op per line, laid out with the same greedy break the
 	// layout pass used, so the reserved height and the drawn lines agree. A
 	// single line keeps the node's box, which is what centers short text.
+	src := t.Text.Get()
 	var lines []text.Line
-	var boxes []tree.Rect
+	lh := st.LineHeight
+	if lh <= 0 {
+		lh = st.Size * 1.2
+	}
+	var single [1]text.Line
 	if t.Wrap.Get() {
-		lines = text.WrapRanges(t.Text.Get(), r.W, func(run string) float64 {
-			return textWidth(l, run, st)
-		})
-		lh := st.LineHeight
-		if lh <= 0 {
-			lh = st.Size * 1.2
-		}
-		for i := range lines {
-			boxes = append(boxes, tree.Rect{X: r.X, Y: r.Y + float64(i)*lh, W: r.W, H: lh})
-		}
+		lines = l.wrapLines(src, r.W, st)
 	} else {
-		lines = []text.Line{{Text: t.Text.Get(), Start: 0, End: len(t.Text.Get())}}
-		boxes = []tree.Rect{r}
+		single[0] = text.Line{Text: src, Start: 0, End: len(src)}
+		lines = single[:]
 	}
 	selA, selB := t.SelA, t.SelB
 	if selA > selB {
 		selA, selB = selB, selA
 	}
 	for i, line := range lines {
-		box := boxes[i]
+		box := r
+		if t.Wrap.Get() {
+			box = tree.Rect{X: r.X, Y: r.Y + float64(i)*lh, W: r.W, H: lh}
+		}
 		// The highlight sits under the glyphs and only spans the selected
 		// characters, so a line that follows a wrapped paragraph still reads.
 		if t.Selectable.Get() && selA != selB {
@@ -1700,6 +1699,36 @@ func clampInt(v, lo, hi int) int {
 }
 
 // textWidth measures a run, falling back to an estimate when no measurer is set.
+// wrapKey identifies a wrapped run: the same text at the same column and style
+// always breaks the same way, so a repaint can reuse the lines instead of
+// re-walking every word.
+type wrapKey struct {
+	s      string
+	width  float64
+	size   float64
+	weight int
+}
+
+// maxWrapEntries bounds the wrap cache. A page shows far fewer distinct runs
+// than this; past it the map is dropped, and the visible runs wrap once more.
+const maxWrapEntries = 512
+
+// wrapLines wraps a run, reusing the previous answer when nothing changed.
+func (l *List) wrapLines(s string, width float64, st m3.TextStyle) []text.Line {
+	key := wrapKey{s: s, width: width, size: st.Size, weight: st.Weight}
+	if lines, ok := l.wrap[key]; ok {
+		return lines
+	}
+	lines := text.WrapRanges(s, width, func(run string) float64 {
+		return textWidth(l, run, st)
+	})
+	if l.wrap == nil || len(l.wrap) >= maxWrapEntries {
+		l.wrap = make(map[wrapKey][]text.Line, maxWrapEntries)
+	}
+	l.wrap[key] = lines
+	return lines
+}
+
 func textWidth(l *List, s string, st m3.TextStyle) float64 {
 	if s == "" {
 		return 0

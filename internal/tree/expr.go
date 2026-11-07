@@ -93,6 +93,11 @@ func (b *NodeBase) writeExpr(name string, v any) {
 			}
 		}
 	}
+	// The unchanged case is the common one on a repaint, and building the
+	// literal would allocate, so check first.
+	if b.sameExprValue(name, v) {
+		return
+	}
 	var lit syntax.Value
 	switch x := v.(type) {
 	case float64:
@@ -108,9 +113,6 @@ func (b *NodeBase) writeExpr(name string, v any) {
 	default:
 		return
 	}
-	if b.sameExprValue(name, v) {
-		return
-	}
 	if b.SetPropLiteral(name, lit) {
 		b.mark(b.PropDirty(name))
 	}
@@ -120,7 +122,15 @@ func (b *NodeBase) sameExprValue(name string, v any) bool {
 	if s, ok := v.(string); ok && b.colorRoleFor(name) == s {
 		return true
 	}
-	cur, ok := b.PropValue(name)
+	b.properties()
+	i, ok := b.byName[name]
+	if !ok {
+		return false
+	}
+	if same := b.props[i].Same; same != nil {
+		return same(v)
+	}
+	cur, ok := b.props[i].Get(), true
 	if !ok {
 		return false
 	}
@@ -145,6 +155,9 @@ func (b *NodeBase) sameExprValue(name string, v any) bool {
 // size. The frame loop calls it before checking whether a frame is needed, so a
 // Go property change that an expression reads also reaches the screen.
 func (t *Tree) ApplyExpressions() {
+	// The cycle detector is a tree-owned stack, so it has to start empty and
+	// not keep whatever depth the previous pass reached.
+	t.evalSeen = t.evalSeen[:0]
 	for _, b := range t.exprNodes {
 		b.applyExpressions()
 	}
@@ -301,7 +314,7 @@ func (b *NodeBase) applyExpressions() {
 		if hasPercent(spec.value) {
 			continue // ResolveSize needs the parent's content size
 		}
-		c := evalCtx{tree: b.tree, sc: b.scope, seen: map[refKey]bool{}}
+		c := evalCtx{tree: b.tree, sc: b.scope}
 		if v, ok := c.evalSpec(b, spec, 0); ok {
 			b.writeExpr(spec.name, v)
 		}
@@ -332,7 +345,7 @@ func (b *NodeBase) ResolveSize(availW, availH float64) {
 		if scale <= 0 {
 			continue
 		}
-		c := evalCtx{tree: b.tree, sc: b.scope, seen: map[refKey]bool{}}
+		c := evalCtx{tree: b.tree, sc: b.scope}
 		if v, ok := c.evalSpec(b, spec, scale); ok {
 			if f, ok := v.(float64); ok {
 				b.writeExpr(spec.name, f)
@@ -366,18 +379,28 @@ type evalCtx struct {
 	tree *Tree
 	// sc is the loop scope of the node being evaluated, so `row.title` reads
 	// the {#each} item.
-	sc   *scope
-	seen map[refKey]bool
+	sc *scope
+	// seen is the chain of references being evaluated, which is what stops a
+	// cycle. The chain is shallow, so a slice scan beats a map and the tree
+	// lends its scratch buffer: an expression pass allocates nothing.
+	seen []refKey
 }
 
 func (c *evalCtx) evalSpec(b *NodeBase, spec *exprSpec, percent float64) (any, bool) {
 	key := refKey{node: b, prop: spec.name}
-	if c.seen[key] {
-		return nil, false
+	seen := &c.seen
+	if c.tree != nil {
+		seen = &c.tree.evalSeen
 	}
-	c.seen[key] = true
-	defer delete(c.seen, key)
-	return c.eval(spec.value, percent)
+	for _, s := range *seen {
+		if s == key {
+			return nil, false
+		}
+	}
+	*seen = append(*seen, key)
+	v, ok := c.eval(spec.value, percent)
+	*seen = (*seen)[:len(*seen)-1]
+	return v, ok
 }
 
 func (c *evalCtx) eval(v syntax.Value, percent float64) (any, bool) {

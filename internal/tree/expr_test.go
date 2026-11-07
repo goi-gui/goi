@@ -271,3 +271,28 @@ func TestTranslateIntegerVerb(t *testing.T) {
 		t.Fatalf("text = %q", got)
 	}
 }
+
+// TestExpressionPassAllocationBudget guards the per-frame cost: every frame
+// re-evaluates every expression, so the unchanged case must not build literals
+// or the reference chain. Reading a property still boxes its value into `any`,
+// which is the one allocation left per reference.
+func TestExpressionPassAllocationBudget(t *testing.T) {
+	tr, diag := BuildSource([]byte(`Window {
+		Column {
+			Text { id: a text: "x" }
+			Text { id: b text: a.text }
+			Rectangle { id: box width: 120 }
+			Rectangle { id: box2 width: box.width height: 10 }
+		}
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	tr.SetViewport(800, 600)
+	tr.ApplyExpressions()
+	// Two reference reads (b.text, box.width) plus the write that follows each;
+	// the literal construction and the cycle chain cost nothing.
+	if n := testing.AllocsPerRun(50, tr.ApplyExpressions); n > 3 {
+		t.Fatalf("expression pass allocates %.1f times, want at most 3", n)
+	}
+}

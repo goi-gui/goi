@@ -66,7 +66,24 @@ type Engine struct {
 	// each ask recurses into the whole subtree, so without this a deep tree is
 	// measured once per level. Cleared at the start of every Layout.
 	memo map[naturalKey]naturalSize
+	// wraps caches how many lines a run wraps to, which is all layout needs from
+	// a paragraph. A resize lays out every frame, and re-walking every word of
+	// every visible paragraph is otherwise the most expensive part of it.
+	wraps map[wrapKey]int
 }
+
+// wrapKey identifies a wrapped run: text, column, size and weight. The break
+// points depend on nothing else, so a hit is exact.
+type wrapKey struct {
+	s      string
+	width  float64
+	size   float64
+	weight int
+}
+
+// maxWrapCounts bounds the wrap cache; past it the map is dropped and the
+// visible runs wrap once more.
+const maxWrapCounts = 1024
 
 // naturalKey is one intrinsic-size question: which node, offered how much room.
 type naturalKey struct {
@@ -152,13 +169,20 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 
 func visibleChildren(b *tree.NodeBase) []*tree.NodeBase {
 	all := b.Kids()
-	out := make([]*tree.NodeBase, 0, len(all))
 	for _, k := range all {
-		if k.Visible() {
-			out = append(out, k)
+		if !k.Visible() {
+			out := make([]*tree.NodeBase, 0, len(all))
+			for _, k := range all {
+				if k.Visible() {
+					out = append(out, k)
+				}
+			}
+			return out
 		}
 	}
-	return out
+	// Nothing hidden is the common case, and the children slice is read-only
+	// here, so returning it skips an allocation on every container.
+	return all
 }
 
 // linear is the Column (vertical) and Row (horizontal) algorithm.
@@ -863,11 +887,19 @@ func (e *Engine) textSize(s string, t *tree.Text, availW float64) (float64, floa
 	}
 	// Layout and paint must break in the same places or the reserved height is
 	// wrong, so both use the shared greedy wrap with the same advances.
-	lines := text.WrapLines(s, limit, func(run string) float64 {
-		w, _ := e.Measurer.MeasureWeight(run, size, weight)
-		return w
-	})
-	return limit, float64(len(lines)) * lineHeight
+	key := wrapKey{s: s, width: limit, size: size, weight: weight}
+	n, ok := e.wraps[key]
+	if !ok {
+		n = len(text.WrapRanges(s, limit, func(run string) float64 {
+			w, _ := e.Measurer.MeasureWeight(run, size, weight)
+			return w
+		}))
+		if e.wraps == nil || len(e.wraps) >= maxWrapCounts {
+			e.wraps = make(map[wrapKey]int, maxWrapCounts)
+		}
+		e.wraps[key] = n
+	}
+	return limit, float64(n) * lineHeight
 }
 
 func (e *Engine) measure(s string, size float64, weight int) (float64, float64) {

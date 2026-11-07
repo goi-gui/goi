@@ -79,199 +79,293 @@ func (e *Event[E]) Emit(v E) {
 func (e *Event[E]) Len() int { return len(e.handlers) }
 
 // NamedProp is a type-erased view of one property, used by the builder and by
-// hot reload. Nodes construct these once; no reflection is involved.
+// hot reload. It holds the cell itself rather than closures over it: a tree
+// builds one of these per property of every node, so the closure set used to
+// cost a few hundred bytes and five allocations per property, which for a large
+// design was most of its memory. No reflection is involved either way.
 type NamedProp struct {
 	Name  string
 	Dirty DirtyKind
-	Get   func() any
-	// SetLiteral applies a parsed literal, reporting false when the literal is
-	// not valid for the property type.
-	SetLiteral func(syntax.Value) bool
-	// CopyFrom copies the value of another node's property of the same name and
-	// type. Hot reload uses it to carry Go-set values across a reload.
-	CopyFrom func(NamedProp) bool
-	// SetColor writes a resolved 0xRRGGBBAA without going through a literal.
-	// Only color properties set it; the theme resolver uses it.
-	SetColor func(uint32)
-	// goSet reports whether Go changed this property.
-	goSet func() bool
+	kind  propKind
+	// cell is the typed property cell, always a pointer: *Prop[float64],
+	// *Prop[string], *Prop[bool], *Prop[uint32] or *ShadowProp depending on
+	// kind. One field instead of one per type keeps the entry at 48 bytes; a
+	// node carries dozens of them and they were most of its memory.
+	cell any
+	// enum lists the values an enum property accepts. It points at the
+	// caller's slice rather than copying its header, which saves two words per
+	// property and there are dozens on every node.
+	enum *[]string
+}
+
+type propKind uint8
+
+const (
+	propNumber propKind = iota
+	propString
+	propBool
+	propColor
+	propEnum
+	propShadow
+)
+
+// Get returns the value as an interface, boxing it. The expression layer reads
+// properties a frame at a time, so prefer Same where a comparison is enough.
+func (p *NamedProp) Get() any {
+	switch p.kind {
+	case propNumber:
+		return p.cell.(*Prop[float64]).val
+	case propString, propEnum:
+		return p.cell.(*Prop[string]).val
+	case propBool:
+		return p.cell.(*Prop[bool]).val
+	case propColor:
+		return p.cell.(*Prop[uint32]).val
+	case propShadow:
+		sp := p.cell.(*ShadowProp)
+		out := make([]ShadowLayer, len(sp.layers))
+		copy(out, sp.layers)
+		return out
+	}
+	return nil
+}
+
+// Same reports whether v already is this property's value, without boxing the
+// current one.
+func (p *NamedProp) Same(v any) bool {
+	switch p.kind {
+	case propNumber:
+		f, ok := v.(float64)
+		return ok && p.cell.(*Prop[float64]).val == f
+	case propString, propEnum:
+		s, ok := v.(string)
+		return ok && p.cell.(*Prop[string]).val == s
+	case propBool:
+		b, ok := v.(bool)
+		return ok && p.cell.(*Prop[bool]).val == b
+	case propColor:
+		c, ok := v.(uint32)
+		return ok && p.cell.(*Prop[uint32]).val == c
+	}
+	return false
+}
+
+// SetLiteral applies a parsed literal, reporting false when it is not valid for
+// the property type.
+func (p *NamedProp) SetLiteral(v syntax.Value) bool {
+	switch p.kind {
+	case propNumber:
+		n, ok := v.(*syntax.Number)
+		if !ok {
+			return false
+		}
+		p.cell.(*Prop[float64]).val = n.Val
+		return true
+	case propString:
+		sp := p.cell.(*Prop[string])
+		switch s := v.(type) {
+		case *syntax.String:
+			sp.val = s.Val
+		case *syntax.Ident:
+			sp.val = s.Val
+		default:
+			return false
+		}
+		return true
+	case propEnum:
+		var s string
+		switch x := v.(type) {
+		case *syntax.Ident:
+			s = x.Val
+		case *syntax.String:
+			s = x.Val
+		default:
+			return false
+		}
+		if p.allows(s) {
+			p.cell.(*Prop[string]).val = s
+			return true
+		}
+		return false
+	case propBool:
+		b, ok := v.(*syntax.Bool)
+		if !ok {
+			return false
+		}
+		p.cell.(*Prop[bool]).val = b.Val
+		return true
+	case propColor:
+		cp := p.cell.(*Prop[uint32])
+		switch c := v.(type) {
+		case *syntax.Color:
+			cp.base.clearColorRole(p.Name)
+			cp.val = c.RGBA
+		case *syntax.String:
+			rgba, ok := ParseHexColor(c.Val)
+			if !ok {
+				return false
+			}
+			cp.base.clearColorRole(p.Name)
+			cp.val = rgba
+		case *syntax.Ident:
+			if !cp.base.setColorRole(p.Name, c.Val) {
+				return false
+			}
+		default:
+			return false
+		}
+		return true
+	case propShadow:
+		sh, ok := v.(*syntax.Shadow)
+		if !ok {
+			return false
+		}
+		sp := p.cell.(*ShadowProp)
+		sp.set(shadowLayers(sh))
+		sp.goSet = false
+		sp.explicit = true
+		if sp.hasRole() {
+			sp.base.listShadow()
+		}
+		return true
+	}
+	return false
+}
+
+func (p *NamedProp) allows(s string) bool {
+	if p.enum == nil {
+		return false
+	}
+	for _, a := range *p.enum {
+		if s == a {
+			return true
+		}
+	}
+	return false
+}
+
+// CopyFrom copies another node's property of the same name and type. Hot reload
+// uses it to carry Go-set values across a reload.
+func (p *NamedProp) CopyFrom(src NamedProp) bool {
+	switch p.kind {
+	case propNumber:
+		v, ok := src.Get().(float64)
+		if !ok {
+			return false
+		}
+		p.cell.(*Prop[float64]).val = v
+	case propString, propEnum:
+		v, ok := src.Get().(string)
+		if !ok || (p.kind == propEnum && !p.allows(v)) {
+			return false
+		}
+		p.cell.(*Prop[string]).val = v
+	case propBool:
+		v, ok := src.Get().(bool)
+		if !ok {
+			return false
+		}
+		p.cell.(*Prop[bool]).val = v
+	case propColor:
+		v, ok := src.Get().(uint32)
+		if !ok {
+			return false
+		}
+		p.cell.(*Prop[uint32]).val = v
+	case propShadow:
+		layers, ok := src.Get().([]ShadowLayer)
+		if !ok {
+			return false
+		}
+		sp := p.cell.(*ShadowProp)
+		sp.set(layers)
+		sp.goSet = true
+		sp.explicit = true
+		if sp.hasRole() {
+			sp.base.listShadow()
+		}
+		return true
+	default:
+		return false
+	}
+	p.setGoSet(true)
+	return true
+}
+
+// SetColor writes a resolved 0xRRGGBBAA without going through a literal. Only
+// color properties have it; the theme resolver uses it.
+func (p *NamedProp) SetColor(rgba uint32) {
+	if p.kind == propColor {
+		p.cell.(*Prop[uint32]).val = rgba
+	}
 }
 
 // GoSet reports whether Go code changed this property since the tree was built.
-func (p NamedProp) GoSet() bool {
-	return p.goSet != nil && p.goSet()
+func (p *NamedProp) GoSet() bool {
+	switch p.kind {
+	case propNumber:
+		return p.cell.(*Prop[float64]).goSet
+	case propString, propEnum:
+		return p.cell.(*Prop[string]).goSet
+	case propBool:
+		return p.cell.(*Prop[bool]).goSet
+	case propColor:
+		return p.cell.(*Prop[uint32]).goSet
+	case propShadow:
+		return p.cell.(*ShadowProp).goSet
+	}
+	return false
+}
+
+func (p *NamedProp) setGoSet(v bool) {
+	switch p.kind {
+	case propNumber:
+		p.cell.(*Prop[float64]).goSet = v
+	case propString, propEnum:
+		p.cell.(*Prop[string]).goSet = v
+	case propBool:
+		p.cell.(*Prop[bool]).goSet = v
+	case propColor:
+		p.cell.(*Prop[uint32]).goSet = v
+	case propShadow:
+		p.cell.(*ShadowProp).goSet = v
+	}
 }
 
 // StringProp builds a NamedProp for a string cell.
 func StringProp(b *NodeBase, name string, p *Prop[string]) NamedProp {
 	wire(b, name, p)
-	return NamedProp{
-		Name: name,
-		Get:  func() any { return p.val },
-		SetLiteral: func(v syntax.Value) bool {
-			switch s := v.(type) {
-			case *syntax.String:
-				p.val = s.Val
-			case *syntax.Ident:
-				p.val = s.Val
-			default:
-				return false
-			}
-			return true
-		},
-		CopyFrom: func(src NamedProp) bool {
-			v, ok := src.Get().(string)
-			if !ok {
-				return false
-			}
-			p.val = v
-			p.goSet = true
-			return true
-		},
-		goSet: func() bool { return p.goSet },
-	}
+	return NamedProp{Name: name, kind: propString, cell: p}
 }
 
 // NumberProp builds a NamedProp for a float64 cell.
 func NumberProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[float64]) NamedProp {
 	wire(b, name, p)
-	return NamedProp{
-		Name:  name,
-		Dirty: dirty,
-		Get:   func() any { return p.val },
-		SetLiteral: func(v syntax.Value) bool {
-			n, ok := v.(*syntax.Number)
-			if !ok {
-				return false
-			}
-			p.val = n.Val
-			return true
-		},
-		CopyFrom: func(src NamedProp) bool {
-			v, ok := src.Get().(float64)
-			if !ok {
-				return false
-			}
-			p.val = v
-			p.goSet = true
-			return true
-		},
-		goSet: func() bool { return p.goSet },
-	}
+	return NamedProp{Name: name, Dirty: dirty, kind: propNumber, cell: p}
 }
 
 // BoolProp builds a NamedProp for a bool cell.
 func BoolProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[bool]) NamedProp {
 	wire(b, name, p)
-	return NamedProp{
-		Name:  name,
-		Dirty: dirty,
-		Get:   func() any { return p.val },
-		SetLiteral: func(v syntax.Value) bool {
-			b, ok := v.(*syntax.Bool)
-			if !ok {
-				return false
-			}
-			p.val = b.Val
-			return true
-		},
-		CopyFrom: func(src NamedProp) bool {
-			v, ok := src.Get().(bool)
-			if !ok {
-				return false
-			}
-			p.val = v
-			p.goSet = true
-			return true
-		},
-		goSet: func() bool { return p.goSet },
-	}
+	return NamedProp{Name: name, Dirty: dirty, kind: propBool, cell: p}
 }
 
 // ColorProp builds a NamedProp for a uint32 RGBA cell.
 func ColorProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[uint32]) NamedProp {
 	wire(b, name, p)
-	return NamedProp{
-		Name:  name,
-		Dirty: dirty,
-		Get:   func() any { return p.val },
-		SetLiteral: func(v syntax.Value) bool {
-			switch c := v.(type) {
-			case *syntax.Color:
-				b.clearColorRole(name)
-				p.val = c.RGBA
-			case *syntax.String:
-				rgba, ok := ParseHexColor(c.Val)
-				if !ok {
-					return false
-				}
-				b.clearColorRole(name)
-				p.val = rgba
-			case *syntax.Ident:
-				// A bare word is a theme role, resolved by ResolveColors.
-				if !b.setColorRole(name, c.Val) {
-					return false
-				}
-			default:
-				return false
-			}
-			return true
-		},
-		SetColor: func(rgba uint32) { p.val = rgba },
-		CopyFrom: func(src NamedProp) bool {
-			v, ok := src.Get().(uint32)
-			if !ok {
-				return false
-			}
-			p.val = v
-			p.goSet = true
-			return true
-		},
-		goSet: func() bool { return p.goSet },
-	}
+	return NamedProp{Name: name, Dirty: dirty, kind: propColor, cell: p}
+}
+
+// NamedShadow builds a NamedProp for the common `shadow` cell.
+func NamedShadow(b *NodeBase, name string, p *ShadowProp) NamedProp {
+	p.base = b
+	return NamedProp{Name: name, Dirty: DirtyPaint, kind: propShadow, cell: p}
 }
 
 // EnumProp builds a NamedProp whose literal must be one of allowed.
 func EnumProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[string], allowed ...string) NamedProp {
 	wire(b, name, p)
-	return NamedProp{
-		Name:  name,
-		Dirty: dirty,
-		Get:   func() any { return p.val },
-		SetLiteral: func(v syntax.Value) bool {
-			var s string
-			switch x := v.(type) {
-			case *syntax.Ident:
-				s = x.Val
-			case *syntax.String:
-				s = x.Val
-			default:
-				return false
-			}
-			for _, a := range allowed {
-				if s == a {
-					p.val = s
-					return true
-				}
-			}
-			return false
-		},
-		CopyFrom: func(src NamedProp) bool {
-			v, ok := src.Get().(string)
-			if !ok {
-				return false
-			}
-			for _, a := range allowed {
-				if v == a {
-					p.val = v
-					p.goSet = true
-					return true
-				}
-			}
-			return false
-		},
-		goSet: func() bool { return p.goSet },
-	}
+	return NamedProp{Name: name, Dirty: dirty, kind: propEnum, cell: p, enum: &allowed}
 }
 
 // wire connects a property cell to its owner so Set can mark the tree dirty.

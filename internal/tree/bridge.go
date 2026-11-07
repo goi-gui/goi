@@ -173,7 +173,7 @@ func bridgeComponent(b *NodeBase) *Component {
 // fire evaluates the call's arguments at event time and invokes the handler.
 // The identifier `event` is the event's own payload.
 func (t *Tree) fire(b *NodeBase, name string, call *syntax.Call, payload any) {
-	c := evalCtx{tree: t, sc: b.scope, seen: map[refKey]bool{}}
+	c := evalCtx{tree: t, sc: b.scope}
 	args := make([]any, len(call.Args))
 	for i, a := range call.Args {
 		if id, ok := a.(*syntax.Ident); ok && id.Val == "event" {

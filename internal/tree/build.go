@@ -41,6 +41,9 @@ type Tree struct {
 	i18n             *i18n.Bundle
 	language         string
 	fallbackLanguage string
+	// evalSeen is the scratch reference chain of an expression pass, so
+	// evaluating one costs no allocation.
+	evalSeen []refKey
 	// cloning is set while Instantiate builds a copy: ids stay on the nodes so
 	// an app can find them, but they are not registered, because a copy would
 	// otherwise collide with the template's own ids.

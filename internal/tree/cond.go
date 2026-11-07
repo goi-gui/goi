@@ -110,7 +110,7 @@ func (t *Tree) chainOK(cb *condBranch) bool {
 	}
 	first := -1
 	for i, cond := range cb.conds {
-		c := evalCtx{tree: t, sc: cb.scope, seen: map[refKey]bool{}}
+		c := evalCtx{tree: t, sc: cb.scope}
 		v, ok := c.eval(cond, 0)
 		if b, isBool := v.(bool); ok && isBool && b {
 			first = i
@@ -125,7 +125,7 @@ func (t *Tree) chainOK(cb *condBranch) bool {
 // same loose comparison a `==` in a design uses, so a string case matches a
 // string bridge value and a number case a number.
 func (t *Tree) switchArm(cb *condBranch) int {
-	c := evalCtx{tree: t, sc: cb.scope, seen: map[refKey]bool{}}
+	c := evalCtx{tree: t, sc: cb.scope}
 	if subject, ok := c.eval(cb.subject, 0); ok {
 		for i, vals := range cb.cases {
 			for _, v := range vals {

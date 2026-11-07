@@ -24,6 +24,7 @@ type ShadowLayer struct {
 // is not a Prop[[]ShadowLayer]; it carries the same observable behaviour through
 // a NamedProp.
 type ShadowProp struct {
+	base   *NodeBase
 	layers []ShadowLayer
 	goSet  bool
 	// explicit is true once the design or Go set the property, which is what
@@ -44,46 +45,6 @@ func (p *ShadowProp) hasRole() bool {
 		}
 	}
 	return false
-}
-
-// shadowProp builds the NamedProp for the common `shadow` property.
-func shadowProp(b *NodeBase, name string, p *ShadowProp) NamedProp {
-	return NamedProp{
-		Name:  name,
-		Dirty: DirtyPaint,
-		Get: func() any {
-			out := make([]ShadowLayer, len(p.layers))
-			copy(out, p.layers)
-			return out
-		},
-		SetLiteral: func(v syntax.Value) bool {
-			sh, ok := v.(*syntax.Shadow)
-			if !ok {
-				return false
-			}
-			p.set(shadowLayers(sh))
-			p.goSet = false
-			p.explicit = true
-			if p.hasRole() {
-				b.listShadow()
-			}
-			return true
-		},
-		CopyFrom: func(src NamedProp) bool {
-			layers, ok := src.Get().([]ShadowLayer)
-			if !ok {
-				return false
-			}
-			p.set(layers)
-			p.goSet = true
-			p.explicit = true
-			if p.hasRole() {
-				b.listShadow()
-			}
-			return true
-		},
-		goSet: func() bool { return p.goSet },
-	}
 }
 
 // shadowLayers converts the parsed literal into layers paint can use. A colour

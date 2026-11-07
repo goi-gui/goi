@@ -40,7 +40,7 @@ func commonProps(b *NodeBase) []NamedProp {
 		ColorProp(b, "borderColor", DirtyPaint, &b.borderColor),
 		NumberProp(b, "borderWidth", DirtyLayout, &b.borderW),
 		NumberProp(b, "radius", DirtyPaint, &b.radius),
-		shadowProp(b, "shadow", &b.shadow),
+		NamedShadow(b, "shadow", &b.shadow),
 		BoolProp(b, "visible", DirtyLayout, &b.visible),
 		BoolProp(b, "template", DirtyLayout, &b.template),
 		BoolProp(b, "scroll", DirtyPaint, &b.scroll),

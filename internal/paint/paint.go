@@ -12,6 +12,7 @@ import (
 
 	"github.com/goi-gui/goi/internal/img"
 	"github.com/goi-gui/goi/internal/m3"
+	"github.com/goi-gui/goi/internal/text"
 	"github.com/goi-gui/goi/internal/tree"
 )
 
@@ -137,6 +138,10 @@ type List struct {
 	// suppressElev drops a component's own M3 elevation shadow for the node
 	// being painted, so an explicit `shadow` replaces it instead of stacking.
 	suppressElev bool
+	// wrap caches wrapped text runs across frames: a repaint re-wraps every
+	// visible paragraph, and the answer only changes with the text, the column
+	// and the style. Reset keeps it, because it is still valid.
+	wrap map[wrapKey][]text.Line
 }
 
 // Reset empties the list but keeps its capacity.

@@ -2,6 +2,7 @@ package tree
 
 import (
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/goi-gui/goi/internal/syntax"
@@ -444,12 +445,28 @@ func (b *NodeBase) mark(kind DirtyKind) {
 func (b *NodeBase) properties() []NamedProp {
 	if b.props == nil && b.node != nil {
 		b.props = b.node.namedProps()
-		b.byName = make(map[string]int, len(b.props))
-		for i := range b.props {
-			b.byName[b.props[i].Name] = i
-		}
+		b.byName = propIndexFor(b.node.Kind(), b.props)
 	}
 	return b.props
+}
+
+// propIndexes caches the name-to-position map for each element kind. A kind's
+// property table is the same list in the same order for every node of that
+// kind, so one map serves them all. Building one per node was the largest
+// per-node allocation in a design: a 34-entry string map costs more than the
+// node itself.
+var propIndexes sync.Map // string -> map[string]int
+
+func propIndexFor(kind string, props []NamedProp) map[string]int {
+	if m, ok := propIndexes.Load(kind); ok {
+		return m.(map[string]int)
+	}
+	m := make(map[string]int, len(props))
+	for i := range props {
+		m[props[i].Name] = i
+	}
+	propIndexes.Store(kind, m)
+	return m
 }
 
 // PropValue returns the type-erased property value by .goi name.

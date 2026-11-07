@@ -6,6 +6,7 @@ import (
 
 	"github.com/goi-gui/goi/internal/layout"
 	"github.com/goi-gui/goi/internal/m3"
+	"github.com/goi-gui/goi/internal/syntax"
 	"github.com/goi-gui/goi/internal/tree"
 )
 
@@ -511,5 +512,54 @@ func TestHorizontalScrollIgnoresPadding(t *testing.T) {
 	strip.Base().SetScrollOffset(20)
 	if got := left(); got != -10 {
 		t.Fatalf("chip x scrolled = %v, want it under the left padding", got)
+	}
+}
+
+// TestWrapCacheInvalidates guards reusing one List across frames, which is what
+// the app does: a changed text or column must re-wrap instead of drawing the
+// cached lines.
+func TestWrapCacheInvalidates(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window { Column {
+		Text { id: label text: "one two three four" wrap: true width: 40 }
+	} }`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 400, 400)
+	n, _ := tr.ByID("label")
+	label := n.(*tree.Text)
+	l := &List{}
+	lineCount := func() int {
+		l.Build(tr, 400, 400)
+		n := 0
+		for _, op := range l.Ops {
+			if op.Kind == Text {
+				n++
+			}
+		}
+		return n
+	}
+	before := lineCount()
+	if before < 2 {
+		t.Fatalf("lines = %d, want the text wrapped", before)
+	}
+	if again := lineCount(); again != before {
+		t.Fatalf("repaint drew %d lines, want %d", again, before)
+	}
+
+	label.Text.Set("one two three four five six seven eight")
+	layout.New(nil).Layout(tr.Root, 400, 400)
+	if after := lineCount(); after <= before {
+		t.Fatalf("lines after a text change = %d, want more than %d", after, before)
+	}
+
+	// A wider column re-wraps too: set the box through the node's own property
+	// cell, which is what a design's `width` writes.
+	if ok := label.Base().SetPropLiteral("width", &syntax.Number{Val: 200}); !ok {
+		t.Fatal("width did not apply")
+	}
+	layout.New(nil).Layout(tr.Root, 400, 400)
+	if narrow := lineCount(); narrow >= before {
+		t.Fatalf("lines at a wider column = %d, want fewer than %d", narrow, before)
 	}
 }

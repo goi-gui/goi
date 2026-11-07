@@ -1549,3 +1549,28 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   change would cost a layout and re-run Bind for no benefit. The watcher now
   accepts `.json` in the design's `i18n` folder, and a malformed catalog is
   reported while the previous strings stay live.
+- **The property table is shared per kind, and its entries hold cells, not
+  closures.** Every node used to build a `NamedProp` per property out of five
+  closures plus a copied name map. A 5000-node design spent most of its heap on
+  those: five allocations and ~120 bytes per property, times thirty-odd
+  properties per node, plus a string-keyed map per node. The entry now stores
+  one type-erased cell pointer and the kind decides how to read it, and the
+  name-to-index map is cached per element kind, because a kind's property list
+  is identical for every node of that kind. Live memory for a rectangle fell
+  from ~7.5 KB to ~4.3 KB and allocations per node from 231 to 23.
+- **Wrapped text is cached, not re-wrapped per frame.** The display list is
+  rebuilt every frame and layout re-measures paragraphs on a resize; both call
+  the same greedy wrap. `paint.List` and `layout.Engine` keep a bounded map from
+  (text, column, size, weight) to the break points, so a repaint that changed
+  nothing pays nothing. Paint on the gallery went from 11.3µs and 3 KB per frame
+  to 6.5µs and zero allocations; a relayout went from 34.5µs to 14.8µs.
+- **The glyph atlas starts at 1024².** It grows on demand, and 2048² — 4 MB per
+  app — was the worst case for a window that fits comfortably in a quarter of
+  it. The per-face advance cache is capped at 2048 entries for the same reason:
+  the wrap caches upstream mean a prefix is rarely measured twice, so a larger
+  map only held dead strings.
+- **The expression cycle check is a slice, not a map.** Expressions re-run every
+  frame; the reference chain is a handful deep, so scanning a tree-owned stack
+  costs nothing and removed an allocation per evaluated expression. The
+  unchanged-value check now compares through the cell instead of boxing the
+  current value into `any`.
