@@ -399,3 +399,48 @@ func TestScrollClipDropsEndPaddingAtRest(t *testing.T) {
 		t.Fatalf("clip bottom = %v, want the frame bottom 100", got)
 	}
 }
+
+// TestZIndexOrdersSiblings checks CSS stacking: a higher zIndex paints later,
+// so it lands on top, and equal values keep document order. Layout is untouched.
+func TestZIndexOrdersSiblings(t *testing.T) {
+	src := `Window { Stack {
+		width: 100
+		height: 100
+		Rectangle { id: red width: 100 height: 100 background: #ff0000 }
+		Rectangle { id: green width: 100 height: 100 background: #00ff00 %s }
+	} }`
+	order := func(prop string) []uint32 {
+		l := list(t, fmt.Sprintf(src, prop), 100, 100)
+		var out []uint32
+		for _, op := range l.Ops {
+			if op.Kind == Fill && (op.Color == 0xFF0000FF || op.Color == 0x00FF00FF) {
+				out = append(out, op.Color)
+			}
+		}
+		if len(out) != 2 {
+			t.Fatalf("ops = %v:\n%s", out, l.Dump())
+		}
+		return out
+	}
+	// Without zIndex the later sibling wins, as it always did.
+	if got := order(""); got[0] != 0xFF0000FF || got[1] != 0x00FF00FF {
+		t.Fatalf("default order = %#v, want red then green", got)
+	}
+	// A negative value sends it behind the earlier sibling.
+	if got := order("zIndex: -1"); got[0] != 0x00FF00FF || got[1] != 0xFF0000FF {
+		t.Fatalf("zIndex -1 order = %#v, want green then red", got)
+	}
+	// A positive value keeps it on top, which it already was, so the tie holds
+	// document order rather than reversing it.
+	if got := order("zIndex: 1"); got[0] != 0xFF0000FF || got[1] != 0x00FF00FF {
+		t.Fatalf("zIndex 1 order = %#v, want red then green", got)
+	}
+
+	// Layout ignores it: both rectangles still fill the stack.
+	l := list(t, fmt.Sprintf(src, "zIndex: -5"), 100, 100)
+	for _, op := range l.Ops {
+		if op.Kind == Fill && op.Color == 0x00FF00FF && op.Rect[3] != 100 {
+			t.Fatalf("height changed with zIndex: %v", op.Rect)
+		}
+	}
+}

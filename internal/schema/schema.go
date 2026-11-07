@@ -167,6 +167,8 @@ var common = []Prop{
 	{Name: "scrollShadowColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
 	// opacity fades the node and its subtree. It also accepts a percentage.
 	{Name: "opacity", Type: TypeNumber, Dirty: DirtyPaint, Default: 1.0, Common: true},
+	// zIndex orders a node among its siblings when painting; layout ignores it.
+	{Name: "zIndex", Type: TypeNumber, Dirty: DirtyPaint, Default: 0.0, Common: true},
 	{Name: "template", Type: TypeBool, Dirty: DirtyLayout, Default: false, Common: true},
 }
 

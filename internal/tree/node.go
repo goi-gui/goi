@@ -1,6 +1,7 @@
 package tree
 
 import (
+	"sort"
 	"time"
 
 	"github.com/goi-gui/goi/internal/syntax"
@@ -74,6 +75,9 @@ type NodeBase struct {
 	scrollShadowColor Prop[uint32]
 	// opacity fades the node and everything under it.
 	opacity Prop[float64]
+	// zIndex orders this node among its siblings when painting, like CSS: a
+	// higher value paints later, so it lands on top. Layout ignores it.
+	zIndex Prop[float64]
 	// scrollbarHover and scrollbarShowUntil are runtime state driven by input,
 	// not properties: the bar's visibility is a fact about the pointer and the
 	// clock, not something a design declares.
@@ -350,6 +354,33 @@ func (b *NodeBase) ScrollShadow() bool { return b.scrollShadow.Get() }
 // ScrollShadowColor returns the gradient colour, 0 when the design left it to
 // the theme.
 func (b *NodeBase) ScrollShadowColor() uint32 { return b.scrollShadowColor.Get() }
+
+// ZIndex returns the node's paint order among its siblings.
+func (b *NodeBase) ZIndex() float64 { return b.zIndex.Get() }
+
+// SetZIndex restacks the node among its siblings. It marks the tree dirty, so
+// raising a popover while it is open needs no repaint call.
+func (b *NodeBase) SetZIndex(v float64) { b.zIndex.Set(v) }
+
+// PaintOrder returns the children in paint order: ascending zIndex, ties in
+// document order. Layout never uses it, so a design can restack a row without
+// moving anything. The untouching case costs nothing and is the common one.
+func (b *NodeBase) PaintOrder() []*NodeBase {
+	ordered := false
+	for _, k := range b.kids {
+		if k.zIndex.Get() != 0 {
+			ordered = true
+			break
+		}
+	}
+	if !ordered {
+		return b.kids
+	}
+	out := make([]*NodeBase, len(b.kids))
+	copy(out, b.kids)
+	sort.SliceStable(out, func(i, j int) bool { return out[i].zIndex.Get() < out[j].zIndex.Get() })
+	return out
+}
 
 // BorderColor returns 0xRRGGBBAA.
 func (b *NodeBase) BorderColor() uint32 { return b.borderColor.Get() }

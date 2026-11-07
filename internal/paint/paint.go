@@ -184,7 +184,7 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 	}
 	ox, oy := scrollShift(b)
 	fromClip := len(l.Ops)
-	for _, k := range b.Kids() {
+	for _, k := range b.PaintOrder() {
 		kb := k.Bounds()
 		kb.X += ox
 		kb.Y += oy
@@ -219,7 +219,7 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 	}
 	ox, oy := scrollShift(b)
 	fromClip := len(l.Ops)
-	for _, k := range b.Kids() {
+	for _, k := range b.PaintOrder() {
 		kb := k.Bounds()
 		kb.X += ox
 		kb.Y += oy

@@ -2077,6 +2077,11 @@ func propDoc(el string, p schema.Prop) string {
 	case "scrollbarWidth":
 		b.WriteString("\n\nThickness of the scrollbar in dp, 4 by default. The thumb keeps its " +
 			"rounded pill shape at any width.")
+	case "zIndex":
+		b.WriteString("\n\nPaint order among siblings, like CSS: a higher value paints later, " +
+			"so it lands on top, and equal values keep document order. Layout ignores " +
+			"it, so a design can restack without moving anything. Negative values go " +
+			"below siblings with the default 0. From Go: `node.SetZIndex(2)`.")
 	case "scrollbarColor":
 		b.WriteString("\n\nColour of the bar; defaults to the scheme's onSurfaceVariant at " +
 			"40%. A hex literal is used as written, alpha included.")

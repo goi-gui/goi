@@ -922,7 +922,7 @@ func (i *interactor) scrollbarAt(x, y float64) (tree.Node, tree.Rect) {
 			kidClip = intersectRect(clip, innerBox)
 		}
 		sx, sy := scrollShift(b)
-		kids := b.Kids()
+		kids := b.PaintOrder()
 		// Children first, so a nested area's bar wins over the page's.
 		for n := len(kids) - 1; n >= 0 && found == nil; n-- {
 			kb := kids[n].Bounds()
@@ -1355,7 +1355,7 @@ func walkHit(b *tree.NodeBase, ox, oy float64, x, y float64, clip tree.Rect, fou
 		kidClip = intersectRect(clip, inner)
 	}
 	ox2, oy2 := scrollShift(b)
-	kids := b.Kids()
+	kids := b.PaintOrder()
 	for n := len(kids) - 1; n >= 0; n-- {
 		kb := kids[n].Bounds()
 		kb.X += ox2
@@ -1383,7 +1383,7 @@ func walkHitOffset(b *tree.NodeBase, ox, oy float64, bounds tree.Rect, x, y floa
 		kidClip = intersectRect(clip, inner)
 	}
 	ox2, oy2 := scrollShift(b)
-	kids := b.Kids()
+	kids := b.PaintOrder()
 	for n := len(kids) - 1; n >= 0; n-- {
 		kb := kids[n].Bounds()
 		kb.X += ox2

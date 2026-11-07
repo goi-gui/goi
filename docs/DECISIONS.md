@@ -1524,3 +1524,11 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   `goipls` and `goicheck` validate every file as a fragment and never name the
   root rule. `goicheck` wraps a non-Window root in a Window before laying it out,
   which is what the preview already did for declared fragments.
+- **`zIndex` orders siblings only; there are no stacking contexts.** A full CSS
+  model needs a context per positioned ancestor and an ordered tree walk with
+  negative phases. The common need (a popover over a card, a label over an
+  image) is sibling order, so `PaintOrder` sorts the direct children stably by
+  `zIndex` and hit-testing walks the same slice backwards. A child can never
+  paint over an uncle; the ancestor order still decides that, which keeps the
+  walk single-pass and keeps clipping correct. The sort is skipped entirely
+  when no sibling sets the property, so the usual frame pays nothing.

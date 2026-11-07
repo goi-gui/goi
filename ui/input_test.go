@@ -1138,3 +1138,18 @@ func TestSliderArrowKeys(t *testing.T) {
 		t.Fatalf("step slider = %v, want 40", got)
 	}
 }
+
+// TestZIndexDrivesHitOrder keeps input consistent with paint: the node drawn on
+// top is the one a press finds.
+func TestZIndexDrivesHitOrder(t *testing.T) {
+	_, _, in := inputFixture(t, `Window { Stack {
+		width: 100
+		height: 100
+		Rectangle { id: under width: 100 height: 100 background: #ff0000 zIndex: -1 }
+		Rectangle { id: over width: 100 height: 100 background: #00ff00 }
+	} }`, 100, 100)
+	hit := in.hit(50, 50)
+	if hit == nil || hit.Base().ID() != "over" {
+		t.Fatalf("hit = %v, want the topmost sibling", hit)
+	}
+}
