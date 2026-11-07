@@ -149,6 +149,29 @@ func (c *Component) props(kind string) []NamedProp {
 	return out
 }
 
+// propsExcept is props with some names left to the concrete type, which owns
+// cells the shared Component does not have. componentdef still lists those
+// names, so the schema and the docs see them.
+func (c *Component) propsExcept(kind string, skip ...string) []NamedProp {
+	names := propsFor(kind)
+	out := make([]NamedProp, 0, len(names)+16)
+	out = append(out, commonProps(&c.NodeBase)...)
+	for _, n := range names {
+		own := false
+		for _, s := range skip {
+			if n == s {
+				own = true
+				break
+			}
+		}
+		if own {
+			continue
+		}
+		out = append(out, c.one(n))
+	}
+	return out
+}
+
 // one builds the named property for a single shared field.
 func (c *Component) one(name string) NamedProp {
 	b := &c.NodeBase
@@ -378,6 +401,96 @@ type ListItem struct{ Component }
 // Kind implements Node.
 func (*ListItem) Kind() string              { return "ListItem" }
 func (c *ListItem) namedProps() []NamedProp { return c.props("ListItem") }
+
+// Table is a data grid: TableColumn children declare the columns, TableRow
+// children hold the cells, and the header sorts on click.
+type Table struct {
+	Component
+	Striped       Prop[bool]
+	ShowHeader    Prop[bool]
+	RowHeight     Prop[float64]
+	HeaderHeight  Prop[float64]
+	SortColumn    Prop[float64]
+	SortAscending Prop[bool]
+	SelectedRow   Prop[float64]
+	// SortEvent fires when a header is clicked, with the column index and the
+	// new direction. SortBy from Go does not fire it, because the caller
+	// already knows.
+	SortEvent Event[SortOrder]
+}
+
+// Kind implements Node.
+func (*Table) Kind() string { return "Table" }
+
+func (c *Table) namedProps() []NamedProp {
+	return append(c.propsExcept("Table",
+		"striped", "showHeader", "rowHeight", "headerHeight",
+		"sortColumn", "sortAscending", "selectedRow"),
+		BoolProp(&c.NodeBase, "striped", DirtyPaint, &c.Striped),
+		BoolProp(&c.NodeBase, "showHeader", DirtyLayout, &c.ShowHeader),
+		NumberProp(&c.NodeBase, "rowHeight", DirtyLayout, &c.RowHeight),
+		NumberProp(&c.NodeBase, "headerHeight", DirtyLayout, &c.HeaderHeight),
+		NumberProp(&c.NodeBase, "sortColumn", DirtyLayout, &c.SortColumn),
+		BoolProp(&c.NodeBase, "sortAscending", DirtyLayout, &c.SortAscending),
+		NumberProp(&c.NodeBase, "selectedRow", DirtyPaint, &c.SelectedRow),
+	)
+}
+
+// SortOrder names a table sort: which column, by its key when it has one, and
+// the direction.
+type SortOrder struct {
+	Column    int
+	Key       string
+	Ascending bool
+}
+
+// OnSort subscribes to header clicks.
+func (c *Table) OnSort(fn func(SortOrder)) (off func()) { return c.SortEvent.On(fn) }
+
+// TableColumn declares one column: its label, the key Go can sort by, its width
+// (0 shares the leftover space), alignment and whether the header sorts.
+type TableColumn struct {
+	Component
+	Key      Prop[string]
+	Align    Prop[string]
+	Sortable Prop[bool]
+	Numeric  Prop[bool]
+}
+
+// Kind implements Node.
+func (*TableColumn) Kind() string { return "TableColumn" }
+
+func (c *TableColumn) namedProps() []NamedProp {
+	return append(c.propsExcept("TableColumn", "key", "align", "sortable", "numeric"),
+		StringProp(&c.NodeBase, "key", &c.Key),
+		EnumProp(&c.NodeBase, "align", DirtyPaint, &c.Align, "start", "center", "end"),
+		BoolProp(&c.NodeBase, "sortable", DirtyPaint, &c.Sortable),
+		BoolProp(&c.NodeBase, "numeric", DirtyPaint, &c.Numeric),
+	)
+}
+
+// TableRow is one row; its children are TableCells, one per column.
+type TableRow struct{ Component }
+
+// Kind implements Node.
+func (*TableRow) Kind() string { return "TableRow" }
+
+func (c *TableRow) namedProps() []NamedProp { return c.props("TableRow") }
+
+// TableCell is one value in a row.
+type TableCell struct {
+	Component
+	Align Prop[string]
+}
+
+// Kind implements Node.
+func (*TableCell) Kind() string { return "TableCell" }
+
+func (c *TableCell) namedProps() []NamedProp {
+	return append(c.propsExcept("TableCell", "align"),
+		EnumProp(&c.NodeBase, "align", DirtyPaint, &c.Align, "start", "center", "end"),
+	)
+}
 
 // Menu is a list of actions in an overlay.
 type Menu struct{ Component }

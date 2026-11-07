@@ -120,6 +120,12 @@ func (e *Engine) Layout(root *tree.Window, w, h float64) tree.Rect {
 // size; b's own padding and border are applied here, in one place.
 func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 	kids := visibleChildren(b)
+	// A table places its own header and rows; the generic flow would treat a
+	// column as a child box.
+	if b.Node().Kind() == "Table" {
+		e.tableChildren(b, w, h)
+		return
+	}
 	// A FAB menu stacks its actions above the FAB, and has none while closed;
 	// it must still visit an empty child list, so a menu that just closed can
 	// clear the bounds its actions had.
@@ -736,6 +742,9 @@ func (e *Engine) naturalSize(k *tree.NodeBase, availW, availH float64) (float64,
 	k.ResolveSize(availW, availH)
 	if k.Node().Kind() == "FABMenu" {
 		return e.fabMenuNatural(k, availW, availH)
+	}
+	if k.Node().Kind() == "Table" {
+		return e.tableNatural(k, availW, availH)
 	}
 	if cv, ok := e.componentOf(k); ok {
 		mt := e.metricsFor(k, cv)

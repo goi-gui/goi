@@ -35,6 +35,10 @@ var Kinds = []Kind{
 	{"Divider", false},
 	{"List", true},
 	{"ListItem", false},
+	{"Table", true},
+	{"TableColumn", false},
+	{"TableRow", true},
+	{"TableCell", false},
 	{"Menu", true},
 	{"MenuItem", false},
 	{"Snackbar", false},
@@ -95,6 +99,10 @@ var props = map[string][]string{
 	"Divider":          {"variant"},
 	"List":             {"variant"},
 	"ListItem":         {"label", "supporting", "icon", "trailingIcon", "variant", "disabled", "selected"},
+	"Table":            {"variant", "striped", "showHeader", "rowHeight", "headerHeight", "sortColumn", "sortAscending", "selectedRow"},
+	"TableColumn":      {"label", "key", "align", "sortable", "numeric"},
+	"TableRow":         {"selected", "disabled"},
+	"TableCell":        {"text", "icon", "align"},
 	"Menu":             {"variant"},
 	"MenuItem":         {"label", "icon", "trailingIcon", "variant", "disabled", "selected"},
 	"Snackbar":         {"label", "variant"},
@@ -149,14 +157,35 @@ const (
 	Number
 )
 
+// defaults are the component properties whose initial value is not the Go zero
+// value. The schema applies them, so the builder and the validator agree on
+// what a property means before the design writes it.
+var defaults = map[string]any{
+	"showHeader":    true,
+	"rowHeight":     48.0,
+	"headerHeight":  40.0,
+	"sortColumn":    -1.0,
+	"sortAscending": true,
+	"selectedRow":   -1.0,
+}
+
+// Default returns the initial value of a component property, when it is not the
+// zero value for its type.
+func Default(name string) (any, bool) {
+	v, ok := defaults[name]
+	return v, ok
+}
+
 // TypeOf returns the literal type of a component property.
 func TypeOf(name string) PropType {
 	switch name {
-	case "disabled", "checked", "selected", "expanded", "showCopy":
+	case "disabled", "checked", "selected", "expanded", "showCopy",
+		"sortable", "numeric", "striped", "showHeader", "sortAscending":
 		return Bool
-	case "value", "min", "max", "step", "spacing", "gap":
+	case "value", "min", "max", "step", "spacing", "gap",
+		"rowHeight", "headerHeight", "sortColumn", "selectedRow":
 		return Number
-	case "variant", "size", "crossAxisAlign", "mainAxisAlign":
+	case "variant", "size", "crossAxisAlign", "mainAxisAlign", "align":
 		return Enum
 	}
 	return String
@@ -171,11 +200,14 @@ func EnumValues(name string) []string {
 	if name == "crossAxisAlign" {
 		return []string{"start", "center", "end", "stretch"}
 	}
+	if name == "align" {
+		return []string{"start", "center", "end"}
+	}
 	if name == "mainAxisAlign" {
 		return []string{"start", "center", "end", "spaceBetween", "spaceAround", "spaceEvenly"}
 	}
 	return []string{
-		"filled", "tonal", "elevated", "outlined", "text", "standard",
+		"filled", "tonal", "elevated", "outlined", "text", "plain", "standard",
 		"primary", "secondary", "tertiary", "small", "large", "extended",
 		"assist", "filter", "input", "suggestion", "horizontal", "vertical",
 		"single", "multi",

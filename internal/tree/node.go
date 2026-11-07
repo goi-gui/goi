@@ -368,6 +368,11 @@ func (b *NodeBase) SetZIndex(v float64) { b.zIndex.Set(v) }
 // document order. Layout never uses it, so a design can restack a row without
 // moving anything. The untouching case costs nothing and is the common one.
 func (b *NodeBase) PaintOrder() []*NodeBase {
+	// A table paints its rows in the sorted order layout used, so a click lands
+	// on the row under the pointer and the bands line up with the cells.
+	if t, ok := b.Node().(*Table); ok {
+		return t.paintOrder()
+	}
 	ordered := false
 	for _, k := range b.kids {
 		if k.zIndex.Get() != 0 {
@@ -381,6 +386,24 @@ func (b *NodeBase) PaintOrder() []*NodeBase {
 	out := make([]*NodeBase, len(b.kids))
 	copy(out, b.kids)
 	sort.SliceStable(out, func(i, j int) bool { return out[i].zIndex.Get() < out[j].zIndex.Get() })
+	return out
+}
+
+// paintOrder is PaintOrder for a table: sorted rows, then the column headers
+// and anything else the table holds.
+func (t *Table) paintOrder() []*NodeBase {
+	rows := t.TableRows()
+	out := make([]*NodeBase, 0, len(t.Kids()))
+	seen := make(map[*NodeBase]bool, len(rows))
+	for _, r := range rows {
+		out = append(out, &r.NodeBase)
+		seen[&r.NodeBase] = true
+	}
+	for _, k := range t.Kids() {
+		if !seen[k] {
+			out = append(out, k)
+		}
+	}
 	return out
 }
 

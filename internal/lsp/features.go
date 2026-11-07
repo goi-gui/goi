@@ -2087,6 +2087,32 @@ func propDoc(el string, p schema.Prop) string {
 	case "scrollbarWidth":
 		b.WriteString("\n\nThickness of the scrollbar in dp, 4 by default. The thumb keeps its " +
 			"rounded pill shape at any width.")
+	case "sortable":
+		b.WriteString("\n\n`true` makes a table header clickable: it gets a pointer cursor and an " +
+			"arrow that follows the direction.")
+	case "sortColumn":
+		b.WriteString("\n\nThe sorted column index, `-1` (default) for declaration order. A " +
+			"header click sets it; `Table.Sort` and `SortBy` set it from Go.")
+	case "sortAscending":
+		b.WriteString("\n\nSort direction, `true` by default. Reversing the same header flips it.")
+	case "selectedRow":
+		b.WriteString("\n\nThe selected row index, `-1` by default. It counts rows as they are " +
+			"shown, so it stays meaningful after sorting.")
+	case "striped":
+		b.WriteString("\n\nTints every second row; off by default.")
+	case "showHeader":
+		b.WriteString("\n\n`true` by default. `false` hides the header band and starts the rows " +
+			"at the table's top edge.")
+	case "rowHeight":
+		b.WriteString("\n\nRow height in dp; 48 by default. A row's own `height` wins.")
+	case "headerHeight":
+		b.WriteString("\n\nHeader height in dp; 40 by default.")
+	case "numeric":
+		b.WriteString("\n\nRight-aligns the column by default and sorts by the number inside " +
+			"its cells, so `1,200` orders as 1200.")
+	case "key":
+		b.WriteString("\n\nNames a table column for Go: `table.SortBy(\"age\", false)` needs no " +
+			"index.")
 	case "cursor":
 		b.WriteString("\n\nThe pointer shape over this element, named the way CSS names it: " +
 			"`pointer`, `text`, `move`, `not-allowed`, `grab`, the resize arrows, " +

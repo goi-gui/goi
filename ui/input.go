@@ -131,17 +131,33 @@ func interactive(n tree.Node) bool {
 }
 
 // clickable reports whether a press on n activates it: an interactive
-// component, or any node the app attached a click handler to.
+// component, a sortable header or a table cell, or any node the app attached a
+// click handler to.
 func clickable(n tree.Node) bool {
 	if c := comp(n); c != nil {
 		if c.Disabled.Get() {
 			return false
 		}
-		if interactive(n) {
+		if interactive(n) || tableTarget(n) {
 			return true
 		}
 	}
 	return n.Base().Click.Len() > 0
+}
+
+// tableTarget reports whether a table part reacts to a press: a sortable header
+// or any cell. They are deliberately not in `interactive`, so they never enter
+// the keyboard focus order.
+func tableTarget(n tree.Node) bool {
+	switch n.Kind() {
+	case "TableColumn":
+		if tc, ok := n.(*tree.TableColumn); ok {
+			return tc.Sortable.Get()
+		}
+	case "TableCell":
+		return true
+	}
+	return false
 }
 
 // dragRegionAt reports whether n or an ancestor moves the window on a press.
@@ -350,6 +366,10 @@ func (i *interactor) pointerAt(hit tree.Node) {
 		i.pointer(c)
 		return
 	}
+	if tableTarget(hit) {
+		i.pointer(platform.CursorPointer)
+		return
+	}
 	if codeCopyAt(hit, i.cursorX, i.cursorY) != nil {
 		i.pointer(platform.CursorPointer)
 		return
@@ -553,6 +573,10 @@ func (i *interactor) activate(n tree.Node, c *tree.Component, x, y float64) {
 		}
 	case "SegmentedButton":
 		i.activateSegment(n, c)
+	case "TableColumn":
+		i.toggleSort(n)
+	case "TableCell":
+		i.selectRow(n)
 	case "NavigationItem":
 		i.activateDestination(n, c)
 	case "DatePicker":
@@ -731,6 +755,75 @@ func (i *interactor) activateSegment(n tree.Node, c *tree.Component) {
 			}
 		}
 	}
+}
+
+// toggleSort flips a table's sort when its header is pressed: the same column
+// reverses, a new column starts ascending.
+func (i *interactor) toggleSort(n tree.Node) {
+	tc, ok := n.(*tree.TableColumn)
+	if !ok || !tc.Sortable.Get() {
+		return
+	}
+	p := n.Base().Parent()
+	if p == nil {
+		return
+	}
+	t, ok := p.(*tree.Table)
+	if !ok {
+		return
+	}
+	cols := t.TableColumns()
+	col := -1
+	for j, c := range cols {
+		if c == tc {
+			col = j
+			break
+		}
+	}
+	if col < 0 {
+		return
+	}
+	asc := true
+	if t.SortIndex() == col {
+		asc = !t.SortAscending.Get()
+	}
+	t.Sort(col, asc)
+	t.SortEvent.Emit(tree.SortOrder{Column: col, Key: tc.Key.Get(), Ascending: asc})
+	i.markDirty()
+}
+
+// selectRow selects the row a pressed cell belongs to and reports its display
+// index, which is what a reader means by "row 2" after sorting.
+func (i *interactor) selectRow(n tree.Node) {
+	p := n.Base().Parent()
+	if p == nil {
+		return
+	}
+	row, ok := p.(*tree.TableRow)
+	if !ok {
+		return
+	}
+	gp := row.Base().Parent()
+	if gp == nil {
+		return
+	}
+	t, ok := gp.(*tree.Table)
+	if !ok {
+		return
+	}
+	idx := -1
+	for j, r := range t.TableRows() {
+		if r == row {
+			idx = j
+			break
+		}
+	}
+	if idx < 0 {
+		return
+	}
+	t.SetSelectedRow(idx)
+	t.Select.Emit(idx)
+	i.markDirty()
 }
 
 // segmentRun returns the contiguous siblings of the given kind around n. A

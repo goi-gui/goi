@@ -476,6 +476,32 @@ func newM3Component(name string) Node {
 		return &List{Component: newComponent()}
 	case "ListItem":
 		return &ListItem{Component: newComponent()}
+	case "Table":
+		return &Table{
+			Component:     newComponent(),
+			Striped:       newProp(nil, "striped", DirtyPaint, false),
+			ShowHeader:    newProp(nil, "showHeader", DirtyLayout, true),
+			RowHeight:     newProp(nil, "rowHeight", DirtyLayout, DefaultRowHeight),
+			HeaderHeight:  newProp(nil, "headerHeight", DirtyLayout, DefaultHeaderHeight),
+			SortColumn:    newProp(nil, "sortColumn", DirtyLayout, -1.0),
+			SortAscending: newProp(nil, "sortAscending", DirtyLayout, true),
+			SelectedRow:   newProp(nil, "selectedRow", DirtyPaint, -1.0),
+		}
+	case "TableColumn":
+		return &TableColumn{
+			Component: newComponent(),
+			Key:       newProp(nil, "key", DirtyPaint, ""),
+			Align:     newProp(nil, "align", DirtyPaint, ""),
+			Sortable:  newProp(nil, "sortable", DirtyPaint, false),
+			Numeric:   newProp(nil, "numeric", DirtyPaint, false),
+		}
+	case "TableRow":
+		return &TableRow{Component: newComponent()}
+	case "TableCell":
+		return &TableCell{
+			Component: newComponent(),
+			Align:     newProp(nil, "align", DirtyPaint, ""),
+		}
 	case "Menu":
 		return &Menu{Component: newComponent()}
 	case "MenuItem":

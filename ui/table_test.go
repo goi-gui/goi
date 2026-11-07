@@ -1,0 +1,221 @@
+package ui
+
+import (
+	"testing"
+
+	"github.com/goi-gui/goi/internal/platform"
+)
+
+const tableUI = `Window {
+	Column {
+		Table {
+			id: table
+			width: 400
+			TableColumn { key: "name" label: "Name" width: 200 sortable: true }
+			TableColumn { key: "role" label: "Role" sortable: true }
+			TableColumn { key: "age" label: "Age" width: 80 align: end numeric: true sortable: true }
+
+			TableRow { TableCell { text: "Kaan" } TableCell { text: "Engineer" } TableCell { text: "31" } }
+			TableRow { TableCell { text: "Ada" } TableCell { text: "Mathematician" } TableCell { text: "36" } }
+			TableRow { TableCell { text: "Linus" } TableCell { text: "Kernel" } TableCell { text: "54" } }
+		}
+	}
+}`
+
+func tableCenter(t *testing.T, w *Window, id string, col int) (float64, float64) {
+	t.Helper()
+	tbl, err := ByID[*Table](w, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cols := tbl.TableColumns()
+	if col < 0 || col >= len(cols) {
+		t.Fatalf("no column %d", col)
+	}
+	r := absoluteRect(cols[col])
+	return r.X + r.W/2, r.Y + r.H/2
+}
+
+// TestTableHeaderClickSorts covers the whole header gesture: the first click
+// sorts ascending, the second reverses, and the event carries the column key.
+func TestTableHeaderClickSorts(t *testing.T) {
+	_, win, in := inputFixture(t, tableUI, 500, 600)
+	tbl := MustByID[*Table](win, "table")
+	var got []SortOrder
+	tbl.OnSort(func(o SortOrder) { got = append(got, o) })
+
+	x, y := tableCenter(t, win, "table", 2) // Age
+	in.MouseDown(x, y, 0, false)
+	in.MouseUp(x, y, 0)
+	if len(got) != 1 {
+		t.Fatalf("sort events = %v, want one", got)
+	}
+	if got[0].Key != "age" || !got[0].Ascending || got[0].Column != 2 {
+		t.Fatalf("first sort = %+v", got[0])
+	}
+	if first := tbl.CellText(0, 0); first != "Kaan" {
+		t.Fatalf("ascending first row = %q, want Kaan (31)", first)
+	}
+
+	in.MouseDown(x, y, 0, false)
+	in.MouseUp(x, y, 0)
+	if len(got) != 2 || got[1].Ascending {
+		t.Fatalf("second click = %+v, want descending", got)
+	}
+	if first := tbl.CellText(0, 0); first != "Linus" {
+		t.Fatalf("descending first row = %q, want Linus (54)", first)
+	}
+}
+
+// TestTableHeaderSortsText checks a text column: scores compare as words unless
+// the column says numeric.
+func TestTableHeaderSortsText(t *testing.T) {
+	_, win, in := inputFixture(t, tableUI, 500, 600)
+	tbl := MustByID[*Table](win, "table")
+	x, y := tableCenter(t, win, "table", 0) // Name
+	in.MouseDown(x, y, 0, false)
+	in.MouseUp(x, y, 0)
+	var names []string
+	for i := 0; i < tbl.RowCount(); i++ {
+		names = append(names, tbl.CellText(i, 0))
+	}
+	want := []string{"Ada", "Kaan", "Linus"}
+	for i := range want {
+		if names[i] != want[i] {
+			t.Fatalf("names = %v, want %v", names, want)
+		}
+	}
+}
+
+// TestTableRowClickSelects checks selection: the cell press selects its row,
+// the event reports the display index, and pressing another row moves it.
+func TestTableRowClickSelects(t *testing.T) {
+	_, win, in := inputFixture(t, tableUI, 500, 600)
+	tbl := MustByID[*Table](win, "table")
+	var picks []int
+	tbl.OnSelect(func(i int) { picks = append(picks, i) })
+
+	rows := tbl.TableRows()
+	r := absoluteRect(rows[1])
+	in.MouseDown(r.X+10, r.Y+r.H/2, 0, false)
+	in.MouseUp(r.X+10, r.Y+r.H/2, 0)
+	if len(picks) != 1 || picks[0] != 1 {
+		t.Fatalf("selection events = %v, want row 1", picks)
+	}
+	if tbl.SelectedIndex() != 1 {
+		t.Fatalf("SelectedIndex = %d, want 1", tbl.SelectedIndex())
+	}
+	if !rows[1].Selected.Get() || rows[0].Selected.Get() {
+		t.Fatalf("row flags did not follow the selection")
+	}
+}
+
+// TestTableSortKeepsSelectionMeaning checks the index a click reports after
+// sorting: it is the row the reader sees, not the declaration position.
+func TestTableSortKeepsSelectionMeaning(t *testing.T) {
+	_, win, in := inputFixture(t, tableUI, 500, 600)
+	tbl := MustByID[*Table](win, "table")
+	tbl.SortBy("age", false) // Linus 54, Ada 36, Kaan 31
+	rows := tbl.TableRows()
+	r := absoluteRect(rows[0])
+	var picked int
+	tbl.OnSelect(func(i int) { picked = i })
+	in.MouseDown(r.X+10, r.Y+r.H/2, 0, false)
+	in.MouseUp(r.X+10, r.Y+r.H/2, 0)
+	if picked != 0 || tbl.CellText(0, 0) != "Linus" {
+		t.Fatalf("selected %d (%q), want the first sorted row", picked, tbl.CellText(0, 0))
+	}
+}
+
+// TestTablePointerShapes checks the affordance: a sortable header and a cell
+// show a hand, and an unsortable header does not.
+func TestTablePointerShapes(t *testing.T) {
+	_, win, in := inputFixture(t, tableUI, 500, 600)
+	var got platform.Cursor
+	in.setCursor = func(c platform.Cursor) { got = c }
+
+	x, y := tableCenter(t, win, "table", 0)
+	in.MouseMove(x, y)
+	if got != platform.CursorPointer {
+		t.Fatalf("sortable header cursor = %v, want pointer", got)
+	}
+
+	tbl := MustByID[*Table](win, "table")
+	row := tbl.TableRows()[0]
+	r := absoluteRect(row)
+	// A cell selects its row, so it reads as clickable too.
+	got = -1
+	in.MouseMove(r.X+10, r.Y+r.H/2)
+	if got != platform.CursorPointer {
+		t.Fatalf("cell cursor = %v, want the hand", got)
+	}
+
+	// The compact table's columns are not sortable.
+	_, win2, in2 := inputFixture(t, `Window { Column {
+		Table {
+			id: plain
+			width: 200
+			TableColumn { label: "A" width: 100 }
+			TableRow { TableCell { text: "x" } }
+		}
+	} }`, 400, 300)
+	col := MustByID[*Table](win2, "plain").TableColumns()[0]
+	cr := absoluteRect(col)
+	got2 := platform.Cursor(-1)
+	in2.setCursor = func(c platform.Cursor) { got2 = c }
+	in2.MouseMove(cr.X+cr.W/2, cr.Y+cr.H/2)
+	if got2 == platform.CursorPointer {
+		t.Fatal("an unsortable header showed the hand")
+	}
+}
+
+// TestTableGoSideAPI covers the Go path: SortBy by key, SetCell and a row count.
+func TestTableGoSideAPI(t *testing.T) {
+	_, win, _ := inputFixture(t, tableUI, 500, 600)
+	tbl := MustByID[*Table](win, "table")
+	if tbl.RowCount() != 3 {
+		t.Fatalf("RowCount = %d", tbl.RowCount())
+	}
+	if !tbl.SortBy("name", false) {
+		t.Fatal("SortBy(name, false) did not find the column")
+	}
+	if tbl.CellText(0, 0) != "Linus" {
+		t.Fatalf("first row = %q, want Linus", tbl.CellText(0, 0))
+	}
+	if tbl.SortBy("nope", true) {
+		t.Fatal("SortBy found a column that does not exist")
+	}
+	if !tbl.SetCell(1, 0, "Grace") || tbl.CellText(1, 0) != "Grace" {
+		t.Fatalf("SetCell = %q", tbl.CellText(1, 0))
+	}
+	if tbl.SetCell(9, 0, "x") {
+		t.Fatal("SetCell accepted an out-of-range row")
+	}
+	tbl.SetSelectedRow(2)
+	if tbl.SelectedIndex() != 2 || !tbl.TableRows()[2].Selected.Get() {
+		t.Fatal("SetSelectedRow did not carry to the row")
+	}
+	tbl.SetSelectedRow(-1)
+	if tbl.SelectedIndex() != -1 {
+		t.Fatal("SetSelectedRow(-1) did not clear")
+	}
+}
+
+// TestTableRowsSortedForLayoutAndHit keeps the two walks honest: the row a
+// paint test reads first is the row a click at the top selects.
+func TestTableRowsSortedForLayoutAndHit(t *testing.T) {
+	_, win, in := inputFixture(t, tableUI, 500, 600)
+	tbl := MustByID[*Table](win, "table")
+	if !tbl.SortBy("name", true) {
+		t.Fatal("SortBy(name) did not find the column")
+	}
+	rows := tbl.TableRows()
+	top := absoluteRect(rows[0])
+	hit := in.hit(top.X+5, top.Y+5)
+	if hit == nil {
+		t.Fatal("nothing hit at the first row")
+	}
+	if hit.Kind() != "TableCell" {
+		t.Fatalf("hit = %s, want the first cell", hit.Kind())
+	}
+}

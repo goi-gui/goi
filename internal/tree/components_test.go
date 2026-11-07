@@ -11,17 +11,22 @@ import (
 // TestEveryComponentPropHasItsOwnCell guards the one() fallback: a name that
 // componentdef lists but one() does not map would still be accepted by a file
 // and would write the Label cell, so setting one property would change another.
+// It reads the node's own table, because a component with cells of its own
+// (Table) supplies some properties outside the shared Component.
 func TestEveryComponentPropHasItsOwnCell(t *testing.T) {
 	for _, k := range componentdef.Kinds {
 		n := newNode(k.Name)
 		if n == nil {
 			t.Fatalf("%s has no constructor", k.Name)
 		}
-		holder, ok := n.(interface{ M3() *Component })
-		if !ok || holder.M3() == nil {
+		if _, ok := n.(interface{ M3() *Component }); !ok {
 			continue // plain nodes have no component cells
 		}
-		props := holder.M3().props(k.Name)
+		holder, ok := n.(interface{ namedProps() []NamedProp })
+		if !ok {
+			t.Fatalf("%s has no property table", k.Name)
+		}
+		props := holder.namedProps()
 		byName := make(map[string]NamedProp, len(props))
 		for _, p := range props {
 			byName[p.Name] = p

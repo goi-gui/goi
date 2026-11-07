@@ -320,6 +320,14 @@ func (l *List) paintComponent(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		l.paintList(c, r, clip)
 	case "ListItem":
 		l.paintListItem(c, r, clip)
+	case "Table":
+		if t, ok := c.Node().(*tree.Table); ok {
+			l.paintTable(t, r, clip)
+		}
+	case "TableColumn":
+		l.paintTableColumn(c, r, clip)
+	case "TableCell":
+		l.paintTableCell(c, r, clip)
 	case "Menu":
 		l.paintMenu(c, r, clip)
 	case "MenuItem":

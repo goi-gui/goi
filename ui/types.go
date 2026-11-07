@@ -122,6 +122,10 @@ type (
 	Divider          = tree.Divider
 	List             = tree.List
 	ListItem         = tree.ListItem
+	Table            = tree.Table
+	TableColumn      = tree.TableColumn
+	TableRow         = tree.TableRow
+	TableCell        = tree.TableCell
 	Menu             = tree.Menu
 	MenuItem         = tree.MenuItem
 	Snackbar         = tree.Snackbar
@@ -147,6 +151,7 @@ type (
 // Event types.
 type (
 	ClickEvent = tree.ClickEvent
+	SortOrder  = tree.SortOrder
 	KeyEvent   = tree.KeyEvent
 	Mods       = tree.Mods
 	FocusEvent = tree.FocusEvent

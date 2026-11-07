@@ -1582,3 +1582,25 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   to the arrow — the same fallback a browser uses. `none` hides the pointer
   instead of picking a shape, and an explicit `auto` stops inheritance so a
   control can return to the framework's own affordance inside a draggable area.
+- **A table sorts by reading its rows, not by reordering them.** `TableRows`
+  returns the row nodes sorted by the current column and is the one order
+  layout, paint and hit-testing use. Reordering `kids` in place would have been
+  one line, but the `for` loop that builds rows replaces those children whenever
+  the data changes, so the sort would silently drop on a refresh; deriving the
+  order on read cannot go stale. Sorting is O(n log n) per pass over a few
+  dozen rows, which is cheaper than the cache invalidation it avoids.
+- **Table cells are laid out by the table, not by a generic flow.** A column is
+  a declaration, not a box, so `Table` intercepts layout before the component
+  path and places the header band and each row itself. Cells are positioned
+  inside their row, which keeps their bounds parent-relative like every other
+  child; placing them with table coordinates instead was the bug the first test
+  caught.
+- **Column defaults live in componentdef, not in the node.** The schema seeds
+  every component property from the zero value, so `showHeader`, `rowHeight`,
+  `headerHeight`, `sortColumn`, `sortAscending` and `selectedRow` declare their
+  real defaults in `componentdef.Default`. Without that the builder would seed
+  `true` and the defaults pass would immediately write `false`.
+- **A table part is clickable without being focusable.** Sortable headers and
+  cells are handled by `tableTarget` in the input layer rather than added to
+  `interactive`, so they react to the pointer but never enter the Tab order: a
+  hundred-row grid must not add a hundred stops.

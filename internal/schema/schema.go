@@ -319,6 +319,7 @@ var elements = func() []Element {
 		}
 		for _, name := range componentdef.Props(k.Name) {
 			p := Prop{Name: name}
+			def, hasDef := componentdef.Default(name)
 			switch componentdef.TypeOf(name) {
 			case componentdef.Bool:
 				p.Type, p.Dirty, p.Default = TypeBool, DirtyPaint, false
@@ -331,6 +332,9 @@ var elements = func() []Element {
 				p.Type, p.Dirty, p.Enum = TypeEnum, DirtyLayout, componentdef.EnumValues(name)
 			default:
 				p.Type, p.Dirty, p.Default = TypeString, DirtyLayout, ""
+			}
+			if hasDef {
+				p.Default = def
 			}
 			attrs = append(attrs, p)
 		}
