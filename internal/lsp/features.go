@@ -2087,6 +2087,12 @@ func propDoc(el string, p schema.Prop) string {
 	case "scrollbarWidth":
 		b.WriteString("\n\nThickness of the scrollbar in dp, 4 by default. The thumb keeps its " +
 			"rounded pill shape at any width.")
+	case "cursor":
+		b.WriteString("\n\nThe pointer shape over this element, named the way CSS names it: " +
+			"`pointer`, `text`, `move`, `not-allowed`, `grab`, the resize arrows, " +
+			"`wait`, `crosshair`, `none` and every other CSS cursor value. A child " +
+			"inherits it; `cursor: auto` asks for the framework's own shape again. " +
+			"From Go: `node.SetCursor(\"grab\")`.")
 	case "zIndex":
 		b.WriteString("\n\nPaint order among siblings, like CSS: a higher value paints later, " +
 			"so it lands on top, and equal values keep document order. Layout ignores " +

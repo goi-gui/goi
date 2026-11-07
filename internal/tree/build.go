@@ -326,6 +326,7 @@ func newNode(name string) Node {
 			scrollShadowColor: newProp(nil, "scrollShadowColor", DirtyPaint, uint32(0)),
 			opacity:           newProp(nil, "opacity", DirtyPaint, 1.0),
 			zIndex:            newProp(nil, "zIndex", DirtyPaint, 0.0),
+			cursor:            newProp(nil, "cursor", DirtyPaint, ""),
 			width:             newProp(nil, "width", DirtyLayout, -1.0),
 			height:            newProp(nil, "height", DirtyLayout, -1.0),
 			minWidth:          newProp(nil, "minWidth", DirtyLayout, 0.0),

@@ -4,6 +4,7 @@ import (
 	"image"
 
 	"github.com/goi-gui/goi/internal/img"
+	"github.com/goi-gui/goi/internal/schema"
 	"github.com/goi-gui/goi/internal/text"
 )
 
@@ -52,6 +53,7 @@ func commonProps(b *NodeBase) []NamedProp {
 		ColorProp(b, "scrollShadowColor", DirtyPaint, &b.scrollShadowColor),
 		NumberProp(b, "opacity", DirtyPaint, &b.opacity),
 		NumberProp(b, "zIndex", DirtyPaint, &b.zIndex),
+		EnumProp(b, "cursor", DirtyPaint, &b.cursor, schema.CursorValues...),
 		NumberProp(b, "flex", DirtyLayout, &b.flex),
 		EnumProp(b, "alignSelf", DirtyLayout, &b.alignSelf, "start", "center", "end", "stretch"),
 	}

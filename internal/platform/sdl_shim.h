@@ -45,6 +45,13 @@ int goiPollEvent(goiEvent *o);
 int goiWaitEvent(goiEvent *o);
 int goiPushUserEvent(void);
 
+// Cursor kinds are platform.Cursor's order, which is SDL_SystemCursor's order
+// plus two at the end: NONE hides the pointer, COUNT bounds the cached shapes.
+enum {
+	GOI_CURSOR_NONE = SDL_SYSTEM_CURSOR_COUNT,
+	GOI_CURSOR_COUNT
+};
+
 void goiSetCursorKind(int kind);
 void goiFreeCursors(void);
 

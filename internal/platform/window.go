@@ -129,14 +129,37 @@ type Window struct {
 	maximizable bool
 }
 
-// Cursor is the shape the pointer takes over the client area.
+// Cursor is the shape the pointer takes over the client area. The values match
+// SDL_SystemCursor's order, so the shim can pass one straight to
+// SDL_CreateSystemCursor; None is the first value past that enum.
+//
+// Every CSS cursor name maps to one of these; see ui.CursorFor.
 type Cursor int
 
-// Cursor kinds the framework asks for.
+// Cursor kinds.
 const (
-	CursorArrow Cursor = iota
-	CursorText
-	CursorPointer
+	CursorArrow Cursor = iota // default: the system arrow
+	CursorText                // I-beam
+	CursorWait                // busy
+	CursorCrosshair
+	CursorProgress   // busy but still interactive
+	CursorResizeNWSE // ↘↖
+	CursorResizeNESW // ↙↗
+	CursorResizeEW   // ↔
+	CursorResizeNS   // ↕
+	CursorMove
+	CursorNotAllowed
+	CursorPointer // pointing hand, for links and buttons
+	CursorResizeNW
+	CursorResizeN
+	CursorResizeNE
+	CursorResizeE
+	CursorResizeSE
+	CursorResizeS
+	CursorResizeSW
+	CursorResizeW
+	// CursorNone hides the pointer, for a design that draws its own.
+	CursorNone
 )
 
 // SetCursor changes the pointer shape. It is a no-op when the shape is already

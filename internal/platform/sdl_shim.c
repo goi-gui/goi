@@ -120,21 +120,30 @@ int goiPushUserEvent(void) {
 	return SDL_PushEvent(&e) ? 1 : 0;
 }
 
-// Cursor shapes are cached in C so Go only names one of the three kinds.
-static SDL_Cursor *goiCursors[3];
+// Cursor kinds mirror platform.Cursor, which is SDL_SystemCursor's order with
+// two additions at the end. Shapes are cached in C so a move only names one.
+static SDL_Cursor *goiCursors[GOI_CURSOR_COUNT];
+static int goiCursorHidden = 0;
 
 void goiSetCursorKind(int kind) {
-	SDL_SystemCursor shape;
-	if (kind < 0 || kind > 2) {
+	// None is the one kind that hides the pointer instead of changing its shape,
+	// which is what CSS `cursor: none` means.
+	if (kind == GOI_CURSOR_NONE) {
+		if (!goiCursorHidden) {
+			SDL_HideCursor();
+			goiCursorHidden = 1;
+		}
 		return;
 	}
-	switch (kind) {
-	case 1:  shape = SDL_SYSTEM_CURSOR_TEXT; break;
-	case 2:  shape = SDL_SYSTEM_CURSOR_POINTER; break;
-	default: shape = SDL_SYSTEM_CURSOR_DEFAULT; break;
+	if (goiCursorHidden) {
+		SDL_ShowCursor();
+		goiCursorHidden = 0;
+	}
+	if (kind < 0 || kind >= GOI_CURSOR_NONE) {
+		return;
 	}
 	if (!goiCursors[kind]) {
-		goiCursors[kind] = SDL_CreateSystemCursor(shape);
+		goiCursors[kind] = SDL_CreateSystemCursor((SDL_SystemCursor)kind);
 	}
 	if (goiCursors[kind]) {
 		SDL_SetCursor(goiCursors[kind]);
@@ -142,11 +151,15 @@ void goiSetCursorKind(int kind) {
 }
 
 void goiFreeCursors(void) {
-	for (int i = 0; i < 3; i++) {
+	for (int i = 0; i < GOI_CURSOR_COUNT; i++) {
 		if (goiCursors[i]) {
 			SDL_DestroyCursor(goiCursors[i]);
 			goiCursors[i] = NULL;
 		}
+	}
+	if (goiCursorHidden) {
+		SDL_ShowCursor();
+		goiCursorHidden = 0;
 	}
 }
 

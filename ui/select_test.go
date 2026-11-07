@@ -230,3 +230,41 @@ func TestSelectableTextWordAndParagraph(t *testing.T) {
 		t.Fatalf("triple click selected %q, want the paragraph", got)
 	}
 }
+
+// TestCursorPropertyOverridesAffordance pins the CSS rule: a declared cursor
+// wins over the M3 shape, one declaration covers the whole subtree, and an
+// explicit auto resets it.
+func TestCursorPropertyOverridesAffordance(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		Column {
+			cursor: pointer
+			Button { id: btn width: 100 height: 40 label: "Go" }
+			TextField { id: field width: 200 height: 30 }
+			Column {
+				id: inbox
+				cursor: auto
+				Text { id: plain text: "plain" width: 100 height: 20 }
+			}
+		}
+	}`, 480, 320)
+	var got platform.Cursor
+	in.setCursor = func(c platform.Cursor) { got = c }
+	check := func(id string, want platform.Cursor) {
+		t.Helper()
+		n, ok := win.tree.ByID(id)
+		if !ok {
+			t.Fatalf("no node %q", id)
+		}
+		r := absoluteRect(n)
+		got = -1
+		in.MouseMove(r.X+r.W/2, r.Y+r.H/2)
+		if got != want {
+			t.Errorf("cursor over %s = %v, want %v", id, got, want)
+		}
+	}
+	// Inherited from the column, including over a text field.
+	check("btn", platform.CursorPointer)
+	check("field", platform.CursorPointer)
+	// The inner column says auto, so the framework decides again.
+	check("plain", platform.CursorArrow)
+}

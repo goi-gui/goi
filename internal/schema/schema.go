@@ -119,6 +119,21 @@ func Event(name string) (EventDef, bool) {
 	return EventDef{}, false
 }
 
+// CursorValues lists the CSS cursor names a design may write. Every CSS value
+// is accepted; the platform maps the ones SDL has no shape for to the closest
+// one, which is what a browser does with a cursor the OS lacks.
+var CursorValues = []string{
+	"auto", "default", "none",
+	"context-menu", "help", "pointer", "progress", "wait",
+	"cell", "crosshair", "text", "vertical-text",
+	"alias", "copy", "move", "no-drop", "not-allowed", "grab", "grabbing",
+	"all-scroll", "col-resize", "row-resize",
+	"n-resize", "e-resize", "s-resize", "w-resize",
+	"ne-resize", "nw-resize", "se-resize", "sw-resize",
+	"ew-resize", "ns-resize", "nesw-resize", "nwse-resize",
+	"zoom-in", "zoom-out",
+}
+
 var eventDefs = []EventDef{
 	{Name: "onClick", Type: TypeString},
 	{Name: "onToggle", Type: TypeBool, HasValue: true, Component: true},
@@ -169,6 +184,8 @@ var common = []Prop{
 	{Name: "opacity", Type: TypeNumber, Dirty: DirtyPaint, Default: 1.0, Common: true},
 	// zIndex orders a node among its siblings when painting; layout ignores it.
 	{Name: "zIndex", Type: TypeNumber, Dirty: DirtyPaint, Default: 0.0, Common: true},
+	// cursor is the pointer shape, named the way CSS names it.
+	{Name: "cursor", Type: TypeEnum, Dirty: DirtyPaint, Enum: CursorValues, Default: "", Common: true},
 	{Name: "template", Type: TypeBool, Dirty: DirtyLayout, Default: false, Common: true},
 }
 

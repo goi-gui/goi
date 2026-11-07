@@ -79,6 +79,9 @@ type NodeBase struct {
 	// zIndex orders this node among its siblings when painting, like CSS: a
 	// higher value paints later, so it lands on top. Layout ignores it.
 	zIndex Prop[float64]
+	// cursor is the pointer shape over this node, named the way CSS names it.
+	// Empty means "auto": the framework's own affordance decides.
+	cursor Prop[string]
 	// scrollbarHover and scrollbarShowUntil are runtime state driven by input,
 	// not properties: the bar's visibility is a fact about the pointer and the
 	// clock, not something a design declares.
@@ -347,6 +350,12 @@ func (b *NodeBase) ScrollShadow() bool { return b.scrollShadow.Get() }
 // ScrollShadowColor returns the gradient colour, 0 when the design left it to
 // the theme.
 func (b *NodeBase) ScrollShadowColor() uint32 { return b.scrollShadowColor.Get() }
+
+// Cursor returns the pointer shape this node asks for, or "" for auto.
+func (b *NodeBase) Cursor() string { return b.cursor.Get() }
+
+// SetCursor changes the pointer shape over the node, using a CSS name.
+func (b *NodeBase) SetCursor(name string) { b.cursor.Set(name) }
 
 // ZIndex returns the node's paint order among its siblings.
 func (b *NodeBase) ZIndex() float64 { return b.zIndex.Get() }

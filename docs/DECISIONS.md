@@ -1574,3 +1574,11 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   costs nothing and removed an allocation per evaluated expression. The
   unchanged-value check now compares through the cell instead of boxing the
   current value into `any`.
+- **`cursor` takes every CSS name and maps what the platform lacks.** SDL's
+  system cursors cover the common shapes plus the eight resize directions, but
+  not `zoom-in`, `help`, `copy`, `alias` or `context-menu`. The schema accepts
+  the full CSS list anyway, because a design should not have to know which
+  shapes the current OS happens to ship, and `cursorFor` maps the missing ones
+  to the arrow — the same fallback a browser uses. `none` hides the pointer
+  instead of picking a shape, and an explicit `auto` stops inheritance so a
+  control can return to the framework's own affordance inside a draggable area.

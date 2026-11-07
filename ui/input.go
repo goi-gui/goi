@@ -274,11 +274,80 @@ func (i *interactor) pointer(c platform.Cursor) {
 	}
 }
 
+// cursorFor resolves the CSS `cursor` a node or its nearest ancestor declares.
+// "auto" and an unset property are the framework's own affordance, so they
+// report false and pointerAt falls through to the M3 shapes.
+func cursorFor(hit tree.Node) (platform.Cursor, bool) {
+	for n := hit; n != nil; n = n.Base().Parent() {
+		name := n.Base().Cursor()
+		if name == "" {
+			continue // unset inherits from the parent, like CSS
+		}
+		if name == "auto" {
+			// An explicit auto asks for the framework's own shape again instead
+			// of inheriting an ancestor's choice.
+			return 0, false
+		}
+		switch name {
+		case "default", "context-menu", "help", "zoom-in", "zoom-out", "alias", "copy":
+			// SDL has no shape for these; a browser falls back to the arrow for
+			// a cursor the system lacks, and so do we.
+			return platform.CursorArrow, true
+		case "none":
+			return platform.CursorNone, true
+		case "pointer":
+			return platform.CursorPointer, true
+		case "progress":
+			return platform.CursorProgress, true
+		case "wait":
+			return platform.CursorWait, true
+		case "text", "vertical-text":
+			return platform.CursorText, true
+		case "cell", "crosshair":
+			return platform.CursorCrosshair, true
+		case "move", "grab", "grabbing", "all-scroll":
+			return platform.CursorMove, true
+		case "no-drop", "not-allowed":
+			return platform.CursorNotAllowed, true
+		case "col-resize", "ew-resize":
+			return platform.CursorResizeEW, true
+		case "row-resize", "ns-resize":
+			return platform.CursorResizeNS, true
+		case "n-resize":
+			return platform.CursorResizeN, true
+		case "e-resize":
+			return platform.CursorResizeE, true
+		case "s-resize":
+			return platform.CursorResizeS, true
+		case "w-resize":
+			return platform.CursorResizeW, true
+		case "ne-resize":
+			return platform.CursorResizeNE, true
+		case "nw-resize":
+			return platform.CursorResizeNW, true
+		case "se-resize":
+			return platform.CursorResizeSE, true
+		case "sw-resize":
+			return platform.CursorResizeSW, true
+		case "nesw-resize":
+			return platform.CursorResizeNESW, true
+		case "nwse-resize":
+			return platform.CursorResizeNWSE, true
+		}
+	}
+	return 0, false
+}
+
 // pointerAt picks the shape M3 shows: an I-beam over text a reader can edit or
-// select, a pointing hand over anything clickable.
+// select, a pointing hand over anything clickable. An element's own `cursor`
+// wins over both, the way CSS does.
 func (i *interactor) pointerAt(hit tree.Node) {
 	if hit == nil {
 		i.pointer(platform.CursorArrow)
+		return
+	}
+	if c, ok := cursorFor(hit); ok {
+		i.pointer(c)
 		return
 	}
 	if codeCopyAt(hit, i.cursorX, i.cursorY) != nil {
