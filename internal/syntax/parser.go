@@ -945,45 +945,20 @@ func (p *parser) shadowNumber() (float64, bool) {
 func (p *parser) parseValue() (Value, bool) {
 	t := p.peek()
 	switch t.kind {
-	case tokString:
-		// A string is an operand too, so `"a" + "b"` concatenates as the
-		// syntax reference promises.
-		return p.parseExpr()
-	case tokNumber, tokLParen, tokBang, tokMinus:
-		return p.parseExpr()
-	case tokBool:
-		p.next()
-		return &Bool{At: t.pos, Val: t.b}, true
-	case tokColor:
-		p.next()
-		return &Color{At: t.pos, RGBA: t.rgba}, true
-	case tokIdent:
-		// `name` is an enum or id, `name.prop` is a reference.
-		if p.peek2().kind == tokDot {
-			return p.parseExpr()
-		}
-		if p.peek2().kind == tokLParen {
-			return p.parseExpr()
-		}
-		p.next()
-		return &Ident{At: t.pos, Val: t.text}, true
 	case tokLBrace:
 		return p.parseMap()
-	case tokDollar:
-		// A `$` starts an expression only for the diagnostic parseTerm gives;
-		// going through the expression path keeps one message per '$'.
-		return p.parseExpr()
+	case tokRBrace, tokEOF:
+		p.errorf(t, "expected a value")
+		return nil, false
 	case tokError:
 		// The lexer already reported this; stay quiet so the file does not
 		// produce two diagnostics for one typo.
 		return nil, false
-	case tokRBrace, tokEOF:
-		p.errorf(t, "expected a value")
-		return nil, false
-	default:
-		p.errorf(t, "expected a value")
-		return nil, false
 	}
+	// Every other value is an expression: a literal, reference or call, with
+	// the operators and a conditional on top. Starting a bare identifier here
+	// is what lets `i+1` work inside a call's arguments.
+	return p.parseExpr()
 }
 
 // parseExpr parses a full expression: a conditional at the top, then logical,
@@ -1126,7 +1101,7 @@ func (p *parser) parseAdd() (Value, bool) {
 }
 
 func (p *parser) parseMul() (Value, bool) {
-	left, ok := p.parseTerm()
+	left, ok := p.parseUnary()
 	if !ok {
 		return nil, false
 	}
@@ -1141,7 +1116,7 @@ func (p *parser) parseMul() (Value, bool) {
 			return left, true
 		}
 		p.next()
-		right, ok := p.parseTerm()
+		right, ok := p.parseUnary()
 		if !ok {
 			return nil, false
 		}

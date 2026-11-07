@@ -849,3 +849,26 @@ func TestParseBridgeErrors(t *testing.T) {
 		}
 	}
 }
+
+// TestParseUnaryAndArithmeticArguments pins the two expression forms the docs
+// promise: `!` in front of a reference, and arithmetic starting with a bare
+// identifier inside a call's arguments. Both were parsed as a single term before.
+func TestParseUnaryAndArithmeticArguments(t *testing.T) {
+	src := `A {
+		v: !bridge.Loading
+		t: formatf("%d. %s", i+1, row.Title)
+		n: -count
+	}`
+	f, diag := Parse([]byte(src))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	want := `A
+  v = !bridge.Loading
+  t = formatf("%d. %s", (i + 1), row.Title)
+  n = -count
+`
+	if got := Dump(f); got != want {
+		t.Fatalf("dump mismatch\n--- got ---\n%s--- want ---\n%s", got, want)
+	}
+}
