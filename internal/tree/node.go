@@ -68,6 +68,7 @@ type NodeBase struct {
 	// the area or the area scrolled recently.
 	hideScrollbar     Prop[bool]
 	autoHideScrollbar Prop[bool]
+	scrollbarWidth    Prop[float64]
 	scrollShadow      Prop[bool]
 	scrollShadowColor Prop[uint32]
 	// opacity fades the node and everything under it.
@@ -289,6 +290,16 @@ func (b *NodeBase) HideScrollbar() bool { return b.hideScrollbar.Get() }
 // AutoHideScrollbar reports whether the bar follows the pointer and the clock
 // instead of always showing.
 func (b *NodeBase) AutoHideScrollbar() bool { return b.autoHideScrollbar.Get() }
+
+// ScrollbarWidth returns the bar's thickness, falling back to the M3 default
+// for a missing or unusable value.
+func (b *NodeBase) ScrollbarWidth() float64 {
+	v := b.scrollbarWidth.Get()
+	if v <= 0 {
+		return ScrollbarThickness
+	}
+	return v
+}
 
 // ScrollShadow reports whether the area paints an edge gradient when its
 // content is scrolled away from that edge.

@@ -310,6 +310,7 @@ func newNode(name string) Node {
 			scroll:            newProp(nil, "scroll", DirtyPaint, false),
 			hideScrollbar:     newProp(nil, "hideScrollbar", DirtyPaint, false),
 			autoHideScrollbar: newProp(nil, "autoHideScrollbar", DirtyPaint, true),
+			scrollbarWidth:    newProp(nil, "scrollbarWidth", DirtyPaint, ScrollbarThickness),
 			scrollShadow:      newProp(nil, "scrollShadow", DirtyPaint, false),
 			scrollShadowColor: newProp(nil, "scrollShadowColor", DirtyPaint, uint32(0)),
 			opacity:           newProp(nil, "opacity", DirtyPaint, 1.0),

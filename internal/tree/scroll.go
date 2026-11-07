@@ -119,8 +119,9 @@ func (b *NodeBase) SetScrollOffset(v float64) {
 	b.MarkDirty(DirtyPaint)
 }
 
-// Scrollbar metrics: a 4dp pill, 2dp in from the trailing edge, never shorter
-// than 32dp so a long document still has something to grab.
+// Scrollbar metrics: a 4dp pill by default, 2dp in from the trailing edge,
+// never shorter than 32dp so a long document still has something to grab. The
+// thickness follows `scrollbarWidth`.
 const (
 	ScrollbarThickness = 4.0
 	ScrollbarInset     = 2.0
@@ -143,6 +144,7 @@ func (b *NodeBase) ScrollbarThumb(inner Rect) (Rect, bool) {
 		return Rect{}, false
 	}
 	off := b.ScrollOffset()
+	w := b.ScrollbarWidth()
 	switch axis {
 	case AxisY:
 		view := inner.H
@@ -151,9 +153,9 @@ func (b *NodeBase) ScrollbarThumb(inner Rect) (Rect, bool) {
 		}
 		thumb := clampThumb(view*view/(view+max), view)
 		return Rect{
-			X: inner.Right() - ScrollbarThickness - ScrollbarInset,
+			X: inner.Right() - w - ScrollbarInset,
 			Y: inner.Y + (view-thumb)*(off/max),
-			W: ScrollbarThickness, H: thumb,
+			W: w, H: thumb,
 		}, true
 	case AxisX:
 		view := inner.W
@@ -163,8 +165,8 @@ func (b *NodeBase) ScrollbarThumb(inner Rect) (Rect, bool) {
 		thumb := clampThumb(view*view/(view+max), view)
 		return Rect{
 			X: inner.X + (view-thumb)*(off/max),
-			Y: inner.Bottom() - ScrollbarThickness - ScrollbarInset,
-			W: thumb, H: ScrollbarThickness,
+			Y: inner.Bottom() - w - ScrollbarInset,
+			W: thumb, H: w,
 		}, true
 	}
 	return Rect{}, false

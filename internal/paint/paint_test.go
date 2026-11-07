@@ -266,3 +266,32 @@ func TestScrollShadowFollowsOffset(t *testing.T) {
 		}
 	}
 }
+
+// TestScrollbarWidth checks that the property resizes the bar and that a
+// non-positive value falls back to the M3 default.
+func TestScrollbarWidth(t *testing.T) {
+	thumbW := func(prop string) float64 {
+		l := list(t, fmt.Sprintf(`Window { Column {
+			scroll: true
+			autoHideScrollbar: false
+			%s
+			width: 100
+			height: 60
+			Rectangle { width: 100 height: 300 background: #ff0000 }
+		} }`, prop), 100, 100)
+		col := withAlpha(m3.Light().Colors.OnSurfaceVariant, 0.4)
+		for _, op := range l.Ops {
+			if op.Kind == Fill && op.Color == col {
+				return float64(op.Rect[2])
+			}
+		}
+		t.Fatalf("no thumb for %q:\n%s", prop, l.Dump())
+		return 0
+	}
+	if w := thumbW("scrollbarWidth: 10"); w != 10 {
+		t.Fatalf("thumb width = %v, want 10", w)
+	}
+	if w := thumbW("scrollbarWidth: 0"); w != tree.ScrollbarThickness {
+		t.Fatalf("thumb width = %v, want the default %v", w, tree.ScrollbarThickness)
+	}
+}

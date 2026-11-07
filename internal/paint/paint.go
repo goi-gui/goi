@@ -294,7 +294,7 @@ func (l *List) paintScrollbar(b *tree.NodeBase, inner tree.Rect, clip tree.Rect)
 		return
 	}
 	col := withAlpha(l.Theme.Colors.OnSurfaceVariant, 0.4)
-	l.fillRect(thumb, col, tree.ScrollbarThickness/2, 0, 0, clip)
+	l.fillRect(thumb, col, b.ScrollbarWidth()/2, 0, 0, clip)
 }
 
 // scrollShadowBand is how deep the edge gradient reaches, in dp.

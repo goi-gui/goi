@@ -2077,6 +2077,9 @@ func propDoc(el string, p schema.Prop) string {
 	case "autoHideScrollbar":
 		b.WriteString("\n\n`true` (default) shows the bar only while the pointer is over the " +
 			"area or it scrolled in the last two seconds. `false` keeps it up.")
+	case "scrollbarWidth":
+		b.WriteString("\n\nThickness of the scrollbar in dp, 4 by default. The thumb keeps its " +
+			"rounded pill shape at any width.")
 	case "scrollShadow":
 		b.WriteString("\n\nDraws a gradient at each edge the content has scrolled away from, " +
 			"so it marks hidden content the way CSS scroll shadows do. Tint it with " +

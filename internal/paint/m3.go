@@ -1377,15 +1377,17 @@ func (l *List) paintNavigationBar(c *tree.Component, r tree.Rect, clip tree.Rect
 	col := l.Theme.Colors
 	l.fillRect(r, col.SurfaceContainer, 0, 0, 0, clip)
 	// The indicator follows the destination's own selected flag, so a nav bar, a
-	// rail and a drawer all read the same state.
+	// rail and a drawer all read the same state. The shift matters on a scrolled
+	// rail: the item moves with the content, so the band has to move with it.
+	sx, sy := scrollShift(c.Base())
 	for _, k := range c.Base().Kids() {
 		kc := m3Of(k)
 		if kc == nil || !kc.Selected.Get() {
 			continue
 		}
 		kb := k.Bounds()
-		cx := r.X + kb.X + kb.W/2
-		l.fillRect(tree.Rect{X: cx - 32, Y: r.Y + 12, W: 64, H: 32}, col.SecondaryContainer, 16, 0, 0, clip)
+		cx := r.X + kb.X + sx + kb.W/2
+		l.fillRect(tree.Rect{X: cx - 32, Y: r.Y + kb.Y + sy + 12, W: 64, H: 32}, col.SecondaryContainer, 16, 0, 0, clip)
 	}
 }
 
@@ -1397,14 +1399,15 @@ func (l *List) paintNavigationRail(c *tree.Component, r tree.Rect, clip tree.Rec
 	// read as its own surface in both schemes.
 	l.fillRect(r, col.SurfaceContainer, 0, 0, 0, clip)
 	l.fillRect(tree.Rect{X: r.Right() - 1, Y: r.Y, W: 1, H: r.H}, col.OutlineVariant, 0, 0, 0, clip)
+	sx, sy := scrollShift(c.Base())
 	for _, k := range c.Base().Kids() {
 		kc := m3Of(k)
 		if kc == nil || !kc.Selected.Get() {
 			continue
 		}
 		kb := k.Bounds()
-		cx := r.X + kb.X + kb.W/2
-		l.fillRect(tree.Rect{X: cx - 28, Y: r.Y + kb.Y + 4, W: 56, H: 32}, col.SecondaryContainer, 16, 0, 0, clip)
+		cx := r.X + kb.X + sx + kb.W/2
+		l.fillRect(tree.Rect{X: cx - 28, Y: r.Y + kb.Y + sy + 4, W: 56, H: 32}, col.SecondaryContainer, 16, 0, 0, clip)
 	}
 }
 
@@ -1431,10 +1434,13 @@ func (l *List) paintNavigationDrawer(c *tree.Component, r tree.Rect, clip tree.R
 			tree.Rect{X: r.X + 28, Y: r.Y + 16, W: r.W - 56, H: 20}, AlignStart, clip)
 	}
 	// The active destination is whichever item says so; NavigationItem draws
-	// its own icon and label on top of this band.
+	// its own icon and label on top of this band. The drawer scrolls, so the
+	// band follows the item by the same shift its children paint with.
+	sx, sy := scrollShift(c.Base())
 	for _, k := range c.Base().Kids() {
 		if kc := m3Of(k); kc != nil && kc.Selected.Get() {
-			l.fillRect(tree.Rect{X: r.X + k.Bounds().X, Y: r.Y + k.Bounds().Y, W: k.Bounds().W, H: k.Bounds().H},
+			kb := k.Bounds()
+			l.fillRect(tree.Rect{X: r.X + kb.X + sx, Y: r.Y + kb.Y + sy, W: kb.W, H: kb.H},
 				col.SecondaryContainer, 28, 0, 0, clip)
 		}
 	}

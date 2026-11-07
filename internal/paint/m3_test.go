@@ -653,3 +653,49 @@ func TestTextItalicAndRelativeWeight(t *testing.T) {
 		t.Fatalf("weights = %v, want the italic line then 700, 300", weights)
 	}
 }
+
+// TestNavigationRailIndicatorFollowsScroll guards a scrolled rail: the item
+// paints with the scroll shift, so the selected band must move by the same
+// amount or it stays behind at the unscrolled position.
+func TestNavigationRailIndicatorFollowsScroll(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window { NavigationRail {
+		id: rail
+		scroll: true
+		width: 80
+		height: 120
+		NavigationItem { id: a label: "A" icon: home }
+		NavigationItem { id: b label: "B" icon: home }
+		NavigationItem { id: c label: "C" icon: home }
+		NavigationItem { id: d label: "D" icon: home selected: true }
+	} }`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 400, 400)
+	rail, _ := tr.ByID("rail")
+	item, _ := tr.ByID("d")
+	if rail.Base().ScrollMax() <= 0 {
+		t.Fatalf("rail does not overflow: max=%v", rail.Base().ScrollMax())
+	}
+	rail.Base().SetScrollOffset(40)
+	bandY := func() float32 {
+		l := &List{}
+		l.Build(tr, 400, 400)
+		for _, op := range l.Ops {
+			if op.Kind == Fill && op.Rect[2] == 56 && op.Rect[3] == 32 {
+				return op.Rect[1]
+			}
+		}
+		t.Fatalf("no indicator band:\n%s", l.Dump())
+		return 0
+	}
+	shifted := bandY()
+	rail.Base().SetScrollOffset(0)
+	plain := bandY()
+	if plain-shifted != 40 {
+		t.Fatalf("indicator moved %v, want 40 (scrolled y=%v, rest y=%v)", plain-shifted, shifted, plain)
+	}
+	if item.Base().Bounds().Y == 0 {
+		t.Fatal("selected item sits at the origin; test proves nothing")
+	}
+}
