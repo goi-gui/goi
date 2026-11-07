@@ -1,5 +1,7 @@
 package tree
 
+import "time"
+
 // Axis is a scroll direction.
 type Axis uint8
 
@@ -115,4 +117,93 @@ func (b *NodeBase) SetScrollOffset(v float64) {
 		return
 	}
 	b.MarkDirty(DirtyPaint)
+}
+
+// Scrollbar metrics: a 4dp pill, 2dp in from the trailing edge, never shorter
+// than 32dp so a long document still has something to grab.
+const (
+	ScrollbarThickness = 4.0
+	ScrollbarInset     = 2.0
+	ScrollbarMinLength = 32.0
+	// ScrollbarHideDelay is how long an auto-hiding bar stays after the pointer
+	// leaves the area or the last scroll.
+	ScrollbarHideDelay = 2 * time.Second
+)
+
+// ScrollbarThumb returns the thumb inside the viewport rect, and false when the
+// node does not scroll or its content fits. Paint and hit-testing share it, so
+// the bar a reader grabs is exactly the bar that was drawn.
+func (b *NodeBase) ScrollbarThumb(inner Rect) (Rect, bool) {
+	axis := b.ScrollAxis()
+	if axis == AxisNone {
+		return Rect{}, false
+	}
+	max := b.ScrollMax()
+	if max <= 0 {
+		return Rect{}, false
+	}
+	off := b.ScrollOffset()
+	switch axis {
+	case AxisY:
+		view := inner.H
+		if view <= 0 {
+			return Rect{}, false
+		}
+		thumb := clampThumb(view*view/(view+max), view)
+		return Rect{
+			X: inner.Right() - ScrollbarThickness - ScrollbarInset,
+			Y: inner.Y + (view-thumb)*(off/max),
+			W: ScrollbarThickness, H: thumb,
+		}, true
+	case AxisX:
+		view := inner.W
+		if view <= 0 {
+			return Rect{}, false
+		}
+		thumb := clampThumb(view*view/(view+max), view)
+		return Rect{
+			X: inner.X + (view-thumb)*(off/max),
+			Y: inner.Bottom() - ScrollbarThickness - ScrollbarInset,
+			W: thumb, H: ScrollbarThickness,
+		}, true
+	}
+	return Rect{}, false
+}
+
+func clampThumb(thumb, view float64) float64 {
+	if thumb < ScrollbarMinLength {
+		thumb = ScrollbarMinLength
+	}
+	if thumb > view {
+		thumb = view
+	}
+	return thumb
+}
+
+// SetScrollbarHover records whether the pointer is inside the area. The bar is
+// visible while it is, and for the grace period after it leaves.
+func (b *NodeBase) SetScrollbarHover(v bool) {
+	if b.scrollbarHover == v {
+		return
+	}
+	b.scrollbarHover = v
+	b.MarkDirty(DirtyPaint)
+}
+
+// ScrollbarHover reports whether the pointer is inside the area.
+func (b *NodeBase) ScrollbarHover() bool { return b.scrollbarHover }
+
+// ShowScrollbar restarts the grace period, so a scroll or a pointer entering
+// the area keeps the bar up for ScrollbarHideDelay.
+func (b *NodeBase) ShowScrollbar() { b.scrollbarShowUntil = time.Now().Add(ScrollbarHideDelay) }
+
+// ScrollbarVisible reports whether the bar should paint now.
+func (b *NodeBase) ScrollbarVisible() bool {
+	if b.HideScrollbar() {
+		return false
+	}
+	if !b.AutoHideScrollbar() {
+		return true
+	}
+	return b.scrollbarHover || time.Now().Before(b.scrollbarShowUntil)
 }

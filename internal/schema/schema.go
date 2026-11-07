@@ -158,6 +158,13 @@ var common = []Prop{
 	{Name: "flex", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0, Common: true},
 	{Name: "alignSelf", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "", Common: true},
 	{Name: "scroll", Type: TypeBool, Dirty: DirtyPaint, Default: false, Common: true},
+	// Scrollbar and scroll-shadow behaviour on any scrollable element.
+	{Name: "hideScrollbar", Type: TypeBool, Dirty: DirtyPaint, Default: false, Common: true},
+	{Name: "autoHideScrollbar", Type: TypeBool, Dirty: DirtyPaint, Default: true, Common: true},
+	{Name: "scrollShadow", Type: TypeBool, Dirty: DirtyPaint, Default: false, Common: true},
+	{Name: "scrollShadowColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
+	// opacity fades the node and its subtree. It also accepts a percentage.
+	{Name: "opacity", Type: TypeNumber, Dirty: DirtyPaint, Default: 1.0, Common: true},
 	{Name: "template", Type: TypeBool, Dirty: DirtyLayout, Default: false, Common: true},
 }
 

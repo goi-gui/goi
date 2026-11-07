@@ -93,6 +93,18 @@ type interactor struct {
 	flingNode tree.Node
 	flingV    float64 // logical pixels per second
 	lastWheel time.Time
+
+	// scrollbar is the node whose bar the pointer grabbed, with the thumb
+	// geometry frozen at the press so a resize mid-drag cannot shift it. grab is
+	// the distance from the pointer to the thumb's leading edge.
+	scrollbar     tree.Node
+	scrollbarAxis tree.Axis
+	scrollbarIn   tree.Rect
+	scrollbarGrab float64
+	// hoverScroll is the area the pointer is inside, so its bar follows the
+	// pointer; hideTimer asks for one repaint when the grace period ends.
+	hoverScroll tree.Node
+	hideTimer   *time.Timer
 }
 
 // comp returns the Material component behind a node, if it has one.
@@ -207,6 +219,13 @@ func (i *interactor) event(name string, fields ...any) {
 
 func (i *interactor) MouseMove(x, y float64) {
 	i.cursorX, i.cursorY = x, y
+	if i.scrollbar != nil {
+		i.dragScrollbar(x, y)
+		i.pointer(platform.CursorPointer)
+		return
+	}
+	hit := i.hit(x, y)
+	i.updateScrollHover(hit)
 	if i.selecting && i.textSel != nil {
 		i.pointer(platform.CursorText)
 		a, _ := selRange(i.textSel)
@@ -214,7 +233,6 @@ func (i *interactor) MouseMove(x, y float64) {
 		i.markDirty()
 		return
 	}
-	hit := i.hit(x, y)
 	i.pointerAt(hit)
 	if i.selecting && i.textField != nil {
 		i.dragX, i.dragY = x, y
@@ -300,6 +318,23 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 	i.dragFromX, i.dragFromY = x, y
 	i.dragLastX, i.dragLastY = x, y
 	i.scrollNode = nil
+	// A press on a visible scrollbar grabs the thumb before anything else: the
+	// bar is drawn on top of the content, so it has to receive the press first.
+	if button == 0 {
+		if n, in := i.scrollbarAt(x, y); n != nil {
+			i.scrollbar = n
+			i.scrollbarAxis = n.Base().ScrollAxis()
+			i.scrollbarIn = in
+			thumb, _ := n.Base().ScrollbarThumb(in)
+			if i.scrollbarAxis == tree.AxisX {
+				i.scrollbarGrab = x - thumb.X
+			} else {
+				i.scrollbarGrab = y - thumb.Y
+			}
+			i.showScrollbar(n)
+			return
+		}
+	}
 	field := fieldAt(hit)
 	// A press in a scroll area can become a drag; a slider keeps the pointer,
 	// and so does a text field, where the drag selects text.
@@ -381,6 +416,7 @@ func (i *interactor) MouseUp(x, y float64, button int) {
 		i.scrolled = false
 		i.textField = nil
 		i.selecting = false
+		i.scrollbar = nil
 	}()
 	if i.pressed == nil {
 		i.dragging = false
@@ -712,6 +748,7 @@ func (i *interactor) Scroll(dx, dy float64, shift bool) {
 	}
 	// The content moved under a stationary pointer, so the shape may be stale.
 	i.pointerAt(i.hit(i.cursorX, i.cursorY))
+	i.showScrollbar(last)
 	i.markDirty()
 }
 
@@ -811,6 +848,7 @@ func (i *interactor) tickFling(dt float64) bool {
 		return false
 	}
 	i.flingNode = last
+	i.showScrollbar(last)
 	i.markDirty()
 	return true
 }
@@ -856,6 +894,148 @@ func scrollableAt(n tree.Node) tree.Node {
 		}
 	}
 	return nil
+}
+
+// scrollbarAt finds the visible scrollbar thumb under the pointer. The thumb is
+// only 4dp wide, so the grab area is padded by 8dp on each side across the axis:
+// easy to hit without stealing presses from content further in.
+func (i *interactor) scrollbarAt(x, y float64) (tree.Node, tree.Rect) {
+	if i.tree.Root == nil {
+		return nil, tree.Rect{}
+	}
+	var (
+		found tree.Node
+		inner tree.Rect
+	)
+	var walk func(b *tree.NodeBase, ox, oy float64, clip tree.Rect)
+	walk = func(b *tree.NodeBase, ox, oy float64, clip tree.Rect) {
+		if !b.Visible() || found != nil {
+			return
+		}
+		br := b.Bounds()
+		ox += br.X
+		oy += br.Y
+		box := tree.Rect{X: ox, Y: oy, W: br.W, H: br.H}
+		innerBox := b.ContentBox(box)
+		kidClip := clip
+		if b.ClipsChildren() {
+			kidClip = intersectRect(clip, innerBox)
+		}
+		sx, sy := scrollShift(b)
+		kids := b.Kids()
+		// Children first, so a nested area's bar wins over the page's.
+		for n := len(kids) - 1; n >= 0 && found == nil; n-- {
+			kb := kids[n].Bounds()
+			kb.X += sx
+			kb.Y += sy
+			walk(kids[n], ox, oy, kidClip)
+		}
+		if found != nil || b.ScrollAxis() == tree.AxisNone || !b.ScrollbarVisible() {
+			return
+		}
+		thumb, ok := b.ScrollbarThumb(innerBox)
+		if !ok {
+			return
+		}
+		const pad = 8.0
+		hit := thumb
+		if b.ScrollAxis() == tree.AxisX {
+			hit.Y -= pad
+			hit.H += pad * 2
+		} else {
+			hit.X -= pad
+			hit.W += pad * 2
+		}
+		if hit.Contains(x, y) && clip.Contains(x, y) {
+			found, inner = b.Node(), innerBox
+		}
+	}
+	walk(i.tree.Root.Base(), 0, 0, tree.Rect{X: 0, Y: 0, W: i.windowW(), H: i.windowH()})
+	return found, inner
+}
+
+// dragScrollbar moves the grabbed thumb with the pointer. The thumb is the
+// handle, so the content follows it 1:1 over the track instead of by a delta.
+func (i *interactor) dragScrollbar(x, y float64) {
+	n := i.scrollbar
+	if n == nil {
+		return
+	}
+	b := n.Base()
+	thumb, ok := b.ScrollbarThumb(i.scrollbarIn)
+	if !ok {
+		return
+	}
+	var track, pos float64
+	if i.scrollbarAxis == tree.AxisX {
+		track = i.scrollbarIn.W - thumb.W
+		pos = x - i.scrollbarGrab - i.scrollbarIn.X
+	} else {
+		track = i.scrollbarIn.H - thumb.H
+		pos = y - i.scrollbarGrab - i.scrollbarIn.Y
+	}
+	if track <= 0 {
+		return
+	}
+	frac := pos / track
+	if frac < 0 {
+		frac = 0
+	} else if frac > 1 {
+		frac = 1
+	}
+	b.SetScrollOffset(frac * b.ScrollMax())
+	i.flingNode, i.flingV = nil, 0
+	i.showScrollbar(n)
+	i.markDirty()
+}
+
+// updateScrollHover keeps the area under the pointer marked, so its bar is up
+// while the pointer is inside and fades on the grace period after it leaves.
+func (i *interactor) updateScrollHover(hit tree.Node) {
+	hover := scrollableAt(hit)
+	if hover == i.hoverScroll {
+		return
+	}
+	if i.hoverScroll != nil {
+		i.hoverScroll.Base().SetScrollbarHover(false)
+		i.showScrollbar(i.hoverScroll)
+	}
+	i.hoverScroll = hover
+	if hover != nil {
+		hover.Base().SetScrollbarHover(true)
+		i.showScrollbar(hover)
+	}
+}
+
+// showScrollbar starts the grace period and asks for one repaint when it ends,
+// so an auto-hiding bar disappears even if nothing else changes.
+func (i *interactor) showScrollbar(n tree.Node) {
+	if n == nil {
+		return
+	}
+	n.Base().ShowScrollbar()
+	n.Base().MarkDirty(tree.DirtyPaint)
+	i.markDirty()
+	if i.hideTimer != nil {
+		i.hideTimer.Stop()
+	}
+	i.hideTimer = time.AfterFunc(tree.ScrollbarHideDelay, func() {
+		if i.app != nil {
+			i.app.Post(func() { i.markDirty() })
+		}
+	})
+}
+
+// MouseLeave clears the hovered area when the pointer leaves the window.
+func (i *interactor) MouseLeave() {
+	i.event("MouseLeave")
+	if i.hoverScroll != nil {
+		i.hoverScroll.Base().SetScrollbarHover(false)
+		i.showScrollbar(i.hoverScroll)
+		i.hoverScroll = nil
+	}
+	i.hover = nil
+	i.markDirty()
 }
 
 func (i *interactor) Key(k platform.Key, mods platform.Mods) {

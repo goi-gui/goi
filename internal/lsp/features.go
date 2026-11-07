@@ -2069,6 +2069,21 @@ func propDoc(el string, p schema.Prop) string {
 		}
 	}
 	switch p.Name {
+	case "opacity":
+		b.WriteString("\n\n0 to 1, or a percentage such as `50%`. Fades the element and " +
+			"everything under it. From Go: `node.SetOpacity(0.5)`, which a `Tween` can drive.")
+	case "hideScrollbar":
+		b.WriteString("\n\nRemoves the scrollbar of a scrolling element. The gesture still scrolls.")
+	case "autoHideScrollbar":
+		b.WriteString("\n\n`true` (default) shows the bar only while the pointer is over the " +
+			"area or it scrolled in the last two seconds. `false` keeps it up.")
+	case "scrollShadow":
+		b.WriteString("\n\nDraws a gradient at each edge the content has scrolled away from, " +
+			"so it marks hidden content the way CSS scroll shadows do. Tint it with " +
+			"`scrollShadowColor`.")
+	case "scrollShadowColor":
+		b.WriteString("\n\nColour of the `scrollShadow` gradient; defaults to the scheme's " +
+			"shadow colour.")
 	case "disableResize":
 		b.WriteString("\n\n`true` turns off the user's resize and the title bar's maximize button. " +
 			"`resizable` is the same switch read the other way round. `fullscreen` is a " +

@@ -668,9 +668,9 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 			}
 			return
 		}
-		if valueHasPercent(val) {
+		if valueHasPercent(val) && !percentAllowed(pd.Name) {
 			v.add(at, at+1,
-				fmt.Sprintf("%s.%s: a percentage is only supported for width and height", e.Name, pd.Name), "")
+				fmt.Sprintf("%s.%s: a percentage is only supported for width, height and opacity", e.Name, pd.Name), "")
 		}
 		return
 	}
@@ -773,9 +773,9 @@ func (v *validator) checkNumeric(e *syntax.Element, pd *Prop, val syntax.Value) 
 	case *syntax.Number:
 		return true
 	case *syntax.Percent:
-		if pd.Name != "width" && pd.Name != "height" {
+		if !percentAllowed(pd.Name) {
 			v.add(x.At, x.At+1,
-				fmt.Sprintf("%s.%s: a percentage is only supported for width and height", e.Name, pd.Name), "")
+				fmt.Sprintf("%s.%s: a percentage is only supported for width, height and opacity", e.Name, pd.Name), "")
 		}
 		return true
 	case *syntax.Ref:
@@ -789,15 +789,19 @@ func (v *validator) checkNumeric(e *syntax.Element, pd *Prop, val syntax.Value) 
 		}
 		return false
 	case *syntax.Binary, *syntax.Unary, *syntax.Ternary:
-		if valueHasPercent(val) {
-			if pd.Name != "width" && pd.Name != "height" {
-				v.add(val.Pos(), val.Pos()+1,
-					fmt.Sprintf("%s.%s: a percentage is only supported for width and height", e.Name, pd.Name), "")
-			}
+		if valueHasPercent(val) && !percentAllowed(pd.Name) {
+			v.add(val.Pos(), val.Pos()+1,
+				fmt.Sprintf("%s.%s: a percentage is only supported for width, height and opacity", e.Name, pd.Name), "")
 		}
 		return true
 	}
 	return false
+}
+
+// percentAllowed reports whether a property resolves a percentage. Size uses
+// the parent's space; opacity uses the whole range, so 50% is 0.5.
+func percentAllowed(name string) bool {
+	return name == "width" || name == "height" || name == "opacity"
 }
 
 // checkDecoration checks the keywords a `decoration` value combines. `none`

@@ -16,6 +16,9 @@ type Input interface {
 	MouseMove(x, y float64)
 	MouseDown(x, y float64, button int, shift bool)
 	MouseUp(x, y float64, button int)
+	// MouseLeave reports that the pointer left the window, so hover state and
+	// anything that follows it can be cleared.
+	MouseLeave()
 	// Scroll carries the wheel delta, in logical steps, plus the Shift state:
 	// a notched wheel is vertical unless Shift asks for horizontal.
 	Scroll(dx, dy float64, shift bool)
@@ -278,6 +281,10 @@ func (p *Window) dispatch(ev rawEvent) {
 	case evFocusOut:
 		if p.input != nil {
 			p.input.Focus(false)
+		}
+	case evMouseLeave:
+		if p.input != nil {
+			p.input.MouseLeave()
 		}
 	case evMotion:
 		if p.input != nil {

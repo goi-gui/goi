@@ -21,6 +21,7 @@ const (
 	evExpose
 	evFocusIn
 	evFocusOut
+	evMouseLeave
 	evMotion
 	evButton
 	evWheel

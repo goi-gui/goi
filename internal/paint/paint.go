@@ -41,6 +41,10 @@ const (
 	// Wave is a sine stroke used for `decorationStyle: wavy`. Thickness is the
 	// stroke width; the box height sets the amplitude.
 	Wave
+	// Gradient fades a colour to transparent towards one edge, which is what a
+	// scroll shadow is. StartAngle picks the opaque edge (see paint's grad*
+	// constants).
+	Gradient
 )
 
 // Align is the horizontal alignment of a text or icon run inside its box.
@@ -167,6 +171,9 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 	// a zero-size Stack can hold anchored content.
 	empty := br.W <= 0 || br.H <= 0
 
+	// from is where this node's own ops begin, so an opacity can fade the node
+	// together with everything under it.
+	from := len(l.Ops)
 	if !empty {
 		l.paintContent(b, r, clip)
 	}
@@ -176,15 +183,17 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 		childClip = intersect(clip, inner)
 	}
 	ox, oy := scrollShift(b)
-	from := len(l.Ops)
+	fromClip := len(l.Ops)
 	for _, k := range b.Kids() {
 		kb := k.Bounds()
 		kb.X += ox
 		kb.Y += oy
 		l.walkOffset(k, x, y, kb, childClip)
 	}
-	l.paintScrollbar(b, r, inner, clip)
-	l.roundClip(b, r, from)
+	l.paintScrollShadows(b, inner, clip)
+	l.paintScrollbar(b, inner, clip)
+	l.roundClip(b, r, fromClip)
+	l.applyOpacity(from, b.Opacity())
 }
 
 // walkOffset is walk with an explicit bounds override, used for scrolled lists.
@@ -197,6 +206,7 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 	r := tree.Rect{X: x, Y: y, W: bounds.W, H: bounds.H}
 	empty := bounds.W <= 0 || bounds.H <= 0
 
+	from := len(l.Ops)
 	if !empty {
 		l.paintContent(b, r, clip)
 	}
@@ -207,15 +217,17 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 		childClip = intersect(clip, inner)
 	}
 	ox, oy := scrollShift(b)
-	from := len(l.Ops)
+	fromClip := len(l.Ops)
 	for _, k := range b.Kids() {
 		kb := k.Bounds()
 		kb.X += ox
 		kb.Y += oy
 		l.walkOffset(k, x, y, kb, childClip)
 	}
-	l.paintScrollbar(b, r, inner, clip)
-	l.roundClip(b, r, from)
+	l.paintScrollShadows(b, inner, clip)
+	l.paintScrollbar(b, inner, clip)
+	l.roundClip(b, r, fromClip)
+	l.applyOpacity(from, b.Opacity())
 }
 
 // paintContent draws one node's own visuals: its shadow, its fill and its
@@ -271,54 +283,90 @@ func (l *List) roundClip(b *tree.NodeBase, r tree.Rect, from int) {
 
 // paintScrollbar draws the M3 thumb for a scrolling node: 4dp wide, rounded, 2dp
 // in from the trailing edge, onSurfaceVariant at 40%. It is drawn last, above
-// the content, and only when the content actually overflows.
-func (l *List) paintScrollbar(b *tree.NodeBase, r, inner tree.Rect, clip tree.Rect) {
-	axis := b.ScrollAxis()
-	if axis == tree.AxisNone {
+// the content, and only when the content actually overflows and the design left
+// it visible.
+func (l *List) paintScrollbar(b *tree.NodeBase, inner tree.Rect, clip tree.Rect) {
+	if !b.ScrollbarVisible() {
 		return
 	}
-	max := b.ScrollMax()
-	if max <= 0 {
+	thumb, ok := b.ScrollbarThumb(inner)
+	if !ok {
 		return
 	}
-	const thickness, inset, minLen = 4.0, 2.0, 32.0
 	col := withAlpha(l.Theme.Colors.OnSurfaceVariant, 0.4)
+	l.fillRect(thumb, col, tree.ScrollbarThickness/2, 0, 0, clip)
+}
+
+// scrollShadowBand is how deep the edge gradient reaches, in dp.
+const scrollShadowBand = 28.0
+
+// paintScrollShadows paints a gradient at each edge the content has scrolled
+// away from, the way CSS scroll shadows do: present at the top once the content
+// moves down, at the bottom until it reaches the end, and gone at rest.
+func (l *List) paintScrollShadows(b *tree.NodeBase, inner tree.Rect, clip tree.Rect) {
+	if !b.ScrollShadow() || b.ScrollMax() <= 0 {
+		return
+	}
+	col := b.ScrollShadowColor()
+	if col == 0 {
+		col = withAlpha(l.Theme.Colors.Shadow, 0.45)
+	}
 	off := b.ScrollOffset()
-	switch axis {
+	max := b.ScrollMax()
+	switch b.ScrollAxis() {
 	case tree.AxisY:
-		view := inner.H
-		if view <= 0 {
-			return
+		band := minf(scrollShadowBand, inner.H/2)
+		if off > 0 {
+			l.gradient(tree.Rect{X: inner.X, Y: inner.Y, W: inner.W, H: band}, col, gradDown, b.Radius(), clip)
 		}
-		thumb := view * view / (view + max)
-		if thumb < minLen {
-			thumb = minLen
+		if off < max {
+			l.gradient(tree.Rect{X: inner.X, Y: inner.Bottom() - band, W: inner.W, H: band}, col, gradUp, b.Radius(), clip)
 		}
-		if thumb > view {
-			thumb = view
-		}
-		l.fillRect(tree.Rect{
-			X: inner.Right() - thickness - inset,
-			Y: inner.Y + (view-thumb)*(off/max),
-			W: thickness, H: thumb,
-		}, col, thickness/2, 0, 0, clip)
 	case tree.AxisX:
-		view := inner.W
-		if view <= 0 {
-			return
+		band := minf(scrollShadowBand, inner.W/2)
+		if off > 0 {
+			l.gradient(tree.Rect{X: inner.X, Y: inner.Y, W: band, H: inner.H}, col, gradRight, b.Radius(), clip)
 		}
-		thumb := view * view / (view + max)
-		if thumb < minLen {
-			thumb = minLen
+		if off < max {
+			l.gradient(tree.Rect{X: inner.Right() - band, Y: inner.Y, W: band, H: inner.H}, col, gradLeft, b.Radius(), clip)
 		}
-		if thumb > view {
-			thumb = view
+	}
+}
+
+// Gradient directions: the edge the colour is opaque on, fading to nothing.
+const (
+	gradDown  = 0 // opaque at the top, for content scrolled down from it
+	gradUp    = 1
+	gradRight = 2 // opaque at the left
+	gradLeft  = 3
+)
+
+// gradient appends one fade-to-transparent fill. radius rounds the corners so a
+// shadow on a card follows its shape; the rounded far corners are invisible
+// because the gradient is already transparent there.
+func (l *List) gradient(r tree.Rect, color uint32, dir float32, radius float64, clip tree.Rect) {
+	l.Ops = append(l.Ops, Op{
+		Kind: Fill, Shape: Gradient, Rect: rectArr(r), Color: color,
+		StartAngle: dir, Thickness: float32(radius), Clip: clipArr(clip),
+	})
+}
+
+// applyOpacity multiplies the alpha of every op a subtree emitted. The renderer
+// has no offscreen pass, so a group cannot be composited as one: an overlap
+// inside the subtree shows the two children over each other, exactly as CSS
+// would without `isolation`. For the common case (a card or a fading list) the
+// difference is invisible.
+func (l *List) applyOpacity(from int, a float64) {
+	if a >= 1 || from >= len(l.Ops) {
+		return
+	}
+	for i := from; i < len(l.Ops); i++ {
+		op := &l.Ops[i]
+		op.Color = withAlpha(op.Color, a)
+		op.BorderColor = withAlpha(op.BorderColor, a)
+		for j := range op.TextShadows {
+			op.TextShadows[j].Color = withAlpha(op.TextShadows[j].Color, a)
 		}
-		l.fillRect(tree.Rect{
-			X: inner.X + (view-thumb)*(off/max),
-			Y: inner.Bottom() - thickness - inset,
-			W: thumb, H: thickness,
-		}, col, thickness/2, 0, 0, clip)
 	}
 }
 

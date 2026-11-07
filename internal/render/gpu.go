@@ -133,6 +133,26 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 	let aa = 0.5 / max(viewport.size.z, 1.0);
 	let kind = in.params.x;
 
+	if (kind > 7.5) {
+		// Edge gradient: opaque at the edge params.z names, transparent at the
+		// far side. This is the scroll shadow, so it never needs a rounded box.
+		var t = in.local.y / max(in.size.y, 0.001);
+		let dir = in.params.z;
+		if (dir > 0.5 && dir < 1.5) { t = 1.0 - t; }
+		else if (dir > 1.5 && dir < 2.5) { t = in.local.x / max(in.size.x, 0.001); }
+		else if (dir > 2.5) { t = 1.0 - in.local.x / max(in.size.x, 0.001); }
+		let a = in.color.a * (1.0 - t);
+		if (a <= 0.0) { discard; }
+		let r = clamp(in.misc.x, 0.0, min(in.size.x, in.size.y) * 0.5);
+		if (r > 0.0) {
+			let d = sd_round_rect(in.local, in.size, r);
+			let cov = 1.0 - smoothstep(-aa, aa, d);
+			if (cov <= 0.0) { discard; }
+			return vec4f(in.color.rgb, a * cov);
+		}
+		return vec4f(in.color.rgb, a);
+	}
+
 	if (kind > 6.5) {
 		// Wavy text decoration: a sine stroke through the box. Thickness is the
 		// stroke width and the box height is twice the amplitude.
@@ -861,6 +881,8 @@ func shapeKind(s paint.Shape) float32 {
 		return 2
 	case paint.Wave:
 		return 7
+	case paint.Gradient:
+		return 8
 	}
 	return 0
 }

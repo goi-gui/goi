@@ -1,6 +1,10 @@
 package tree
 
-import "github.com/goi-gui/goi/internal/syntax"
+import (
+	"time"
+
+	"github.com/goi-gui/goi/internal/syntax"
+)
 
 // Rect is a rectangle in logical pixels, relative to the parent's content box.
 type Rect struct {
@@ -59,15 +63,29 @@ type NodeBase struct {
 	flex                                                 Prop[float64]
 	alignSelf                                            Prop[string]
 	scroll                                               Prop[bool]
-	width                                                Prop[float64]
-	height                                               Prop[float64]
-	minWidth                                             Prop[float64]
-	maxWidth                                             Prop[float64]
-	minHeight                                            Prop[float64]
-	maxHeight                                            Prop[float64]
-	background                                           Prop[uint32]
-	borderColor                                          Prop[uint32]
-	radius                                               Prop[float64]
+	// Scrollbar and scroll-shadow behaviour. `hideScrollbar` removes the bar;
+	// `autoHideScrollbar` (the default) shows it only while the pointer is over
+	// the area or the area scrolled recently.
+	hideScrollbar     Prop[bool]
+	autoHideScrollbar Prop[bool]
+	scrollShadow      Prop[bool]
+	scrollShadowColor Prop[uint32]
+	// opacity fades the node and everything under it.
+	opacity Prop[float64]
+	// scrollbarHover and scrollbarShowUntil are runtime state driven by input,
+	// not properties: the bar's visibility is a fact about the pointer and the
+	// clock, not something a design declares.
+	scrollbarHover     bool
+	scrollbarShowUntil time.Time
+	width              Prop[float64]
+	height             Prop[float64]
+	minWidth           Prop[float64]
+	maxWidth           Prop[float64]
+	minHeight          Prop[float64]
+	maxHeight          Prop[float64]
+	background         Prop[uint32]
+	borderColor        Prop[uint32]
+	radius             Prop[float64]
 	// shadow is the CSS-style shadow list. It paints outside the layout box, so
 	// a change only repaints; Text draws it behind its glyphs and every other
 	// node draws it around its box.
@@ -248,6 +266,37 @@ func (b *NodeBase) SetMaxHeight(v float64) { b.maxHeight.Set(v) }
 
 // Background returns 0xRRGGBBAA.
 func (b *NodeBase) Background() uint32 { return b.background.Get() }
+
+// Opacity returns the node's opacity, 0 to 1. 1 is fully opaque.
+func (b *NodeBase) Opacity() float64 {
+	v := b.opacity.Get()
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
+}
+
+// SetOpacity changes the opacity. Like every Prop.Set it marks the node dirty,
+// so a tween can fade a subtree in or out.
+func (b *NodeBase) SetOpacity(v float64) { b.opacity.Set(v) }
+
+// HideScrollbar reports whether the design removed the scrollbar.
+func (b *NodeBase) HideScrollbar() bool { return b.hideScrollbar.Get() }
+
+// AutoHideScrollbar reports whether the bar follows the pointer and the clock
+// instead of always showing.
+func (b *NodeBase) AutoHideScrollbar() bool { return b.autoHideScrollbar.Get() }
+
+// ScrollShadow reports whether the area paints an edge gradient when its
+// content is scrolled away from that edge.
+func (b *NodeBase) ScrollShadow() bool { return b.scrollShadow.Get() }
+
+// ScrollShadowColor returns the gradient colour, 0 when the design left it to
+// the theme.
+func (b *NodeBase) ScrollShadowColor() uint32 { return b.scrollShadowColor.Get() }
 
 // BorderColor returns 0xRRGGBBAA.
 func (b *NodeBase) BorderColor() uint32 { return b.borderColor.Get() }

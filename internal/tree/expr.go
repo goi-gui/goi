@@ -277,10 +277,16 @@ func (b *NodeBase) ResolveSize(availW, availH float64) {
 		if !hasPercent(spec.value) {
 			continue
 		}
-		scale := availW
-		if spec.name == "height" {
+		var scale float64
+		switch spec.name {
+		case "width":
+			scale = availW
+		case "height":
 			scale = availH
-		} else if spec.name != "width" {
+		case "opacity":
+			// A percentage of the 0..1 range, so 50% is 0.5.
+			scale = 1
+		default:
 			continue
 		}
 		if scale <= 0 {

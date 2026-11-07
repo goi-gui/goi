@@ -1,6 +1,7 @@
 package paint
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/goi-gui/goi/internal/layout"
@@ -103,6 +104,7 @@ func TestScrollbarOnlyOnOverflow(t *testing.T) {
 	thumb := withAlpha(m3.Light().Colors.OnSurfaceVariant, 0.4)
 	overflow := list(t, `Window { Column {
 		scroll: true
+		autoHideScrollbar: false
 		width: 100
 		height: 60
 		Rectangle { width: 100 height: 300 background: #ff0000 }
@@ -125,6 +127,7 @@ func TestScrollbarOnlyOnOverflow(t *testing.T) {
 
 	fits := list(t, `Window { Column {
 		scroll: true
+		autoHideScrollbar: false
 		width: 100
 		height: 60
 		Rectangle { width: 100 height: 40 background: #ff0000 }
@@ -132,6 +135,134 @@ func TestScrollbarOnlyOnOverflow(t *testing.T) {
 	for _, op := range fits.Ops {
 		if op.Kind == Fill && op.Color == thumb {
 			t.Fatal("thumb drawn although the content fits")
+		}
+	}
+}
+
+// TestScrollbarVisibility covers the two switches: hide removes the bar even
+// though the content overflows, and auto-hide (the default) keeps it down until
+// the pointer or a scroll asks for it.
+func TestScrollbarVisibility(t *testing.T) {
+	thumb := withAlpha(m3.Light().Colors.OnSurfaceVariant, 0.4)
+	src := `Window { Column {
+		scroll: true
+		%s
+		width: 100
+		height: 60
+		Rectangle { width: 100 height: 300 background: #ff0000 }
+	} }`
+	hasThumb := func(s string) bool {
+		l := list(t, s, 100, 100)
+		for _, op := range l.Ops {
+			if op.Kind == Fill && op.Color == thumb {
+				return true
+			}
+		}
+		return false
+	}
+	if hasThumb(fmt.Sprintf(src, "hideScrollbar: true")) {
+		t.Fatal("bar drawn although hideScrollbar is true")
+	}
+	if hasThumb(fmt.Sprintf(src, "")) {
+		t.Fatal("auto-hiding bar drawn with no pointer and no scroll")
+	}
+	if !hasThumb(fmt.Sprintf(src, "autoHideScrollbar: false")) {
+		t.Fatal("bar missing although auto-hide is off")
+	}
+}
+
+// TestOpacityFadesSubtree checks that an opacity multiplies the alpha of the
+// node, its children and their borders, and clamps to the 0..1 range.
+func TestOpacityFadesSubtree(t *testing.T) {
+	l := list(t, `Window {
+		Column {
+			opacity: 0.5
+			Rectangle { width: 10 height: 10 background: #ff0000 }
+			Rectangle { width: 10 height: 10 background: #00ff00 borderColor: #0000ff borderWidth: 2 }
+		}
+	}`, 100, 100)
+	var fills int
+	for _, op := range l.Ops {
+		if op.Kind != Fill {
+			continue
+		}
+		fills++
+		if op.Color&0xFF != 0x80 && op.Color != 0 {
+			t.Fatalf("fill alpha = %#x, want half", op.Color&0xFF)
+		}
+		if op.BorderWidth > 0 && op.BorderColor&0xFF != 0x80 {
+			t.Fatalf("border alpha = %#x, want half", op.BorderColor&0xFF)
+		}
+	}
+	if fills != 2 {
+		t.Fatalf("fills = %d, want both rectangles", fills)
+	}
+
+	// The clamp keeps a wild value from painting nothing visible by accident:
+	// above 1 is opaque, below 0 is invisible.
+	high := list(t, `Window { Rectangle { width: 10 height: 10 background: #ff0000 opacity: 4 } }`, 100, 100)
+	if high.Ops[0].Color != 0xFF0000FF {
+		t.Fatalf("opacity 4 = %#x, want opaque", high.Ops[0].Color)
+	}
+	low := list(t, `Window { Rectangle { width: 10 height: 10 background: #ff0000 opacity: -1 } }`, 100, 100)
+	if low.Ops[0].Color&0xFF != 0 {
+		t.Fatalf("opacity -1 = %#x, want fully transparent", low.Ops[0].Color)
+	}
+}
+
+// TestScrollShadowFollowsOffset checks the per-edge rule: the top band appears
+// once the content has moved down, the bottom one stays until the end.
+func TestScrollShadowFollowsOffset(t *testing.T) {
+	src := `Window { Column {
+		id: page
+		scroll: true
+		scrollShadow: true
+		scrollShadowColor: #000000
+		width: 100
+		height: 100
+		Rectangle { width: 100 height: 300 background: #ff0000 }
+	} }`
+	bands := func(offset float64) (top, bottom bool) {
+		tr, diag := tree.BuildSource([]byte(src), nil)
+		if !diag.Empty() {
+			t.Fatalf("%v", diag)
+		}
+		layout.New(nil).Layout(tr.Root, 100, 100)
+		page, _ := tr.ByID("page")
+		page.Base().SetScrollOffset(offset)
+		l := &List{}
+		l.Build(tr, 100, 100)
+		for _, op := range l.Ops {
+			if op.Kind != Fill || op.Shape != Gradient {
+				continue
+			}
+			if op.Rect[1] == 0 {
+				top = true
+			} else {
+				bottom = true
+			}
+		}
+		return
+	}
+	if top, bottom := bands(0); top || !bottom {
+		t.Fatalf("at the top: top=%v bottom=%v, want only the bottom band", top, bottom)
+	}
+	if top, bottom := bands(100); !top || !bottom {
+		t.Fatalf("in the middle: top=%v bottom=%v, want both", top, bottom)
+	}
+	if top, bottom := bands(200); !top || bottom {
+		t.Fatalf("at the end: top=%v bottom=%v, want only the top band", top, bottom)
+	}
+
+	// Off by default.
+	plain := list(t, `Window { Column {
+		scroll: true
+		width: 100 height: 100
+		Rectangle { width: 100 height: 300 }
+	} }`, 100, 100)
+	for _, op := range plain.Ops {
+		if op.Shape == Gradient {
+			t.Fatal("scroll shadow painted without scrollShadow")
 		}
 	}
 }

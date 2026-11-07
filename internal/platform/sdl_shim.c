@@ -41,6 +41,11 @@ static int goiTranslate(SDL_Event *e, goiEvent *o) {
 	case SDL_EVENT_WINDOW_FOCUS_LOST:
 		o->type = GOI_EV_FOCUS_OUT;
 		return 1;
+	case SDL_EVENT_WINDOW_MOUSE_LEAVE:
+		// The pointer left the window: hover state must not outlive it, or an
+		// auto-hiding scrollbar would stay up forever.
+		o->type = GOI_EV_MOUSE_LEAVE;
+		return 1;
 	case SDL_EVENT_MOUSE_MOTION:
 		o->type = GOI_EV_MOTION;
 		o->x = e->motion.x;

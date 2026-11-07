@@ -1480,3 +1480,26 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   the other styles are plain fills, with `double` recursing into two thin solid
   lines. The CSS rule that the strokes combine is enforced in the parser (one
   space-separated value) and the schema, not in each painter.
+- **`opacity` multiplies alpha per op, there is no offscreen group.** A real group
+  opacity needs an offscreen pass and a second read of every pixel, which the
+  single-draw-call renderer deliberately avoids. Multiplying each op's alpha is
+  exact for a single box and for disjoint children, and only differs where two
+  translucent children overlap inside the same faded subtree; the design is
+  still honest, and no app has to opt in to a slower path.
+- **Scrollbar geometry lives in tree, not paint.** `ScrollbarThumb` is used by
+  paint and by hit-testing, so the bar a reader grabs is exactly the bar drawn.
+  `ScrollbarVisible` is the one place auto-hide is decided: pointer inside, or a
+  scroll within the last `ScrollbarHideDelay`. Input owns the timer that asks for
+  the final repaint, because paint may not schedule work.
+- **The scrollbar drag maps the thumb to the track 1:1, not the pointer delta.**
+  Grabbing a thumb and pulling it to the end of the track is what readers expect,
+  and it makes a short thumb usable in a long document; a delta would move the
+  content too slowly by the ratio `max/view`.
+- **A scroll shadow is per edge, so the top one appears only after scrolling.**
+  CSS scroll shadows use the same rule: an edge with nothing hidden behind it
+  paints no band. At rest only the bottom band shows; in the middle both do; at
+  the end only the top one. `scrollShadowColor` defaults to the scheme shadow at
+  45%, and the band is rounded with the node's radius so a card keeps its shape.
+- **A percentage on `opacity` resolves against 1, not a parent size.** The
+  percentage syntax is shared with width/height, so `ResolveSize` handles the
+  third name with a scale of 1; the schema's error message names all three.

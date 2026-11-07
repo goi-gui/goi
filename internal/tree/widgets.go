@@ -44,6 +44,11 @@ func commonProps(b *NodeBase) []NamedProp {
 		BoolProp(b, "visible", DirtyLayout, &b.visible),
 		BoolProp(b, "template", DirtyLayout, &b.template),
 		BoolProp(b, "scroll", DirtyPaint, &b.scroll),
+		BoolProp(b, "hideScrollbar", DirtyPaint, &b.hideScrollbar),
+		BoolProp(b, "autoHideScrollbar", DirtyPaint, &b.autoHideScrollbar),
+		BoolProp(b, "scrollShadow", DirtyPaint, &b.scrollShadow),
+		ColorProp(b, "scrollShadowColor", DirtyPaint, &b.scrollShadowColor),
+		NumberProp(b, "opacity", DirtyPaint, &b.opacity),
 		NumberProp(b, "flex", DirtyLayout, &b.flex),
 		EnumProp(b, "alignSelf", DirtyLayout, &b.alignSelf, "start", "center", "end", "stretch"),
 	}
