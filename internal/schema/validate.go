@@ -711,6 +711,11 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 		case *syntax.String, *syntax.Ident, *syntax.Call:
 			// An Ident is allowed so `text: hello` reads naturally; the schema
 			// documents string properties as accepting bare words.
+			if pd.Name == "decoration" {
+				if txt, ok := literalText(val); ok {
+					v.checkDecoration(e, pd, txt, at, end)
+				}
+			}
 		default:
 			fail("a string")
 		}
@@ -793,6 +798,26 @@ func (v *validator) checkNumeric(e *syntax.Element, pd *Prop, val syntax.Value) 
 		return true
 	}
 	return false
+}
+
+// checkDecoration checks the keywords a `decoration` value combines. `none`
+// stands alone; the other three may appear together.
+func (v *validator) checkDecoration(e *syntax.Element, pd *Prop, text string, at, end syntax.Pos) {
+	words := strings.Fields(text)
+	for _, w := range words {
+		switch w {
+		case "underline", "overline", "line-through":
+		case "none":
+			if len(words) > 1 {
+				v.add(at, end, fmt.Sprintf("%s.%s: `none` cannot be combined with another decoration", e.Name, pd.Name), "")
+				return
+			}
+		default:
+			v.add(at, end, fmt.Sprintf("%s.%s has no decoration %q", e.Name, pd.Name, w),
+				syntax.Suggest(w, []string{"none", "underline", "overline", "line-through"}))
+			return
+		}
+	}
 }
 
 // checkShadow checks a shadow list: offsets, a non-negative blur and spread, and

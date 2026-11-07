@@ -27,6 +27,56 @@ func printValue(v syntax.Value) string {
 	return printPrec(v, precTernary)
 }
 
+// printProperty prints a property value, keeping the friendly spellings the
+// parser accepts: a fontWeight keyword and a decoration's bare keywords. The
+// formatter must not turn `bold` into 700 or add quotes around `underline`,
+// because the next read would be a different file.
+func printProperty(name string, v syntax.Value) string {
+	if m, ok := v.(*syntax.Map); ok && len(m.Entries) > 0 {
+		parts := make([]string, len(m.Entries))
+		for i, e := range m.Entries {
+			parts[i] = e.Key + ": " + printProperty(name, e.Value)
+		}
+		return "{ " + strings.Join(parts, ", ") + " }"
+	}
+	switch name {
+	case "fontWeight":
+		if n, ok := v.(*syntax.Number); ok {
+			switch n.Val {
+			case 400:
+				return "normal"
+			case 700:
+				return "bold"
+			case syntax.FontWeightBolder:
+				return "bolder"
+			case syntax.FontWeightLighter:
+				return "lighter"
+			}
+		}
+	case "decoration":
+		if s, ok := v.(*syntax.String); ok && isDecorationText(s.Val) {
+			return s.Val
+		}
+	}
+	return printValue(v)
+}
+
+// isDecorationText reports whether a string is only the keywords `decoration`
+// writes bare, so printing it unquoted round-trips.
+func isDecorationText(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, w := range strings.Fields(s) {
+		switch w {
+		case "none", "underline", "overline", "line-through":
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 func precOf(v syntax.Value) int {
 	switch x := v.(type) {
 	case *syntax.Ternary:

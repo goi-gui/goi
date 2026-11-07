@@ -38,6 +38,9 @@ const (
 	RoundedRect Shape = iota
 	Circle
 	Arc
+	// Wave is a sine stroke used for `decorationStyle: wavy`. Thickness is the
+	// stroke width; the box height sets the amplitude.
+	Wave
 )
 
 // Align is the horizontal alignment of a text or icon run inside its box.
@@ -105,11 +108,14 @@ type Op struct {
 	Text     string
 	FontSize float32
 	Weight   float32
-	Icon     bool
-	Align    Align
-	TextX    float32 // left edge of the alignment box
-	TextY    float32 // baseline
-	BoxW     float32 // alignment box width
+	// Italic slants the face; decoration uses it too, because the underline
+	// follows the same glyphs.
+	Italic bool
+	Icon   bool
+	Align  Align
+	TextX  float32 // left edge of the alignment box
+	TextY  float32 // baseline
+	BoxW   float32 // alignment box width
 }
 
 // List is a display list. Reusing the same List across frames keeps the

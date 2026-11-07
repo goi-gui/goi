@@ -838,17 +838,16 @@ func (e *Engine) containerSpacing(k *tree.NodeBase) float64 {
 // the space the parent offers, which is the wrap column when the node declares
 // no width of its own.
 func (e *Engine) textSize(s string, t *tree.Text, availW float64) (float64, float64) {
+	st := m3.RoleStyle(t.Role.Get())
 	size := t.FontSize.Get()
-	weight := int(t.Weight.Get())
 	lineHeight := 0.0
 	if size <= 0 {
 		// Role-based size: the metrics helper knows the type scale.
-		st := m3.RoleStyle(t.Role.Get())
 		size, lineHeight = st.Size, st.LineHeight
-		if weight <= 0 {
-			weight = st.Weight
-		}
 	}
+	// The role's weight is the base even when fontSize overrides the size, and
+	// both layout and paint resolve fontWeight through WeightFor.
+	weight := t.WeightFor(st.Weight)
 	if lineHeight <= 0 {
 		lineHeight = size * 1.2
 	}

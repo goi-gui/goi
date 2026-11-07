@@ -133,6 +133,19 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 	let aa = 0.5 / max(viewport.size.z, 1.0);
 	let kind = in.params.x;
 
+	if (kind > 6.5) {
+		// Wavy text decoration: a sine stroke through the box. Thickness is the
+		// stroke width and the box height is twice the amplitude.
+		let t = max(in.misc.x, 0.5);
+		let amp = max((in.size.y - t) * 0.5, 0.0);
+		let wavelength = max(t * 4.0, 4.0);
+		let cy = in.size.y * 0.5 + amp * sin(in.local.x / wavelength * 2.0 * PI);
+		let d = abs(in.local.y - cy) - t * 0.5;
+		let cov = 1.0 - smoothstep(-aa, aa, d);
+		if (cov <= 0.0) { discard; }
+		return vec4f(in.color.rgb, in.color.a * cov);
+	}
+
 	if (kind > 5.5) {
 		// Inset shadow: a soft band inside the shape. Spread shrinks the hole,
 		// the offset moves it, and the signed distance to the hole decides the
@@ -846,6 +859,8 @@ func shapeKind(s paint.Shape) float32 {
 		return 1
 	case paint.Arc:
 		return 2
+	case paint.Wave:
+		return 7
 	}
 	return 0
 }

@@ -581,3 +581,75 @@ func TestFocusedButtonDrawsRing(t *testing.T) {
 		t.Fatal("a keyboard-focused button has no ring")
 	}
 }
+
+// TestTextDecorations checks that each decoration keyword paints a stroke and
+// that `none` paints nothing, and that the style changes the shape drawn.
+func TestTextDecorations(t *testing.T) {
+	count := func(src string) int {
+		l := m3list(t, src)
+		n := 0
+		for _, op := range l.Ops {
+			if op.Kind == Fill && op.Shape != Circle && op.Color == m3.Light().Colors.OnSurface {
+				n++
+			}
+		}
+		return n
+	}
+	if got := count(`Window { Text { text: "x" decoration: none } }`); got != 0 {
+		t.Fatalf("none painted %d strokes", got)
+	}
+	if got := count(`Window { Text { text: "x" decoration: underline overline } }`); got != 2 {
+		t.Fatalf("combined decorations painted %d strokes, want 2", got)
+	}
+	// A wavy stroke is one Wave op; solid is a fill.
+	l := m3list(t, `Window { Text { text: "x" decoration: underline decorationStyle: wavy } }`)
+	var wave bool
+	for _, op := range l.Ops {
+		if op.Kind == Fill && op.Shape == Wave {
+			wave = true
+		}
+	}
+	if !wave {
+		t.Fatalf("no wave op:\n%s", l.Dump())
+	}
+	// Colour and thickness feed the stroke.
+	l = m3list(t, `Window { Text { text: "x" decoration: underline decorationThickness: 4 decorationColor: #FF0000 } }`)
+	var found bool
+	for _, op := range l.Ops {
+		if op.Kind == Fill && op.Color == 0xFF0000FF && op.Rect[3] == 4 {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("decoration colour/thickness not applied:\n%s", l.Dump())
+	}
+}
+
+// TestTextItalicAndRelativeWeight checks that italic reaches the op and that
+// bolder/lighter resolve against the role instead of staying negative.
+func TestTextItalicAndRelativeWeight(t *testing.T) {
+	l := m3list(t, `Window {
+		Text { id: i text: "x" fontStyle: italic }
+		Text { id: b text: "x" role: bodyMedium fontWeight: bolder }
+		Text { id: l text: "x" role: bodyMedium fontWeight: lighter }
+	}`)
+	var italic bool
+	var weights []float32
+	for _, op := range l.Ops {
+		if op.Kind != Text {
+			continue
+		}
+		if op.Italic {
+			italic = true
+		}
+		weights = append(weights, op.Weight)
+	}
+	if !italic {
+		t.Fatalf("italic did not reach the text op:\n%s", l.Dump())
+	}
+	// bodyMedium is 400: bolder steps to 700, lighter to 300. The library snaps
+	// to the loaded faces, so compare against those numbers.
+	if len(weights) != 3 || weights[1] != 700 || weights[2] != 300 {
+		t.Fatalf("weights = %v, want the italic line then 700, 300", weights)
+	}
+}

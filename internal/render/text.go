@@ -149,6 +149,8 @@ func (t *textRenderer) shapeOp(op paint.Op, atlas *text.Atlas) int {
 	var face *text.Face
 	if op.Icon {
 		face = lib.IconFace(float64(op.FontSize) * scale)
+	} else if op.Italic {
+		face = lib.ItalicFace(float64(op.FontSize)*scale, text.Weight(op.Weight))
 	} else {
 		face = lib.Face(float64(op.FontSize)*scale, text.Weight(op.Weight))
 	}

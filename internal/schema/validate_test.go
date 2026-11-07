@@ -242,6 +242,9 @@ func TestEveryPropertyAcceptsPlainAndResponsive(t *testing.T) {
 func plainValue(pd Prop) syntax.Value {
 	switch pd.Type {
 	case TypeString:
+		if pd.Name == "decoration" {
+			return &syntax.String{Val: "underline"}
+		}
 		return &syntax.String{Val: "x"}
 	case TypeNumber:
 		return &syntax.Number{Val: 1}

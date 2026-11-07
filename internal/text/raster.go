@@ -11,13 +11,26 @@ import (
 // subSamples is the vertical supersampling factor used when filling a glyph.
 const subSamples = 4
 
+// italicSlant is the tangent of the synthetic italic angle (about 12°).
+const italicSlant = 0.21
+
 // rasterOutline fills the outline into a coverage bitmap. scale converts font
-// units to pixels. The returned point is the offset from the pen position to
-// the bitmap's top-left corner, in whole pixels, with y growing down.
-func rasterOutline(segs []font.Segment, scale float64) (image.Gray, image.Point, bool) {
+// units to pixels. italic shears the outline, since Roboto italic is not
+// embedded and the shaper would otherwise draw an upright face. The returned
+// point is the offset from the pen position to the bitmap's top-left corner, in
+// whole pixels, with y growing down.
+func rasterOutline(segs []font.Segment, scale float64, italic bool) (image.Gray, image.Point, bool) {
 	contours, ok := flatten(segs)
 	if !ok {
 		return image.Gray{}, image.Point{}, false
+	}
+	if italic {
+		// Font y grows up, so leaning right means adding to x with height.
+		for i := range contours {
+			for j := range contours[i] {
+				contours[i][j][0] += italicSlant * contours[i][j][1]
+			}
+		}
 	}
 
 	minX, minY := math.Inf(1), math.Inf(1)

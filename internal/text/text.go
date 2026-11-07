@@ -22,10 +22,11 @@ import (
 
 // Face is a font at one pixel size, ready to shape and rasterize.
 type Face struct {
-	font *font.Face
-	tag  uint8 // font identity, so atlas keys never collide across fonts
-	size float64
-	upem float32
+	font   *font.Face
+	tag    uint8 // font identity, so atlas keys never collide across fonts
+	size   float64
+	upem   float32
+	italic bool
 	// shaper is per-Face so the harfbuzz buffer is reused; shaping is not
 	// goroutine-safe, and all text work happens on the UI goroutine.
 	shaper shaping.HarfbuzzShaper
@@ -64,6 +65,7 @@ type faceKey struct {
 	weight Weight
 	size   int // 1/4 pixels, so 12.5 and 12.75 do not collide
 	icon   bool
+	italic bool
 }
 
 // faceSlot is one entry of the direct-mapped face cache.
@@ -121,25 +123,33 @@ func (l *Library) Atlas() *Atlas { return l.atlas }
 
 // Face returns the face for a size and weight, creating it once.
 func (l *Library) Face(size float64, weight Weight) *Face {
-	return l.face(size, weight, false)
+	return l.face(size, weight, false, false)
+}
+
+// ItalicFace returns the same face slanted for `fontStyle: italic`. Roboto has
+// no italic file embedded, so the slant is synthesized at raster time.
+func (l *Library) ItalicFace(size float64, weight Weight) *Face {
+	return l.face(size, weight, false, true)
 }
 
 // IconFace returns the face for Material Symbols at a size.
 func (l *Library) IconFace(size float64) *Face {
-	return l.face(size, WeightRegular, true)
+	return l.face(size, WeightRegular, true, false)
 }
 
-func (l *Library) face(size float64, weight Weight, icon bool) *Face {
+func (l *Library) face(size float64, weight Weight, icon, italic bool) *Face {
 	if size <= 0 {
 		size = 16
 	}
-	if !icon {
+	if icon {
+		italic = false
+	} else {
 		weight = NearestWeight(weight)
 	}
-	key := faceKey{weight: weight, size: int(size * 4), icon: icon}
+	key := faceKey{weight: weight, size: int(size * 4), icon: icon, italic: italic}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	slot := &l.front[(key.size^int(weight)*7)&3]
+	slot := &l.front[(key.size^int(weight)*7^boolInt(italic)*5)&3]
 	if slot.f != nil && slot.key == key {
 		return slot.f
 	}
@@ -166,6 +176,10 @@ func (l *Library) face(size float64, weight Weight, icon bool) *Face {
 			src = l.fonts[WeightRegular]
 			tag = 0
 		}
+		if italic {
+			// Keep italic glyphs in their own atlas entries.
+			tag += 8
+		}
 	}
 	if src == nil {
 		return nil
@@ -174,10 +188,17 @@ func (l *Library) face(size float64, weight Weight, icon bool) *Face {
 		*slot = faceSlot{key: key, f: f}
 		return f
 	}
-	f := &Face{font: src, tag: tag, size: size, upem: float32(src.Upem())}
+	f := &Face{font: src, tag: tag, size: size, upem: float32(src.Upem()), italic: italic}
 	l.faces[key] = f
 	*slot = faceSlot{key: key, f: f}
 	return f
+}
+
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // Tag returns the font identity used in atlas keys.
@@ -320,5 +341,5 @@ func (f *Face) Raster(gid uint16) (image.Gray, image.Point, bool) {
 		return image.Gray{}, image.Point{}, false
 	}
 	scale := f.size / float64(f.upem)
-	return rasterOutline(outline.Segments, scale)
+	return rasterOutline(outline.Segments, scale, f.italic)
 }

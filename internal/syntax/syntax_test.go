@@ -872,3 +872,48 @@ func TestParseUnaryAndArithmeticArguments(t *testing.T) {
 		t.Fatalf("dump mismatch\n--- got ---\n%s--- want ---\n%s", got, want)
 	}
 }
+
+// TestParseTextStyleLiterals pins the CSS spellings: weight keywords become
+// numbers, and decoration joins its juxtaposed keywords into one value.
+func TestParseTextStyleLiterals(t *testing.T) {
+	src := `A {
+		fontWeight: bold
+		fontStyle: italic
+		decoration: underline overline
+		decorationThickness: 2
+	}`
+	f, diag := Parse([]byte(src))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	want := `A
+  fontWeight = bold
+  fontStyle = italic
+  decoration = underline overline
+  decorationThickness = 2
+`
+	if got := Dump(f); got != want {
+		t.Fatalf("dump mismatch\n--- got ---\n%s--- want ---\n%s", got, want)
+	}
+
+	src = `A { decoration: line-through }`
+	f, diag = Parse([]byte(src))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	if got := Dump(f); got != "A\n  decoration = line-through\n" {
+		t.Fatalf("line-through dump = %q", got)
+	}
+
+	// A relative weight keeps its sentinel, and an expression is left alone.
+	src = `A { fontWeight: bolder decoration: data.deco }`
+	if _, diag := Parse([]byte(src)); !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+
+	// A breakpoint map keeps the friendly forms too.
+	src = `A { fontWeight: { base: bold, md: lighter } decoration: { md: underline overline } }`
+	if _, diag := Parse([]byte(src)); !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+}

@@ -384,15 +384,20 @@ func newNode(name string) Node {
 		}
 	case "Text":
 		return &Text{
-			NodeBase:   b(),
-			Text:       newProp(nil, "text", DirtyLayout, ""),
-			FontSize:   newProp(nil, "fontSize", DirtyLayout, 16.0),
-			Color:      newProp(nil, "color", DirtyPaint, uint32(0x000000FF)),
-			Align:      newProp(nil, "align", DirtyLayout, "start"),
-			Wrap:       newProp(nil, "wrap", DirtyLayout, false),
-			Role:       newProp(nil, "role", DirtyLayout, "bodyMedium"),
-			Weight:     newProp(nil, "weight", DirtyLayout, 0.0),
-			Selectable: newProp(nil, "selectable", DirtyPaint, false),
+			NodeBase:            b(),
+			Text:                newProp(nil, "text", DirtyLayout, ""),
+			FontSize:            newProp(nil, "fontSize", DirtyLayout, 16.0),
+			Color:               newProp(nil, "color", DirtyPaint, uint32(0x000000FF)),
+			Align:               newProp(nil, "align", DirtyLayout, "start"),
+			Wrap:                newProp(nil, "wrap", DirtyLayout, false),
+			Role:                newProp(nil, "role", DirtyLayout, "bodyMedium"),
+			Weight:              newProp(nil, "weight", DirtyLayout, 0.0),
+			FontStyle:           newProp(nil, "fontStyle", DirtyPaint, "normal"),
+			Decoration:          newProp(nil, "decoration", DirtyPaint, "none"),
+			DecorationStyle:     newProp(nil, "decorationStyle", DirtyPaint, "solid"),
+			DecorationThickness: newProp(nil, "decorationThickness", DirtyPaint, 0.0),
+			DecorationColor:     newProp(nil, "decorationColor", DirtyPaint, uint32(0)),
+			Selectable:          newProp(nil, "selectable", DirtyPaint, false),
 		}
 	}
 	if c := newM3Component(name); c != nil {

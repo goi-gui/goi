@@ -1458,3 +1458,25 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   returns a language and a country; the design question is "which language",
   so only the ISO 639-1 subtag is exposed (`tr-TR` reads `tr`) and it is
   re-read on `SDL_EVENT_LOCALE_CHANGED`.
+- **`fontWeight` shares `weight`'s cell, and relative weights are resolved against
+  the role.** CSS `bolder`/`lighter` mean nothing without a base, and the base
+  here is the type role's weight, so the parser keeps them as sentinels (-1/-2)
+  and `Text.WeightFor` steps to the next weight the embedded font actually has.
+  One cell keeps layout and paint in agreement and avoids a second property that
+  could contradict the first; `TestEveryComponentPropHasItsOwnCell` does not
+  apply to a core element, and the pairing is the intentional `spacing`/`gap`
+  kind of alias. The formatters print the keyword back (`bold`, not 700) so a
+  file survives a round trip unchanged.
+- **Italic is synthesized by shearing the outline at raster time.** The embedded
+  Roboto has no italic file, and adding one would grow the binary for a style a
+  design uses sparingly. The slant is baked into the glyph bitmap and its atlas
+  key includes the italic flag, so an italic and an upright glyph of the same
+  code point never share coverage. A real italic face, if it is ever embedded,
+  replaces this in `text.Raster` and needs no API change.
+- **Text decoration is drawn as ops, not baked into the glyph atlas.** The
+  strokes sit at fixed offsets from the baseline for the whole run, so they are
+  cheaper and crisper as shapes. `wavy` is one `Shape` value (`Wave`) the
+  fragment shader draws;
+  the other styles are plain fills, with `double` recursing into two thin solid
+  lines. The CSS rule that the strokes combine is enforced in the parser (one
+  space-separated value) and the schema, not in each painter.

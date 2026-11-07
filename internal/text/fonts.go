@@ -50,3 +50,26 @@ func NearestWeight(w Weight) Weight {
 	}
 	return WeightBlack
 }
+
+// StepWeight returns the CSS relative-weight step above or below w, snapped to
+// the weights the embedded faces provide (100 and 600 are absent).
+func StepWeight(w int, up bool) int {
+	if up {
+		switch {
+		case w < 400:
+			return 400
+		case w < 600:
+			return 700
+		default:
+			return 900
+		}
+	}
+	switch {
+	case w <= 500:
+		return 300
+	case w <= 700:
+		return 400
+	default:
+		return 700
+	}
+}

@@ -38,7 +38,7 @@ func dumpElement(b *strings.Builder, e *Element, depth int) {
 	for _, m := range e.Members {
 		switch v := m.(type) {
 		case *Property:
-			fmt.Fprintf(b, "%s  %s = %s\n", indent, v.Name, dumpValue(v.Value))
+			fmt.Fprintf(b, "%s  %s = %s\n", indent, v.Name, dumpProperty(v.Name, v.Value))
 		case *Element:
 			dumpElement(b, v, depth+1)
 		case *Block:
@@ -95,6 +95,33 @@ func dumpBlock(b *strings.Builder, blk *Block, depth int) {
 func dumpMembers(b *strings.Builder, members []Member, depth int) {
 	fake := &Element{Members: members}
 	dumpElement(b, fake, depth)
+}
+
+// dumpProperty keeps the friendly literal spellings, mirroring the formatter.
+func dumpProperty(name string, v Value) string {
+	if m, ok := v.(*Map); ok && len(m.Entries) > 0 {
+		parts := make([]string, len(m.Entries))
+		for i, e := range m.Entries {
+			parts[i] = e.Key + ": " + dumpProperty(name, e.Value)
+		}
+		return "{ " + strings.Join(parts, ", ") + " }"
+	}
+	if n, ok := v.(*Number); ok && name == "fontWeight" {
+		switch n.Val {
+		case 400:
+			return "normal"
+		case 700:
+			return "bold"
+		case FontWeightBolder:
+			return "bolder"
+		case FontWeightLighter:
+			return "lighter"
+		}
+	}
+	if s, ok := v.(*String); ok && name == "decoration" {
+		return s.Val
+	}
+	return dumpValue(v)
 }
 
 func dumpValue(v Value) string {

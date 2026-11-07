@@ -4,6 +4,7 @@ import (
 	"image"
 
 	"github.com/goi-gui/goi/internal/img"
+	"github.com/goi-gui/goi/internal/text"
 )
 
 // Node is any element in the tree. The interface is intentionally narrow: all
@@ -383,9 +384,38 @@ type Text struct {
 	Wrap       Prop[bool]
 	Role       Prop[string]
 	Weight     Prop[float64]
-	Selectable Prop[bool]
+	FontStyle  Prop[string]
+	Decoration Prop[string]
+	// DecorationStyle, DecorationThickness and DecorationColor apply to every
+	// line `decoration` names.
+	DecorationStyle     Prop[string]
+	DecorationThickness Prop[float64]
+	DecorationColor     Prop[uint32]
+	Selectable          Prop[bool]
 	// SelA and SelB are the selection in byte offsets; equal values mean none.
 	SelA, SelB int
+}
+
+// Relative font weights, the values `fontWeight: bolder` and `lighter` keep
+// until Text.WeightFor resolves them against the role's weight.
+const (
+	weightBolder  = -1
+	weightLighter = -2
+)
+
+// WeightFor resolves weight/fontWeight against the role's weight. bolder and
+// lighter are relative, so they need the role; layout and paint both call this
+// so a line is measured with the face it is drawn in.
+func (t *Text) WeightFor(role int) int {
+	switch w := t.Weight.Get(); {
+	case w == weightBolder:
+		return text.StepWeight(role, true)
+	case w == weightLighter:
+		return text.StepWeight(role, false)
+	case w > 0:
+		return int(w)
+	}
+	return role
 }
 
 // Kind implements Node.
@@ -406,6 +436,15 @@ func (t *Text) namedProps() []NamedProp {
 			"bodyLarge", "bodyMedium", "bodySmall",
 			"labelLarge", "labelMedium", "labelSmall"),
 		NumberProp(&t.NodeBase, "weight", DirtyLayout, &t.Weight),
+		// fontWeight is the CSS spelling: the parser turns its keywords into the
+		// same number, so both names share one cell and the last write wins.
+		NumberProp(&t.NodeBase, "fontWeight", DirtyLayout, &t.Weight),
+		EnumProp(&t.NodeBase, "fontStyle", DirtyPaint, &t.FontStyle, "normal", "italic"),
+		StringProp(&t.NodeBase, "decoration", &t.Decoration),
+		EnumProp(&t.NodeBase, "decorationStyle", DirtyPaint, &t.DecorationStyle,
+			"solid", "wavy", "dotted", "double", "dashed"),
+		NumberProp(&t.NodeBase, "decorationThickness", DirtyPaint, &t.DecorationThickness),
+		ColorProp(&t.NodeBase, "decorationColor", DirtyPaint, &t.DecorationColor),
 		BoolProp(&t.NodeBase, "selectable", DirtyPaint, &t.Selectable),
 	)
 }

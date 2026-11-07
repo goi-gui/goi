@@ -2,6 +2,7 @@ package paint
 
 import (
 	"math"
+	"strings"
 
 	"github.com/goi-gui/goi/internal/m3"
 	"github.com/goi-gui/goi/internal/text"
@@ -1595,9 +1596,7 @@ func (l *List) paintText(t *tree.Text, r tree.Rect, clip tree.Rect) {
 		st.Size = v
 		st.LineHeight = v * 1.2
 	}
-	if v := t.Weight.Get(); v > 0 {
-		st.Weight = int(v)
-	}
+	st.Weight = t.WeightFor(st.Weight)
 	color := t.Color.Get()
 	if color == 0 {
 		color = l.Theme.Colors.OnSurface
@@ -1663,6 +1662,12 @@ func (l *List) paintText(t *tree.Text, r tree.Rect, clip tree.Rect) {
 			if shadows := l.textShadows(t); len(shadows) > 0 {
 				l.Ops[len(l.Ops)-1].TextShadows = shadows
 			}
+			if t.FontStyle.Get() == "italic" {
+				l.Ops[len(l.Ops)-1].Italic = true
+			}
+		}
+		if line.Text != "" {
+			l.textDecoration(t, box, textWidth(l, line.Text, st), align, color, st.Size, clip)
 		}
 	}
 }
@@ -1712,4 +1717,77 @@ func (l *List) textShadows(t *tree.Text) []tree.ShadowLayer {
 		out = append(out, s)
 	}
 	return out
+}
+
+// textDecoration paints the strokes `decoration` names over one line, the way
+// CSS text-decoration does: the tokens combine, the style picks the stroke, and
+// thickness and colour default to the font.
+func (l *List) textDecoration(t *tree.Text, box tree.Rect, lineW float64, align Align, color uint32, size float64, clip tree.Rect) {
+	deco := t.Decoration.Get()
+	if deco == "" || deco == "none" {
+		return
+	}
+	thickness := t.DecorationThickness.Get()
+	if thickness <= 0 {
+		thickness = math.Max(1, math.Round(size/14))
+	}
+	dcol := t.DecorationColor.Get()
+	if dcol == 0 {
+		dcol = color
+	}
+	style := t.DecorationStyle.Get()
+	baseline := box.Y + box.H/2 + size*textBaseline
+	x := box.X + alignOffset(box.W, lineW, align)
+	for _, tok := range strings.Fields(deco) {
+		var y float64
+		switch tok {
+		case "underline":
+			y = baseline + size*0.12
+		case "overline":
+			y = baseline - size*0.83
+		case "line-through":
+			y = baseline - size*0.3
+		default:
+			continue
+		}
+		l.decorationLine(x, y, lineW, thickness, style, dcol, clip)
+	}
+}
+
+// decorationLine draws one horizontal stroke in the requested style.
+func (l *List) decorationLine(x, y, w, t float64, style string, color uint32, clip tree.Rect) {
+	rect := func(x, y, w, h float64) tree.Rect {
+		return tree.Rect{X: x, Y: y, W: w, H: h}
+	}
+	switch style {
+	case "double":
+		thin := math.Max(1, t/3)
+		l.decorationLine(x, y-thin*0.75, w, thin, "solid", color, clip)
+		l.decorationLine(x, y+thin*0.75, w, thin, "solid", color, clip)
+	case "dotted":
+		step := t * 2.5
+		for px := x; px < x+w; px += step {
+			l.fill(rect(px, y-t/2, math.Min(t, x+w-px), t), color, Circle, clip)
+		}
+	case "dashed":
+		step := t * 5
+		for px := x; px < x+w; px += step {
+			l.fill(rect(px, y-t/2, math.Min(t*3, x+w-px), t), color, RoundedRect, clip)
+		}
+	case "wavy":
+		h := t * 3
+		l.Ops = append(l.Ops, Op{
+			Kind: Fill, Shape: Wave, Rect: rectArr(rect(x, y-h/2, w, h)),
+			Color: color, Thickness: float32(t), Clip: clipArr(clip),
+		})
+	default: // solid
+		l.fill(rect(x, y-t/2, w, t), color, RoundedRect, clip)
+	}
+}
+
+// fill appends a plain fill op for a decoration stroke.
+func (l *List) fill(r tree.Rect, color uint32, shape Shape, clip tree.Rect) {
+	l.Ops = append(l.Ops, Op{
+		Kind: Fill, Shape: shape, Rect: rectArr(r), Color: color, Clip: clipArr(clip),
+	})
 }

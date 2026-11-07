@@ -816,9 +816,14 @@ func (p *parser) parseProperty() (*Property, bool) {
 
 	var v Value
 	var ok bool
-	if name.text == "shadow" {
+	switch name.text {
+	case "shadow":
 		v, ok = p.parseShadowValue()
-	} else {
+	case "fontWeight":
+		v, ok = p.parseFontWeight()
+	case "decoration":
+		v, ok = p.parseDecorationValue()
+	default:
 		v, ok = p.parseValue()
 	}
 	if !ok {
@@ -856,6 +861,106 @@ func (p *parser) parseShadowValue() (Value, bool) {
 		return &Shadow{At: t.pos}, true
 	}
 	return p.parseShadow()
+}
+
+// Font weight keywords become the numbers layout and paint read. bolder and
+// lighter stay relative, so they keep sentinel values that Text resolves
+// against its type role; tree's weightBolder/weightLighter are the same pair.
+// They are exported so the formatters can print the keyword back.
+const (
+	FontWeightBolder  = -1
+	FontWeightLighter = -2
+)
+
+var fontWeightWords = map[string]float64{
+	"normal":  400,
+	"bold":    700,
+	"bolder":  FontWeightBolder,
+	"lighter": FontWeightLighter,
+}
+
+// parseFontWeight reads a CSS keyword or any expression that yields a number.
+func (p *parser) parseFontWeight() (Value, bool) {
+	if p.peek().kind == tokLBrace {
+		return p.parseMapValue(p.parseFontWeight)
+	}
+	if t := p.peek(); t.kind == tokIdent {
+		if n, ok := fontWeightWords[t.text]; ok {
+			p.next()
+			return &Number{At: t.pos, Val: n}, true
+		}
+	}
+	return p.parseValue()
+}
+
+// decorationWords are the strokes `decoration` may combine. `line-through` is
+// split by the lexer, so parseDecorationValue joins it back.
+var decorationWords = map[string]bool{"underline": true, "overline": true}
+
+// parseDecorationValue reads one or more keywords on the same line, so
+// `decoration: underline overline` needs no quotes. Anything else — a quoted
+// string, a reference, a breakpoint map — is an ordinary value.
+func (p *parser) parseDecorationValue() (Value, bool) {
+	if p.peek().kind == tokLBrace {
+		return p.parseMapValue(p.parseDecorationValue)
+	}
+	at := p.peek().pos
+	if !p.decorationStart() {
+		return p.parseValue()
+	}
+	var words []string
+	for {
+		t := p.peek()
+		if !p.sameLine(t.pos) {
+			break
+		}
+		if t.kind == tokIdent && (decorationWords[t.text] || t.text == "none") {
+			p.next()
+			words = append(words, t.text)
+			continue
+		}
+		if t.kind == tokIdent && t.text == "line" {
+			m := p.peek2()
+			if m.kind == tokMinus && p.sameLine(m.pos) {
+				p.next() // line
+				p.next() // -
+				th := p.peek()
+				if th.kind != tokIdent || th.text != "through" || !p.sameLine(th.pos) {
+					p.errorf(th, "expected 'line-through'")
+					return nil, false
+				}
+				p.next()
+				words = append(words, "line-through")
+				continue
+			}
+		}
+		break
+	}
+	if len(words) == 0 {
+		p.errorf(p.peek(), "expected a decoration keyword: none, underline, overline or line-through")
+		return nil, false
+	}
+	// A word that is neither a decoration keyword nor the next property on a
+	// single-line element is a typo: report it here instead of letting it look
+	// like a new element.
+	if t := p.peek(); p.sameLine(t.pos) && t.kind == tokIdent && p.peek2().kind != tokColon {
+		p.errorf(t, "expected a decoration keyword: none, underline, overline or line-through")
+		return nil, false
+	}
+	text := words[0]
+	for _, w := range words[1:] {
+		text += " " + w
+	}
+	return &String{At: at, Val: text}, true
+}
+
+// decorationStart reports whether the next token begins a decoration keyword.
+func (p *parser) decorationStart() bool {
+	t := p.peek()
+	if t.kind != tokIdent {
+		return false
+	}
+	return decorationWords[t.text] || t.text == "none" || t.text == "line"
 }
 
 // parseShadow reads one or more CSS-style shadows, separated by commas:
@@ -1263,6 +1368,13 @@ func (p *parser) parseCall(ref *Ref) (Value, bool) {
 
 // parseMap parses `{ key: value, ... }`, the responsive form of a value.
 func (p *parser) parseMap() (Value, bool) {
+	return p.parseMapValue(p.parseValue)
+}
+
+// parseMapValue reads a breakpoint map whose entry values come from value. A
+// property with its own literal form passes a parser that knows it, so
+// `fontWeight: { md: bold }` keeps the keyword inside the map.
+func (p *parser) parseMapValue(value func() (Value, bool)) (Value, bool) {
 	open := p.next()
 	m := &Map{At: open.pos}
 	for {
@@ -1284,7 +1396,7 @@ func (p *parser) parseMap() (Value, bool) {
 				continue
 			}
 			p.next()
-			v, ok := p.parseValue()
+			v, ok := value()
 			if !ok {
 				p.skipEntry()
 				continue
