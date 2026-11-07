@@ -69,6 +69,7 @@ type NodeBase struct {
 	hideScrollbar     Prop[bool]
 	autoHideScrollbar Prop[bool]
 	scrollbarWidth    Prop[float64]
+	scrollbarColor    Prop[uint32]
 	scrollShadow      Prop[bool]
 	scrollShadowColor Prop[uint32]
 	// opacity fades the node and everything under it.
@@ -300,6 +301,10 @@ func (b *NodeBase) ScrollbarWidth() float64 {
 	}
 	return v
 }
+
+// ScrollbarColor returns the bar colour, 0 when the design left it to the
+// theme.
+func (b *NodeBase) ScrollbarColor() uint32 { return b.scrollbarColor.Get() }
 
 // ScrollShadow reports whether the area paints an edge gradient when its
 // content is scrolled away from that edge.

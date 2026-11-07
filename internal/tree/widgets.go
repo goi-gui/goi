@@ -47,6 +47,7 @@ func commonProps(b *NodeBase) []NamedProp {
 		BoolProp(b, "hideScrollbar", DirtyPaint, &b.hideScrollbar),
 		BoolProp(b, "autoHideScrollbar", DirtyPaint, &b.autoHideScrollbar),
 		NumberProp(b, "scrollbarWidth", DirtyPaint, &b.scrollbarWidth),
+		ColorProp(b, "scrollbarColor", DirtyPaint, &b.scrollbarColor),
 		BoolProp(b, "scrollShadow", DirtyPaint, &b.scrollShadow),
 		ColorProp(b, "scrollShadowColor", DirtyPaint, &b.scrollShadowColor),
 		NumberProp(b, "opacity", DirtyPaint, &b.opacity),

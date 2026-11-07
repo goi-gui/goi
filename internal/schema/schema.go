@@ -162,6 +162,7 @@ var common = []Prop{
 	{Name: "hideScrollbar", Type: TypeBool, Dirty: DirtyPaint, Default: false, Common: true},
 	{Name: "autoHideScrollbar", Type: TypeBool, Dirty: DirtyPaint, Default: true, Common: true},
 	{Name: "scrollbarWidth", Type: TypeNumber, Dirty: DirtyPaint, Default: 4.0, Common: true},
+	{Name: "scrollbarColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
 	{Name: "scrollShadow", Type: TypeBool, Dirty: DirtyPaint, Default: false, Common: true},
 	{Name: "scrollShadowColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
 	// opacity fades the node and its subtree. It also accepts a percentage.

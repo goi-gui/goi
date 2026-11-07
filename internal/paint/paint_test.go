@@ -295,3 +295,34 @@ func TestScrollbarWidth(t *testing.T) {
 		t.Fatalf("thumb width = %v, want the default %v", w, tree.ScrollbarThickness)
 	}
 }
+
+// TestScrollbarColor checks the override and the themed default: a declared
+// colour paints exactly as written, and leaving it out keeps the translucent
+// onSurfaceVariant thumb.
+func TestScrollbarColor(t *testing.T) {
+	src := `Window { Column {
+		scroll: true
+		autoHideScrollbar: false
+		%s
+		width: 100
+		height: 60
+		Rectangle { width: 100 height: 300 background: #ff0000 }
+	} }`
+	thumbColor := func(prop string) uint32 {
+		l := list(t, fmt.Sprintf(src, prop), 100, 100)
+		def := withAlpha(m3.Light().Colors.OnSurfaceVariant, 0.4)
+		for _, op := range l.Ops {
+			if op.Kind == Fill && op.Color != 0 && op.Color != 0xFF0000FF && (op.Color == def || op.Color == 0x00FF00FF) {
+				return op.Color
+			}
+		}
+		t.Fatalf("no thumb for %q:\n%s", prop, l.Dump())
+		return 0
+	}
+	if got := thumbColor("scrollbarColor: #00ff00"); got != 0x00FF00FF {
+		t.Fatalf("thumb colour = %#x, want #00ff00ff", got)
+	}
+	if got, want := thumbColor(""), withAlpha(m3.Light().Colors.OnSurfaceVariant, 0.4); got != want {
+		t.Fatalf("thumb colour = %#x, want default %#x", got, want)
+	}
+}

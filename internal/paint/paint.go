@@ -293,7 +293,10 @@ func (l *List) paintScrollbar(b *tree.NodeBase, inner tree.Rect, clip tree.Rect)
 	if !ok {
 		return
 	}
-	col := withAlpha(l.Theme.Colors.OnSurfaceVariant, 0.4)
+	col := b.ScrollbarColor()
+	if col == 0 {
+		col = withAlpha(l.Theme.Colors.OnSurfaceVariant, 0.4)
+	}
 	l.fillRect(thumb, col, b.ScrollbarWidth()/2, 0, 0, clip)
 }
 

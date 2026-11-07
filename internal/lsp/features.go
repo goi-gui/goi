@@ -2080,6 +2080,9 @@ func propDoc(el string, p schema.Prop) string {
 	case "scrollbarWidth":
 		b.WriteString("\n\nThickness of the scrollbar in dp, 4 by default. The thumb keeps its " +
 			"rounded pill shape at any width.")
+	case "scrollbarColor":
+		b.WriteString("\n\nColour of the bar; defaults to the scheme's onSurfaceVariant at " +
+			"40%. A hex literal is used as written, alpha included.")
 	case "scrollShadow":
 		b.WriteString("\n\nDraws a gradient at each edge the content has scrolled away from, " +
 			"so it marks hidden content the way CSS scroll shadows do. Tint it with " +
