@@ -1,9 +1,13 @@
 package ui
 
 import (
+	"os"
 	"testing"
 
+	"github.com/goi-gui/goi/internal/asset"
+	"github.com/goi-gui/goi/internal/layout"
 	"github.com/goi-gui/goi/internal/platform"
+	"github.com/goi-gui/goi/internal/schema"
 	"github.com/goi-gui/goi/internal/tree"
 )
 
@@ -267,4 +271,119 @@ func TestCursorPropertyOverridesAffordance(t *testing.T) {
 	check("field", platform.CursorPointer)
 	// The inner column says auto, so the framework decides again.
 	check("plain", platform.CursorArrow)
+}
+
+// TestCursorForMapsEveryCSSValue pins the mapping table: every CSS name resolves
+// to a shape, and the ones SDL has no cursor for fall back to the arrow rather
+// than leaving the previous shape up.
+func TestCursorForMapsEveryCSSValue(t *testing.T) {
+	want := map[string]platform.Cursor{
+		"auto":          -1, // not a shape: the framework decides
+		"default":       platform.CursorArrow,
+		"none":          platform.CursorNone,
+		"context-menu":  platform.CursorArrow,
+		"help":          platform.CursorArrow,
+		"pointer":       platform.CursorPointer,
+		"progress":      platform.CursorProgress,
+		"wait":          platform.CursorWait,
+		"cell":          platform.CursorCrosshair,
+		"crosshair":     platform.CursorCrosshair,
+		"text":          platform.CursorText,
+		"vertical-text": platform.CursorText,
+		"alias":         platform.CursorArrow,
+		"copy":          platform.CursorArrow,
+		"move":          platform.CursorMove,
+		"no-drop":       platform.CursorNotAllowed,
+		"not-allowed":   platform.CursorNotAllowed,
+		"grab":          platform.CursorMove,
+		"grabbing":      platform.CursorMove,
+		"all-scroll":    platform.CursorMove,
+		"col-resize":    platform.CursorResizeEW,
+		"ew-resize":     platform.CursorResizeEW,
+		"row-resize":    platform.CursorResizeNS,
+		"ns-resize":     platform.CursorResizeNS,
+		"n-resize":      platform.CursorResizeN,
+		"e-resize":      platform.CursorResizeE,
+		"s-resize":      platform.CursorResizeS,
+		"w-resize":      platform.CursorResizeW,
+		"ne-resize":     platform.CursorResizeNE,
+		"nw-resize":     platform.CursorResizeNW,
+		"se-resize":     platform.CursorResizeSE,
+		"sw-resize":     platform.CursorResizeSW,
+		"nesw-resize":   platform.CursorResizeNESW,
+		"nwse-resize":   platform.CursorResizeNWSE,
+		"zoom-in":       platform.CursorArrow,
+		"zoom-out":      platform.CursorArrow,
+	}
+	for _, name := range schema.CursorValues {
+		expect, ok := want[name]
+		if !ok {
+			t.Fatalf("%q has no expectation; add it here when CursorValues grows", name)
+		}
+		_, win, in := inputFixture(t, `Window { Rectangle { id: box width: 50 height: 50 cursor: `+name+` } }`, 100, 100)
+		box, _ := win.tree.ByID("box")
+		r := absoluteRect(box)
+		got := platform.Cursor(-2)
+		in.setCursor = func(c platform.Cursor) { got = c }
+		in.MouseMove(r.X+r.W/2, r.Y+r.H/2)
+		if expect < 0 {
+			if got == platform.CursorNone || got == platform.CursorText || got == platform.CursorPointer {
+				t.Errorf("cursor %q took a shape instead of auto", name)
+			}
+			continue
+		}
+		if got != expect {
+			t.Errorf("cursor %q gave %v, want %v", name, got, expect)
+		}
+	}
+}
+
+// TestCursorExampleTilesResolve is the end-to-end guard for the cursor example:
+// every tile declares a value, the hit test lands on it, and the pointer shape
+// changes. Tiles are laid out in one tall viewport so all of them are reachable
+// without scrolling.
+func TestCursorExampleTilesResolve(t *testing.T) {
+	dir := "../../examples/cursor"
+	b, diag := asset.Load(os.DirFS(dir), "cursor.goi")
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	tr, err := tree.Build(b.File, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout.New(textMeasurer{}).Layout(tr.Root, 760, 2400)
+	in := &interactor{tree: tr, viewportW: 760, viewportH: 2400}
+	seen, checked := 0, 0
+	for _, n := range tr.All() {
+		decl := n.Base().Cursor()
+		if decl == "" {
+			continue
+		}
+		seen++
+		r := absoluteRect(n)
+		hit := in.hit(r.X+r.W/2, r.Y+r.H/2)
+		if hit == nil {
+			t.Fatalf("%s tile %q is not hit-testable at %v", n.Kind(), decl, r)
+		}
+		// A container's centre can land on a child that declares its own value,
+		// which is the CSS result too; leave that case to the inheritance test.
+		if hit != n {
+			continue
+		}
+		c, ok := cursorFor(hit)
+		if decl == "auto" {
+			if ok {
+				t.Fatalf("cursor: auto resolved to %v, want the framework's shape", c)
+			}
+			continue
+		}
+		if !ok {
+			t.Fatalf("%s tile %q resolved to no cursor", n.Kind(), decl)
+		}
+		checked++
+	}
+	if seen < 30 || checked < 30 {
+		t.Fatalf("%d declarations, %d checked; want the whole example", seen, checked)
+	}
 }

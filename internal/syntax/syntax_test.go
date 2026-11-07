@@ -917,3 +917,34 @@ func TestParseTextStyleLiterals(t *testing.T) {
 		t.Fatalf("%v", diag)
 	}
 }
+
+// TestParseHyphenatedCursorNames covers the CSS names the lexer would otherwise
+// split into a subtraction: `not-allowed` has to stay one identifier, and a
+// responsive map has to keep working.
+func TestParseHyphenatedCursorNames(t *testing.T) {
+	for _, name := range []string{"not-allowed", "col-resize", "nwse-resize", "zoom-in", "vertical-text", "context-menu"} {
+		f, diag := Parse([]byte("Window {\n\tColumn {\n\t\tcursor: " + name + "\n\t}\n}\n"))
+		if !diag.Empty() {
+			t.Fatalf("%s: %v", name, diag)
+		}
+		el := f.Root.Children()[0]
+		prop := el.Members[0].(*Property)
+		id, ok := prop.Value.(*Ident)
+		if !ok || id.Val != name {
+			t.Fatalf("%s parsed as %#v", name, prop.Value)
+		}
+	}
+
+	f, diag := Parse([]byte("Window {\n\tColumn {\n\t\tcursor: { base: not-allowed, md: grab }\n\t}\n}\n"))
+	if !diag.Empty() {
+		t.Fatalf("map: %v", diag)
+	}
+	el := f.Root.Children()[0]
+	m := el.Members[0].(*Property).Value.(*Map)
+	if len(m.Entries) != 2 {
+		t.Fatalf("entries = %d, want 2", len(m.Entries))
+	}
+	if base, ok := m.Entries[0].Value.(*Ident); !ok || base.Val != "not-allowed" {
+		t.Fatalf("base = %#v", m.Entries[0].Value)
+	}
+}

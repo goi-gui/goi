@@ -823,6 +823,8 @@ func (p *parser) parseProperty() (*Property, bool) {
 		v, ok = p.parseFontWeight()
 	case "decoration":
 		v, ok = p.parseDecorationValue()
+	case "cursor":
+		v, ok = p.parseCursorValue()
 	default:
 		v, ok = p.parseValue()
 	}
@@ -952,6 +954,28 @@ func (p *parser) parseDecorationValue() (Value, bool) {
 		text += " " + w
 	}
 	return &String{At: at, Val: text}, true
+}
+
+// parseCursorValue reads one CSS cursor name. The lexer splits a hyphenated
+// name (`not-allowed` becomes `not`, `-`, `allowed`), so the pieces are joined
+// back into one identifier here. A breakpoint map or any other expression falls
+// through to the ordinary value parser.
+func (p *parser) parseCursorValue() (Value, bool) {
+	if p.peek().kind == tokLBrace {
+		return p.parseMapValue(p.parseCursorValue)
+	}
+	t := p.peek()
+	if t.kind != tokIdent {
+		return p.parseValue()
+	}
+	at := t.pos
+	name := t.text
+	p.next()
+	for p.peek().kind == tokMinus && p.peek2().kind == tokIdent && p.sameLine(p.peek2().pos) {
+		p.next() // -
+		name += "-" + p.next().text
+	}
+	return &Ident{At: at, Val: name}, true
 }
 
 // decorationStart reports whether the next token begins a decoration keyword.
