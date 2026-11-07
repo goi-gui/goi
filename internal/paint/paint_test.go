@@ -326,3 +326,44 @@ func TestScrollbarColor(t *testing.T) {
 		t.Fatalf("thumb colour = %#x, want default %#x", got, want)
 	}
 }
+
+// TestScrollChromeIgnoresPadding guards the frame rule: padding spaces only
+// the moving content, so the bar and the edge shadows sit against the frame
+// instead of floating inside the padding.
+func TestScrollChromeIgnoresPadding(t *testing.T) {
+	l := list(t, `Window { Column {
+		scroll: true
+		scrollShadow: true
+		autoHideScrollbar: false
+		padding: 10
+		width: 100
+		height: 60
+		Rectangle { width: 80 height: 300 background: #ff0000 }
+	} }`, 100, 100)
+	var thumb *Op
+	var bottom *Op
+	for i := range l.Ops {
+		op := &l.Ops[i]
+		if op.Kind != Fill {
+			continue
+		}
+		switch {
+		case op.Shape == Gradient && op.Rect[1] > 0:
+			bottom = op
+		case op.Color == withAlpha(m3.Light().Colors.OnSurfaceVariant, 0.4):
+			thumb = op
+		}
+	}
+	if thumb == nil {
+		t.Fatalf("no thumb:\n%s", l.Dump())
+	}
+	if want := float32(100 - tree.ScrollbarThickness - tree.ScrollbarInset); thumb.Rect[0] != want {
+		t.Fatalf("thumb x = %v, want %v (padding ignored)", thumb.Rect[0], want)
+	}
+	if bottom == nil {
+		t.Fatalf("no bottom shadow:\n%s", l.Dump())
+	}
+	if bottom.Rect[0] != 0 || bottom.Rect[2] != 100 {
+		t.Fatalf("shadow x/w = %v/%v, want 0/100 (padding ignored)", bottom.Rect[0], bottom.Rect[2])
+	}
+}

@@ -218,6 +218,22 @@ func (b *NodeBase) ContentBox(r Rect) Rect {
 	return Rect{X: r.X + pe.Left + bw, Y: r.Y + pe.Top + bw, W: w, H: h}
 }
 
+// ScrollViewport is the box the scrollbar and scroll shadows attach to: the
+// border box minus the border, ignoring padding. Padding spaces the moving
+// content only, so the chrome stays against the frame.
+func (b *NodeBase) ScrollViewport(r Rect) Rect {
+	bw := b.BorderWidth()
+	w := r.W - 2*bw
+	h := r.H - 2*bw
+	if w < 0 {
+		w = 0
+	}
+	if h < 0 {
+		h = 0
+	}
+	return Rect{X: r.X + bw, Y: r.Y + bw, W: w, H: h}
+}
+
 func edgeOr(v, fallback float64) float64 {
 	if v < 0 {
 		return fallback

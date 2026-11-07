@@ -1503,3 +1503,9 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
 - **A percentage on `opacity` resolves against 1, not a parent size.** The
   percentage syntax is shared with width/height, so `ResolveSize` handles the
   third name with a scale of 1; the schema's error message names all three.
+- **Scroll chrome uses a border-only viewport, not the content box.** Padding is
+  part of what a reader perceives as the moving content's gutter, so the bar
+  and the scroll shadows attach to `ScrollViewport` (border box minus border).
+  Using `ContentBox` inset them by the padding, which made a padded scroller look
+  like it had a floating bar and a shadow band in the middle of the gutter.
+  Hit-testing uses the same rect, so the drawn bar and the grab target agree.

@@ -933,7 +933,7 @@ func (i *interactor) scrollbarAt(x, y float64) (tree.Node, tree.Rect) {
 		if found != nil || b.ScrollAxis() == tree.AxisNone || !b.ScrollbarVisible() {
 			return
 		}
-		thumb, ok := b.ScrollbarThumb(innerBox)
+		thumb, ok := b.ScrollbarThumb(b.ScrollViewport(box))
 		if !ok {
 			return
 		}

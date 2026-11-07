@@ -190,8 +190,9 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 		kb.Y += oy
 		l.walkOffset(k, x, y, kb, childClip)
 	}
-	l.paintScrollShadows(b, inner, clip)
-	l.paintScrollbar(b, inner, clip)
+	frame := b.ScrollViewport(r)
+	l.paintScrollShadows(b, frame, clip)
+	l.paintScrollbar(b, frame, clip)
 	l.roundClip(b, r, fromClip)
 	l.applyOpacity(from, b.Opacity())
 }
@@ -224,8 +225,9 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 		kb.Y += oy
 		l.walkOffset(k, x, y, kb, childClip)
 	}
-	l.paintScrollShadows(b, inner, clip)
-	l.paintScrollbar(b, inner, clip)
+	frame := b.ScrollViewport(r)
+	l.paintScrollShadows(b, frame, clip)
+	l.paintScrollbar(b, frame, clip)
 	l.roundClip(b, r, fromClip)
 	l.applyOpacity(from, b.Opacity())
 }
@@ -285,11 +287,11 @@ func (l *List) roundClip(b *tree.NodeBase, r tree.Rect, from int) {
 // in from the trailing edge, onSurfaceVariant at 40%. It is drawn last, above
 // the content, and only when the content actually overflows and the design left
 // it visible.
-func (l *List) paintScrollbar(b *tree.NodeBase, inner tree.Rect, clip tree.Rect) {
+func (l *List) paintScrollbar(b *tree.NodeBase, frame tree.Rect, clip tree.Rect) {
 	if !b.ScrollbarVisible() {
 		return
 	}
-	thumb, ok := b.ScrollbarThumb(inner)
+	thumb, ok := b.ScrollbarThumb(frame)
 	if !ok {
 		return
 	}
@@ -306,7 +308,7 @@ const scrollShadowBand = 28.0
 // paintScrollShadows paints a gradient at each edge the content has scrolled
 // away from, the way CSS scroll shadows do: present at the top once the content
 // moves down, at the bottom until it reaches the end, and gone at rest.
-func (l *List) paintScrollShadows(b *tree.NodeBase, inner tree.Rect, clip tree.Rect) {
+func (l *List) paintScrollShadows(b *tree.NodeBase, frame tree.Rect, clip tree.Rect) {
 	if !b.ScrollShadow() || b.ScrollMax() <= 0 {
 		return
 	}
@@ -318,20 +320,20 @@ func (l *List) paintScrollShadows(b *tree.NodeBase, inner tree.Rect, clip tree.R
 	max := b.ScrollMax()
 	switch b.ScrollAxis() {
 	case tree.AxisY:
-		band := minf(scrollShadowBand, inner.H/2)
+		band := minf(scrollShadowBand, frame.H/2)
 		if off > 0 {
-			l.gradient(tree.Rect{X: inner.X, Y: inner.Y, W: inner.W, H: band}, col, gradDown, b.Radius(), clip)
+			l.gradient(tree.Rect{X: frame.X, Y: frame.Y, W: frame.W, H: band}, col, gradDown, b.Radius(), clip)
 		}
 		if off < max {
-			l.gradient(tree.Rect{X: inner.X, Y: inner.Bottom() - band, W: inner.W, H: band}, col, gradUp, b.Radius(), clip)
+			l.gradient(tree.Rect{X: frame.X, Y: frame.Bottom() - band, W: frame.W, H: band}, col, gradUp, b.Radius(), clip)
 		}
 	case tree.AxisX:
-		band := minf(scrollShadowBand, inner.W/2)
+		band := minf(scrollShadowBand, frame.W/2)
 		if off > 0 {
-			l.gradient(tree.Rect{X: inner.X, Y: inner.Y, W: band, H: inner.H}, col, gradRight, b.Radius(), clip)
+			l.gradient(tree.Rect{X: frame.X, Y: frame.Y, W: band, H: frame.H}, col, gradRight, b.Radius(), clip)
 		}
 		if off < max {
-			l.gradient(tree.Rect{X: inner.Right() - band, Y: inner.Y, W: band, H: inner.H}, col, gradLeft, b.Radius(), clip)
+			l.gradient(tree.Rect{X: frame.Right() - band, Y: frame.Y, W: band, H: frame.H}, col, gradLeft, b.Radius(), clip)
 		}
 	}
 }
