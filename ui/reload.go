@@ -2,10 +2,12 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/goi-gui/goi/internal/asset"
 	"github.com/goi-gui/goi/internal/hotreload"
+	"github.com/goi-gui/goi/internal/i18n"
 	"github.com/goi-gui/goi/internal/syntax"
 	"github.com/goi-gui/goi/internal/tree"
 )
@@ -16,11 +18,37 @@ import (
 // with a frame.
 func (a *App) reload(changed string) {
 	a.Post(func() {
+		// A catalog edit only re-reads the translations: rebuilding the tree
+		// would drop nothing, but it costs a layout for a text change.
+		if strings.HasSuffix(changed, ".json") {
+			if err := a.reloadCatalog(); err != nil {
+				a.reportError(err)
+			}
+			return
+		}
 		if err := a.reloadNow(); err != nil {
 			a.reportError(err)
 		}
 	})
-	_ = changed
+}
+
+// reloadCatalog re-reads the i18n folder and swaps it into the live tree. The
+// frame loop re-resolves every t(...) afterwards, so the change shows on the
+// next frame without a relayout.
+func (a *App) reloadCatalog() error {
+	if a.assets == nil {
+		return nil
+	}
+	catalog, err := i18n.Load(a.assets, i18n.Dir)
+	if err != nil {
+		return err
+	}
+	a.catalog = catalog
+	if a.win != nil && a.win.tree != nil {
+		a.win.tree.SetI18n(catalog)
+	}
+	a.requestFrame()
+	return nil
 }
 
 // reloadNow re-expands the design and replaces the window's tree.
@@ -79,6 +107,9 @@ func (a *App) swapTree(tr *tree.Tree) {
 	carryOver(old, tr)
 
 	w.tree = tr
+	tr.SetI18n(a.catalog)
+	tr.SetLanguage(a.language)
+	tr.SetFallbackLanguage(a.fallbackLanguage)
 	w.title = tr.Root.Title.Get()
 	if d, ok := a.driver.(*gpuDriver); ok {
 		d.input.tree = tr
@@ -161,7 +192,7 @@ func (a *App) enableWatcher() error {
 	if !ok {
 		return fmt.Errorf("goi: hot reload needs a directory container: use ui.DirFS instead of os.DirFS or an embed.FS")
 	}
-	r, err := hotreload.Watch([]string{root}, func(path string) { a.reload(path) })
+	r, err := hotreload.Watch(watchDirs(root), func(path string) { a.reload(path) })
 	if err != nil {
 		return err
 	}
@@ -172,6 +203,9 @@ func (a *App) enableWatcher() error {
 // rewatch adds directories that a reload brought into the design.
 func (a *App) rewatch(b *asset.Bundle) {
 	dirs := sourceDirs(b, a.assets)
+	if root, ok := watchRoot(a.assets); ok {
+		dirs = append(dirs, watchDirs(root)...)
+	}
 	if len(dirs) == 0 {
 		return
 	}

@@ -342,6 +342,7 @@ func builtinItems() []completionResult {
 	type entry struct{ name, insert, doc string }
 	entries := []entry{
 		{"formatf", `formatf("", )`, `formatf("%d items", bridge.Count) — build a string with Go's fmt verbs: ` + "`%d`" + ` counts, ` + "`%s`" + ` text, ` + "`%v`" + ` any value, ` + "`%0.2f`" + ` money.`},
+		{"t", `t("")`, `t("settings.theme") — a translation from the design's i18n folder. A nested key uses dots, and later arguments fill the entry's verbs: ` + "`t(\"welcome_with_name\", \"Kaan\")`" + `.`},
 		{"len", "len()", "len(x) — the length of a string, a list or a map. A list is a value here, unlike anywhere else."},
 		{"cap", "cap()", "cap(x) — a design list has no spare capacity, so this is its length."},
 		{"min", "min()", "min(a, b, …) — the smallest number or string."},
@@ -388,6 +389,15 @@ func blockItems(file *syntax.File) []completionResult {
 			Documentation: &doc{Kind: "markdown", Value: "**switch value { case a, b: … default: … }**\n\n" +
 				"Shows the first arm holding a value equal to the subject. Arms take a comma-separated " +
 				"list of values; `default` shows when none matches. A block adds no box of its own."},
+		},
+		{
+			Label: "t", Kind: kindFunction, Detail: "builtin",
+			InsertText: `t("")`,
+			Documentation: &doc{Kind: "markdown", Value: "**t(\"settings.theme\")**\n\n" +
+				"Reads a translation from the design's `i18n/<language>.json` files. A nested " +
+				"key uses dots, and later arguments fill the entry's verbs: " +
+				"`t(\"welcome_with_name\", \"Kaan\")` with `\"Hoşgeldin %s\"`. A missing key " +
+				"falls back to the fallback language, then shows the key itself."},
 		},
 		{
 			Label: "formatf", Kind: kindFunction, Detail: "builtin",

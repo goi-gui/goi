@@ -5,6 +5,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/goi-gui/goi/internal/i18n"
 	"github.com/goi-gui/goi/internal/tree"
 )
 
@@ -98,5 +99,86 @@ func TestDirFSImplementsFSWithADir(t *testing.T) {
 	f := DirFS(t.TempDir())
 	if _, ok := any(f).(interface{ Dir() string }); !ok {
 		t.Fatal("DirFS must expose its directory")
+	}
+}
+
+// TestAppLanguageAndCatalogReload covers the Go side of i18n: SetLanguage
+// changes what t(...) reads, Language reports it, a missing language falls back,
+// and editing a catalog reloads the strings without rebuilding the tree.
+func TestAppLanguageAndCatalogReload(t *testing.T) {
+	en := `{"hello": "Hello", "only_en": "English only"}`
+	tr := `{"hello": "Merhaba"}`
+	fsys := fstest.MapFS{
+		"Main.goi": &fstest.MapFile{Data: []byte(`Window {
+			Column {
+				Text { id: hello text: t("hello") }
+				Text { id: fallback text: t("only_en") }
+				Text { id: lang text: app.language }
+			}
+		}`)},
+		"i18n/en.json": &fstest.MapFile{Data: []byte(en)},
+		"i18n/tr.json": &fstest.MapFile{Data: []byte(tr)},
+	}
+	a := newHeadlessApp()
+	b, err := loadBundle(fsys, "Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree, err := tree.Build(b.File, &tree.Hooks{Marked: a.markDirty})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cat, err := i18n.Load(fsys, i18n.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.assets, a.catalog = fsys, cat
+	tree.SetI18n(cat)
+	tree.SetSystemLanguage("en")
+	tree.ApplyExpressions()
+	w := &Window{tree: tree, app: a}
+	a.win = w
+
+	if got := MustByID[*Text](w, "hello").Text.Get(); got != "Hello" {
+		t.Fatalf("default = %q", got)
+	}
+	// Before SetLanguage the active language is the desktop's.
+	if got := a.Language(); got != "en" {
+		t.Fatalf("Language = %q", got)
+	}
+	if got := w.Language(); got != "en" {
+		t.Fatalf("Window.Language = %q", got)
+	}
+
+	a.SetLanguage("tr")
+	tree.ApplyExpressions()
+	if got := MustByID[*Text](w, "hello").Text.Get(); got != "Merhaba" {
+		t.Fatalf("tr = %q", got)
+	}
+	if got := MustByID[*Text](w, "lang").Text.Get(); got != "tr" {
+		t.Fatalf("app.language = %q", got)
+	}
+	// The fallback language defaults to the desktop, so a tr miss reads English.
+	if got := MustByID[*Text](w, "fallback").Text.Get(); got != "English only" {
+		t.Fatalf("fallback = %q", got)
+	}
+
+	// A language the design does not ship falls through to the fallback.
+	a.SetFallbackLanguage("en")
+	a.SetLanguage("de")
+	tree.ApplyExpressions()
+	if got := MustByID[*Text](w, "hello").Text.Get(); got != "Hello" {
+		t.Fatalf("de = %q, want the en fallback", got)
+	}
+
+	// A catalog edit reloads only the strings; the tree instance stays.
+	a.SetLanguage("tr")
+	fsys["i18n/tr.json"] = &fstest.MapFile{Data: []byte(`{"hello": "Selam"}`)}
+	if err := a.reloadCatalog(); err != nil {
+		t.Fatal(err)
+	}
+	tree.ApplyExpressions()
+	if got := MustByID[*Text](w, "hello").Text.Get(); got != "Selam" {
+		t.Fatalf("after reload = %q", got)
 	}
 }

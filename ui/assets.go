@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/goi-gui/goi/internal/asset"
+	"github.com/goi-gui/goi/internal/i18n"
 	"github.com/goi-gui/goi/internal/schema"
 	"github.com/goi-gui/goi/internal/syntax"
 )
@@ -68,6 +69,13 @@ func sourceDirs(b *asset.Bundle, fsys fs.FS) []string {
 		}
 	}
 	return out
+}
+
+// watchDirs is the design root plus its i18n folder, so a catalog edit reloads
+// translations like a .goi edit reloads the design. A missing folder is ignored
+// by hotreload.Watch.
+func watchDirs(root string) []string {
+	return []string{root, filepath.Join(root, filepath.FromSlash(i18n.Dir))}
 }
 
 // watchRoot reports the directory a design lives in, or "" when the FS cannot be

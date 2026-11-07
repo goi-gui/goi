@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/goi-gui/goi/internal/hotreload"
+	"github.com/goi-gui/goi/internal/i18n"
 	"github.com/goi-gui/goi/internal/img"
 	"github.com/goi-gui/goi/internal/m3"
 	"github.com/goi-gui/goi/internal/svg"
@@ -100,6 +101,12 @@ type App struct {
 	loadClock float64
 	// themes are the schemes a `.goi` file may name, keyed by name.
 	themes map[string]*Theme
+	// catalog is the design's i18n folder, nil when it has none. language and
+	// fallbackLanguage are what SetLanguage chose; empty means "follow the
+	// desktop", which is why neither needs a startup write.
+	catalog          *i18n.Bundle
+	language         string
+	fallbackLanguage string
 
 	// OnError receives rendering errors (a lost surface, a validation failure).
 	// When nil they are printed and the app keeps running.
@@ -154,6 +161,16 @@ func (a *App) LoadWindow(fsys fs.FS, path string, opts ...Option) (*Window, erro
 	if err != nil {
 		return nil, fmt.Errorf("goi: %s: %w", name, err)
 	}
+	// i18n is optional: no folder means every t(...) renders its own key. A
+	// broken catalog is reported but does not stop the window from loading.
+	catalog, cerr := i18n.Load(fsys, i18n.Dir)
+	if cerr != nil {
+		a.reportError(cerr)
+	}
+	a.catalog = catalog
+	tr.SetI18n(catalog)
+	tr.SetLanguage(a.language)
+	tr.SetFallbackLanguage(a.fallbackLanguage)
 
 	w := &Window{tree: tr, app: a, title: tr.Root.Title.Get()}
 	w.width, w.height = o.Width, o.Height
@@ -248,6 +265,59 @@ func (a *App) MaxFPS(fps int) {
 		fps = 0
 	}
 	a.maxFPS = fps
+	a.needsFrame = true
+	if a.driver != nil {
+		a.driver.wake()
+	}
+}
+
+// SetLanguage chooses the language `t(...)` reads first, as an ISO 639-1 code
+// ("tr", "en"). An empty code follows the desktop again. A code the design does
+// not ship falls through to the fallback language entry by entry.
+//
+// From Go: a language menu calls this on selection. A design reads the result
+// as `app.language`.
+func (a *App) SetLanguage(code string) {
+	a.language = code
+	if a.win != nil {
+		a.win.tree.SetLanguage(code)
+	}
+	a.requestFrame()
+}
+
+// SetFallbackLanguage chooses the language a missing translation falls back to.
+// An empty code follows the desktop, which is the default.
+func (a *App) SetFallbackLanguage(code string) {
+	a.fallbackLanguage = code
+	if a.win != nil {
+		a.win.tree.SetFallbackLanguage(code)
+	}
+	a.requestFrame()
+}
+
+// Language reports the active language: the code SetLanguage chose, or the
+// desktop's when none was set. The design reads the same value as
+// `app.language`.
+func (a *App) Language() string {
+	if a.win != nil && a.win.tree != nil {
+		return a.win.tree.Language()
+	}
+	return a.language
+}
+
+// SystemLanguage reports the desktop's preferred language as an ISO 639-1 code,
+// or "" when the platform does not report one. A design reads the same value as
+// `app.systemLanguage`.
+func (a *App) SystemLanguage() string {
+	if a.win != nil && a.win.tree != nil {
+		return a.win.tree.SystemLanguage()
+	}
+	return systemLanguage()
+}
+
+// requestFrame schedules one frame, for state that changes what expressions
+// resolve rather than a property cell.
+func (a *App) requestFrame() {
 	a.needsFrame = true
 	if a.driver != nil {
 		a.driver.wake()

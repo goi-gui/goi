@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/goi-gui/goi/internal/i18n"
 	"github.com/goi-gui/goi/internal/syntax"
 )
 
@@ -238,6 +239,45 @@ func (t *Tree) SystemLanguage() string { return t.systemLanguage }
 // SetSystemLanguage records the desktop's preferred language.
 func (t *Tree) SetSystemLanguage(lang string) { t.systemLanguage = lang }
 
+// SetI18n installs the design's translation catalog. A nil bundle is the
+// optional case: `t("key")` then renders the key itself.
+func (t *Tree) SetI18n(b *i18n.Bundle) { t.i18n = b }
+
+// SetLanguage chooses the language `t(...)` reads first. An empty code follows
+// the desktop again, which is the default.
+func (t *Tree) SetLanguage(code string) { t.language = code }
+
+// Language reports the active language: the code SetLanguage chose, or the
+// desktop's when none was set. `app.language` exposes it to a design.
+func (t *Tree) Language() string {
+	if t.language != "" {
+		return t.language
+	}
+	return t.systemLanguage
+}
+
+// SetFallbackLanguage chooses the language a missing translation falls back to.
+// An empty code follows the desktop, which is the default.
+func (t *Tree) SetFallbackLanguage(code string) { t.fallbackLanguage = code }
+
+// FallbackLanguage reports the fallback code, defaulting to the desktop's.
+func (t *Tree) FallbackLanguage() string {
+	if t.fallbackLanguage != "" {
+		return t.fallbackLanguage
+	}
+	return t.systemLanguage
+}
+
+// Translate resolves a `t(...)` call: the active language, then the fallback,
+// then the key itself. A design without an i18n folder therefore still shows
+// the keys it wrote, which is what a developer wants before translating.
+func (t *Tree) Translate(key string, args ...any) string {
+	if t.i18n == nil {
+		return key
+	}
+	return t.i18n.Translate(t.Language(), t.FallbackLanguage(), key, args...)
+}
+
 // OS returns the operating system the app runs on, which is what `app.os`
 // exposes to a design: linux, darwin, windows, freebsd.
 func (t *Tree) OS() string { return runtime.GOOS }
@@ -463,6 +503,8 @@ func (c *evalCtx) evalBuiltin(call *syntax.Call, percent float64) (any, bool) {
 	switch call.Name {
 	case "formatf":
 		return c.evalFormatf(call, percent)
+	case "t":
+		return c.evalTranslate(call, percent)
 	case "len", "cap":
 		return c.evalLenCall(call)
 	case "min", "max":
@@ -501,6 +543,44 @@ func (c *evalCtx) evalFormatf(call *syntax.Call, percent float64) (any, bool) {
 		args = append(args, formatArg(v))
 	}
 	return fmt.Sprintf(pattern, args...), true
+}
+
+// evalTranslate runs `t("key", args…)`: the first argument is the dotted key,
+// the rest fill the entry's format verbs the way formatf fills its own.
+func (c *evalCtx) evalTranslate(call *syntax.Call, percent float64) (any, bool) {
+	if len(call.Args) == 0 || c.tree == nil {
+		return "", true
+	}
+	key, ok := c.eval(call.Args[0], percent)
+	if !ok {
+		return nil, false
+	}
+	name, ok := key.(string)
+	if !ok {
+		return nil, false
+	}
+	if len(call.Args) == 1 {
+		return c.tree.Translate(name), true
+	}
+	pattern := name
+	if s, ok := c.tree.i18n.Lookup(c.tree.Language(), c.tree.FallbackLanguage(), name); ok {
+		pattern = s
+	}
+	verbs := integerVerbs(pattern)
+	args := make([]any, 0, len(call.Args)-1)
+	for i, a := range call.Args[1:] {
+		v, ok := c.eval(a, percent)
+		if !ok {
+			return nil, false
+		}
+		if i < len(verbs) && verbs[i] {
+			if f, ok := v.(float64); ok {
+				v = int64(f)
+			}
+		}
+		args = append(args, formatArg(v))
+	}
+	return c.tree.Translate(name, args...), true
 }
 
 // evalLenCall is len and cap. A design list is not a value anywhere else, so the
@@ -754,6 +834,8 @@ func (c *evalCtx) evalRef(r *syntax.Ref) (any, bool) {
 			return c.tree.SystemMode().String(), true
 		case "systemLanguage":
 			return c.tree.SystemLanguage(), true
+		case "language":
+			return c.tree.Language(), true
 		case "dark":
 			return c.tree.Dark(), true
 		case "os":

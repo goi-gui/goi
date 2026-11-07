@@ -178,7 +178,7 @@ func (v *validator) checkData() {
 			continue
 		}
 		seenVar[dv.Name] = dv.NameAt
-		if dv.Name == "data" || dv.Name == "bridge" || dv.Name == "props" || dv.Name == "app" || dv.Name == "window" || dv.Name == "formatf" {
+		if dv.Name == "data" || dv.Name == "bridge" || dv.Name == "props" || dv.Name == "app" || dv.Name == "window" || dv.Name == "formatf" || dv.Name == "t" {
 			v.add(dv.NameAt, dv.NameAt+syntax.Pos(len(dv.Name)), fmt.Sprintf("%q is a reserved name", dv.Name), "")
 		}
 		v.checkType(dv.Type, "bridge "+dv.Name)
@@ -859,7 +859,7 @@ func globalProp(id, prop string) (bool, string) {
 	var names []string
 	switch id {
 	case "app":
-		names = []string{"theme", "mode", "systemMode", "systemLanguage", "dark", "os"}
+		names = []string{"theme", "mode", "systemMode", "systemLanguage", "language", "dark", "os"}
 	case "window":
 		names = []string{"width", "height", "minimized", "minimizable", "maximized", "maximizable", "resizable", "fullscreen"}
 	default:
@@ -914,13 +914,14 @@ func (v *validator) walkRefs(e *syntax.Element) {
 // like any other.
 var lenProp = &Prop{Name: "len", Type: TypeNumber}
 
-// builtinSigs is the arity of each Go builtin a design may call: formatf is
-// ours, the rest are the pure ones. -1 means "any number".
+// builtinSigs is the arity of each Go builtin a design may call: formatf and t
+// are ours, the rest are the pure ones. -1 means "any number".
 var builtinSigs = map[string]struct {
 	min, max int
 	detail   string
 }{
 	"formatf": {1, -1, `formatf("%d items", count) — Go's fmt verbs`},
+	"t":       {1, -1, `t("settings.theme") — a translation from the i18n folder`},
 	"len":     {1, 1, "len(x) — the length of a string, a list or a map"},
 	"cap":     {1, 1, "cap(x) — a design list has no spare capacity, so this is its length"},
 	"min":     {1, -1, "min(a, b, …) — the smallest number or string"},

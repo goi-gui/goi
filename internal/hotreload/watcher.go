@@ -28,9 +28,10 @@ type Reloader struct {
 	closed bool
 }
 
-// Watch starts watching dirs. Only .goi files trigger a reload. Directories that
+// Watch starts watching dirs. Only .goi and .json files trigger a reload: the
+// first is a design change, the second an i18n catalog edit. Directories that
 // do not exist are skipped, so a design that has not created a part directory
-// yet still loads.
+// or an i18n folder yet still loads.
 func Watch(dirs []string, onChange func(path string)) (*Reloader, error) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -98,10 +99,12 @@ func (r *Reloader) loop() {
 	}
 }
 
-// relevant filters editor noise: only .goi files that were written, created or
-// renamed in.
+// relevant filters editor noise: only .goi and .json files that were written,
+// created or renamed in.
 func (r *Reloader) relevant(ev fsnotify.Event) bool {
-	if filepath.Ext(ev.Name) != ".goi" {
+	switch filepath.Ext(ev.Name) {
+	case ".goi", ".json":
+	default:
 		return false
 	}
 	if ev.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) == 0 {

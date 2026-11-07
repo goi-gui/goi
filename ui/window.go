@@ -207,6 +207,15 @@ func (w *Window) SystemLanguage() string {
 	return w.tree.SystemLanguage()
 }
 
+// Language returns the active language code: what App.SetLanguage chose, or the
+// desktop's when none was set. The design side reads it as `app.language`.
+func (w *Window) Language() string {
+	if w == nil || w.tree == nil {
+		return ""
+	}
+	return w.tree.Language()
+}
+
 // Close asks the window to close, as the platform's close button would. The
 // event loop returns after the current frame.
 func (w *Window) Close() {

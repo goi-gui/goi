@@ -1532,3 +1532,20 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   paint over an uncle; the ancestor order still decides that, which keeps the
   walk single-pass and keeps clipping correct. The sort is skipped entirely
   when no sibling sets the property, so the usual frame pays nothing.
+- **i18n is a catalog folder, not a binding generator.** A design that needs
+  translations drops `i18n/<code>.json` next to its `.goi` files; the folder is
+  optional and its absence is not an error, which keeps `t(...)` legal in every
+  design and makes the key itself the visible fallback while a translation is
+  still missing. Nested objects flatten to dotted keys, the same shape the
+  design writes, so no code generation step has to be run or kept in sync.
+- **Fallback is resolved per key, and defaults to the desktop language.**
+  `SetLanguage` and `SetFallbackLanguage` both start empty and read
+  `app.systemLanguage`, so a design follows the desktop until Go overrides it; a
+  locale change therefore needs no extra work. Resolving each key separately
+  lets a language be complete for one screen and borrow the fallback for another,
+  which one global "is this catalog complete" switch could not express.
+- **A catalog edit reloads only the strings.** `t(...)` is an expression, so the
+  frame loop re-resolves it after `SetI18n`; rebuilding the tree for a text
+  change would cost a layout and re-run Bind for no benefit. The watcher now
+  accepts `.json` in the design's `i18n` folder, and a malformed catalog is
+  reported while the previous strings stay live.

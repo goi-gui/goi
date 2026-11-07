@@ -3,6 +3,7 @@ package tree
 import (
 	"fmt"
 
+	"github.com/goi-gui/goi/internal/i18n"
 	"github.com/goi-gui/goi/internal/schema"
 	"github.com/goi-gui/goi/internal/syntax"
 )
@@ -34,6 +35,12 @@ type Tree struct {
 	// systemLanguage is the desktop's preferred language code, read once at
 	// startup and again on a locale change. `app.systemLanguage` exposes it.
 	systemLanguage string
+	// i18n is the design's catalog, nil when the app ships no i18n folder. The
+	// language pair follows it: an empty code means "use systemLanguage", which
+	// is why both defaults need no startup write.
+	i18n             *i18n.Bundle
+	language         string
+	fallbackLanguage string
 	// cloning is set while Instantiate builds a copy: ids stay on the nodes so
 	// an app can find them, but they are not registered, because a copy would
 	// otherwise collide with the template's own ids.
