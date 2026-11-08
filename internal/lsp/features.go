@@ -2096,9 +2096,9 @@ func propDoc(el string, p schema.Prop) string {
 	case "sortAscending":
 		b.WriteString("\n\nSort direction, `true` by default. Reversing the same header flips it.")
 	case "selectable":
-		b.WriteString("\n\nHow rows are selected: `none` makes cells inert, `single` (default) " +
-			"holds one row, `multiple` adds or removes a row per click. Clicking a selected " +
-			"row deselects it.")
+		b.WriteString("\n\nHow rows are selected: `none` (default) makes cells inert, " +
+			"`single` holds one row, `multiple` adds or removes a row per click. " +
+			"Clicking a selected row deselects it.")
 	case "selectedRow":
 		b.WriteString("\n\nThe selected row index, `-1` by default. It counts rows as they are " +
 			"shown, so it stays meaningful after sorting. In `multiple` mode use " +

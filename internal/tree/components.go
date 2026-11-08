@@ -412,7 +412,7 @@ type Table struct {
 	HeaderHeight  Prop[float64]
 	SortColumn    Prop[float64]
 	SortAscending Prop[bool]
-	// Selectable is none, single or multiple; single is the default.
+	// Selectable is none, single or multiple; none is the default.
 	Selectable  Prop[string]
 	SelectedRow Prop[float64]
 	// SortEvent fires when a header is clicked, with the column index and the

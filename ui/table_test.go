@@ -11,6 +11,7 @@ const tableUI = `Window {
 		Table {
 			id: table
 			width: 400
+			selectable: single
 			TableColumn { key: "name" label: "Name" width: 200 sortable: true }
 			TableColumn { key: "role" label: "Role" sortable: true }
 			TableColumn { key: "age" label: "Age" width: 80 align: end numeric: true sortable: true }
@@ -287,13 +288,12 @@ func TestTableMultipleSelectionToggles(t *testing.T) {
 	}
 }
 
-// TestTableSelectableNone checks that none makes cells inert: no press event,
-// no selection and no pointer affordance.
-func TestTableSelectableNone(t *testing.T) {
+// TestTableDefaultSelectableNone checks that an unqualified table is inert: no
+// press event, no selection and no pointer affordance.
+func TestTableDefaultSelectableNone(t *testing.T) {
 	const src = `Window { Column { Table {
 		id: table
 		width: 300
-		selectable: none
 		TableColumn { label: "A" width: 150 }
 		TableColumn { label: "B" width: 150 }
 		TableRow { TableCell { text: "a" } TableCell { text: "b" } }
@@ -304,7 +304,7 @@ func TestTableSelectableNone(t *testing.T) {
 	tbl.OnSelect(func(int) { picked = true })
 	pressRow(t, in, tbl, 0)
 	if picked || len(tbl.SelectedRows()) != 0 {
-		t.Fatalf("none table selected a row (event=%v, rows=%v)", picked, tbl.SelectedRows())
+		t.Fatalf("a default table selected a row (event=%v, rows=%v)", picked, tbl.SelectedRows())
 	}
 
 	var got platform.Cursor
@@ -312,7 +312,7 @@ func TestTableSelectableNone(t *testing.T) {
 	cell := absoluteRect(tbl.TableRows()[0])
 	in.MouseMove(cell.X+10, cell.Y+cell.H/2)
 	if got == platform.CursorPointer {
-		t.Fatal("a cell showed the hand with selectable: none")
+		t.Fatal("a cell of a default table showed the hand")
 	}
 }
 

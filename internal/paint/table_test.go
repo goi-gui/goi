@@ -88,7 +88,7 @@ func TestTableStripesAndSelection(t *testing.T) {
 		t.Fatalf("a row is selected before anyone selects it")
 	}
 
-	l = list(t, tableSource("striped: true selectedRow: 1", ""), 500, 400)
+	l = list(t, tableSource("striped: true selectable: single selectedRow: 1", ""), 500, 400)
 	selected = 0
 	for _, op := range l.Ops {
 		if op.Kind == Fill && op.Color == col.SecondaryContainer {

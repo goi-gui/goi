@@ -124,13 +124,13 @@ const (
 	SelectMultiple = "multiple"
 )
 
-// SelectableMode returns the table's selection mode, defaulting to single.
+// SelectableMode returns the table's selection mode, defaulting to none.
 func (t *Table) SelectableMode() string {
 	switch t.Selectable.Get() {
-	case SelectNone, SelectMultiple:
+	case SelectSingle, SelectMultiple:
 		return t.Selectable.Get()
 	}
-	return SelectSingle
+	return SelectNone
 }
 
 // SelectedIndex returns the first selected row in display order, or -1.

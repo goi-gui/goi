@@ -166,7 +166,7 @@ var defaults = map[string]any{
 	"headerHeight":  40.0,
 	"sortColumn":    -1.0,
 	"sortAscending": true,
-	"selectable":    "single",
+	"selectable":    "none",
 	"selectedRow":   -1.0,
 }
 
