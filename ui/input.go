@@ -500,6 +500,7 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 			c.Base().MarkDirty(tree.DirtyPaint)
 			if hit.Kind() == "Slider" {
 				i.dragging = true
+				i.grabSlider(hit, x)
 				i.drag(x, y)
 				i.markDirty()
 				return
@@ -1733,6 +1734,13 @@ func (i *interactor) sliderKey(n tree.Node, k tree.Key, mods tree.Mods) bool {
 		step *= 10
 	}
 	v := c.Value.Get()
+	// A range slider's keys move the handle the pointer last took, which starts
+	// at the low one.
+	s, isRange := n.(*tree.Slider)
+	grabbedEnd := isRange && s.Variant.Get() == "range" && s.Grab == 1
+	if grabbedEnd {
+		v = s.End.Get()
+	}
 	switch k {
 	case tree.KeyRight, tree.KeyUp:
 		v += step
@@ -1750,10 +1758,27 @@ func (i *interactor) sliderKey(n tree.Node, k tree.Key, mods tree.Mods) bool {
 		v = lo + float64(int((v-lo)/s+0.5))*s
 	}
 	v = math.Max(lo, math.Min(hi, v))
+	if grabbedEnd {
+		low, _ := s.Range()
+		v = math.Max(v, low)
+		if v == s.End.Get() {
+			return true
+		}
+		s.End.Set(v)
+		s.RangeEvent.Emit([2]float64{low, v})
+		c.Change.Emit(v)
+		c.Base().MarkDirty(tree.DirtyPaint)
+		i.markDirty()
+		return true
+	}
 	if v == c.Value.Get() {
 		return true
 	}
 	c.Value.Set(v)
+	if isRange && s.Variant.Get() == "range" {
+		_, high := s.Range()
+		s.RangeEvent.Emit([2]float64{v, high})
+	}
 	c.Change.Emit(v)
 	c.Base().MarkDirty(tree.DirtyPaint)
 	i.markDirty()
@@ -1854,34 +1879,77 @@ func (i *interactor) deleteAfter(f *tree.Component) {
 	f.Edit.Emit(ns)
 }
 
-// drag updates a slider from the pointer position.
+// drag updates a slider from the pointer position. In range mode it moves the
+// handle the press took, clamped so the two cannot cross.
 func (i *interactor) drag(x, y float64) {
 	if i.pressed == nil || i.pressed.Kind() != "Slider" {
 		return
 	}
 	c := comp(i.pressed)
 	_ = y
-	box := absoluteRect(i.pressed)
-	inset := 2.0 // half the 4dp handle, matching paintSlider
-	trackW := box.W - 2*inset
-	if trackW <= 0 {
-		return
-	}
-	frac := (x - box.X - inset) / trackW
-	if frac < 0 {
-		frac = 0
-	}
-	if frac > 1 {
-		frac = 1
-	}
+	frac := sliderFrac(absoluteRect(i.pressed), x)
 	lo, hi := c.Min.Get(), c.Max.Get()
 	v := lo + frac*(hi-lo)
 	if step := c.Step.Get(); step > 0 {
 		v = lo + float64(int((v-lo)/step+0.5))*step
 	}
+	if v < lo {
+		v = lo
+	}
+	if v > hi {
+		v = hi
+	}
+	s, isRange := i.pressed.(*tree.Slider)
+	if isRange && s.Variant.Get() == "range" {
+		a, b := s.Range()
+		if s.Grab == 1 {
+			b = math.Max(v, a)
+		} else {
+			a = math.Min(v, b)
+		}
+		s.Value.Set(a)
+		s.End.Set(b)
+		s.RangeEvent.Emit([2]float64{a, b})
+		c.Change.Emit(v)
+		i.markDirty()
+		return
+	}
 	c.Value.Set(v)
 	c.Change.Emit(v)
 	i.markDirty()
+}
+
+// grabSlider picks the handle a press takes: in range mode the nearer of the
+// two, otherwise the only one.
+func (i *interactor) grabSlider(n tree.Node, x float64) {
+	s, ok := n.(*tree.Slider)
+	if !ok {
+		return
+	}
+	s.Grab = 0
+	if s.Variant.Get() != "range" {
+		return
+	}
+	lo, hi := s.Min.Get(), s.Max.Get()
+	if hi <= lo {
+		return
+	}
+	frac := sliderFrac(absoluteRect(n), x)
+	a, b := s.Range()
+	if math.Abs(frac-(b-lo)/(hi-lo)) < math.Abs(frac-(a-lo)/(hi-lo)) {
+		s.Grab = 1
+	}
+}
+
+// sliderFrac turns an x position into a 0..1 track fraction.
+func sliderFrac(box tree.Rect, x float64) float64 {
+	inset := 2.0 // half the 4dp handle, matching paintSlider
+	trackW := box.W - 2*inset
+	if trackW <= 0 {
+		return 0
+	}
+	frac := (x - box.X - inset) / trackW
+	return math.Max(0, math.Min(1, frac))
 }
 
 // caretFromPoint places the caret at the nearest rune boundary to x, extending

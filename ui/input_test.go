@@ -1153,3 +1153,64 @@ func TestZIndexDrivesHitOrder(t *testing.T) {
 		t.Fatalf("hit = %v, want the topmost sibling", hit)
 	}
 }
+
+// TestSliderRangeDragTakesNearestHandle covers the range variant from the
+// pointer: a press moves the nearer handle, and the two never cross.
+func TestSliderRangeDragTakesNearestHandle(t *testing.T) {
+	_, win, in := inputFixture(t, `Window { Column {
+		Slider { id: r variant: range value: 2 end: 7 min: 0 max: 10 step: 1 width: 200 }
+	} }`, 480, 320)
+	s := MustByID[*Slider](win, "r")
+	var ranges [][2]float64
+	s.OnRange(func(lo, hi float64) { ranges = append(ranges, [2]float64{lo, hi}) })
+
+	press := func(frac float64) {
+		r := absoluteRect(s)
+		x := r.X + 2 + (r.W-4)*frac
+		in.MouseDown(x, r.Y+r.H/2, 0, false)
+		in.MouseUp(x, r.Y+r.H/2, 0)
+	}
+	// 0.9 is nearer the high handle.
+	press(0.9)
+	if lo, hi := s.Range(); lo != 2 || hi != 9 {
+		t.Fatalf("range = %v..%v, want 2..9", lo, hi)
+	}
+	// 0.3 is nearer the low one.
+	press(0.3)
+	if lo, hi := s.Range(); lo != 3 || hi != 9 {
+		t.Fatalf("range = %v..%v, want 3..9", lo, hi)
+	}
+	// Dragging the low handle past the high one stops at it.
+	r := absoluteRect(s)
+	x := func(frac float64) float64 { return r.X + 2 + (r.W-4)*frac }
+	in.MouseDown(x(0.3), r.Y+r.H/2, 0, false)
+	in.MouseMove(x(0.99), r.Y+r.H/2)
+	in.MouseUp(x(0.99), r.Y+r.H/2, 0)
+	if lo, hi := s.Range(); lo != 9 || hi != 9 {
+		t.Fatalf("range = %v..%v, want the low handle clamped at 9", lo, hi)
+	}
+	if len(ranges) == 0 {
+		t.Fatal("a range drag emitted no range event")
+	}
+	last := ranges[len(ranges)-1]
+	if last[0] > last[1] {
+		t.Fatalf("range event = %v, want low first", last)
+	}
+}
+
+// TestSliderRangeGoSide covers SetRange from Go: it clamps and keeps the pair
+// in order.
+func TestSliderRangeGoSide(t *testing.T) {
+	_, win, _ := inputFixture(t, `Window { Column {
+		Slider { id: r variant: range value: 2 end: 7 min: 0 max: 10 }
+	} }`, 480, 320)
+	s := MustByID[*Slider](win, "r")
+	s.SetRange(8, 3)
+	if lo, hi := s.Range(); lo != 3 || hi != 8 {
+		t.Fatalf("range = %v..%v, want 3..8", lo, hi)
+	}
+	s.SetRange(-4, 20)
+	if lo, hi := s.Range(); lo != 0 || hi != 10 {
+		t.Fatalf("range = %v..%v, want it clamped to 0..10", lo, hi)
+	}
+}

@@ -1,6 +1,7 @@
 package tree
 
 import (
+	"math"
 	"strings"
 
 	"github.com/goi-gui/goi/internal/componentdef"
@@ -144,7 +145,7 @@ func (c *Component) props(kind string) []NamedProp {
 	out := make([]NamedProp, 0, len(names)+14)
 	out = append(out, commonProps(&c.NodeBase)...)
 	for _, n := range names {
-		out = append(out, c.one(n))
+		out = append(out, c.one(kind, n))
 	}
 	return out
 }
@@ -167,13 +168,14 @@ func (c *Component) propsExcept(kind string, skip ...string) []NamedProp {
 		if own {
 			continue
 		}
-		out = append(out, c.one(n))
+		out = append(out, c.one(kind, n))
 	}
 	return out
 }
 
-// one builds the named property for a single shared field.
-func (c *Component) one(name string) NamedProp {
+// one builds the named property for a single shared field. kind lets an enum
+// be narrowed to the values that component implements.
+func (c *Component) one(kind, name string) NamedProp {
 	b := &c.NodeBase
 	switch name {
 	case "label":
@@ -200,7 +202,7 @@ func (c *Component) one(name string) NamedProp {
 		// The accepted words live in componentdef, which the schema validates
 		// against. Repeating them here let the validator accept `vertical` on a
 		// Divider while the node rejected it, so the enum is read once.
-		return EnumProp(b, "variant", DirtyPaint, &c.Variant, componentdef.EnumValues("variant")...)
+		return EnumProp(b, "variant", DirtyPaint, &c.Variant, componentdef.EnumValuesFor(kind, "variant")...)
 	case "size":
 		return EnumProp(b, "size", DirtyLayout, &c.Size, componentdef.EnumValues("size")...)
 	case "disabled":
@@ -325,12 +327,56 @@ type Switch struct{ Component }
 func (*Switch) Kind() string              { return "Switch" }
 func (c *Switch) namedProps() []NamedProp { return c.props("Switch") }
 
-// Slider picks a value along a track.
-type Slider struct{ Component }
+// Slider picks a value along a track. `variant: range` adds End as the second
+// handle, and `variant: centered` fills from Center instead of the minimum.
+type Slider struct {
+	Component
+	End Prop[float64]
+	// Center is NaN when unset, which means the midpoint of min and max.
+	Center Prop[float64]
+	// Grab is the handle the pointer took: 0 is Value, 1 is End. Paint uses it
+	// to narrow only the handle being dragged.
+	Grab int
+	// RangeEvent fires in range mode with both values, low first.
+	RangeEvent Event[[2]float64]
+}
 
 // Kind implements Node.
-func (*Slider) Kind() string              { return "Slider" }
-func (c *Slider) namedProps() []NamedProp { return c.props("Slider") }
+func (*Slider) Kind() string { return "Slider" }
+
+func (c *Slider) namedProps() []NamedProp {
+	return append(c.propsExcept("Slider", "end", "center"),
+		NumberProp(&c.NodeBase, "end", DirtyPaint, &c.End),
+		NumberProp(&c.NodeBase, "center", DirtyPaint, &c.Center),
+	)
+}
+
+// Range reports the two values of a range slider, low first.
+func (c *Slider) Range() (float64, float64) {
+	a, b := c.Value.Get(), c.End.Get()
+	if a > b {
+		return b, a
+	}
+	return a, b
+}
+
+// SetRange sets both handles, clamped to min/max and kept in order.
+func (c *Slider) SetRange(a, b float64) {
+	lo, hi := c.Min.Get(), c.Max.Get()
+	if hi <= lo {
+		return
+	}
+	if a > b {
+		a, b = b, a
+	}
+	c.Value.Set(math.Max(lo, math.Min(hi, a)))
+	c.End.Set(math.Max(lo, math.Min(hi, b)))
+}
+
+// OnRange subscribes to a range slider's changes, with both values, low first.
+func (c *Slider) OnRange(fn func(lo, hi float64)) (off func()) {
+	return c.RangeEvent.On(func(v [2]float64) { fn(v[0], v[1]) })
+}
 
 // TextField is a filled or outlined text input.
 type TextField struct{ Component }

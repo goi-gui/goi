@@ -699,3 +699,62 @@ func TestNavigationRailIndicatorFollowsScroll(t *testing.T) {
 		t.Fatal("selected item sits at the origin; test proves nothing")
 	}
 }
+
+// TestSliderCenteredFillsFromCenter keeps the centered variant honest: the
+// active fill starts at the center value, not at the track's start.
+func TestSliderCenteredFillsFromCenter(t *testing.T) {
+	col := m3.Light().Colors
+	activeOf := func(src string) (start, end float64) {
+		l := m3list(t, src)
+		for _, op := range l.Ops {
+			if op.Kind == Fill && op.Color == col.Primary && op.Rect[3] == 16 && op.Rect[2] < 150 {
+				return float64(op.Rect[0]), float64(op.Rect[0] + op.Rect[2])
+			}
+		}
+		t.Fatalf("no active segment:\n%s", l.Dump())
+		return 0, 0
+	}
+	// Track spans 2..198 on a 200dp slider: the midpoint is 100.
+	start, end := activeOf(`Window { Slider { variant: centered value: 0.8 min: 0 max: 1 width: 200 } }`)
+	if start < 99 || start > 101 {
+		t.Fatalf("fill starts at %v, want the midpoint", start)
+	}
+	if end > 160 {
+		t.Fatalf("fill ends at %v, want it short of the handle at 160", end)
+	}
+	// center: 0.25 moves the origin.
+	start, _ = activeOf(`Window { Slider { variant: centered center: 0.25 value: 0.8 min: 0 max: 1 width: 200 } }`)
+	if start < 48 || start > 52 {
+		t.Fatalf("fill starts at %v, want the declared center at 50", start)
+	}
+}
+
+// TestSliderRangePaintsTwoHandles checks the range variant: two handles, an
+// active fill between them, and a stop dot at both ends.
+func TestSliderRangePaintsTwoHandles(t *testing.T) {
+	col := m3.Light().Colors
+	l := m3list(t, `Window { Slider { variant: range value: 0.2 end: 0.7 min: 0 max: 1 width: 200 } }`)
+	handles, dots := 0, 0
+	var active [4]float32
+	for _, op := range l.Ops {
+		switch {
+		case op.Kind == Fill && op.Color == col.Primary && op.Rect[2] == 4 && op.Rect[3] == 44:
+			handles++
+		case op.Kind == Fill && op.Shape == Circle && op.Rect[2] == 4:
+			dots++
+		case op.Kind == Fill && op.Color == col.Primary && op.Rect[3] == 16:
+			active = op.Rect
+		}
+	}
+	if handles != 2 {
+		t.Fatalf("range handles = %d, want 2\n%s", handles, l.Dump())
+	}
+	if dots != 2 {
+		t.Fatalf("range stop dots = %d, want 2", dots)
+	}
+	// 0.2 and 0.7 of the 2..198 track are 41.2 and 139.2; the fill runs
+	// between them with a gap on each side.
+	if active[0] < 41 || active[0] > 50 || active[0]+active[2] > 140 {
+		t.Fatalf("range fill = %v, want it between the handles", active)
+	}
+}

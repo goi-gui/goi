@@ -911,13 +911,14 @@ func (l *List) paintSlider(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		cornerFull = trackH / 2
 	)
 	track := tree.Rect{X: r.X + inset, Y: cy - trackH/2, W: r.W - 2*inset, H: trackH}
-	v := c.Value.Get()
 	lo, hi := c.Min.Get(), c.Max.Get()
-	frac := 0.0
-	if hi > lo {
-		frac = (v - lo) / (hi - lo)
+	fracOf := func(v float64) float64 {
+		if hi <= lo {
+			return 0
+		}
+		return clamp01((v - lo) / (hi - lo))
 	}
-	frac = clamp01(frac)
+	frac := fracOf(c.Value.Get())
 
 	active := col.Primary
 	inactive := col.SecondaryContainer
@@ -929,46 +930,93 @@ func (l *List) paintSlider(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		handle = withAlpha(col.OnSurface, m3.DisabledOpacity)
 		stop = active
 	}
+	xOf := func(f float64) float64 { return track.X + track.W*f }
 
-	// The handle centre; the two track segments stop 6dp away from its edge.
-	hx := track.X + track.W*frac
-	activeEnd := hx - handleW - gap
-	if activeEnd > track.X {
+	// bar paints one track segment, rounding each end only where it meets the
+	// track's own end.
+	bar := func(x0, x1 float64, color uint32) {
+		if x1-x0 <= 0 {
+			return
+		}
+		radii := [4]float32{2, 2, 2, 2}
+		if x0 <= track.X+0.01 {
+			radii[0], radii[3] = cornerFull, cornerFull
+		}
+		if x1 >= track.Right()-0.01 {
+			radii[1], radii[2] = cornerFull, cornerFull
+		}
 		l.Ops = append(l.Ops, Op{
 			Kind: Fill, Shape: RoundedRect,
-			Rect:   [4]float32{float32(track.X), float32(track.Y), float32(activeEnd - track.X), float32(trackH)},
-			Radius: [4]float32{cornerFull, 2, 2, cornerFull},
-			Color:  active, Clip: clipArr(clip),
+			Rect:   [4]float32{float32(x0), float32(track.Y), float32(x1 - x0), float32(trackH)},
+			Radius: radii, Color: color, Clip: clipArr(clip),
 		})
 	}
-	inactiveStart := hx + handleW + gap
-	if inactiveStart < track.Right() {
-		l.Ops = append(l.Ops, Op{
-			Kind: Fill, Shape: RoundedRect,
-			Rect:   [4]float32{float32(inactiveStart), float32(track.Y), float32(track.Right() - inactiveStart), float32(trackH)},
-			Radius: [4]float32{2, cornerFull, cornerFull, 2},
-			Color:  inactive, Clip: clipArr(clip),
-		})
+	dot := func(x float64) {
 		l.Ops = append(l.Ops, Op{
 			Kind: Fill, Shape: Circle,
 			Rect: [4]float32{
-				float32(track.Right() - cornerFull - stopSize/2), float32(cy - stopSize/2),
+				float32(x - stopSize/2), float32(cy - stopSize/2),
 				stopSize, stopSize,
 			},
 			Color: stop, Clip: clipArr(clip),
 		})
 	}
-
-	hw := handleW * 2
-	if c.Pressed || c.Focused {
-		hw = 2
+	handleAt := func(cx float64, grabbed bool) {
+		hw := handleW * 2
+		if c.Focused || (c.Pressed && grabbed) {
+			hw = 2
+		}
+		l.Ops = append(l.Ops, Op{
+			Kind: Fill, Shape: RoundedRect,
+			Rect:   [4]float32{float32(cx - hw/2), float32(cy - 22), float32(hw), 44},
+			Radius: [4]float32{float32(hw / 2), float32(hw / 2), float32(hw / 2), float32(hw / 2)},
+			Color:  handle, Clip: clipArr(clip),
+		})
 	}
-	l.Ops = append(l.Ops, Op{
-		Kind: Fill, Shape: RoundedRect,
-		Rect:   [4]float32{float32(hx - hw/2), float32(cy - 22), float32(hw), 44},
-		Radius: [4]float32{float32(hw / 2), float32(hw / 2), float32(hw / 2), float32(hw / 2)},
-		Color:  handle, Clip: clipArr(clip),
-	})
+	s, _ := c.Node().(*tree.Slider)
+	pressed := func(i int) bool { return s != nil && s.Grab == i }
+	// Every segment stops `gap` away from the handle edge, so the handle has
+	// clear space around it.
+	const edge = handleW + gap
+
+	switch variant(c, "standard") {
+	case "range":
+		loV, hiV := s.Range()
+		xa, xb := xOf(fracOf(loV)), xOf(fracOf(hiV))
+		bar(track.X, xa-edge, inactive)
+		bar(xa+edge, xb-edge, active)
+		bar(xb+edge, track.Right(), inactive)
+		dot(track.X + cornerFull)
+		dot(track.Right() - cornerFull)
+		handleAt(xa, pressed(0))
+		handleAt(xb, pressed(1))
+
+	case "centered":
+		cf := 0.5
+		if s != nil && !math.IsNaN(s.Center.Get()) {
+			cf = fracOf(s.Center.Get())
+		}
+		xc, xh := xOf(cf), xOf(frac)
+		if xh > xc {
+			bar(xc, xh-edge, active)
+			bar(track.X, xc, inactive)
+			bar(xh+edge, track.Right(), inactive)
+		} else {
+			bar(xh+edge, xc, active)
+			bar(track.X, xh-edge, inactive)
+			bar(xc, track.Right(), inactive)
+		}
+		dot(track.X + cornerFull)
+		dot(track.Right() - cornerFull)
+		handleAt(xh, pressed(0))
+
+	default:
+		hx := xOf(frac)
+		bar(track.X, hx-edge, active)
+		bar(hx+edge, track.Right(), inactive)
+		dot(track.Right() - cornerFull)
+		handleAt(hx, pressed(0))
+	}
 }
 
 func clamp01(v float64) float64 {

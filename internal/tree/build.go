@@ -2,6 +2,7 @@ package tree
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/goi-gui/goi/internal/i18n"
 	"github.com/goi-gui/goi/internal/schema"
@@ -453,7 +454,11 @@ func newM3Component(name string) Node {
 	case "Switch":
 		return &Switch{Component: newComponent()}
 	case "Slider":
-		return &Slider{Component: newComponent()}
+		return &Slider{
+			Component: newComponent(),
+			End:       newProp(nil, "end", DirtyPaint, 0.0),
+			Center:    newProp(nil, "center", DirtyPaint, math.NaN()),
+		}
 	case "TextField":
 		ti := &TextField{Component: newComponent()}
 		ti.Max.Set(1)

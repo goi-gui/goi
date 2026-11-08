@@ -3,6 +3,7 @@ package lsp
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -2048,13 +2049,20 @@ func propDetail(el string, p schema.Prop) string {
 	return s
 }
 
+// isNaN reports the unset value of a numeric property such as Slider.center,
+// which would otherwise print as a bare NaN default.
+func isNaN(v any) bool {
+	f, ok := v.(float64)
+	return ok && math.IsNaN(f)
+}
+
 func propDoc(el string, p schema.Prop) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "**%s** on `%s`\n\nType: `%s`", p.Name, el, p.Type)
 	if len(p.Enum) > 0 {
 		fmt.Fprintf(&b, "\n\nValues: %s", codeList(p.Enum))
 	}
-	if p.Default != nil {
+	if p.Default != nil && !isNaN(p.Default) {
 		fmt.Fprintf(&b, "\n\nDefault: `%v`", p.Default)
 	}
 	if p.Common {
@@ -2112,6 +2120,12 @@ func propDoc(el string, p schema.Prop) string {
 		b.WriteString("\n\nRow height in dp; 48 by default. A row's own `height` wins.")
 	case "headerHeight":
 		b.WriteString("\n\nHeader height in dp; 40 by default.")
+	case "center":
+		b.WriteString("\n\nThe value a `centered` slider fills from. Left out, it is the " +
+			"midpoint of `min` and `max`, so the fill marks above or below the middle.")
+	case "end":
+		b.WriteString("\n\nThe high value of a `range` slider; `value` is the low one. " +
+			"From Go: `SetRange(lo, hi)` and `OnRange`.")
 	case "numeric":
 		b.WriteString("\n\nRight-aligns the column by default and sorts by the number inside " +
 			"its cells, so `1,200` orders as 1200.")

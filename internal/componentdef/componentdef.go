@@ -3,6 +3,8 @@
 // schema validates against it, so the two cannot drift apart.
 package componentdef
 
+import "math"
+
 // Kind is one component element name.
 type Kind struct {
 	Name string
@@ -88,7 +90,7 @@ var props = map[string][]string{
 	"Checkbox":         {"label", "variant", "disabled", "checked"},
 	"RadioButton":      {"label", "variant", "disabled", "checked"},
 	"Switch":           {"label", "variant", "disabled", "checked", "icon", "iconOn", "iconOff"},
-	"Slider":           {"variant", "disabled", "value", "min", "max", "step"},
+	"Slider":           {"variant", "disabled", "value", "end", "center", "min", "max", "step"},
 	"TextField":        {"label", "text", "placeholder", "supporting", "icon", "trailingIcon", "variant", "disabled"},
 	"SearchBar":        {"label", "text", "placeholder", "icon", "trailingIcon", "variant", "disabled"},
 	"Tooltip":          {"label", "variant"},
@@ -168,6 +170,9 @@ var defaults = map[string]any{
 	"sortAscending": true,
 	"selectable":    "none",
 	"selectedRow":   -1.0,
+	// A centered slider fills from the midpoint of min and max until the
+	// design names a center of its own.
+	"center": math.NaN(),
 }
 
 // Default returns the initial value of a component property, when it is not the
@@ -183,7 +188,7 @@ func TypeOf(name string) PropType {
 	case "disabled", "checked", "selected", "expanded", "showCopy",
 		"sortable", "numeric", "striped", "showHeader", "sortAscending":
 		return Bool
-	case "value", "min", "max", "step", "spacing", "gap",
+	case "value", "end", "center", "min", "max", "step", "spacing", "gap",
 		"rowHeight", "headerHeight", "sortColumn", "selectedRow":
 		return Number
 	case "variant", "size", "crossAxisAlign", "mainAxisAlign", "align", "selectable":
@@ -196,7 +201,8 @@ func TypeOf(name string) PropType {
 // a few styles, so completion and the checker do not offer a word the painter
 // would ignore.
 var variantValues = map[string][]string{
-	"Table": {"outlined", "filled", "plain"},
+	"Table":  {"outlined", "filled", "plain"},
+	"Slider": {"standard", "centered", "range"},
 }
 
 // EnumValuesFor is EnumValues narrowed to the values one component implements.

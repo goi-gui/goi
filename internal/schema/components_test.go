@@ -45,3 +45,17 @@ func TestTableSelectableValues(t *testing.T) {
 		t.Fatal("the table accepted an unknown selection mode")
 	}
 }
+
+// TestSliderNarrowsVariants keeps the slider to the three kinds it paints: a
+// standard one, a centered one and a range.
+func TestSliderNarrowsVariants(t *testing.T) {
+	for _, v := range []string{"standard", "centered", "range"} {
+		src := fmt.Sprintf("Window { Slider { variant: %s } }", v)
+		if _, diag := validate(t, src); !diag.Empty() {
+			t.Errorf("Slider.variant %q: %v", v, diag)
+		}
+	}
+	if _, diag := validate(t, "Window { Slider { variant: tonal } }"); diag.Empty() {
+		t.Fatal("the slider accepted a variant it does not paint")
+	}
+}
