@@ -127,7 +127,10 @@ Never create a tag or a release on your own.
 4. `gh release create vX.Y.Z --title vX.Y.Z --notes-file <file>`. Write the
    notes in English: a short summary of the release, then the changes grouped by
    feature, each saying what changed and what it means for an app, plus an
-   upgrade note for anything that breaks. Do not paste commit subjects.
+   upgrade note for anything that breaks. Do not paste commit subjects. If the
+   release changed `goipls` (a property, its hover, completion or the checker),
+   the notes open with the command that updates it:
+   `go install github.com/goi-gui/goi/cmd/goipls@vX.Y.Z`.
 5. `gh release view vX.Y.Z` to confirm the body, and that the tag is on the
    commit you verified.
 
