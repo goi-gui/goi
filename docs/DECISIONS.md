@@ -1643,3 +1643,22 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   interface on the node, so the checker and the tree agree on the same three
   names. It stays a closed set: only `play`, `pause` and `stop` are allowed,
   and only on an `Image` or `SVG`.
+- **An animation frame rewrites its atlas rect; it never packs a new one.** The
+  first version assigned a fresh `*img.Data` per SVG frame, and the renderer keys
+  packed regions by that pointer: every frame added a region, the atlas grew to
+  its cap, then the downscale fallback shrank images until nothing was left —
+  the spinner appeared to fade out of existence. A frame now copies its pixels
+  into the node's existing bitmap and bumps `Data.Gen`, which the renderer reads
+  as "refresh this rect". `TestAnimatedSVGKeepsOneBitmap` pins it.
+- **The loop sleeps until the next animation frame.** Painting at the display
+  rate for an 8 fps GIF wastes a full display list and a full 16 MiB atlas
+  upload per refresh. The animation tick now reports whether a frame actually
+  changed and how long until the next one is due; the run loop waits that long
+  with `WaitEventsTimeout`, so a 8 fps clip costs 8 frames and a 30 Hz SMIL clip
+  30, while input still wakes the loop immediately. Writing just the changed
+  atlas rect instead of the whole texture would be the next saving, but the
+  gogpu 0.34 staging path does not land a sub-rect copy — it froze the picture.
+- **One walk advances every clip, and hidden subtrees are skipped.** GIF/APNG
+  and SVG advance in the same pass over `Tree.WalkVisible`, so a design with
+  five clips pays one walk, not two; a clip on a `visible: false` page neither
+  advances nor keeps the frame loop awake.

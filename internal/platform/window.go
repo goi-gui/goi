@@ -8,6 +8,7 @@ import (
 	"math"
 	"runtime"
 	"sync"
+	"time"
 	"unsafe"
 )
 
@@ -269,6 +270,22 @@ func (p *Window) WaitEvents() {
 		p.dispatch(ev)
 	}
 	p.PollEvents()
+}
+
+// WaitEventsTimeout is WaitEvents with a deadline, so a loop with a pending
+// animation can sleep until its next frame instead of spinning. It reports
+// whether an event arrived.
+func (p *Window) WaitEventsTimeout(d time.Duration) bool {
+	ms := int(d / time.Millisecond)
+	if ms < 1 {
+		ms = 1
+	}
+	ev, ok := sdlWaitEventTimeout(ms)
+	if ok {
+		p.dispatch(ev)
+	}
+	p.PollEvents()
+	return ok
 }
 
 func (p *Window) dispatch(ev rawEvent) {

@@ -113,6 +113,18 @@ int goiWaitEvent(goiEvent *o) {
 	}
 }
 
+int goiWaitEventTimeout(goiEvent *o, int ms) {
+	SDL_Event e;
+	for (;;) {
+		if (!SDL_WaitEventTimeout(&e, ms)) {
+			return 0;
+		}
+		if (goiTranslate(&e, o)) {
+			return 1;
+		}
+	}
+}
+
 int goiPushUserEvent(void) {
 	SDL_Event e;
 	memset(&e, 0, sizeof e);

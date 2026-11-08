@@ -109,6 +109,16 @@ func sdlWaitEvent() (rawEvent, bool) {
 	return translateEvent(&e), true
 }
 
+// sdlWaitEventTimeout waits up to ms for an event. A zero or negative timeout
+// only polls.
+func sdlWaitEventTimeout(ms int) (rawEvent, bool) {
+	var e C.goiEvent
+	if C.goiWaitEventTimeout(&e, C.int(ms)) == 0 {
+		return rawEvent{}, false
+	}
+	return translateEvent(&e), true
+}
+
 func translateEvent(e *C.goiEvent) rawEvent {
 	return rawEvent{
 		kind:     int(e._type),

@@ -43,6 +43,7 @@ enum {
 
 int goiPollEvent(goiEvent *o);
 int goiWaitEvent(goiEvent *o);
+int goiWaitEventTimeout(goiEvent *o, int ms);
 int goiPushUserEvent(void);
 
 // Cursor kinds are platform.Cursor's order, which is SDL_SystemCursor's order

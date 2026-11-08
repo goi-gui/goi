@@ -121,9 +121,15 @@ func (d *gpuDriver) run(frame func()) error {
 		start := time.Now()
 		frame()
 		// Only block when there is nothing left to draw: that is what keeps an
-		// idle app at ~0% CPU.
+		// idle app at ~0% CPU. A pending animation sleep is bounded by its next
+		// frame, so the loop wakes once per frame the clip actually shows
+		// rather than once per display refresh.
 		if !d.app.needsFrame {
-			d.win.WaitEvents()
+			if w := d.app.animWait; w > 0 {
+				d.win.WaitEventsTimeout(w)
+			} else {
+				d.win.WaitEvents()
+			}
 			d.frameAt = time.Time{}
 			continue
 		}
@@ -209,13 +215,14 @@ func (a *App) frame() {
 	if a.tickImageLoads(dt) {
 		a.needsFrame = true
 	}
-	imgAnim := a.tickAnimatedImages(dt)
-	svgAnim := a.tickAnimatedSVGs(dt)
-	if imgAnim || svgAnim {
+	// One walk advances both kinds of clip; a design with none pays a flag read.
+	// Only a frame that actually changed asks for a paint, and the wait tells
+	// the loop how long it may sleep before the next one is due.
+	changed, animWait := a.tickAnimations(dt)
+	a.animWait = animWait
+	if changed {
 		a.needsFrame = true
 	}
-	// One clock per frame keeps the loop awake while anything advances.
-	a.animating = imgAnim || svgAnim
 	if a.tickTweens() {
 		a.needsFrame = true
 	}
@@ -276,11 +283,6 @@ func (a *App) frame() {
 	if a.showFPS {
 		// The overlay measures paint rate, so it keeps painting to have
 		// something to measure. Only a debug build pays this.
-		a.needsFrame = true
-	}
-	// An animation advances on its own, so it keeps the loop awake the same
-	// way; needsFrame was cleared for this frame and would otherwise park it.
-	if a.animating {
 		a.needsFrame = true
 	}
 	d.list.Theme = themeFor(a.win)

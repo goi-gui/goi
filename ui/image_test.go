@@ -245,7 +245,7 @@ func TestImageAnimatedGIF(t *testing.T) {
 
 	// Past the first frame's 50ms the player swaps Pix and bumps the generation
 	// the renderer watches.
-	if !a.tickAnimatedImages(0.06) {
+	if changed, _ := a.tickAnimations(0.06); !changed {
 		t.Fatal("an animated image did not ask for another frame")
 	}
 	if im.Frame != 1 || im.Data.Pix[2] != 0xFF {
@@ -259,7 +259,7 @@ func TestImageAnimatedGIF(t *testing.T) {
 	im.Paused.Set(true)
 	im.AnimTime = 0
 	a.hasAnim = true
-	if a.tickAnimatedImages(0.06) {
+	if changed, _ := a.tickAnimations(0.06); changed {
 		t.Fatal("a paused animation asked for a frame")
 	}
 	if im.Frame != 1 {
@@ -312,7 +312,7 @@ func TestImageAnimationsAreIndependent(t *testing.T) {
 		t.Fatal("two animated nodes share one bitmap, so a frame swap moves both")
 	}
 	two.Paused.Set(true)
-	a.tickAnimatedImages(0.06)
+	a.tickAnimations(0.06)
 	if one.Frame != 1 {
 		t.Fatalf("frame = %d, want the first image to advance", one.Frame)
 	}
@@ -353,21 +353,27 @@ func TestAnimatedSVGPlays(t *testing.T) {
 		t.Fatal("the animated SVG drew nothing")
 	}
 	gen := first.Gen
+	pix := append([]byte(nil), first.Pix...)
 
-	if !a.tickAnimatedSVGs(0.2) {
+	if changed, _ := a.tickAnimations(0.2); !changed {
 		t.Fatal("an animated SVG did not ask for another frame")
 	}
-	if n.Data == first {
-		t.Fatal("the SVG was not re-rasterized")
+	// The bitmap must be the same object: the atlas is keyed by its pointer, so
+	// a fresh one per frame would pack a new region every frame.
+	if n.Data != first {
+		t.Fatal("the SVG swapped its bitmap instead of drawing into it")
 	}
 	if n.Data.Gen == gen {
 		t.Fatal("the new frame did not bump the upload generation")
+	}
+	if string(n.Data.Pix) == string(pix) {
+		t.Fatal("the frame's pixels did not change")
 	}
 
 	// paused freezes the clock.
 	n.Paused.Set(true)
 	before := n.Frame
-	a.tickAnimatedSVGs(0.2)
+	_, _ = a.tickAnimations(0.2)
 	if n.Frame != before {
 		t.Fatalf("frame moved while paused: %d -> %d", before, n.Frame)
 	}
@@ -384,7 +390,7 @@ func TestAnimatedSVGPlays(t *testing.T) {
 	if p := MustByID[*SVG](a.win, "plain"); p.AnimDur != 0 || p.Source != nil {
 		t.Fatalf("a still SVG reported an animation: %v %v", p.Source, p.AnimDur)
 	}
-	if a.tickAnimatedSVGs(0.2) {
+	if changed, _ := a.tickAnimations(0.2); changed {
 		t.Fatal("a still SVG asked for another frame")
 	}
 }
@@ -412,7 +418,7 @@ func TestPausedPropertyIsDeclarative(t *testing.T) {
 	if !im.Paused.Get() {
 		t.Fatal("paused: true did not reach the node")
 	}
-	if a.tickAnimatedImages(0.06) {
+	if changed, _ := a.tickAnimations(0.06); changed {
 		t.Fatal("a paused animation asked for a frame")
 	}
 	if im.Frame != 0 {
@@ -436,7 +442,7 @@ func TestAnimationTransport(t *testing.T) {
 	a.loadImages(tr)
 	im := MustByID[*Image](a.win, "spin")
 
-	a.tickAnimatedImages(0.06)
+	a.tickAnimations(0.06)
 	if im.Frame != 1 {
 		t.Fatalf("frame = %d, want the second", im.Frame)
 	}
@@ -444,12 +450,12 @@ func TestAnimationTransport(t *testing.T) {
 	if !im.Paused.Get() {
 		t.Fatal("Pause did not stop the clock")
 	}
-	a.tickAnimatedImages(0.06)
+	a.tickAnimations(0.06)
 	if im.Frame != 1 {
 		t.Fatalf("frame = %d, want it held", im.Frame)
 	}
 	im.Play()
-	a.tickAnimatedImages(0.06)
+	a.tickAnimations(0.06)
 	if im.Paused.Get() || im.Frame != 0 {
 		t.Fatalf("play: paused=%v frame=%d, want it running on the wrapped frame", im.Paused.Get(), im.Frame)
 	}
@@ -460,11 +466,11 @@ func TestAnimationTransport(t *testing.T) {
 	if im.Data.Pix[0] != 0xFF || im.Data.Pix[2] != 0 {
 		t.Fatalf("stop left %v, want the first (red) frame", im.Data.Pix[:4])
 	}
-	if a.tickAnimatedImages(0.06) {
+	if changed, _ := a.tickAnimations(0.06); changed {
 		t.Fatal("a stopped animation kept the loop awake")
 	}
 	im.Play()
-	if !a.tickAnimatedImages(0.06) {
+	if changed, _ := a.tickAnimations(0.06); !changed {
 		t.Fatal("play after stop did not restart the clock")
 	}
 }
@@ -488,12 +494,14 @@ func TestAnimationLoopProperty(t *testing.T) {
 		t.Fatal("loop: false did not reach the node")
 	}
 
-	// The fixture runs 100ms; half a second is well past one pass.
-	if a.tickAnimatedImages(0.5) {
-		t.Fatal("a finished one-shot kept the loop awake")
-	}
+	// The fixture runs 100ms; half a second is well past one pass. The jump
+	// shows the last frame once, then the clip goes quiet.
+	a.tickAnimations(0.5)
 	if !once.AnimDone || once.Frame != 1 {
 		t.Fatalf("one-shot: done=%v frame=%d, want the last frame held", once.AnimDone, once.Frame)
+	}
+	if changed, wait := a.tickAnimations(0.5); changed || wait != 0 {
+		t.Fatalf("a finished one-shot kept the loop awake: changed=%v wait=%v", changed, wait)
 	}
 
 	// The default loops: the same tick leaves it running.
@@ -509,8 +517,9 @@ func TestAnimationLoopProperty(t *testing.T) {
 	if !always.Loop.Get() {
 		t.Fatal("loop is not true by default")
 	}
-	if !a.tickAnimatedImages(0.5) {
-		t.Fatal("a looping animation stopped asking for frames")
+	changed, wait := a.tickAnimations(0.5)
+	if !changed && wait == 0 {
+		t.Fatal("a looping animation went quiet: no change and no next frame")
 	}
 	if always.AnimDone {
 		t.Fatal("a looping animation reported itself finished")
@@ -548,5 +557,161 @@ func TestEventCallsNodeMethod(t *testing.T) {
 	MustByID[*Button](a.win, "back").Base().Click.Emit(tree.ClickEvent{})
 	if !im.Paused.Get() || im.AnimTime != 0 {
 		t.Fatalf("spin.stop(): paused=%v time=%v", im.Paused.Get(), im.AnimTime)
+	}
+}
+
+// TestAnimatedSVGKeepsOneBitmap is the regression test for a spinner that faded
+// out: every frame used to be a fresh *img.Data, so the renderer packed a new
+// atlas region per frame until no room was left and images were downscaled
+// away. A frame now draws into the node's existing bitmap.
+func TestAnimatedSVGKeepsOneBitmap(t *testing.T) {
+	a := newHeadlessApp()
+	a.assets = fstest.MapFS{"spin.svg": &fstest.MapFile{Data: []byte(animSVGFixture)}}
+	a.win = &Window{}
+	tr, diag := tree.BuildSource([]byte(`Window { Column {
+		SVG { id: spin src: "goi://spin.svg" width: 20 height: 20 }
+	} }`), &tree.Hooks{Marked: a.markDirty})
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	a.win.tree = tr
+	a.loadImages(tr)
+	n := MustByID[*SVG](a.win, "spin")
+	data := n.Data
+	if data == nil {
+		t.Fatal("the animated SVG drew nothing")
+	}
+	for i := 0; i < 200; i++ {
+		_, _ = a.tickAnimations(0.05)
+		if n.Data != data {
+			t.Fatalf("tick %d swapped the bitmap, which would pack a new atlas region", i)
+		}
+	}
+	if n.Data.Gen < 10 {
+		t.Fatalf("generation only moved to %d over 200 ticks", n.Data.Gen)
+	}
+	if n.Data.W != data.W || n.Data.H != data.H {
+		t.Fatalf("bitmap size changed to %dx%d", n.Data.W, n.Data.H)
+	}
+}
+
+// TestHiddenAnimationCostsNothing keeps a background page free: a clip on a
+// hidden page neither advances nor keeps the frame loop awake.
+func TestHiddenAnimationCostsNothing(t *testing.T) {
+	a := newHeadlessApp()
+	a.assets = fstest.MapFS{"spin.gif": &fstest.MapFile{Data: testGIF(t)},
+		"spin.svg": &fstest.MapFile{Data: []byte(animSVGFixture)}}
+	a.win = &Window{}
+	tr, diag := tree.BuildSource([]byte(`Window { Column {
+		Column {
+			id:      page
+			visible: false
+			Image { id: gif src: "goi://spin.gif" }
+			SVG { id: svg src: "goi://spin.svg" }
+		}
+	} }`), &tree.Hooks{Marked: a.markDirty})
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	a.win.tree = tr
+	a.loadImages(tr)
+	gif := MustByID[*Image](a.win, "gif")
+	svg := MustByID[*SVG](a.win, "svg")
+	gen := svg.Data.Gen
+
+	if changed, _ := a.tickAnimations(0.2); changed {
+		t.Fatal("a hidden page kept the frame loop awake")
+	}
+	if gif.Frame != 0 || gif.AnimTime != 0 {
+		t.Fatalf("hidden gif advanced: frame=%d time=%v", gif.Frame, gif.AnimTime)
+	}
+	if svg.AnimTime != 0 || svg.Data.Gen != gen {
+		t.Fatalf("hidden svg advanced: time=%v gen=%d", svg.AnimTime, svg.Data.Gen)
+	}
+
+	// Shown, it plays again.
+	page, err := ByID[*Column](a.win, "page")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page.SetVisible(true)
+	if changed, _ := a.tickAnimations(0.2); !changed {
+		t.Fatal("a shown animation did not resume")
+	}
+}
+
+// TestAnimatedSVGSurvivesTransportAndPageSwitching is the regression test for a
+// spinner that faded away: switching pages while pausing, playing and stopping
+// it must not accumulate bitmaps or lose the pixels.
+func TestAnimatedSVGSurvivesTransportAndPageSwitching(t *testing.T) {
+	a := newHeadlessApp()
+	a.assets = fstest.MapFS{"spin.svg": &fstest.MapFile{Data: []byte(animSVGFixture)}}
+	a.win = &Window{}
+	tr, diag := tree.BuildSource([]byte(`Window { Column {
+		Column {
+			id: page
+			SVG { id: spin src: "goi://spin.svg" width: 20 height: 20 }
+			Image { id: gif src: "goi://spin.svg" }
+		}
+	} }`), &tree.Hooks{Marked: a.markDirty})
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	a.win.tree = tr
+	a.loadImages(tr)
+	n := MustByID[*SVG](a.win, "spin")
+	page, err := ByID[*Column](a.win, "page")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := n.Data
+	if data == nil {
+		t.Fatal("the animated SVG drew nothing")
+	}
+	opaque := func() int {
+		count := 0
+		for i := 3; i < len(data.Pix); i += 4 {
+			if data.Pix[i] != 0 {
+				count++
+			}
+		}
+		return count
+	}
+	first := opaque()
+	if first == 0 {
+		t.Fatal("the first frame is empty")
+	}
+
+	for i := 0; i < 600; i++ {
+		switch i % 7 {
+		case 0:
+			page.SetVisible(false)
+		case 1:
+			page.SetVisible(true)
+		case 2:
+			n.Pause()
+		case 3:
+			n.Play()
+		case 4:
+			n.Stop()
+		case 5:
+			n.Play()
+		}
+		a.tickAnimations(0.02)
+	}
+	if n.Data != data {
+		t.Fatal("the bitmap was replaced, which packs a new atlas region")
+	}
+	// Stop leaves the first frame on screen; the pixels must still be there.
+	if n.Paused.Get() {
+		// Actually play once more so the last state is drawn.
+		n.Play()
+		a.tickAnimations(0.5)
+	}
+	if got := opaque(); got < first/2 {
+		t.Fatalf("opaque pixels fell from %d to %d: the drawing is fading", first, got)
+	}
+	if n.LoadErr != nil {
+		t.Fatalf("LoadErr = %v", n.LoadErr)
 	}
 }

@@ -5,6 +5,7 @@ package render
 import (
 	"testing"
 
+	"github.com/goi-gui/goi/internal/img"
 	"github.com/goi-gui/goi/internal/m3"
 	"github.com/goi-gui/goi/internal/paint"
 )
@@ -48,5 +49,36 @@ func TestSnapRect(t *testing.T) {
 	want = [4]float32{10, 10.5, 5.5, 5}
 	if got != want {
 		t.Fatalf("scale 2: got %v want %v", got, want)
+	}
+}
+
+// TestImageAtlasUpdatesInPlace is the regression test for an animation that
+// filled the atlas: a frame whose generation changed must reuse its region, not
+// pack a new one.
+func TestImageAtlasUpdatesInPlace(t *testing.T) {
+	const size = 64
+	at := &imageRenderer{
+		w: size, h: size,
+		pix:     make([]byte, size*size*4),
+		shelf:   img.Shelf{W: size, H: size},
+		regions: map[*img.Data]img.Region{},
+		gens:    map[*img.Data]int{},
+	}
+	d := &img.Data{W: 8, H: 8, Pix: make([]byte, 8*8*4)}
+	list := &paint.List{Ops: []paint.Op{{Kind: paint.Bitmap, Src: d}}}
+	at.prepare(list)
+	if len(at.regions) != 1 {
+		t.Fatalf("regions after the first frame = %d", len(at.regions))
+	}
+	for i := 0; i < 50; i++ {
+		d.Pix[0] = byte(i)
+		d.Gen++
+		at.prepare(list)
+	}
+	if len(at.regions) != 1 {
+		t.Fatalf("regions after 50 frames = %d, want the one the image already owns", len(at.regions))
+	}
+	if !at.dirty {
+		t.Fatal("the new frame was not marked for upload")
 	}
 }

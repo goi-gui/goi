@@ -97,6 +97,25 @@ func (t *Tree) All() []Node {
 // Walk calls fn for every node, root first, without building a slice. Use it
 // where All would run every frame or every pointer move: a hover update or a
 // tick that scans for one kind of node.
+// WalkVisible is Walk without the subtrees hidden by `visible: false`: an
+// animation inside a hidden page costs nothing, and a pruned tree is the same
+// one paint draws.
+func (t *Tree) WalkVisible(fn func(Node)) {
+	var walk func(*NodeBase)
+	walk = func(b *NodeBase) {
+		if !b.Visible() {
+			return
+		}
+		fn(b.node)
+		for _, c := range b.kids {
+			walk(c)
+		}
+	}
+	if t.Root != nil {
+		walk(&t.Root.NodeBase)
+	}
+}
+
 func (t *Tree) Walk(fn func(Node)) {
 	var walk func(*NodeBase)
 	walk = func(b *NodeBase) {

@@ -87,9 +87,9 @@ type App struct {
 	// hasAnim is true while the tree holds an animated Image, so the per-frame
 	// walk only runs when there is one.
 	hasAnim bool
-	// animating is true while at least one animation is actually advancing, so
-	// the frame loop keeps drawing even after needsFrame is cleared for a frame.
-	animating bool
+	// animWait is how long until the next animation frame is due; zero means
+	// nothing is playing, so the loop may block until input.
+	animWait time.Duration
 	// svgs caches parsed SVG files by src, and svgData the rasterized bitmaps
 	// by src and colour, so a reload or a second node reuses the work. svgRemote
 	// holds the bytes of a fetched remote src until it is parsed.

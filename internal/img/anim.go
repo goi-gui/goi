@@ -56,6 +56,26 @@ func (a *Anim) FrameAt(elapsed time.Duration) (int, bool) {
 	return len(a.Frames) - 1, false
 }
 
+// UntilNextFrame is how long frame i still stays on screen, given how much of
+// the animation has played. It is what a player sleeps for instead of spinning.
+func (a *Anim) UntilNextFrame(i int, elapsed time.Duration) time.Duration {
+	if i < 0 || i >= len(a.Frames) {
+		return 0
+	}
+	var before time.Duration
+	for j := 0; j < i; j++ {
+		before += a.Frames[j].Delay
+	}
+	inFrame := elapsed - before
+	if pass := a.Duration(); pass > 0 {
+		inFrame = (elapsed % pass) - before
+	}
+	if left := a.Frames[i].Delay - inFrame; left > 0 {
+		return left
+	}
+	return 0
+}
+
 // Limits on a decoded animation. A remote file is untrusted, and a GIF may
 // declare thousands of large frames; past these it degrades to its first frame
 // instead of exhausting memory.

@@ -33,7 +33,8 @@ type imageRenderer struct {
 	regions map[*img.Data]img.Region
 	// gens is the Data.Gen each region holds, so an animation frame that swaps
 	// Pix in place is uploaded again instead of packed a second time.
-	gens  map[*img.Data]int
+	gens map[*img.Data]int
+	// dirty is set when pix changed since the last upload.
 	dirty bool
 	// resized is set when the atlas grew, so the texture must be rebuilt.
 	resized bool
@@ -232,7 +233,14 @@ func (t *imageRenderer) grow() bool {
 	return true
 }
 
-// upload pushes the atlas if a new image was packed.
+// upload pushes the atlas if a new image was packed or an animation frame
+// changed its region.
+//
+// shortcut: the whole texture goes every time. Writing only the changed rect
+// looked cheaper but the gogpu 0.34 staging path does not land a sub-rect copy,
+// and the animation simply froze; a full write is 16 MiB at the 2048 default,
+// which the frame clock keeps to the clip's own rate. Revisit when that path is
+// fixed or the atlas default grows.
 func (t *imageRenderer) upload(g *GPU) error {
 	if t.resized {
 		if err := t.recreate(g); err != nil {

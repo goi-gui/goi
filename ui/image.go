@@ -490,114 +490,137 @@ func (a *App) finishImageLoad(src string, d *img.Data, anim *img.Anim, err error
 	a.needsFrame = true
 }
 
-// tickAnimatedImages advances every animated Image and reports whether another
-// frame is needed. It walks the tree only while the design has an animation, so
-// a window with still pictures pays nothing.
-func (a *App) tickAnimatedImages(dt float64) bool {
-	if !a.hasAnim || a.win == nil || a.win.tree == nil {
-		return false
-	}
-	active, any := false, false
-	a.win.tree.Walk(func(n tree.Node) {
-		im, ok := n.(*tree.Image)
-		if !ok || im.Anim == nil {
-			return
-		}
-		any = true
-		if im.Paused.Get() || im.Data == nil {
-			return
-		}
-		if im.AnimDone && !im.Loop.Get() {
-			return
-		}
-		im.AnimDone = false
-		im.AnimTime += time.Duration(dt * float64(time.Second))
-		// A design that turned looping off plays the first pass only, whatever
-		// the file declares, and holds the last frame at the end.
-		at := im.AnimTime
-		oneShot := false
-		if !im.Loop.Get() {
-			if pass := im.Anim.Duration(); pass > 0 && at >= pass {
-				at, oneShot = pass-1, true
-			}
-		}
-		i, done := im.Anim.FrameAt(at)
-		if oneShot {
-			done = true
-		}
-		if done {
-			// A finite loop holds its last frame.
-			im.AnimDone = true
-		} else {
-			active = true
-		}
-		if i == im.Frame && im.Data.Pix != nil {
-			return
-		}
-		im.Frame = i
-		im.Data.Pix = im.Anim.Frames[i].Pix
-		// Bumping the generation makes the renderer upload this image's atlas
-		// region again instead of packing the new frame beside the old one.
-		im.Data.Gen++
-		im.Base().MarkDirty(tree.DirtyPaint)
-	})
-	a.hasAnim = any
-	return active
-}
-
 // svgFrameStep quantizes SMIL playback: the document is re-rasterized only when
 // the quantized time changes, so a 240Hz window does not pay 240 parses a second.
 const svgFrameStep = time.Second / 30
 
-// tickAnimatedSVGs advances every animated SVG and reports whether another frame
-// is needed. A node re-rasterizes at most once per svgFrameStep.
-func (a *App) tickAnimatedSVGs(dt float64) bool {
-	if !a.hasSVGAnim || a.win == nil || a.win.tree == nil {
-		return false
+// tickAnimations advances every animated Image and SVG, in one walk of the
+// visible tree. It reports whether a frame actually changed, so the loop paints
+// only when a picture moved, and how long until the next frame is due, so the
+// loop can sleep instead of spinning at the display rate for an 8 fps GIF.
+//
+// The walk is skipped outright when the design has no animation, and the tree
+// is pruned at hidden nodes, so a clip on a background page costs nothing.
+func (a *App) tickAnimations(dt float64) (changed bool, wait time.Duration) {
+	if (!a.hasAnim && !a.hasSVGAnim) || a.win == nil || a.win.tree == nil {
+		return false, 0
 	}
-	active, any := false, false
-	a.win.tree.Walk(func(n tree.Node) {
-		s, ok := n.(*tree.SVG)
-		if !ok || s.AnimDur <= 0 || s.Source == nil {
-			return
+	step := time.Duration(dt * float64(time.Second))
+	a.win.tree.WalkVisible(func(n tree.Node) {
+		var due time.Duration
+		switch v := n.(type) {
+		case *tree.Image:
+			var c bool
+			c, due = tickImage(v, step)
+			changed = changed || c
+		case *tree.SVG:
+			var c bool
+			c, due = tickSVG(v, step)
+			changed = changed || c
 		}
-		any = true
-		if s.Paused.Get() || s.Data == nil {
-			return
+		if due > 0 && (wait == 0 || due < wait) {
+			wait = due
 		}
-		if s.AnimDone && !s.Loop.Get() {
-			return
-		}
-		s.AnimDone = false
-		s.AnimTime += time.Duration(dt * float64(time.Second))
-		end := s.Source.PlayLength()
-		if !s.Loop.Get() && s.AnimDur > 0 {
-			// loop: false means the first pass, whatever repeatCount says.
-			end = s.AnimDur
-		}
-		if end > 0 && s.AnimTime >= end {
-			s.AnimDone = true
-		} else {
-			active = true
-		}
-		frame := int(s.AnimTime / svgFrameStep)
-		if frame == s.Frame {
-			return
-		}
-		s.Frame = frame
-		d, err := s.Source.RenderAtLoop(svgColor(s.RenderedColor), s.AnimTime, s.Loop.Get())
-		if err != nil {
-			s.LoadErr = err
-			return
-		}
-		// The node keeps one bitmap and bumps its generation, so the renderer
-		// rewrites the atlas region instead of packing every frame.
-		d.Gen = s.Data.Gen + 1
-		s.Data = d
-		s.Base().MarkDirty(tree.DirtyPaint)
 	})
-	a.hasSVGAnim = any
-	return active
+	return changed, wait
+}
+
+// tickImage advances one GIF or APNG and reports whether its pixels changed,
+// plus how long until its next frame is due.
+func tickImage(im *tree.Image, step time.Duration) (bool, time.Duration) {
+	if im.Anim == nil || im.Paused.Get() || im.Data == nil {
+		return false, 0
+	}
+	if im.AnimDone && !im.Loop.Get() {
+		return false, 0
+	}
+	im.AnimDone = false
+	im.AnimTime += step
+	// A design that turned looping off plays the first pass only, whatever the
+	// file declares, and holds the last frame at the end.
+	at := im.AnimTime
+	oneShot := false
+	if !im.Loop.Get() {
+		if pass := im.Anim.Duration(); pass > 0 && at >= pass {
+			at, oneShot = pass-1, true
+		}
+	}
+	i, done := im.Anim.FrameAt(at)
+	if oneShot {
+		done = true
+	}
+	if done {
+		im.AnimDone = true // a finite loop holds its last frame
+	}
+	// Only swap pixels when the frame actually changed, which is what keeps a
+	// slow GIF cheap in a fast window.
+	if i != im.Frame || im.Data.Pix == nil {
+		im.Frame = i
+		im.Data.Pix = im.Anim.Frames[i].Pix
+		// The generation makes the renderer upload this image's atlas region
+		// again instead of packing the new frame beside the old one.
+		im.Data.Gen++
+		im.Base().MarkDirty(tree.DirtyPaint)
+		return true, 0
+	}
+	if im.AnimDone {
+		return false, 0
+	}
+	return false, im.Anim.UntilNextFrame(i, im.AnimTime)
+}
+
+// tickSVG advances one SMIL document and reports whether its pixels changed,
+// plus how long until the next 30 Hz step is due. The document is re-rasterized
+// at most once per svgFrameStep.
+func tickSVG(s *tree.SVG, step time.Duration) (bool, time.Duration) {
+	if s.Source == nil || s.AnimDur <= 0 || s.Paused.Get() || s.Data == nil {
+		return false, 0
+	}
+	if s.AnimDone && !s.Loop.Get() {
+		return false, 0
+	}
+	s.AnimDone = false
+	s.AnimTime += step
+	end := s.Source.PlayLength()
+	if !s.Loop.Get() {
+		// loop: false means the first pass, whatever repeatCount says.
+		end = s.AnimDur
+	}
+	if end > 0 && s.AnimTime >= end {
+		s.AnimDone = true
+	}
+	frame := int(s.AnimTime / svgFrameStep)
+	if frame == s.Frame {
+		if s.AnimDone {
+			return false, 0
+		}
+		return false, svgFrameStep - s.AnimTime%svgFrameStep
+	}
+	s.Frame = frame
+	d, err := s.Source.RenderAtLoop(svgColor(s.RenderedColor), s.AnimTime, s.Loop.Get())
+	if err != nil {
+		s.LoadErr = err
+		return false, 0
+	}
+	// The pixels go into the node's existing bitmap and only its generation
+	// changes, so the renderer rewrites that one atlas rect. A new *img.Data
+	// per frame would pack a fresh region each time, and the atlas would fill
+	// up until images were downscaled away.
+	writePix(s.Data, d)
+	s.Base().MarkDirty(tree.DirtyPaint)
+	return true, 0
+}
+
+// writePix copies one decoded frame over a node's bitmap, keeping the pointer
+// the atlas is keyed by, and bumps the generation the renderer watches.
+func writePix(dst, src *img.Data) {
+	if dst.W == src.W && dst.H == src.H && len(dst.Pix) == len(src.Pix) {
+		copy(dst.Pix, src.Pix)
+		dst.Gen++
+		return
+	}
+	dst.W, dst.H, dst.Pix = src.W, src.H, src.Pix
+	dst.Gen++
 }
 
 // loadPulsePeriod is how long one breath of the loading placeholder takes.
