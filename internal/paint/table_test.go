@@ -19,14 +19,14 @@ const tableSrc = `Window { Column {
 		TableColumn { key: "age" label: "Age" width: 80 align: end numeric: true sortable: true }
 
 		TableRow {
-			TableCell { text: "Kaan" }
-			TableCell { text: "Engineer" }
-			TableCell { text: "31" }
+			TableCell { value: "Kaan" Text { text: "Kaan" } }
+			TableCell { value: "Engineer" Text { text: "Engineer" } }
+			TableCell { value: "31" Text { text: "31" } }
 		}
 		TableRow {
-			TableCell { text: "Ada" }
-			TableCell { text: "Mathematician" }
-			TableCell { text: "36" }
+			TableCell { value: "Ada" Text { text: "Ada" } }
+			TableCell { value: "Mathematician" Text { text: "Mathematician" } }
+			TableCell { value: "36" Text { text: "36" } }
 		}
 	}
 } }`
@@ -175,7 +175,7 @@ func TestTablePercentWidths(t *testing.T) {
 		TableColumn { key: "a" width: 10% }
 		TableColumn { key: "b" width: 100 }
 		TableColumn { key: "c" }
-		TableRow { TableCell { text: "a" } TableCell { text: "b" } TableCell { text: "c" } }
+		TableRow { TableCell { value: "a" Text { text: "a" } } TableCell { value: "b" Text { text: "b" } } TableCell { value: "c" Text { text: "c" } } }
 	} } }`
 	tr, diag := tree.BuildSource([]byte(src), nil)
 	if !diag.Empty() {
@@ -282,9 +282,9 @@ func TestTableMultipleSelectedRowsPaint(t *testing.T) {
 		selectable: multiple
 		TableColumn { label: "A" width: 150 }
 		TableColumn { label: "B" width: 150 }
-		TableRow { selected: true TableCell { text: "a1" } TableCell { text: "b1" } }
-		TableRow { TableCell { text: "a2" } TableCell { text: "b2" } }
-		TableRow { selected: true TableCell { text: "a3" } TableCell { text: "b3" } }
+		TableRow { selected: true TableCell { value: "a1" Text { text: "a1" } } TableCell { value: "b1" Text { text: "b1" } } }
+		TableRow { TableCell { value: "a2" Text { text: "a2" } } TableCell { value: "b2" Text { text: "b2" } } }
+		TableRow { selected: true TableCell { value: "a3" Text { text: "a3" } } TableCell { value: "b3" Text { text: "b3" } } }
 	} } }`
 	l := list(t, src, 500, 400)
 	col := m3.Light().Colors
@@ -307,7 +307,7 @@ func TestTableColumnIcon(t *testing.T) {
 		width: 300
 		TableColumn { label: "Name" icon: "person" width: 200 }
 		TableColumn { icon: "cake" width: 100 }
-		TableRow { TableCell { text: "Kaan" } TableCell { text: "31" } }
+		TableRow { TableCell { value: "Kaan" Text { text: "Kaan" } } TableCell { value: "31" Text { text: "31" } } }
 	} } }`
 	l := list(t, src, 500, 400)
 	x := map[string]float32{}
@@ -331,4 +331,158 @@ func TestTableColumnIcon(t *testing.T) {
 		}
 	}
 	t.Fatalf("missing the header label:\n%s", l.Dump())
+}
+
+// TestTableCellDrawsItsChildren keeps the new cell contract: the cell's value is
+// only the sort key, so what reaches the screen is the child component.
+func TestTableCellDrawsItsChildren(t *testing.T) {
+	const src = `Window { Column { Table {
+		id: table
+		width: 400
+		TableColumn { label: "Task" width: 200 }
+		TableColumn { label: "Status" width: 200 }
+		TableRow {
+			TableCell {
+				value: "2026-11-08"
+				Text { text: "8 Nov 2026" }
+			}
+			TableCell {
+				value: "done"
+				Row {
+					spacing: 6
+					Chip { label: "shipped" variant: input selected: true }
+				}
+			}
+		}
+	} } }`
+	l := list(t, src, 500, 400)
+	texts := map[string]bool{}
+	for _, op := range l.Ops {
+		if op.Kind == Text {
+			texts[op.Text] = true
+		}
+	}
+	if !texts["8 Nov 2026"] {
+		t.Fatalf("the cell's Text child was not drawn:\n%s", l.Dump())
+	}
+	if !texts["shipped"] {
+		t.Fatalf("a Chip inside a cell was not drawn:\n%s", l.Dump())
+	}
+	if texts["2026-11-08"] || texts["done"] {
+		t.Fatalf("a cell value leaked onto the screen:\n%s", l.Dump())
+	}
+}
+
+// TestTableSortUsesValue checks that ordering reads `value`, not the drawn text,
+// so a formatted date sorts by its ISO key.
+func TestTableSortUsesValue(t *testing.T) {
+	const src = `Window { Column { Table {
+		id: table
+		width: 400
+		TableColumn { key: "when" label: "When" sortable: true }
+		TableRow { TableCell { value: "2026-02-01" Text { text: "1 Feb" } } }
+		TableRow { TableCell { value: "2025-12-24" Text { text: "24 Dec" } } }
+		TableRow { TableCell { value: "2026-01-15" Text { text: "15 Jan" } } }
+	} } }`
+	tr, diag := tree.BuildSource([]byte(src), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 500, 400)
+	n, _ := tr.ByID("table")
+	tbl := n.(*tree.Table)
+	if !tbl.SortBy("when", true) {
+		t.Fatal("SortBy did not find the column")
+	}
+	want := []string{"2025-12-24", "2026-01-15", "2026-02-01"}
+	for i, v := range want {
+		if got := tbl.CellValue(i, 0); got != v {
+			t.Fatalf("row %d = %q, want %q", i, got, v)
+		}
+	}
+}
+
+// TestTableCellAlignsItsContent puts an end-aligned column's child against the
+// trailing inset, and a start-aligned one against the leading inset.
+func TestTableCellAlignsItsContent(t *testing.T) {
+	const src = `Window { Column { Table {
+		id: table
+		width: 400
+		TableColumn { label: "A" width: 200 align: end }
+		TableColumn { label: "B" width: 200 align: start }
+		TableRow {
+			TableCell { Text { text: "right" } }
+			TableCell { Text { text: "left" } }
+		}
+	} } }`
+	l := list(t, src, 500, 400)
+	box := func(text string) [4]float32 {
+		for _, op := range l.Ops {
+			if op.Kind == Text && op.Text == text {
+				return op.Rect
+			}
+		}
+		t.Fatalf("%q was not drawn:\n%s", text, l.Dump())
+		return [4]float32{}
+	}
+	right, left := box("right"), box("left")
+	// Column A spans 0..200 with a 16dp inset, so an end-aligned label ends at
+	// 184; column B starts at 200, so a start-aligned label begins at 216.
+	if end := right[0] + right[2]; end < 181 || end > 187 {
+		t.Fatalf("end-aligned text ends at %v, want about 184", end)
+	}
+	if left[0] < 213 || left[0] > 219 {
+		t.Fatalf("start-aligned text starts at %v, want about 216", left[0])
+	}
+}
+
+// TestTableCellIconLeadsContent checks that a cell icon stays left of the
+// children and layout leaves room for it.
+func TestTableCellIconLeadsContent(t *testing.T) {
+	const src = `Window { Column { Table {
+		id: table
+		width: 400
+		TableColumn { label: "Event" width: 400 }
+		TableRow {
+			TableCell { icon: check_circle Text { text: "Build passed" } }
+		}
+	} } }`
+	l := list(t, src, 500, 400)
+	var icon, label [4]float32
+	for _, op := range l.Ops {
+		switch {
+		case op.Kind == Text && op.Icon && op.Text == "check_circle":
+			icon = op.Rect
+		case op.Kind == Text && op.Text == "Build passed":
+			label = op.Rect
+		}
+	}
+	if icon[2] == 0 || label[2] == 0 {
+		t.Fatalf("icon or label missing:\n%s", l.Dump())
+	}
+	if icon[0]+icon[2] > label[0] {
+		t.Fatalf("icon %v overlaps the label %v", icon, label)
+	}
+}
+
+// TestTableRowDisabledDimsContent checks the row switch now that a cell holds
+// children: the child's colour is faded, not just a cell text colour.
+func TestTableRowDisabledDimsContent(t *testing.T) {
+	const src = `Window { Column { Table {
+		id: table
+		width: 300
+		TableColumn { label: "A" width: 300 }
+		TableRow { disabled: true TableCell { value: "on" Text { text: "on" } } }
+		TableRow { TableCell { value: "off" Text { text: "off" } } }
+	} } }`
+	l := list(t, src, 500, 400)
+	for _, op := range l.Ops {
+		if op.Kind == Text && op.Text == "on" {
+			if op.Color == m3.Light().Colors.OnSurface {
+				t.Fatalf("a disabled row's text drew at full strength")
+			}
+			return
+		}
+	}
+	t.Fatalf("the disabled row's text was not drawn:\n%s", l.Dump())
 }

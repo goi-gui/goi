@@ -2195,7 +2195,13 @@ func propDoc(el string, p schema.Prop) string {
 			"From Go: `SetRange(lo, hi)` and `OnRange`.")
 	case "numeric":
 		b.WriteString("\n\nRight-aligns the column by default and sorts by the number inside " +
-			"its cells, so `1,200` orders as 1200.")
+			"each cell's `value`, so `1,200` orders as 1200.")
+	case "value":
+		if el == "TableCell" {
+			b.WriteString("\n\nThe string sorting reads for this cell, which may differ from " +
+				"what the cell draws: `value: \"2026-11-08\"` with a `Text` showing " +
+				"\"8 Nov 2026\". A design that leaves it empty sorts as an empty string.")
+		}
 	case "key":
 		b.WriteString("\n\nNames a table column for Go: `table.SortBy(\"age\", false)` needs no " +
 			"index.")

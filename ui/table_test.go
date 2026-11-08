@@ -16,9 +16,9 @@ const tableUI = `Window {
 			TableColumn { key: "role" label: "Role" sortable: true }
 			TableColumn { key: "age" label: "Age" width: 80 align: end numeric: true sortable: true }
 
-			TableRow { TableCell { text: "Kaan" } TableCell { text: "Engineer" } TableCell { text: "31" } }
-			TableRow { TableCell { text: "Ada" } TableCell { text: "Mathematician" } TableCell { text: "36" } }
-			TableRow { TableCell { text: "Linus" } TableCell { text: "Kernel" } TableCell { text: "54" } }
+			TableRow { TableCell { value: "Kaan" Text { text: "Kaan" } } TableCell { value: "Engineer" Text { text: "Engineer" } } TableCell { value: "31" Text { text: "31" } } }
+			TableRow { TableCell { value: "Ada" Text { text: "Ada" } } TableCell { value: "Mathematician" Text { text: "Mathematician" } } TableCell { value: "36" Text { text: "36" } } }
+			TableRow { TableCell { value: "Linus" Text { text: "Linus" } } TableCell { value: "Kernel" Text { text: "Kernel" } } TableCell { value: "54" Text { text: "54" } } }
 		}
 	}
 }`
@@ -54,7 +54,7 @@ func TestTableHeaderClickSorts(t *testing.T) {
 	if got[0].Key != "age" || !got[0].Ascending || got[0].Column != 2 {
 		t.Fatalf("first sort = %+v", got[0])
 	}
-	if first := tbl.CellText(0, 0); first != "Kaan" {
+	if first := tbl.CellValue(0, 0); first != "Kaan" {
 		t.Fatalf("ascending first row = %q, want Kaan (31)", first)
 	}
 
@@ -63,7 +63,7 @@ func TestTableHeaderClickSorts(t *testing.T) {
 	if len(got) != 2 || got[1].Ascending {
 		t.Fatalf("second click = %+v, want descending", got)
 	}
-	if first := tbl.CellText(0, 0); first != "Linus" {
+	if first := tbl.CellValue(0, 0); first != "Linus" {
 		t.Fatalf("descending first row = %q, want Linus (54)", first)
 	}
 }
@@ -78,7 +78,7 @@ func TestTableHeaderSortsText(t *testing.T) {
 	in.MouseUp(x, y, 0)
 	var names []string
 	for i := 0; i < tbl.RowCount(); i++ {
-		names = append(names, tbl.CellText(i, 0))
+		names = append(names, tbl.CellValue(i, 0))
 	}
 	want := []string{"Ada", "Kaan", "Linus"}
 	for i := range want {
@@ -123,8 +123,8 @@ func TestTableSortKeepsSelectionMeaning(t *testing.T) {
 	tbl.OnSelect(func(i int) { picked = i })
 	in.MouseDown(r.X+10, r.Y+r.H/2, 0, false)
 	in.MouseUp(r.X+10, r.Y+r.H/2, 0)
-	if picked != 0 || tbl.CellText(0, 0) != "Linus" {
-		t.Fatalf("selected %d (%q), want the first sorted row", picked, tbl.CellText(0, 0))
+	if picked != 0 || tbl.CellValue(0, 0) != "Linus" {
+		t.Fatalf("selected %d (%q), want the first sorted row", picked, tbl.CellValue(0, 0))
 	}
 }
 
@@ -157,7 +157,7 @@ func TestTablePointerShapes(t *testing.T) {
 			id: plain
 			width: 200
 			TableColumn { label: "A" width: 100 }
-			TableRow { TableCell { text: "x" } }
+			TableRow { TableCell { value: "x" Text { text: "x" } } }
 		}
 	} }`, 400, 300)
 	col := MustByID[*Table](win2, "plain").TableColumns()[0]
@@ -180,16 +180,16 @@ func TestTableGoSideAPI(t *testing.T) {
 	if !tbl.SortBy("name", false) {
 		t.Fatal("SortBy(name, false) did not find the column")
 	}
-	if tbl.CellText(0, 0) != "Linus" {
-		t.Fatalf("first row = %q, want Linus", tbl.CellText(0, 0))
+	if tbl.CellValue(0, 0) != "Linus" {
+		t.Fatalf("first row = %q, want Linus", tbl.CellValue(0, 0))
 	}
 	if tbl.SortBy("nope", true) {
 		t.Fatal("SortBy found a column that does not exist")
 	}
-	if !tbl.SetCell(1, 0, "Grace") || tbl.CellText(1, 0) != "Grace" {
-		t.Fatalf("SetCell = %q", tbl.CellText(1, 0))
+	if !tbl.SetCellValue(1, 0, "Grace") || tbl.CellValue(1, 0) != "Grace" {
+		t.Fatalf("SetCell = %q", tbl.CellValue(1, 0))
 	}
-	if tbl.SetCell(9, 0, "x") {
+	if tbl.SetCellValue(9, 0, "x") {
 		t.Fatal("SetCell accepted an out-of-range row")
 	}
 	tbl.SetSelectedRow(2)
@@ -228,9 +228,9 @@ const tableUIMulti = `Window { Column { Table {
 	TableColumn { key: "name" label: "Name" width: 200 sortable: true }
 	TableColumn { key: "role" label: "Role" sortable: true }
 	TableColumn { key: "age" label: "Age" width: 80 align: end numeric: true sortable: true }
-	TableRow { TableCell { text: "Kaan" } TableCell { text: "Engineer" } TableCell { text: "31" } }
-	TableRow { TableCell { text: "Ada" } TableCell { text: "Mathematician" } TableCell { text: "36" } }
-	TableRow { TableCell { text: "Linus" } TableCell { text: "Kernel" } TableCell { text: "54" } }
+	TableRow { TableCell { value: "Kaan" Text { text: "Kaan" } } TableCell { value: "Engineer" Text { text: "Engineer" } } TableCell { value: "31" Text { text: "31" } } }
+	TableRow { TableCell { value: "Ada" Text { text: "Ada" } } TableCell { value: "Mathematician" Text { text: "Mathematician" } } TableCell { value: "36" Text { text: "36" } } }
+	TableRow { TableCell { value: "Linus" Text { text: "Linus" } } TableCell { value: "Kernel" Text { text: "Kernel" } } TableCell { value: "54" Text { text: "54" } } }
 } } }`
 
 // pressRow clicks the middle of a row.
@@ -296,7 +296,7 @@ func TestTableDefaultSelectableNone(t *testing.T) {
 		width: 300
 		TableColumn { label: "A" width: 150 }
 		TableColumn { label: "B" width: 150 }
-		TableRow { TableCell { text: "a" } TableCell { text: "b" } }
+		TableRow { TableCell { value: "a" Text { text: "a" } } TableCell { value: "b" Text { text: "b" } } }
 	} } }`
 	_, win, in := inputFixture(t, src, 500, 400)
 	tbl := MustByID[*Table](win, "table")
@@ -355,4 +355,49 @@ func equalInts(a, b []int) bool {
 		}
 	}
 	return true
+}
+
+// TestTableClickOnCellContentSelectsTheRow keeps the container change honest: a
+// press lands on the Text inside a cell, and the row still selects.
+func TestTableClickOnCellContentSelectsTheRow(t *testing.T) {
+	_, win, in := inputFixture(t, tableUI, 500, 600)
+	tbl := MustByID[*Table](win, "table")
+	cell := tbl.TableRows()[1]
+	text := cell.Kids()[0].Node()
+	r := absoluteRect(text)
+	in.MouseDown(r.X+2, r.Y+r.H/2, 0, false)
+	in.MouseUp(r.X+2, r.Y+r.H/2, 0)
+	if got := tbl.SelectedRows(); len(got) != 1 || got[0] != 1 {
+		t.Fatalf("selected = %v, want the row whose text was clicked", got)
+	}
+}
+
+// TestTableButtonInCellKeepsItsClick checks the escape hatch: an interactive
+// child inside a selectable cell acts, and does not also select the row.
+func TestTableButtonInCellKeepsItsClick(t *testing.T) {
+	const src = `Window { Column { Table {
+		id: table
+		width: 400
+		selectable: single
+		TableColumn { label: "A" width: 400 }
+		TableRow {
+			TableCell {
+				Button { id: act label: "Act" }
+			}
+		}
+	} } }`
+	_, win, in := inputFixture(t, src, 500, 400)
+	tbl := MustByID[*Table](win, "table")
+	btn := MustByID[*Button](win, "act")
+	clicked := false
+	btn.OnClick(func(ClickEvent) { clicked = true })
+	r := absoluteRect(btn)
+	in.MouseDown(r.X+r.W/2, r.Y+r.H/2, 0, false)
+	in.MouseUp(r.X+r.W/2, r.Y+r.H/2, 0)
+	if !clicked {
+		t.Fatal("a button inside a cell did not receive its click")
+	}
+	if got := tbl.SelectedRows(); len(got) != 0 {
+		t.Fatalf("selected = %v, want the button to win", got)
+	}
 }

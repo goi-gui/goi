@@ -47,7 +47,7 @@ func (t *Table) TableRows() []*TableRow {
 	}
 	asc := t.SortAscending.Get()
 	sort.SliceStable(rows, func(i, j int) bool {
-		a, b := CellText(rows[i], col), CellText(rows[j], col)
+		a, b := CellValue(rows[i], col), CellValue(rows[j], col)
 		if numeric {
 			af, aok := numberIn(a)
 			bf, bok := numberIn(b)
@@ -253,9 +253,10 @@ func (t *Table) anyRowSelected() bool {
 	return false
 }
 
-// SetCell sets a cell's text, addressing it by row display index and column
-// index. It reports false when either is out of range.
-func (t *Table) SetCell(row, column int, text string) bool {
+// SetCellValue sets a cell's value, the string sorting uses, and the text of its
+// first Text child when it has one so the cell shows the new value. It reports
+// false when either index is out of range.
+func (t *Table) SetCellValue(row, column int, value string) bool {
 	rows := t.TableRows()
 	if row < 0 || row >= len(rows) {
 		return false
@@ -264,18 +265,26 @@ func (t *Table) SetCell(row, column int, text string) bool {
 	if column < 0 || column >= len(cells) {
 		return false
 	}
-	cells[column].Text.Set(text)
+	cell := cells[column]
+	cell.Value.Set(value)
+	for _, k := range cell.Kids() {
+		if txt, ok := k.Node().(*Text); ok {
+			txt.Text.Set(value)
+			break
+		}
+	}
+	t.MarkDirty(DirtyLayout)
 	return true
 }
 
-// CellText returns a cell's text by display row and column index, "" when
+// CellValue returns a cell's value by display row and column index, "" when
 // either is out of range.
-func (t *Table) CellText(row, column int) string {
+func (t *Table) CellValue(row, column int) string {
 	rows := t.TableRows()
 	if row < 0 || row >= len(rows) {
 		return ""
 	}
-	return CellText(rows[row], column)
+	return CellValue(rows[row], column)
 }
 
 // CellNodes returns one row's cells in column order.
@@ -289,14 +298,75 @@ func CellNodes(row *TableRow) []*TableCell {
 	return out
 }
 
-// CellText returns the text of a row's cell at a column index, "" when the row
-// has no such cell.
-func CellText(row *TableRow, column int) string {
+// CellValue returns the value of a row's cell at a column index, "" when the
+// row has no such cell. It is what sorting reads; the cell's children are what
+// a reader sees.
+func CellValue(row *TableRow, column int) string {
 	cells := CellNodes(row)
 	if column < 0 || column >= len(cells) {
 		return ""
 	}
-	return cells[column].Text.Get()
+	return cells[column].Value.Get()
+}
+
+// AlignMode resolves the alignment a cell uses: its own, else its column's,
+// else end for a numeric column and start otherwise.
+func (c *TableCell) AlignMode() string {
+	if a := c.Align.Get(); a != "" {
+		return a
+	}
+	col := ColumnOf(c)
+	if col == nil {
+		return "start"
+	}
+	if a := col.Align.Get(); a != "" {
+		return a
+	}
+	if col.Numeric.Get() {
+		return "end"
+	}
+	return "start"
+}
+
+// ColumnOf returns the column that owns a cell, by the cell's position in its
+// row, or nil.
+func ColumnOf(cell *TableCell) *TableColumn {
+	p := cell.Base().Parent()
+	if p == nil {
+		return nil
+	}
+	row, ok := p.(*TableRow)
+	if !ok {
+		return nil
+	}
+	gp := row.Base().Parent()
+	if gp == nil {
+		return nil
+	}
+	t, ok := gp.(*Table)
+	if !ok {
+		return nil
+	}
+	for i, c := range CellNodes(row) {
+		if c == cell {
+			if cols := t.TableColumns(); i < len(cols) {
+				return cols[i]
+			}
+			return nil
+		}
+	}
+	return nil
+}
+
+// RowDisabled reports whether the row holding the cell is disabled, which dims
+// its content.
+func (c *TableCell) RowDisabled() bool {
+	p := c.Base().Parent()
+	if p == nil {
+		return false
+	}
+	row, ok := p.(*TableRow)
+	return ok && row.Disabled.Get()
 }
 
 // numberIn reads the first number in s, so "12 items" sorts like 12.

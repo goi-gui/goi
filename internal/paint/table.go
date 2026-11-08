@@ -32,56 +32,6 @@ func alignOf(name string) Align {
 	return AlignStart
 }
 
-// columnFor returns the column that owns a cell, by the cell's position in its
-// row.
-func columnFor(cell *tree.TableCell) (*tree.Table, *tree.TableColumn, int) {
-	p := cell.Base().Parent()
-	if p == nil {
-		return nil, nil, -1
-	}
-	row, ok := p.(*tree.TableRow)
-	if !ok {
-		return nil, nil, -1
-	}
-	gp := row.Base().Parent()
-	if gp == nil {
-		return nil, nil, -1
-	}
-	t, ok := gp.(*tree.Table)
-	if !ok {
-		return nil, nil, -1
-	}
-	for i, c := range tree.CellNodes(row) {
-		if c == cell {
-			cols := t.TableColumns()
-			if i < len(cols) {
-				return t, cols[i], i
-			}
-			return t, nil, i
-		}
-	}
-	return t, nil, -1
-}
-
-// cellAlign resolves the alignment a cell uses: its own, else the column's,
-// else end for a numeric column and start otherwise.
-func cellAlign(cell *tree.TableCell) Align {
-	if a := cell.Align.Get(); a != "" {
-		return alignOf(a)
-	}
-	_, col, _ := columnFor(cell)
-	if col == nil {
-		return AlignStart
-	}
-	if a := col.Align.Get(); a != "" {
-		return alignOf(a)
-	}
-	if col.Numeric.Get() {
-		return AlignEnd
-	}
-	return AlignStart
-}
-
 // alignedBox narrows a cell box by the cell inset and returns it with the
 // alignment the painter should use.
 func alignedBox(r tree.Rect) tree.Rect {
@@ -260,31 +210,27 @@ func (l *List) paintTableColumn(c *tree.Component, r tree.Rect, clip tree.Rect) 
 	l.iconIn(icon, 18, fg, r.X+r.W-tableCellInset-6, r.Y+r.H/2, clip)
 }
 
-// paintTableCell draws one value, aligned by the cell or its column.
+// paintTableCell draws the optional leading icon of a cell. The cell's content
+// is its children, which the normal paint walk draws, so the icon stops before
+// them; layout reserves the same room.
 func (l *List) paintTableCell(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	cell, ok := c.Node().(*tree.TableCell)
 	if !ok {
 		return
 	}
-	col := l.Theme.Colors
-	fg := col.OnSurface
-	if cell.Disabled.Get() {
-		fg = withAlpha(fg, m3.DisabledOpacity)
-	}
-	box := alignedBox(r)
-	if icon := cell.Icon.Get(); icon != "" && cell.Text.Get() == "" {
-		align := cellAlign(cell)
-		cx := r.X + tableCellInset + 9
-		switch align {
-		case AlignCenter:
-			cx = r.X + r.W/2
-		case AlignEnd:
-			cx = r.X + r.W - tableCellInset - 9
-		}
-		l.iconIn(icon, 18, fg, cx, r.Y+r.H/2, clip)
+	icon := cell.Icon.Get()
+	if icon == "" {
 		return
 	}
-	l.textIn(cell.Text.Get(), l.style("bodyMedium"), fg, box, cellAlign(cell), clip)
+	fg := l.Theme.Colors.OnSurface
+	if cell.RowDisabled() {
+		fg = withAlpha(fg, m3.DisabledOpacity)
+	}
+	inset := tableCellInset
+	if r.W < inset*2 {
+		inset = r.W / 4
+	}
+	l.iconIn(icon, 18, fg, r.X+inset+9, r.Y+r.H/2, clip)
 }
 
 // hLine draws a 1dp horizontal rule, clipped like the table.

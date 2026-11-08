@@ -1662,3 +1662,14 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   and SVG advance in the same pass over `Tree.WalkVisible`, so a design with
   five clips pays one walk, not two; a clip on a `visible: false` page neither
   advances nor keeps the frame loop awake.
+- **A table cell holds components; `value` is only the sort key.** `TableCell`
+  used to draw a single `text` string, which made anything richer (a chip, a
+  badge, an icon row) impossible without a second table. The cell is now a
+  container: its children are what the row shows, laid out as one aligned run
+  inside the 16dp inset, and `value` is the string sorting and `CellValue` read.
+  Keeping them separate is the point — a cell can draw "8 Nov 2026" and sort by
+  `2026-11-08`. `text` is gone rather than kept as a fallback, so a stale design
+  fails the checker instead of silently losing its content.
+- **A `value` means two types, so the schema asks per component.** `TypeOf` was
+  a name-keyed table and `value` is a number on a Slider. `TypeOfFor(kind, name)`
+  lets a TableCell's `value` be a string without turning the slider's into one.

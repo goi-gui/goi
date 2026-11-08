@@ -154,17 +154,30 @@ func tableTarget(n tree.Node) bool {
 		if tc, ok := n.(*tree.TableColumn); ok {
 			return tc.Sortable.Get()
 		}
-	case "TableCell":
-		if t := tableOf(n); t != nil {
-			return t.SelectableMode() != tree.SelectNone
+	default:
+		if cell := cellAt(n); cell != nil {
+			if t := tableOf(cell); t != nil {
+				return t.SelectableMode() != tree.SelectNone
+			}
 		}
 	}
 	return false
 }
 
+// cellAt returns the nearest TableCell at or above n. A cell is a container, so
+// a press lands on the Text or icon inside it rather than on the cell itself.
+func cellAt(n tree.Node) *tree.TableCell {
+	for ; n != nil; n = n.Base().Parent() {
+		if c, ok := n.(*tree.TableCell); ok {
+			return c
+		}
+	}
+	return nil
+}
+
 // tableOf returns the table a cell belongs to, or nil.
-func tableOf(n tree.Node) *tree.Table {
-	p := n.Base().Parent()
+func tableOf(cell *tree.TableCell) *tree.Table {
+	p := cell.Base().Parent()
 	if p == nil {
 		return nil
 	}
@@ -178,6 +191,29 @@ func tableOf(n tree.Node) *tree.Table {
 	}
 	t, _ := gp.(*tree.Table)
 	return t
+}
+
+// pressTarget maps a hit inside a table cell to the cell, unless the hit is a
+// control of its own: a button in a cell keeps its click, and the cell around it
+// does not also select the row.
+func pressTarget(hit tree.Node) tree.Node {
+	if hit == nil {
+		return nil
+	}
+	cell := cellAt(hit)
+	if cell == nil || hit == cell {
+		return hit
+	}
+	if c := comp(hit); c != nil && interactive(hit) {
+		return hit
+	}
+	if hit.Base().Click.Len() > 0 {
+		return hit
+	}
+	if !tableTarget(cell) {
+		return hit
+	}
+	return cell
 }
 
 // dragRegionAt reports whether n or an ancestor moves the window on a press.
@@ -492,6 +528,9 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 	if hit == nil {
 		return
 	}
+	// A press inside a table cell selects its row; a control in the cell keeps
+	// its own click.
+	hit = pressTarget(hit)
 	if clickable(hit) {
 		i.setKbd(hit)
 		i.pressed = hit
@@ -816,11 +855,15 @@ func (i *interactor) toggleSort(n tree.Node) {
 // selectRow selects the row a pressed cell belongs to and reports its display
 // index, which is what a reader means by "row 2" after sorting.
 func (i *interactor) selectRow(n tree.Node) {
-	t := tableOf(n)
+	cell := cellAt(n)
+	if cell == nil {
+		return
+	}
+	t := tableOf(cell)
 	if t == nil {
 		return
 	}
-	row, _ := n.Base().Parent().(*tree.TableRow)
+	row, _ := cell.Base().Parent().(*tree.TableRow)
 	if row == nil {
 		return
 	}

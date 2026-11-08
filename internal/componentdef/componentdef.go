@@ -40,7 +40,7 @@ var Kinds = []Kind{
 	{"Table", true},
 	{"TableColumn", false},
 	{"TableRow", true},
-	{"TableCell", false},
+	{"TableCell", true},
 	{"Menu", true},
 	{"MenuItem", false},
 	{"Snackbar", false},
@@ -104,7 +104,7 @@ var props = map[string][]string{
 	"Table":            {"variant", "striped", "showHeader", "rowHeight", "headerHeight", "sortColumn", "sortAscending", "selectable", "selectedRow"},
 	"TableColumn":      {"label", "icon", "key", "align", "sortable", "numeric"},
 	"TableRow":         {"selected", "disabled"},
-	"TableCell":        {"text", "icon", "align"},
+	"TableCell":        {"value", "icon", "align"},
 	"Menu":             {"variant"},
 	"MenuItem":         {"label", "icon", "trailingIcon", "variant", "disabled", "selected"},
 	"Snackbar":         {"label", "variant"},
@@ -180,6 +180,15 @@ var defaults = map[string]any{
 func Default(name string) (any, bool) {
 	v, ok := defaults[name]
 	return v, ok
+}
+
+// TypeOfFor is TypeOf narrowed per component where one name means two types:
+// a `value` is a number on a Slider and the sort string on a TableCell.
+func TypeOfFor(kind, name string) PropType {
+	if kind == "TableCell" && name == "value" {
+		return String
+	}
+	return TypeOf(name)
 }
 
 // TypeOf returns the literal type of a component property.

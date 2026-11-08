@@ -126,6 +126,11 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 		e.tableChildren(b, w, h)
 		return
 	}
+	// A cell's content is one aligned run inside its inset box.
+	if b.Node().Kind() == "TableCell" {
+		e.cellChildren(b, visibleChildren(b), w, h)
+		return
+	}
 	// A FAB menu stacks its actions above the FAB, and has none while closed;
 	// it must still visit an empty child list, so a menu that just closed can
 	// clear the bounds its actions had.

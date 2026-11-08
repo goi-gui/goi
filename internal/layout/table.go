@@ -7,6 +7,9 @@ import (
 // table column metrics, in dp.
 const (
 	tableCellInset = 16.0
+	// cellIconLead is the room a leading cell icon takes: 18dp glyph and 8dp
+	// between it and the content.
+	cellIconLead = 26.0
 	// tableFlexColumn is the intrinsic width one flexible column asks for when
 	// the table has no declared width.
 	tableFlexColumn = 140.0
@@ -162,6 +165,73 @@ func (e *Engine) tableCells(row *tree.TableRow, x, y, h float64, widths []float6
 			w = widths[i]
 		}
 		cell.SetBounds(tree.Rect{X: x, Y: y, W: w, H: h})
+		// A cell is a container now: its children are the visible content.
+		e.children(cell.Base(), w, h)
 		x += w
+	}
+}
+
+// cellChildren lays a cell's children out as one run inside its content box,
+// aligned by the cell's own align or its column's. A cell normally holds one
+// Text; a Run of several children keeps its declaration order.
+func (e *Engine) cellChildren(b *tree.NodeBase, kids []*tree.NodeBase, w, h float64) {
+	cell, ok := b.Node().(*tree.TableCell)
+	if !ok || len(kids) == 0 {
+		return
+	}
+	inset := tableCellInset
+	if w < inset*2 {
+		inset = w / 4
+	}
+	lead := 0.0
+	if cell.Icon.Get() != "" {
+		lead = cellIconLead
+	}
+	cw := maxf(w-2*inset-lead, 0)
+
+	sizes := make([]float64, len(kids))
+	var used, flex float64
+	for i, k := range kids {
+		me := k.MarginEdges()
+		mw, _ := e.natural(k, cw, h)
+		s := mw
+		if d := declaredMain(k, true); d >= 0 {
+			s = d
+		}
+		s = clampSize(s, minSize(k, true), maxSize(k, true))
+		sizes[i] = s
+		used += s + me.Left + me.Right
+		flex += k.Flex()
+	}
+	if flex > 0 && used < cw {
+		delta := (cw - used) / flex
+		for i, k := range kids {
+			if f := k.Flex(); f > 0 {
+				sizes[i] = clampSize(sizes[i]+delta*f, minSize(k, true), maxSize(k, true))
+			}
+		}
+	}
+	// Only the children move; the icon is drawn at the leading edge by paint.
+	x := inset + lead
+	switch cell.AlignMode() {
+	case "center":
+		x += (cw - used) / 2
+	case "end":
+		x += cw - used
+	}
+	for i, k := range kids {
+		me := k.MarginEdges()
+		_, mh := e.natural(k, cw, h)
+		cs := mh
+		if d := declaredCross(k, true); d >= 0 {
+			cs = d
+		}
+		cs = clampSize(cs, minSize(k, false), maxSize(k, false))
+		// One run, centred in the row's height.
+		y := (h - cs) / 2
+		r := tree.Rect{X: x + me.Left, Y: y + me.Top, W: sizes[i], H: cs}
+		k.SetBounds(r)
+		e.children(k, r.W, r.H)
+		x += me.Left + sizes[i] + me.Right
 	}
 }

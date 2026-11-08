@@ -338,7 +338,7 @@ var elements = func() []Element {
 		for _, name := range componentdef.Props(k.Name) {
 			p := Prop{Name: name}
 			def, hasDef := componentdef.Default(name)
-			switch componentdef.TypeOf(name) {
+			switch componentdef.TypeOfFor(k.Name, name) {
 			case componentdef.Bool:
 				p.Type, p.Dirty, p.Default = TypeBool, DirtyPaint, false
 			case componentdef.Number:

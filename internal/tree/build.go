@@ -529,6 +529,7 @@ func newM3Component(name string) Node {
 	case "TableCell":
 		return &TableCell{
 			Component: newComponent(),
+			Value:     newProp(nil, "value", DirtyLayout, ""),
 			Align:     newProp(nil, "align", DirtyPaint, ""),
 		}
 	case "Menu":

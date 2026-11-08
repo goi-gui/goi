@@ -526,9 +526,13 @@ func (*TableRow) Kind() string { return "TableRow" }
 
 func (c *TableRow) namedProps() []NamedProp { return c.props("TableRow") }
 
-// TableCell is one value in a row.
+// TableCell is one cell in a row. Its children are what a reader sees, so the
+// cell can hold a Text, a Chip, anything; Value is the machine-readable string
+// sorting uses, and may differ from what is drawn (`"31"` over a formatted
+// date).
 type TableCell struct {
 	Component
+	Value Prop[string]
 	Align Prop[string]
 }
 
@@ -536,7 +540,8 @@ type TableCell struct {
 func (*TableCell) Kind() string { return "TableCell" }
 
 func (c *TableCell) namedProps() []NamedProp {
-	return append(c.propsExcept("TableCell", "align"),
+	return append(c.propsExcept("TableCell", "value", "align"),
+		StringProp(&c.NodeBase, "value", &c.Value),
 		EnumProp(&c.NodeBase, "align", DirtyPaint, &c.Align, "start", "center", "end"),
 	)
 }

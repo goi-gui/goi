@@ -200,6 +200,19 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 	l.paintScrollbar(b, frame, clip)
 	l.roundClip(b, r, fromClip)
 	l.applyOpacity(from, b.Opacity())
+	l.applyDisabled(from, b)
+}
+
+// applyDisabled dims a table row's content when the row asked for it. A cell is
+// a container, so there is no single colour to change; fading the ops it drew
+// is what a disabled row means.
+func (l *List) applyDisabled(from int, b *tree.NodeBase) {
+	if b.Node().Kind() != "TableCell" {
+		return
+	}
+	if cell, ok := b.Node().(*tree.TableCell); ok && cell.RowDisabled() {
+		l.applyOpacity(from, m3.DisabledOpacity)
+	}
 }
 
 // walkOffset is walk with an explicit bounds override, used for scrolled lists.
@@ -235,6 +248,7 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 	l.paintScrollbar(b, frame, clip)
 	l.roundClip(b, r, fromClip)
 	l.applyOpacity(from, b.Opacity())
+	l.applyDisabled(from, b)
 }
 
 // paintContent draws one node's own visuals: its shadow, its fill and its
