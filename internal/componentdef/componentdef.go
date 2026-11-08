@@ -157,6 +157,8 @@ const (
 	Enum
 	Bool
 	Number
+	// Scalar is a value that may be written as a string, number or bool.
+	Scalar
 )
 
 // defaults are the component properties whose initial value is not the Go zero
@@ -186,7 +188,7 @@ func Default(name string) (any, bool) {
 // a `value` is a number on a Slider and the sort string on a TableCell.
 func TypeOfFor(kind, name string) PropType {
 	if kind == "TableCell" && name == "value" {
-		return String
+		return Scalar
 	}
 	return TypeOf(name)
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/gogpu/gputypes"
 	"github.com/gogpu/wgpu"
+	"github.com/goi-gui/goi/internal/img"
 	"github.com/goi-gui/goi/internal/paint"
 	"github.com/goi-gui/goi/internal/text"
 )
@@ -30,10 +31,15 @@ type textRenderer struct {
 	atlasDirty     bool
 
 	// quads holds this frame's glyphs, and spans maps a text op index to its
-	// slice of them. Both are reused between frames.
-	quads  []glyphQuad
-	spans  []glyphSpan
-	placed []placedGlyph
+	// slice of them. Both are reused between frames. emoji holds the colour
+	// glyphs of an op, which draw from the image atlas instead of the coverage
+	// one, and emojiData caches their decoded bitmaps by size and glyph.
+	quads     []glyphQuad
+	spans     []glyphSpan
+	placed    []placedGlyph
+	emoji     []emojiQuad
+	emojiSpan []glyphSpan
+	emojiData map[uint32]emojiBitmap
 
 	gpu *GPU // back-reference for buffers and the atlas library
 }
@@ -61,6 +67,21 @@ type placedGlyph struct {
 
 // glyphSpan is a text op's range inside textRenderer.quads.
 type glyphSpan struct{ start, n int }
+
+// emojiBitmap is one decoded colour glyph and its offset from the pen.
+type emojiBitmap struct {
+	data *img.Data
+	off  image.Point
+}
+
+// emojiQuad is one colour glyph, drawn from the image atlas like a picture.
+type emojiQuad struct {
+	rect    [4]float32
+	data    *img.Data
+	clip    [4]float32
+	clipBox [4]float32
+	clipR   float32
+}
 
 func (g *GPU) initText(lib *text.Library) error {
 	if lib == nil || lib.Atlas() == nil {
@@ -115,12 +136,16 @@ func (t *textRenderer) prepare(list *paint.List) {
 
 	t.quads = t.quads[:0]
 	t.spans = t.spans[:0]
+	t.emoji = t.emoji[:0]
+	t.emojiSpan = t.emojiSpan[:0]
 	for _, op := range list.Ops {
 		start, n := len(t.quads), 0
+		estart, en := len(t.emoji), 0
 		if op.Kind == paint.Text {
-			n = t.shapeOp(op, atlas)
+			n, en = t.shapeOp(op, atlas)
 		}
 		t.spans = append(t.spans, glyphSpan{start: start, n: n})
+		t.emojiSpan = append(t.emojiSpan, glyphSpan{start: estart, n: en})
 	}
 
 	// Any compaction or growth during the pass is finished, so the pixel size
@@ -132,10 +157,11 @@ func (t *textRenderer) prepare(list *paint.List) {
 	}
 }
 
-// shapeOp appends the glyph quads for one text op and returns how many.
-func (t *textRenderer) shapeOp(op paint.Op, atlas *text.Atlas) int {
+// shapeOp appends the glyph quads for one text op and returns how many of each
+// kind: outline glyphs, then colour emoji.
+func (t *textRenderer) shapeOp(op paint.Op, atlas *text.Atlas) (int, int) {
 	if op.Text == "" {
-		return 0
+		return 0, 0
 	}
 	lib := t.gpu.textLib
 
@@ -155,11 +181,15 @@ func (t *textRenderer) shapeOp(op paint.Op, atlas *text.Atlas) int {
 		face = lib.Face(float64(op.FontSize)*scale, text.Weight(op.Weight))
 	}
 	if face == nil {
-		return 0
+		return 0, 0
 	}
-	out := face.Shape(op.Text)
+	runs := face.ShapeRuns(op.Text)
+	advance := 0.0
+	for _, r := range runs {
+		advance += float64(r.Output.Advance) / 64
+	}
 	penX := float64(op.TextX)
-	runW := float64(out.Advance) / 64 / scale
+	runW := advance / scale
 	boxW := float64(op.BoxW)
 	switch op.Align {
 	case paint.AlignCenter:
@@ -173,17 +203,24 @@ func (t *textRenderer) shapeOp(op paint.Op, atlas *text.Atlas) int {
 	clipBox := clipVec(op.ClipBox)
 
 	placed := t.placed[:0]
-	for _, gl := range out.Glyphs {
-		gid := uint16(gl.GlyphID)
-		if slot, ok := atlas.Slot(face, gid); ok {
-			placed = append(placed, placedGlyph{
-				rect: glyphRect(penX, penY, scale, slot),
-				slot: slot.Rect,
-				gid:  gid,
-				pen:  penX,
-			})
+	before := len(t.emoji)
+	for _, run := range runs {
+		if run.Face.IsEmoji() {
+			penX = t.placeEmoji(run, penX, penY, scale, clip, clipBox, op.ClipRadius)
+			continue
 		}
-		penX += float64(gl.Advance) / 64 / scale
+		for _, gl := range run.Output.Glyphs {
+			gid := uint16(gl.GlyphID)
+			if slot, ok := atlas.Slot(run.Face, gid); ok {
+				placed = append(placed, placedGlyph{
+					rect: glyphRect(penX, penY, scale, slot),
+					slot: slot.Rect,
+					gid:  gid,
+					pen:  penX,
+				})
+			}
+			penX += float64(gl.Advance) / 64 / scale
+		}
 	}
 	t.placed = placed
 
@@ -230,7 +267,52 @@ func (t *textRenderer) shapeOp(op paint.Op, atlas *text.Atlas) int {
 			clipR:   op.ClipRadius,
 		})
 	}
-	return n + len(placed)
+	return n + len(placed), len(t.emoji) - before
+}
+
+// placeEmoji appends the colour quads for one emoji run and returns the pen
+// position after it. A glyph with no colour bitmap is skipped rather than
+// drawn as a box.
+func (t *textRenderer) placeEmoji(run text.ShapedRun, penX, penY, scale float64, clip, clipBox [4]float32, clipR float32) float64 {
+	for _, gl := range run.Output.Glyphs {
+		gid := uint16(gl.GlyphID)
+		if e, ok := t.colorGlyph(run.Face, gid); ok {
+			x := math.Round(penX*scale) / scale
+			y := (penY + float64(e.off.Y)) / scale
+			t.emoji = append(t.emoji, emojiQuad{
+				rect: [4]float32{
+					float32(x), float32(y),
+					float32(e.data.W) / float32(scale), float32(e.data.H) / float32(scale),
+				},
+				data:    e.data,
+				clip:    clip,
+				clipBox: clipBox,
+				clipR:   clipR,
+			})
+		}
+		penX += float64(gl.Advance) / 64 / scale
+	}
+	return penX
+}
+
+// colorGlyph returns the decoded colour glyph for a face and glyph. Two sizes of
+// the same emoji are two entries, because the bitmap is rasterized at the size
+// it is drawn.
+func (t *textRenderer) colorGlyph(face *text.Face, gid uint16) (emojiBitmap, bool) {
+	key := uint32(int(face.Size()*4))<<16 | uint32(gid)
+	if e, ok := t.emojiData[key]; ok {
+		return e, true
+	}
+	pix, off, ok := face.ColorGlyph(gid)
+	if !ok {
+		return emojiBitmap{}, false
+	}
+	e := emojiBitmap{data: img.FromImage(pix), off: off}
+	if t.emojiData == nil {
+		t.emojiData = map[uint32]emojiBitmap{}
+	}
+	t.emojiData[key] = e
+	return e, true
 }
 
 // glyphRect is the quad a slot covers, given the run's pen position. The x is
@@ -269,6 +351,31 @@ func (t *textRenderer) emit(i int) {
 				float32(q.slot.Max.Y) / float32(t.atlasH), q.clipR, 0,
 			},
 		})
+	}
+	// Colour emoji come after the run's outline glyphs and sample the image
+	// atlas, so they are bitmap instances (kind 5) like any other picture.
+	if i < len(t.emojiSpan) && g.images != nil {
+		es := t.emojiSpan[i]
+		for _, q := range t.emoji[es.start : es.start+es.n] {
+			r, ok := g.images.regions[q.data]
+			if !ok {
+				if r, ok = g.images.pack(q.data); !ok {
+					continue
+				}
+			}
+			u0 := float32(r.X) / float32(g.images.w)
+			v0 := float32(r.Y) / float32(g.images.h)
+			u1 := float32(r.X+r.W) / float32(g.images.w)
+			v1 := float32(r.Y+r.H) / float32(g.images.h)
+			g.instances = append(g.instances, gpuInstance{
+				Rect:    q.rect,
+				Color:   [4]float32{1, 1, 1, 1},
+				Clip:    q.clip,
+				ClipBox: q.clipBox,
+				Params:  [4]float32{5, q.clipR, u0, v0},
+				Misc:    [4]float32{u1, v1, q.clipR, 0},
+			})
+		}
 	}
 }
 

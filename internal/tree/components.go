@@ -541,7 +541,7 @@ func (*TableCell) Kind() string { return "TableCell" }
 
 func (c *TableCell) namedProps() []NamedProp {
 	return append(c.propsExcept("TableCell", "value", "align"),
-		StringProp(&c.NodeBase, "value", &c.Value),
+		ScalarProp(&c.NodeBase, "value", DirtyLayout, &c.Value),
 		EnumProp(&c.NodeBase, "align", DirtyPaint, &c.Align, "start", "center", "end"),
 	)
 }

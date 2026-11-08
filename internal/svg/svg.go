@@ -31,6 +31,7 @@ type SVG struct {
 	w     float64
 	h     float64
 	tree  *elem
+	css   *css
 	anims []*anim
 	// dur is the longest animation in the file, zero for a still document.
 	dur time.Duration
@@ -50,13 +51,16 @@ func Parse(b []byte) (*SVG, error) {
 		w, h = 24, 24
 	}
 	s := &SVG{src: b, w: w, h: h}
-	// The tree is only needed when the file animates, and parsing it costs a
-	// second walk of the document.
-	if bytes.Contains(b, []byte("<animate")) {
+	// The tree is only needed when the file animates or keeps its paint in a
+	// stylesheet, and parsing it costs a second walk of the document.
+	if bytes.Contains(b, []byte("<animate")) || bytes.Contains(b, []byte("<style")) {
 		if tree, err := parseTree(b); err == nil {
 			anims, dur := collectAnims(tree)
-			if len(anims) > 0 && dur > 0 {
-				s.tree, s.anims, s.dur = tree, anims, dur
+			s.tree, s.css, s.anims, s.dur = tree, collectCSS(tree), anims, dur
+			// A file with only a stylesheet still needs the rewrite, so that the
+			// classes become attributes the rasterizer understands.
+			if len(anims) == 0 && s.css.empty() {
+				s.tree, s.css = nil, nil
 			}
 		}
 	}

@@ -210,3 +210,45 @@ Window {
 		}
 	}
 }
+
+// TestTableCellNumericValueSortsAsNumber checks that a numeric value sorts by
+// magnitude rather than by its text: 9 before 42, not after.
+func TestTableCellNumericValueSortsAsNumber(t *testing.T) {
+	const src = `Window { Table {
+		TableColumn { key: "n" label: "N" sortable: true }
+		TableRow { TableCell { value: 42 } }
+		TableRow { TableCell { value: 9 } }
+		TableRow { TableCell { value: 7.5 } }
+	} }`
+	tr, diag := BuildSource([]byte(src), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	n, ok := tr.ByID("table")
+	_ = n
+	_ = ok
+	tbl := findTable(tr)
+	if tbl == nil {
+		t.Fatal("no table")
+	}
+	if !tbl.SortBy("n", true) {
+		t.Fatal("SortBy did not find the column")
+	}
+	want := []string{"7.5", "9", "42"}
+	for i, w := range want {
+		if got := tbl.CellValue(i, 0); got != w {
+			t.Fatalf("row %d = %q, want %q", i, got, w)
+		}
+	}
+}
+
+// findTable returns the first Table in a tree.
+func findTable(tr *Tree) *Table {
+	var out *Table
+	tr.Walk(func(n Node) {
+		if t, ok := n.(*Table); ok && out == nil {
+			out = t
+		}
+	})
+	return out
+}

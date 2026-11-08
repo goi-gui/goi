@@ -48,14 +48,20 @@ func (t *Table) TableRows() []*TableRow {
 	asc := t.SortAscending.Get()
 	sort.SliceStable(rows, func(i, j int) bool {
 		a, b := CellValue(rows[i], col), CellValue(rows[j], col)
-		if numeric {
-			af, aok := numberIn(a)
-			bf, bok := numberIn(b)
-			if aok && bok {
+		// Two numeric values compare as numbers whether or not the column says
+		// `numeric`, so `value: 42` sorts after `value: 7`; anything else
+		// compares as text, which is what a mixed column wants.
+		if af, aok := numberIn(a); aok {
+			if bf, bok := numberIn(b); bok {
 				if asc {
 					return af < bf
 				}
 				return af > bf
+			}
+		} else if numeric {
+			// A numeric column with one unparsable value keeps a stable order.
+			if _, bok := numberIn(b); bok {
+				return false
 			}
 		}
 		if asc {

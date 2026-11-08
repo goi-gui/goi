@@ -2193,14 +2193,19 @@ func propDoc(el string, p schema.Prop) string {
 	case "end":
 		b.WriteString("\n\nThe high value of a `range` slider; `value` is the low one. " +
 			"From Go: `SetRange(lo, hi)` and `OnRange`.")
+	case "text":
+		if el == "Text" {
+			b.WriteString("\n\nEmoji draw in colour from the embedded Noto Color Emoji font, " +
+				"at the size of the run, so a line can mix text and emoji.")
+		}
 	case "numeric":
 		b.WriteString("\n\nRight-aligns the column by default and sorts by the number inside " +
 			"each cell's `value`, so `1,200` orders as 1200.")
 	case "value":
 		if el == "TableCell" {
-			b.WriteString("\n\nThe string sorting reads for this cell, which may differ from " +
-				"what the cell draws: `value: \"2026-11-08\"` with a `Text` showing " +
-				"\"8 Nov 2026\". A design that leaves it empty sorts as an empty string.")
+			b.WriteString("\n\nThe sort key for this cell, which may differ from what the cell " +
+				"draws: `value: \"2026-11-08\"` with a `Text` showing \"8 Nov 2026\". " +
+				"A string, number or bool all work, and two numbers compare as numbers.")
 		}
 	case "key":
 		b.WriteString("\n\nNames a table column for Go: `table.SortBy(\"age\", false)` needs no " +

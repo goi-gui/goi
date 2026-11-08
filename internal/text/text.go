@@ -39,6 +39,10 @@ type Face struct {
 	// an unchanged page would otherwise pay milliseconds per frame just to
 	// re-shape the same strings. The results are read-only to every caller.
 	shaped map[string]shaping.Output
+	// emoji marks a colour-emoji face, whose glyphs are bitmaps rather than
+	// outlines; lib is the library that owns the fallback chain.
+	emoji bool
+	lib   *Library
 }
 
 // maxShapedRuns bounds the shaping cache. A page has far fewer distinct runs
@@ -51,8 +55,12 @@ type Library struct {
 	mu    sync.Mutex
 	fonts map[Weight]*font.Face
 	icon  *font.Face
-	faces map[faceKey]*Face
-	atlas *Atlas
+	// emoji is Noto Color Emoji, the face a rune Roboto has no glyph for falls
+	// back to; emojiCache holds its decoded bitmaps per size and glyph.
+	emoji      *font.Face
+	emojiCache map[emojiKey]*emojiGlyph
+	faces      map[faceKey]*Face
+	atlas      *Atlas
 	// front is a small direct-mapped cache in front of faces. A page uses a
 	// handful of sizes and asks for each of them hundreds of times per pass, and
 	// it alternates between them (12, 14, 16, 22), so remembering only the last
@@ -66,6 +74,7 @@ type faceKey struct {
 	size   int // 1/4 pixels, so 12.5 and 12.75 do not collide
 	icon   bool
 	italic bool
+	emoji  bool
 }
 
 // faceSlot is one entry of the direct-mapped face cache.
@@ -100,6 +109,7 @@ func NewLibrary() *Library {
 	if f, err := font.ParseTTF(bytes.NewReader(materialSymbols)); err == nil {
 		l.icon = f
 	}
+	l.loadEmoji(notoEmoji)
 	return l
 }
 
@@ -191,7 +201,7 @@ func (l *Library) face(size float64, weight Weight, icon, italic bool) *Face {
 		*slot = faceSlot{key: key, f: f}
 		return f
 	}
-	f := &Face{font: src, tag: tag, size: size, upem: float32(src.Upem()), italic: italic}
+	f := &Face{font: src, tag: tag, size: size, upem: float32(src.Upem()), italic: italic, lib: l}
 	l.faces[key] = f
 	*slot = faceSlot{key: key, f: f}
 	return f
@@ -234,8 +244,65 @@ func (f *Face) Shape(s string) shaping.Output {
 	return out
 }
 
-// shape runs the shaper; Shape caches the result.
-func (f *Face) shape(s string) shaping.Output {
+// ShapedRun is one stretch of a line with the face that shaped it. A run is
+// split at a font boundary, so a line with an emoji in it yields a Roboto run
+// and an emoji run, and a renderer knows which glyphs to draw as bitmaps.
+type ShapedRun struct {
+	Face   *Face
+	Output shaping.Output
+}
+
+// ShapeRuns shapes s and reports which face drew each run: emoji that Roboto
+// has no glyph for fall back to the colour font. Widths are the same as Shape
+// measures, so layout and paint always agree.
+func (f *Face) ShapeRuns(s string) []ShapedRun {
+	var out []ShapedRun
+	for _, seg := range f.splitFont(s) {
+		face := f
+		if seg.emoji {
+			face = f.lib.EmojiFace(f.size)
+			if face == nil {
+				face = f
+			}
+		}
+		out = append(out, ShapedRun{Face: face, Output: face.shapeBidi(seg.text)})
+	}
+	return out
+}
+
+// splitFont cuts a line where the face changes: ordinary text stays with this
+// face, and a rune it does not cover goes to the emoji face.
+func (f *Face) splitFont(s string) []fontSeg {
+	if f.lib == nil || f.lib.emoji == nil || f.emoji {
+		return []fontSeg{{text: s}}
+	}
+	var out []fontSeg
+	start := 0
+	emoji := false
+	for i, r := range s {
+		e := emojiRune(f, r)
+		if i == 0 {
+			emoji = e
+			continue
+		}
+		if e == emoji {
+			continue
+		}
+		out = append(out, fontSeg{text: s[start:i], emoji: emoji})
+		start, emoji = i, e
+	}
+	out = append(out, fontSeg{text: s[start:], emoji: emoji})
+	return out
+}
+
+// fontSeg is one stretch of a line with one face.
+type fontSeg struct {
+	text  string
+	emoji bool
+}
+
+// shapeBidi shapes one face's stretch, honouring its runs' directions.
+func (f *Face) shapeBidi(s string) shaping.Output {
 	runs := splitBidi(s)
 	if len(runs) == 1 && runs[0].rtl == false {
 		return f.shapeRun(s, di.DirectionLTR, runs[0].script)
@@ -263,6 +330,23 @@ func (f *Face) shape(s string) shaping.Output {
 		out.Glyphs = append(out.Glyphs, c...)
 	}
 	return out
+}
+
+// shape runs the shaper; Shape caches the result. Emoji fallback is folded in,
+// so a width measured here matches what ShapeRuns reports for the same line.
+func (f *Face) shape(s string) shaping.Output {
+	if f.lib != nil && f.lib.emoji != nil && !f.emoji {
+		runs := f.ShapeRuns(s)
+		if len(runs) > 1 {
+			out := shaping.Output{Size: fixed.Int26_6(f.size * 64)}
+			for _, r := range runs {
+				out.Advance += r.Output.Advance
+				out.Glyphs = append(out.Glyphs, r.Output.Glyphs...)
+			}
+			return out
+		}
+	}
+	return f.shapeBidi(s)
 }
 
 // bidiRun is one stretch of text with a single direction and script.

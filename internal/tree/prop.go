@@ -1,6 +1,10 @@
 package tree
 
-import "github.com/goi-gui/goi/internal/syntax"
+import (
+	"strconv"
+
+	"github.com/goi-gui/goi/internal/syntax"
+)
 
 // DirtyKind says what a change affects.
 type DirtyKind uint8
@@ -107,6 +111,9 @@ const (
 	propColor
 	propEnum
 	propShadow
+	// propScalar writes a string cell from a string, number or bool literal: a
+	// table cell's value takes whatever the row's data holds.
+	propScalar
 )
 
 // Get returns the value as an interface, boxing it. The expression layer reads
@@ -115,7 +122,7 @@ func (p *NamedProp) Get() any {
 	switch p.kind {
 	case propNumber:
 		return p.cell.(*Prop[float64]).val
-	case propString, propEnum:
+	case propString, propEnum, propScalar:
 		return p.cell.(*Prop[string]).val
 	case propBool:
 		return p.cell.(*Prop[bool]).val
@@ -137,7 +144,7 @@ func (p *NamedProp) Same(v any) bool {
 	case propNumber:
 		f, ok := v.(float64)
 		return ok && p.cell.(*Prop[float64]).val == f
-	case propString, propEnum:
+	case propString, propEnum, propScalar:
 		s, ok := v.(string)
 		return ok && p.cell.(*Prop[string]).val == s
 	case propBool:
@@ -160,6 +167,24 @@ func (p *NamedProp) SetLiteral(v syntax.Value) bool {
 			return false
 		}
 		p.cell.(*Prop[float64]).val = n.Val
+		return true
+	case propScalar:
+		// A value is the sort key, so a number is kept as its exact decimal
+		// text: `3.14` sorts and compares as written, and `42` does not become
+		// "42.000000".
+		sp := p.cell.(*Prop[string])
+		switch x := v.(type) {
+		case *syntax.String:
+			sp.val = x.Val
+		case *syntax.Ident:
+			sp.val = x.Val
+		case *syntax.Number:
+			sp.val = strconv.FormatFloat(x.Val, 'f', -1, 64)
+		case *syntax.Bool:
+			sp.val = strconv.FormatBool(x.Val)
+		default:
+			return false
+		}
 		return true
 	case propString:
 		sp := p.cell.(*Prop[string])
@@ -336,6 +361,13 @@ func (p *NamedProp) setGoSet(v bool) {
 func StringProp(b *NodeBase, name string, p *Prop[string]) NamedProp {
 	wire(b, name, p)
 	return NamedProp{Name: name, kind: propString, cell: p}
+}
+
+// ScalarProp builds a NamedProp for a string cell that also accepts a number or
+// a bool literal, formatting it as text.
+func ScalarProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[string]) NamedProp {
+	wire(b, name, p)
+	return NamedProp{Name: name, Dirty: dirty, kind: propScalar, cell: p}
 }
 
 // NumberProp builds a NamedProp for a float64 cell.

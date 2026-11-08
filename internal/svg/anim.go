@@ -272,8 +272,11 @@ func (a *anim) interpolate(frac float64) string {
 }
 
 // blend interpolates two SMIL values of the same shape: numbers, number lists
-// (a transform's arguments) or colours.
+// (a transform's arguments), colours or path data.
 func blend(from, to string, t float64) (string, bool) {
+	if out, ok := blendPath(from, to, t); ok {
+		return out, true
+	}
 	if c0, ok := parseColor(from); ok {
 		c1, ok := parseColor(to)
 		if !ok {
@@ -292,6 +295,118 @@ func blend(from, to string, t float64) (string, bool) {
 		parts[i] = strconv.FormatFloat(v, 'f', -1, 64)
 	}
 	return strings.Join(parts, " "), true
+}
+
+// blendPath morphs one path into another when the two share a command sequence
+// — the usual case for an exported icon, `M … C … Z` against the same shape at
+// another moment. Every number is interpolated in order and the commands are
+// kept, so `d` animates like any other numeric list.
+func blendPath(from, to string, t float64) (string, bool) {
+	if !looksLikePath(from) || !looksLikePath(to) {
+		return "", false
+	}
+	tf, ok0 := pathTokens(from)
+	tt, ok1 := pathTokens(to)
+	if !ok0 || !ok1 || len(tf) != len(tt) {
+		return "", false
+	}
+	var b strings.Builder
+	for i := range tf {
+		if tf[i].cmd {
+			if !tt[i].cmd || tf[i].ch != tt[i].ch {
+				return "", false
+			}
+			b.WriteByte(tf[i].ch)
+			continue
+		}
+		if tt[i].cmd {
+			return "", false
+		}
+		// A separator keeps commands apart from the numbers that follow them,
+		// and negative numbers apart from each other (`5-3` is one token to a
+		// path parser, so the space matters).
+		b.WriteByte(' ')
+		b.WriteString(strconv.FormatFloat(tf[i].num+(tt[i].num-tf[i].num)*t, 'f', -1, 64))
+	}
+	return b.String(), true
+}
+
+// pathToken is one command letter or one number of a path.
+type pathToken struct {
+	cmd bool
+	ch  byte
+	num float64
+}
+
+// pathTokens splits path data into commands and numbers.
+func pathTokens(s string) ([]pathToken, bool) {
+	var out []pathToken
+	for i := 0; i < len(s); {
+		if isPathCommand(s[i]) {
+			out = append(out, pathToken{cmd: true, ch: s[i]})
+			i++
+			continue
+		}
+		if s[i] == ' ' || s[i] == ',' || s[i] == '\t' || s[i] == '\n' {
+			i++
+			continue
+		}
+		f, n := readNumber(s, i)
+		if n == 0 {
+			return nil, false
+		}
+		out = append(out, pathToken{num: f})
+		i += n
+	}
+	return out, true
+}
+
+// looksLikePath is true when a value starts with a path command letter rather
+// than a digit or a colour.
+func looksLikePath(s string) bool {
+	s = strings.TrimSpace(s)
+	return s != "" && isPathCommand(s[0])
+}
+
+func isPathCommand(c byte) bool {
+	switch c {
+	case 'M', 'm', 'L', 'l', 'H', 'h', 'V', 'v', 'C', 'c', 'S', 's',
+		'Q', 'q', 'T', 't', 'A', 'a', 'Z', 'z':
+		return true
+	}
+	return false
+}
+
+// readNumber reads one number starting at i and returns it with the bytes used.
+func readNumber(s string, i int) (float64, int) {
+	start := i
+	for i < len(s) && (s[i] == ' ' || s[i] == ',') {
+		i++
+	}
+	numStart := i
+	if i < len(s) && (s[i] == '-' || s[i] == '+') {
+		i++
+	}
+	for i < len(s) && (s[i] >= '0' && s[i] <= '9' || s[i] == '.') {
+		i++
+	}
+	if i < len(s) && (s[i] == 'e' || s[i] == 'E') {
+		i++
+		if i < len(s) && (s[i] == '-' || s[i] == '+') {
+			i++
+		}
+		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+			i++
+		}
+	}
+	if i == numStart {
+		return 0, 0
+	}
+	f, err := strconv.ParseFloat(s[numStart:i], 64)
+	if err != nil {
+		return 0, 0
+	}
+	return f, i - start
 }
 
 // numbers splits "0 12 12" or "0,12,12" into floats.
@@ -368,12 +483,12 @@ func formatColor(c uint32) string {
 
 // renderAt writes the document with every animation applied at elapsed.
 func (s *SVG) renderAt(elapsed time.Duration, loop bool) []byte {
-	if s.tree == nil || len(s.anims) == 0 {
+	if s.tree == nil {
 		return s.src
 	}
 	var b bytes.Buffer
 	enc := xml.NewEncoder(&b)
-	if err := emitElem(enc, s.tree, elapsed, loop); err != nil {
+	if err := emitElem(enc, s.tree, s.css, elapsed, loop); err != nil {
 		return s.src
 	}
 	if err := enc.Flush(); err != nil {
@@ -382,10 +497,14 @@ func (s *SVG) renderAt(elapsed time.Duration, loop bool) []byte {
 	return b.Bytes()
 }
 
-// emitElem writes one element, replacing the attributes its animations override
-// and dropping the animation elements themselves: oksvg would ignore them.
-func emitElem(enc *xml.Encoder, e *elem, elapsed time.Duration, loop bool) error {
-	over := map[string]string{}
+// emitElem writes one element, replacing the attributes its animations override,
+// folding in the attributes its classes ask for, and dropping the elements that
+// only describe the file (animation, style, metadata): oksvg would ignore them.
+func emitElem(enc *xml.Encoder, e *elem, sheet *css, elapsed time.Duration, loop bool) error {
+	over := sheet.style(e)
+	if over == nil {
+		over = map[string]string{}
+	}
 	for _, a := range e.anims {
 		if v, ok := a.valueAt(elapsed, loop); ok {
 			over[a.attr] = v
@@ -414,10 +533,11 @@ func emitElem(enc *xml.Encoder, e *elem, elapsed time.Duration, loop bool) error
 		}
 	}
 	for _, k := range e.kids {
-		if k.name.Local == "animate" || k.name.Local == "animateTransform" {
+		switch k.name.Local {
+		case "animate", "animateTransform", "style", "metadata", "script":
 			continue
 		}
-		if err := emitElem(enc, k, elapsed, loop); err != nil {
+		if err := emitElem(enc, k, sheet, elapsed, loop); err != nil {
 			return err
 		}
 	}

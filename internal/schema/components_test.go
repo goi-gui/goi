@@ -80,3 +80,19 @@ func TestEventCallsNodeTransport(t *testing.T) {
 		}
 	}
 }
+
+// TestTableCellValueTakesScalars checks that a cell's sort value accepts a
+// number and a bool as well as text, and that TableCell still rejects a map.
+func TestTableCellValueTakesScalars(t *testing.T) {
+	for _, v := range []string{`"Kaan"`, "42", "3.14", "-7", "true"} {
+		src := fmt.Sprintf("Window { Table { TableRow { TableCell { value: %s } } } }", v)
+		if _, diag := validate(t, src); !diag.Empty() {
+			t.Errorf("value: %s: %v", v, diag)
+		}
+	}
+	// An unknown property is still reported, so a typo in a cell is not silent.
+	src := `Window { Table { TableRow { TableCell { valeu: "a" } } } }`
+	if _, diag := validate(t, src); diag.Empty() {
+		t.Fatal("a misspelled cell property was accepted")
+	}
+}

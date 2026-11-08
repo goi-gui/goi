@@ -1673,3 +1673,25 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
 - **A `value` means two types, so the schema asks per component.** `TypeOf` was
   a name-keyed table and `value` is a number on a Slider. `TypeOfFor(kind, name)`
   lets a TableCell's `value` be a string without turning the slider's into one.
+- **Emoji fall back per rune inside the shaper, not per text node.** A line that
+  mixes "Hi 😀 there" must wrap, centre and place a caret as one string, so the
+  shape step splits the line at font boundaries and returns runs with the face
+  that drew each. `Face.Shape` folds those runs back into one advance, so layout
+  never sees the split; `ShapeRuns` is what the renderer uses to know which
+  glyphs are colour bitmaps. Noto Color Emoji is embedded (11 MB) because a UI
+  framework that cannot draw an emoji is missing a basic glyph.
+- **A colour glyph draws from the image atlas.** The coverage atlas is 8-bit
+  alpha, and an emoji is a full-colour bitmap (CBDT/PNG in the font). Emoji quads
+  are emitted as ordinary bitmap instances instead, keyed by size and glyph, so
+  no second pipeline or shader branch is needed.
+- **A cell's `value` is a scalar, not a string.** A design writes `value: 42` for
+  a count; forcing quotes made the sort key a formatting question. `TypeScalar`
+  takes a string, number or bool, and the tree stores a number's exact decimal
+  text so `7.5` does not become `7.500000`. Two numeric values compare as
+  numbers even in a text column, which is what a reader expects of a count.
+- **An exported SVG keeps its colours in a stylesheet.** `loading.svg` had
+  `.shape { fill: var(--indicator) }`, which oksvg ignores, so the shape drew
+  nothing; its `d` animation also morphs a path, which the first blend could not
+  express. The SVG package now folds class rules and `:root` custom properties
+  into presentation attributes before rasterizing, and interpolates path data
+  when both keyframes share a command sequence.

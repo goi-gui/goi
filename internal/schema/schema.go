@@ -23,6 +23,9 @@ const (
 	TypeID
 	// TypeShadow is the CSS-style shadow list: `2 2 5 #000000 inset`.
 	TypeShadow
+	// TypeScalar accepts a string, number or bool, which is what a table cell's
+	// sort value is: whatever the row's data holds.
+	TypeScalar
 )
 
 func (t ValueType) String() string {
@@ -41,6 +44,8 @@ func (t ValueType) String() string {
 		return "id"
 	case TypeShadow:
 		return "shadow"
+	case TypeScalar:
+		return "string, number or bool"
 	}
 	return "unknown"
 }
@@ -348,6 +353,8 @@ var elements = func() []Element {
 				}
 			case componentdef.Enum:
 				p.Type, p.Dirty, p.Enum = TypeEnum, DirtyLayout, componentdef.EnumValuesFor(k.Name, name)
+			case componentdef.Scalar:
+				p.Type, p.Dirty, p.Default = TypeScalar, DirtyLayout, ""
 			default:
 				p.Type, p.Dirty, p.Default = TypeString, DirtyLayout, ""
 			}

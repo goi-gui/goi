@@ -676,6 +676,13 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 	}
 
 	switch pd.Type {
+	case TypeScalar:
+		switch val.(type) {
+		case *syntax.String, *syntax.Ident, *syntax.Number, *syntax.Bool:
+			return
+		}
+		fail("a string, number or bool")
+		return
 	case TypeShadow:
 		sh, ok := val.(*syntax.Shadow)
 		if !ok {
@@ -1324,6 +1331,11 @@ func typesFit(from, to ValueType) bool {
 	// same leniency the schema gives a bare identifier.
 	if from == TypeString && to == TypeColor {
 		return true
+	}
+	// A scalar property takes any of the three, so a data field of any simple
+	// type can fill a table cell's value.
+	if to == TypeScalar {
+		return from == TypeString || from == TypeNumber || from == TypeBool || from == TypeEnum
 	}
 	// A number can feed a string property: the runtime formats it, so
 	// `text: data.count` shows the count.

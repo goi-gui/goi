@@ -202,3 +202,73 @@ func TestStillSVGStaysStill(t *testing.T) {
 		t.Fatal("a still file was rewritten")
 	}
 }
+
+// TestSVGStyleClassesResolve keeps an exported icon working: its colours live in
+// a stylesheet (`class` + `var(--indicator)`), which oksvg ignores unless the
+// rule is folded into an attribute.
+func TestSVGStyleClassesResolve(t *testing.T) {
+	const src = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
+		<style>
+			:root { --ink: #00ff00; }
+			.shape { fill: var(--ink); }
+		</style>
+		<rect width="10" height="10" class="shape"/>
+	</svg>`
+	s, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := s.Render(0xFFFFFFFF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, g, b, a := pixelAt(d, d.W/2, d.H/2)
+	if a < 250 || g < 240 || r > 15 || b > 15 {
+		t.Fatalf("class colour = %d,%d,%d,%d, want the green from the stylesheet", r, g, b, a)
+	}
+}
+
+// TestSVGPathMorphs checks a `d` animation: the shape's numbers interpolate and
+// the result still rasterizes, which is what an exported loading icon needs.
+func TestSVGPathMorphs(t *testing.T) {
+	const src = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
+		<path fill="#000000" d="M1,1 L9,1 L9,9 L1,9 Z">
+			<animate attributeName="d" dur="1s" repeatCount="indefinite"
+				values="M1,1 L9,1 L9,9 L1,9 Z;M2,2 L8,2 L8,8 L2,8 Z"/>
+		</path>
+	</svg>`
+	s, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, err := s.RenderAt(0xFFFFFFFF, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mid, err := s.RenderAt(0xFFFFFFFF, 500*time.Millisecond)
+	if err != nil {
+		t.Fatalf("a morphed path failed to rasterize: %v", err)
+	}
+	if string(start.Pix) == string(mid.Pix) {
+		t.Fatal("the morphed path drew the same pixels as the start")
+	}
+	// Halfway between 1 and 2 is 1.5, so the top-left pixel stays empty.
+	if _, _, _, a := pixelAt(mid, int(float64(mid.W)*0.05), int(float64(mid.H)*0.05)); a > 40 {
+		t.Fatalf("the morphed shape still covers the corner (alpha %d)", a)
+	}
+}
+
+// TestBlendPathKeepsLetters pins the interpolation itself.
+func TestBlendPathKeepsLetters(t *testing.T) {
+	got, ok := blendPath("M0,0 L10,10 Z", "M10,10 L20,20 Z", 0.5)
+	if !ok {
+		t.Fatal("same-shape paths did not blend")
+	}
+	want := "M 5 5L 15 15Z"
+	if got != want {
+		t.Fatalf("blend = %q, want %q", got, want)
+	}
+	if _, ok := blendPath("M0,0 L10,10 Z", "M0,0 C1,1 2,2 3,3 Z", 0.5); ok {
+		t.Fatal("paths with different commands were blended")
+	}
+}
