@@ -109,6 +109,20 @@ type EventDef struct {
 	Component bool
 }
 
+// NodeMethods are the methods an event can call on an element by id, as in
+// `onClick: spin.pause()`. They are the transport of an animated Image or SVG.
+var NodeMethods = []string{"play", "pause", "stop"}
+
+// NodeMethod reports whether name is a method an event can call on an element.
+func NodeMethod(name string) bool {
+	for _, m := range NodeMethods {
+		if m == name {
+			return true
+		}
+	}
+	return false
+}
+
 // Event returns the definition of an event property.
 func Event(name string) (EventDef, bool) {
 	for _, e := range eventDefs {
@@ -282,12 +296,14 @@ var elements = func() []Element {
 			Prop{Name: "src", Type: TypeString, Dirty: DirtyLayout, Default: ""},
 			Prop{Name: "fit", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"cover", "contain", "fill"}, Default: "cover"},
 			Prop{Name: "paused", Type: TypeBool, Dirty: DirtyPaint, Default: false},
+			Prop{Name: "loop", Type: TypeBool, Dirty: DirtyPaint, Default: true},
 		)},
 		{Name: "SVG", Children: false, Attrs: withCommon(
 			Prop{Name: "src", Type: TypeString, Dirty: DirtyLayout, Default: ""},
 			Prop{Name: "fit", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"cover", "contain", "fill"}, Default: "contain"},
 			Prop{Name: "color", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0)},
 			Prop{Name: "paused", Type: TypeBool, Dirty: DirtyPaint, Default: false},
+			Prop{Name: "loop", Type: TypeBool, Dirty: DirtyPaint, Default: true},
 		)},
 		{Name: "Text", Children: false, Attrs: withCommon(
 			Prop{Name: "text", Type: TypeString, Dirty: DirtyLayout, Default: ""},

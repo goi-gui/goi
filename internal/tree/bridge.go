@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strconv"
 
+	"github.com/goi-gui/goi/internal/schema"
 	"github.com/goi-gui/goi/internal/syntax"
 )
 
@@ -119,8 +120,13 @@ func (t *Tree) bindEvent(b *NodeBase, name string, v syntax.Value) error {
 	if !ok {
 		return fmt.Errorf("%s.%s: expected a handler call", b.node.Kind(), name)
 	}
+	// A call on an id drives that element instead of a bridge handler:
+	// `onClick: spin.pause()`.
 	if call.Callee.ID != "bridge" && call.Callee.ID != "data" {
-		return fmt.Errorf("%s.%s: a handler call starts with bridge., not %s", b.node.Kind(), name, call.Callee.ID)
+		if !schema.NodeMethod(call.Callee.Prop) {
+			return fmt.Errorf("%s.%s: a handler call starts with bridge., or calls play, pause or stop on an id",
+				b.node.Kind(), name)
+		}
 	}
 	switch name {
 	case "onClick":
@@ -187,8 +193,25 @@ func (t *Tree) fire(b *NodeBase, name string, call *syntax.Call, payload any) {
 		}
 		args[i] = v
 	}
+	if call.Callee.ID != "bridge" && call.Callee.ID != "data" {
+		t.callNodeMethod(call.Callee.ID, call.Callee.Prop)
+		return
+	}
 	if err := t.bridge.Call(call.Callee.Prop, args); err != nil {
 		t.bridgeErr(err)
+	}
+}
+
+// callNodeMethod drives an element's transport from an event: `spin.pause()`.
+func (t *Tree) callNodeMethod(id, method string) {
+	n, ok := t.ByID(id)
+	if !ok {
+		t.bridgeErr(fmt.Errorf("goi: no element with id %q", id))
+		return
+	}
+	tr, ok := n.(interface{ Transport(string) bool })
+	if !ok || !tr.Transport(method) {
+		t.bridgeErr(fmt.Errorf("goi: %s has no method %s", n.Kind(), method))
 	}
 }
 

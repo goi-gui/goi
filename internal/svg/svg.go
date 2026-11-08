@@ -102,7 +102,13 @@ func (s *SVG) Render(color uint32) (*img.Data, error) {
 // a parse and a raster per repaint. Upgrade with a retained oksvg icon and a
 // transform-only fast path if a large animated SVG ever shows up in a profile.
 func (s *SVG) RenderAt(color uint32, elapsed time.Duration) (*img.Data, error) {
-	icon, err := oksvg.ReadReplacingCurrentColor(bytes.NewReader(s.renderAt(elapsed)), hexRGB(color))
+	return s.RenderAtLoop(color, elapsed, true)
+}
+
+// RenderAtLoop is RenderAt with a loop choice: false plays each animation once
+// and holds its last frame, whatever repeatCount the file declares.
+func (s *SVG) RenderAtLoop(color uint32, elapsed time.Duration, loop bool) (*img.Data, error) {
+	icon, err := oksvg.ReadReplacingCurrentColor(bytes.NewReader(s.renderAt(elapsed, loop)), hexRGB(color))
 	if err != nil {
 		return nil, fmt.Errorf("svg: render: %w", err)
 	}

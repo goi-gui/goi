@@ -216,13 +216,13 @@ func parseClock(s string) time.Duration {
 
 // valueAt returns the attribute value an animation asks for at elapsed. The
 // second result is false before the animation starts.
-func (a *anim) valueAt(elapsed time.Duration) (string, bool) {
+func (a *anim) valueAt(elapsed time.Duration, loop bool) (string, bool) {
 	if elapsed < a.begin {
 		return "", false
 	}
 	t := elapsed - a.begin
 	span := a.dur
-	if a.repeat == 0 {
+	if loop && a.repeat == 0 || loop && a.repeat > 1 {
 		t %= span
 	} else if t >= span {
 		t = span
@@ -367,13 +367,13 @@ func formatColor(c uint32) string {
 }
 
 // renderAt writes the document with every animation applied at elapsed.
-func (s *SVG) renderAt(elapsed time.Duration) []byte {
+func (s *SVG) renderAt(elapsed time.Duration, loop bool) []byte {
 	if s.tree == nil || len(s.anims) == 0 {
 		return s.src
 	}
 	var b bytes.Buffer
 	enc := xml.NewEncoder(&b)
-	if err := emitElem(enc, s.tree, elapsed); err != nil {
+	if err := emitElem(enc, s.tree, elapsed, loop); err != nil {
 		return s.src
 	}
 	if err := enc.Flush(); err != nil {
@@ -384,10 +384,10 @@ func (s *SVG) renderAt(elapsed time.Duration) []byte {
 
 // emitElem writes one element, replacing the attributes its animations override
 // and dropping the animation elements themselves: oksvg would ignore them.
-func emitElem(enc *xml.Encoder, e *elem, elapsed time.Duration) error {
+func emitElem(enc *xml.Encoder, e *elem, elapsed time.Duration, loop bool) error {
 	over := map[string]string{}
 	for _, a := range e.anims {
-		if v, ok := a.valueAt(elapsed); ok {
+		if v, ok := a.valueAt(elapsed, loop); ok {
 			over[a.attr] = v
 		}
 	}
@@ -417,7 +417,7 @@ func emitElem(enc *xml.Encoder, e *elem, elapsed time.Duration) error {
 		if k.name.Local == "animate" || k.name.Local == "animateTransform" {
 			continue
 		}
-		if err := emitElem(enc, k, elapsed); err != nil {
+		if err := emitElem(enc, k, elapsed, loop); err != nil {
 			return err
 		}
 	}

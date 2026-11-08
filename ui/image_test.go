@@ -419,3 +419,134 @@ func TestPausedPropertyIsDeclarative(t *testing.T) {
 		t.Fatalf("frame = %d, want it held at the first", im.Frame)
 	}
 }
+
+// TestAnimationTransport covers play, pause and stop from Go: stop rewinds and
+// holds, play resumes or replays, pause holds where it is.
+func TestAnimationTransport(t *testing.T) {
+	a := newHeadlessApp()
+	a.assets = fstest.MapFS{"spin.gif": &fstest.MapFile{Data: testGIF(t)}}
+	a.win = &Window{}
+	tr, diag := tree.BuildSource([]byte(`Window { Column {
+		Image { id: spin src: "goi://spin.gif" }
+	} }`), &tree.Hooks{Marked: a.markDirty})
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	a.win.tree = tr
+	a.loadImages(tr)
+	im := MustByID[*Image](a.win, "spin")
+
+	a.tickAnimatedImages(0.06)
+	if im.Frame != 1 {
+		t.Fatalf("frame = %d, want the second", im.Frame)
+	}
+	im.Pause()
+	if !im.Paused.Get() {
+		t.Fatal("Pause did not stop the clock")
+	}
+	a.tickAnimatedImages(0.06)
+	if im.Frame != 1 {
+		t.Fatalf("frame = %d, want it held", im.Frame)
+	}
+	im.Play()
+	a.tickAnimatedImages(0.06)
+	if im.Paused.Get() || im.Frame != 0 {
+		t.Fatalf("play: paused=%v frame=%d, want it running on the wrapped frame", im.Paused.Get(), im.Frame)
+	}
+	im.Stop()
+	if !im.Paused.Get() || im.Frame != 0 || im.AnimTime != 0 {
+		t.Fatalf("stop: paused=%v frame=%d time=%v", im.Paused.Get(), im.Frame, im.AnimTime)
+	}
+	if im.Data.Pix[0] != 0xFF || im.Data.Pix[2] != 0 {
+		t.Fatalf("stop left %v, want the first (red) frame", im.Data.Pix[:4])
+	}
+	if a.tickAnimatedImages(0.06) {
+		t.Fatal("a stopped animation kept the loop awake")
+	}
+	im.Play()
+	if !a.tickAnimatedImages(0.06) {
+		t.Fatal("play after stop did not restart the clock")
+	}
+}
+
+// TestAnimationLoopProperty checks `loop: false`: the first pass plays, then the
+// last frame holds without asking for more frames.
+func TestAnimationLoopProperty(t *testing.T) {
+	a := newHeadlessApp()
+	a.assets = fstest.MapFS{"spin.gif": &fstest.MapFile{Data: testGIF(t)}}
+	a.win = &Window{}
+	tr, diag := tree.BuildSource([]byte(`Window { Column {
+		Image { id: once src: "goi://spin.gif" loop: false }
+	} }`), &tree.Hooks{Marked: a.markDirty})
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	a.win.tree = tr
+	a.loadImages(tr)
+	once := MustByID[*Image](a.win, "once")
+	if once.Loop.Get() {
+		t.Fatal("loop: false did not reach the node")
+	}
+
+	// The fixture runs 100ms; half a second is well past one pass.
+	if a.tickAnimatedImages(0.5) {
+		t.Fatal("a finished one-shot kept the loop awake")
+	}
+	if !once.AnimDone || once.Frame != 1 {
+		t.Fatalf("one-shot: done=%v frame=%d, want the last frame held", once.AnimDone, once.Frame)
+	}
+
+	// The default loops: the same tick leaves it running.
+	tr2, diag := tree.BuildSource([]byte(`Window { Column {
+		Image { id: always src: "goi://spin.gif" }
+	} }`), &tree.Hooks{Marked: a.markDirty})
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	a.win.tree = tr2
+	a.loadImages(tr2)
+	always := MustByID[*Image](a.win, "always")
+	if !always.Loop.Get() {
+		t.Fatal("loop is not true by default")
+	}
+	if !a.tickAnimatedImages(0.5) {
+		t.Fatal("a looping animation stopped asking for frames")
+	}
+	if always.AnimDone {
+		t.Fatal("a looping animation reported itself finished")
+	}
+}
+
+// TestEventCallsNodeMethod checks the design-side transport: a button's click
+// can call an element's play, pause or stop by id.
+func TestEventCallsNodeMethod(t *testing.T) {
+	a := newHeadlessApp()
+	a.assets = fstest.MapFS{"spin.gif": &fstest.MapFile{Data: testGIF(t)}}
+	a.win = &Window{}
+	tr, diag := tree.BuildSource([]byte(`Window { Column {
+		Image { id: spin src: "goi://spin.gif" }
+		Button { id: hold label: "Hold" onClick: spin.pause() }
+		Button { id: go label: "Go" onClick: spin.play() }
+		Button { id: back label: "Back" onClick: spin.stop() }
+	} }`), &tree.Hooks{Marked: a.markDirty})
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	a.win.tree = tr
+	a.loadImages(tr)
+	im := MustByID[*Image](a.win, "spin")
+
+	hold := MustByID[*Button](a.win, "hold")
+	hold.Base().Click.Emit(tree.ClickEvent{})
+	if !im.Paused.Get() {
+		t.Fatal("spin.pause() did not pause the image")
+	}
+	MustByID[*Button](a.win, "go").Base().Click.Emit(tree.ClickEvent{})
+	if im.Paused.Get() {
+		t.Fatal("spin.play() did not resume the image")
+	}
+	MustByID[*Button](a.win, "back").Base().Click.Emit(tree.ClickEvent{})
+	if !im.Paused.Get() || im.AnimTime != 0 {
+		t.Fatalf("spin.stop(): paused=%v time=%v", im.Paused.Get(), im.AnimTime)
+	}
+}

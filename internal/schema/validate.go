@@ -1200,8 +1200,26 @@ func (v *validator) checkEventCall(e *syntax.Element, ev EventDef, p *syntax.Pro
 		return
 	}
 	if call.Callee.ID != "bridge" && call.Callee.ID != "data" {
-		v.add(at, end,
-			fmt.Sprintf("%s.%s: a handler call starts with bridge., not %s.", e.Name, p.Name, call.Callee.ID), "")
+		// An event may drive an element by id: `onClick: spin.pause()`.
+		if call.Callee.ID == "props" {
+			return
+		}
+		if !NodeMethod(call.Callee.Prop) {
+			v.add(at, end,
+				fmt.Sprintf("%s.%s: a handler call starts with bridge., or calls play, pause or stop on an id",
+					e.Name, p.Name),
+				syntax.Suggest(call.Callee.Prop, NodeMethods))
+			return
+		}
+		if _, ok := v.elems[call.Callee.ID]; !ok {
+			v.add(at, end,
+				fmt.Sprintf("%s.%s: no element with id %q", e.Name, p.Name, call.Callee.ID), "")
+			return
+		}
+		if len(call.Args) > 0 {
+			v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes no arguments",
+				e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+		}
 		return
 	}
 	dv := v.file.Var(call.Callee.Prop)

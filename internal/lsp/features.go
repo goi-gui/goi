@@ -678,7 +678,7 @@ func idMemberItems(file *syntax.File, ref string) []completionResult {
 	if !ok {
 		return nil
 	}
-	out := make([]completionResult, 0, len(el.Attrs))
+	out := make([]completionResult, 0, len(el.Attrs)+3)
 	for _, p := range el.Attrs {
 		out = append(out, completionResult{
 			Label:         p.Name,
@@ -687,7 +687,35 @@ func idMemberItems(file *syntax.File, ref string) []completionResult {
 			Documentation: &doc{Kind: "markdown", Value: propDoc(el.Name, p)},
 		})
 	}
+	if animatedKind(el.Name) {
+		for _, m := range schema.NodeMethods {
+			out = append(out, completionResult{
+				Label:         m + "(…)",
+				InsertText:    m + "(",
+				Kind:          kindFunction,
+				Detail:        ref + "." + m + "() · playback",
+				Documentation: &doc{Kind: "markdown", Value: nodeMethodDoc(m)},
+			})
+		}
+	}
 	return out
+}
+
+// animatedKind reports whether an element plays an animation, so an id of that
+// kind offers the playback methods.
+func animatedKind(kind string) bool { return kind == "Image" || kind == "SVG" }
+
+// nodeMethodDoc explains one playback method, for completion and hover.
+func nodeMethodDoc(name string) string {
+	switch name {
+	case "play":
+		return "**play()**\n\nResumes the animation, or replays it after `stop()` or a finished one-shot."
+	case "pause":
+		return "**pause()**\n\nHolds the current frame; `play()` carries on from it."
+	case "stop":
+		return "**stop()**\n\nRewinds to the first frame and pauses there; `play()` starts it again."
+	}
+	return ""
 }
 
 // loopShapeAt resolves a loop variable at off: the innermost loop whose body
@@ -851,6 +879,21 @@ func valueItems(file *syntax.File, prop string, src []byte, off int, prefix stri
 				Detail:        "handler call · " + f.Type.String(),
 				Documentation: &doc{Kind: "markdown", Value: "**bridge." + f.Name + "**\n\n" + f.Type.String() + "\n\nRuns the Go handler registered with `ui.SetHandler(w, \"" + f.Name + "\", …)` when this event fires."},
 			})
+		}
+		// An event can drive an animation by id without a Go handler.
+		for _, id := range fileIDElements(file) {
+			if !animatedKind(id.kind) {
+				continue
+			}
+			for _, m := range schema.NodeMethods {
+				out = append(out, completionResult{
+					Label:         id.name + "." + m + "(…)",
+					InsertText:    id.name + "." + m + "(",
+					Kind:          kindFunction,
+					Detail:        "playback · " + id.kind,
+					Documentation: &doc{Kind: "markdown", Value: nodeMethodDoc(m)},
+				})
+			}
 		}
 	}
 	return out, truncated
@@ -1195,6 +1238,12 @@ func (s *Server) hover(raw json.RawMessage) any {
 		}
 		if off >= propStart {
 			if kind, ok := idElementAt(file, r.ID); ok {
+				if schema.NodeMethod(r.Prop) && animatedKind(kind) {
+					return map[string]any{
+						"contents": doc{Kind: "markdown", Value: nodeMethodDoc(r.Prop)},
+						"range":    idx.at(propStart, propStart+len(r.Prop)),
+					}
+				}
 				if el, ok := schema.Lookup(kind); ok {
 					if pd := el.Prop(r.Prop); pd != nil {
 						return map[string]any{
@@ -1860,6 +1909,14 @@ func refAt(file *syntax.File, off int) *syntax.Ref {
 				found = x
 			}
 		case *syntax.Call:
+			// The callee is a ref too: `spin.pause` is what hover explains.
+			if x.Callee != nil {
+				start := int(x.Callee.At)
+				end := start + len(x.Callee.ID) + 1 + len(x.Callee.Prop)
+				if off >= start && off <= end && found == nil {
+					found = x.Callee
+				}
+			}
 			for _, a := range x.Args {
 				val(a)
 			}
@@ -2125,7 +2182,11 @@ func propDoc(el string, p schema.Prop) string {
 	case "paused":
 		b.WriteString("\n\nHolds an animation where it is: a GIF or APNG frame, or an SVG's " +
 			"SMIL clock. A design can start it paused with `paused: true`; from Go, " +
-			"`Paused.Set(false)` resumes it.")
+			"`Paused.Set(false)` resumes it, and the node's `play()`, `pause()` and " +
+			"`stop()` do the same from an event: `onClick: spin.pause()`.")
+	case "loop":
+		b.WriteString("\n\n`true` (default) loops an animation forever. `false` plays one pass " +
+			"and holds the last frame, whatever loop count the file declares.")
 	case "center":
 		b.WriteString("\n\nThe value a `centered` slider fills from. Left out, it is the " +
 			"midpoint of `min` and `max`, so the fill marks above or below the middle.")

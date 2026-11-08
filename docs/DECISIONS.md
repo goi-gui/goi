@@ -1636,3 +1636,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   from a design; as a Prop both the design and Go drive it, and a finite
   animation that played its passes uses a separate `AnimDone` flag so `Paused`
   keeps meaning "the app asked for this".
+- **An event may call an element by id.** A design that wants a play button for
+  a spinner would otherwise need a bridge handler and Go glue for three one-line
+  methods. `onClick: spin.pause()` is parsed as a call whose callee is the id,
+  validated against `schema.NodeMethods`, and dispatched through a `Transport`
+  interface on the node, so the checker and the tree agree on the same three
+  names. It stays a closed set: only `play`, `pause` and `stop` are allowed,
+  and only on an `Image` or `SVG`.

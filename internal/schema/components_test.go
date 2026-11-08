@@ -59,3 +59,24 @@ func TestSliderNarrowsVariants(t *testing.T) {
 		t.Fatal("the slider accepted a variant it does not paint")
 	}
 }
+
+// TestEventCallsNodeTransport keeps the design-side transport honest: an event
+// may call play, pause or stop on an element by id, and nothing else.
+func TestEventCallsNodeTransport(t *testing.T) {
+	base := `Window { Column {
+		Image { id: spin }
+		Button { %s }
+	} }`
+	for _, call := range []string{"spin.play()", "spin.pause()", "spin.stop()"} {
+		src := fmt.Sprintf(base, "onClick: "+call)
+		if _, diag := validate(t, src); !diag.Empty() {
+			t.Errorf("%s: %v", call, diag)
+		}
+	}
+	for _, bad := range []string{"spin.rewind()", "ghost.play()", "spin.play(1)"} {
+		src := fmt.Sprintf(base, "onClick: "+bad)
+		if _, diag := validate(t, src); diag.Empty() {
+			t.Errorf("%s was accepted", bad)
+		}
+	}
+}

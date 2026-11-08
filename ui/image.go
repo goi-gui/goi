@@ -239,7 +239,7 @@ func (a *App) renderSVG(n *tree.SVG, src string, color uint32) {
 	if n.AnimDur > 0 {
 		// An animated file cannot use the shared bitmap: two nodes must be able
 		// to sit on different moments, and every frame replaces the pixels.
-		d, err := source.RenderAt(svgColor(color), n.AnimTime)
+		d, err := source.RenderAtLoop(svgColor(color), n.AnimTime, n.Loop.Get())
 		if err != nil {
 			n.Data = nil
 			n.LoadErr = fmt.Errorf("%s: %w", src, err)
@@ -504,11 +504,27 @@ func (a *App) tickAnimatedImages(dt float64) bool {
 			return
 		}
 		any = true
-		if im.Paused.Get() || im.AnimDone || im.Data == nil {
+		if im.Paused.Get() || im.Data == nil {
 			return
 		}
+		if im.AnimDone && !im.Loop.Get() {
+			return
+		}
+		im.AnimDone = false
 		im.AnimTime += time.Duration(dt * float64(time.Second))
-		i, done := im.Anim.FrameAt(im.AnimTime)
+		// A design that turned looping off plays the first pass only, whatever
+		// the file declares, and holds the last frame at the end.
+		at := im.AnimTime
+		oneShot := false
+		if !im.Loop.Get() {
+			if pass := im.Anim.Duration(); pass > 0 && at >= pass {
+				at, oneShot = pass-1, true
+			}
+		}
+		i, done := im.Anim.FrameAt(at)
+		if oneShot {
+			done = true
+		}
 		if done {
 			// A finite loop holds its last frame.
 			im.AnimDone = true
@@ -546,11 +562,20 @@ func (a *App) tickAnimatedSVGs(dt float64) bool {
 			return
 		}
 		any = true
-		if s.Paused.Get() || s.AnimDone || s.Data == nil {
+		if s.Paused.Get() || s.Data == nil {
 			return
 		}
+		if s.AnimDone && !s.Loop.Get() {
+			return
+		}
+		s.AnimDone = false
 		s.AnimTime += time.Duration(dt * float64(time.Second))
-		if end := s.Source.PlayLength(); end > 0 && s.AnimTime >= end {
+		end := s.Source.PlayLength()
+		if !s.Loop.Get() && s.AnimDur > 0 {
+			// loop: false means the first pass, whatever repeatCount says.
+			end = s.AnimDur
+		}
+		if end > 0 && s.AnimTime >= end {
 			s.AnimDone = true
 		} else {
 			active = true
@@ -560,7 +585,7 @@ func (a *App) tickAnimatedSVGs(dt float64) bool {
 			return
 		}
 		s.Frame = frame
-		d, err := s.Source.RenderAt(svgColor(s.RenderedColor), s.AnimTime)
+		d, err := s.Source.RenderAtLoop(svgColor(s.RenderedColor), s.AnimTime, s.Loop.Get())
 		if err != nil {
 			s.LoadErr = err
 			return

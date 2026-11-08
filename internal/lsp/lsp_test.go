@@ -1804,3 +1804,55 @@ Window {
 		t.Fatalf("a clean file produced %d edit(s)", len(edits))
 	}
 }
+
+// TestCompletionOffersPlaybackMethods covers the design-side transport: an
+// event completes `spin.play()` for an animated id, not for a plain one.
+func TestCompletionOffersPlaybackMethods(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tColumn {\n\t\tImage { id: spin }\n\t\tButton { onClick: spin. }\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "onClick: spin.", len("onClick: spin.")),
+	})
+	var list completionList
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	labels := map[string]bool{}
+	for _, it := range list.Items {
+		labels[it.Label] = true
+	}
+	for _, want := range []string{"play(…)", "pause(…)", "stop(…)"} {
+		if !labels[want] {
+			t.Fatalf("%s missing from %v", want, labels)
+		}
+	}
+}
+
+// TestHoverExplainsPlaybackMethod documents `spin.pause` as a method rather than
+// as an unknown property.
+func TestHoverExplainsPlaybackMethod(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tColumn {\n\t\tSVG { id: spin }\n\t\tButton { onClick: spin.pause() }\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/hover", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "spin.pause", len("spin.pause")),
+	})
+	var h struct {
+		Contents doc `json:"contents"`
+	}
+	if err := json.Unmarshal(res, &h); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.Contents.Value, "pause") || !strings.Contains(h.Contents.Value, "frame") {
+		t.Fatalf("hover = %q", h.Contents.Value)
+	}
+}

@@ -198,7 +198,7 @@ func TestStillSVGStaysStill(t *testing.T) {
 	if s.Animated() || s.Duration() != 0 {
 		t.Fatalf("a plain SVG reported animation: %v %v", s.Animated(), s.Duration())
 	}
-	if string(s.renderAt(time.Second)) != testSVG {
+	if string(s.renderAt(time.Second, true)) != testSVG {
 		t.Fatal("a still file was rewritten")
 	}
 }

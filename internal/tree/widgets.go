@@ -303,6 +303,9 @@ type Image struct {
 	AnimDone bool
 	// Paused stops the animation clock; it stays where it is until set back.
 	Paused Prop[bool]
+	// Loop keeps an animation running after its first pass; false plays it
+	// once and holds the last frame. True by default.
+	Loop Prop[bool]
 }
 
 // Kind implements Node.
@@ -334,7 +337,42 @@ func (i *Image) namedProps() []NamedProp {
 		StringProp(&i.NodeBase, "src", &i.Src),
 		EnumProp(&i.NodeBase, "fit", DirtyLayout, &i.Fit, "cover", "contain", "fill"),
 		BoolProp(&i.NodeBase, "paused", DirtyPaint, &i.Paused),
+		BoolProp(&i.NodeBase, "loop", DirtyPaint, &i.Loop),
 	)
+}
+
+// Play resumes an animation from where it is. After Stop or a finished
+// one-shot it replays from the first frame.
+func (i *Image) Play() {
+	if i.AnimDone {
+		i.rewind()
+	}
+	i.Paused.Set(false)
+	i.AnimDone = false
+	i.Base().MarkDirty(DirtyPaint)
+}
+
+// rewind puts the first frame back on screen.
+func (i *Image) rewind() {
+	i.Frame, i.AnimTime = 0, 0
+	if i.Anim != nil && len(i.Anim.Frames) > 0 && i.Data != nil {
+		i.Data.Pix = i.Anim.Frames[0].Pix
+		i.Data.Gen++
+	}
+}
+
+// Pause holds the current frame.
+func (i *Image) Pause() {
+	i.Paused.Set(true)
+	i.Base().MarkDirty(DirtyPaint)
+}
+
+// Stop rewinds to the first frame and pauses there.
+func (i *Image) Stop() {
+	i.Paused.Set(true)
+	i.AnimDone = false
+	i.rewind()
+	i.Base().MarkDirty(DirtyPaint)
 }
 
 // SVG draws an SVG file. The ui layer rasterizes it, replacing the file's
@@ -381,6 +419,9 @@ type SVG struct {
 	AnimDone bool
 	// Paused stops the SMIL clock; the frame it stopped on stays on screen.
 	Paused Prop[bool]
+	// Loop keeps a SMIL animation running after its first pass; false plays it
+	// once and holds the last frame. True by default.
+	Loop Prop[bool]
 }
 
 // Kind implements Node.
@@ -391,6 +432,31 @@ func (s *SVG) Kind() string { return "SVG" }
 //
 // Call it from Bind; the document is not carried across a hot reload.
 func (s *SVG) SetDataString(v string) { s.SetDataBytes([]byte(v)) }
+
+// Play resumes a SMIL animation from where it is. After Stop or a finished
+// one-shot it replays from the first frame.
+func (s *SVG) Play() {
+	if s.AnimDone {
+		s.AnimTime, s.Frame = 0, 0
+	}
+	s.Paused.Set(false)
+	s.AnimDone = false
+	s.Base().MarkDirty(DirtyPaint)
+}
+
+// Pause holds the current SMIL frame.
+func (s *SVG) Pause() {
+	s.Paused.Set(true)
+	s.Base().MarkDirty(DirtyPaint)
+}
+
+// Stop rewinds a SMIL animation to the start and pauses there; the ui layer
+// draws the first frame on the next pass.
+func (s *SVG) Stop() {
+	s.Paused.Set(true)
+	s.AnimTime, s.Frame, s.AnimDone = 0, 0, false
+	s.Base().MarkDirty(DirtyPaint)
+}
 
 // SetDataBytes is SetDataString for bytes an icon was embedded as.
 func (s *SVG) SetDataBytes(b []byte) {
@@ -409,6 +475,7 @@ func (s *SVG) namedProps() []NamedProp {
 	return append(
 		commonProps(&s.NodeBase),
 		BoolProp(&s.NodeBase, "paused", DirtyPaint, &s.Paused),
+		BoolProp(&s.NodeBase, "loop", DirtyPaint, &s.Loop),
 		StringProp(&s.NodeBase, "src", &s.Src),
 		EnumProp(&s.NodeBase, "fit", DirtyLayout, &s.Fit, "cover", "contain", "fill"),
 		ColorProp(&s.NodeBase, "color", DirtyPaint, &s.Color),
@@ -489,4 +556,35 @@ func (t *Text) namedProps() []NamedProp {
 		ColorProp(&t.NodeBase, "decorationColor", DirtyPaint, &t.DecorationColor),
 		BoolProp(&t.NodeBase, "selectable", DirtyPaint, &t.Selectable),
 	)
+}
+
+// Transport runs one of the playback methods an event can call by id, so a
+// design can write `onClick: spin.pause()` without a bridge handler.
+func (i *Image) Transport(method string) bool {
+	switch method {
+	case "play":
+		i.Play()
+	case "pause":
+		i.Pause()
+	case "stop":
+		i.Stop()
+	default:
+		return false
+	}
+	return true
+}
+
+// Transport runs one of the playback methods an event can call by id.
+func (s *SVG) Transport(method string) bool {
+	switch method {
+	case "play":
+		s.Play()
+	case "pause":
+		s.Pause()
+	case "stop":
+		s.Stop()
+	default:
+		return false
+	}
+	return true
 }
