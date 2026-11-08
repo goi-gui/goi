@@ -96,3 +96,42 @@ func TestTableCellValueTakesScalars(t *testing.T) {
 		t.Fatal("a misspelled cell property was accepted")
 	}
 }
+
+// TestColorAcceptsCSSForms keeps the checker aligned with the parser: names,
+// rgb(), hsl() and gradients pass, and a misspelled colour fails.
+func TestColorAcceptsCSSForms(t *testing.T) {
+	for _, v := range []string{
+		`white`, `"red"`, `"rgb(42, 123, 155)"`, `"rgba(0,0,0,0.5)"`,
+		`"hsl(200 40% 50%)"`, `#fff`, `primary`,
+	} {
+		src := fmt.Sprintf("Window { Rectangle { background: %s } }", v)
+		if _, diag := validate(t, src); !diag.Empty() {
+			t.Errorf("background: %s: %v", v, diag)
+		}
+	}
+	src := `Window { Rectangle { background: "linear-gradient(90deg, red 0%, blue 100%)" } }`
+	if _, diag := validate(t, src); !diag.Empty() {
+		t.Errorf("gradient: %v", diag)
+	}
+	src = `Window { Rectangle { background: "notacolour" } }`
+	if _, diag := validate(t, src); diag.Empty() {
+		t.Fatal("a misspelled colour was accepted")
+	}
+	src = `Window { Rectangle { background: "linear-gradient(90deg, red)" } }`
+	if _, diag := validate(t, src); diag.Empty() {
+		t.Fatal("a one-stop gradient was accepted")
+	}
+}
+
+// TestGradientOnlyOnBackground keeps the promise honest: a gradient is a box
+// fill, so a text colour or a border refuses it instead of drawing nothing.
+func TestGradientOnlyOnBackground(t *testing.T) {
+	src := `Window { Rectangle { background: "linear-gradient(90deg, red, blue)" } }`
+	if _, diag := validate(t, src); !diag.Empty() {
+		t.Errorf("background gradient: %v", diag)
+	}
+	src = `Window { Text { text: "x" color: "linear-gradient(90deg, red, blue)" } }`
+	if _, diag := validate(t, src); diag.Empty() {
+		t.Fatal("a gradient was accepted as a text colour")
+	}
+}

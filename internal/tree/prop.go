@@ -3,6 +3,7 @@ package tree
 import (
 	"strconv"
 
+	"github.com/goi-gui/goi/internal/csscolor"
 	"github.com/goi-gui/goi/internal/syntax"
 )
 
@@ -224,15 +225,38 @@ func (p *NamedProp) SetLiteral(v syntax.Value) bool {
 		switch c := v.(type) {
 		case *syntax.Color:
 			cp.base.clearColorRole(p.Name)
+			cp.base.setGradient(p.Name, nil)
 			cp.val = c.RGBA
 		case *syntax.String:
-			rgba, ok := ParseHexColor(c.Val)
+			// A gradient is a fill, not a colour; only background paints one.
+			if csscolor.IsGradient(c.Val) {
+				if p.Name != "background" {
+					return false
+				}
+				g, ok := csscolor.ParseGradient(c.Val)
+				if !ok {
+					return false
+				}
+				cp.base.clearColorRole(p.Name)
+				cp.base.setGradient(p.Name, g)
+				cp.val = 0
+				return true
+			}
+			rgba, ok := csscolor.Parse(c.Val)
 			if !ok {
 				return false
 			}
 			cp.base.clearColorRole(p.Name)
+			cp.base.setGradient(p.Name, nil)
 			cp.val = rgba
 		case *syntax.Ident:
+			// A CSS colour keyword is a literal, not a theme role.
+			if rgba, ok := csscolor.Parse(c.Val); ok {
+				cp.base.clearColorRole(p.Name)
+				cp.base.setGradient(p.Name, nil)
+				cp.val = rgba
+				return true
+			}
 			if !cp.base.setColorRole(p.Name, c.Val) {
 				return false
 			}

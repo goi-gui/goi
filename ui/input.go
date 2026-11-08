@@ -497,6 +497,9 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 		i.setFocus(nil)
 		i.setKbd(nil)
 		i.putClipboard(code.Source())
+		// The button answers the press the way every other tappable surface
+		// does: a ripple from the pointer, clipped to the button by paint.
+		i.startRipple(code.Base().Node(), x, y)
 		i.markDirty()
 		return
 	}

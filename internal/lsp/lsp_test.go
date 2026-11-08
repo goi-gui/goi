@@ -1856,3 +1856,56 @@ func TestHoverExplainsPlaybackMethod(t *testing.T) {
 		t.Fatalf("hover = %q", h.Contents.Value)
 	}
 }
+
+// TestColourCompletionOffersCSSForms covers the wider colour syntax: a role, a
+// CSS keyword and both gradient snippets appear in a colour position.
+func TestColourCompletionOffersCSSForms(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tRectangle {\n\t\tbackground: \n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "background: ", len("background: ")),
+	})
+	var list completionList
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	labels := map[string]bool{}
+	for _, it := range list.Items {
+		labels[it.Label] = true
+	}
+	for _, want := range []string{"primary", "white", "transparent", `"linear-gradient(…)"`, `"radial-gradient(…)"`} {
+		if !labels[want] {
+			t.Fatalf("%s missing from %d items", want, len(list.Items))
+		}
+	}
+}
+
+// TestHoverExplainsCSSColour tells a keyword and a gradient from a custom name.
+func TestHoverExplainsCSSColour(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tRectangle {\n\t\tbackground: \"linear-gradient(90deg, red, blue)\"\n\t\tborderColor: \"rgba(0,0,0,0.5)\"\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+	// Inside the gradient string, and inside rgba().
+	for _, needle := range []string{"linear-gradient(90deg, red", "rgba(0,0,0,0.5)"} {
+		res := c.request("textDocument/hover", map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     at(t, src, needle, 2),
+		})
+		var h struct {
+			Contents doc `json:"contents"`
+		}
+		if err := json.Unmarshal(res, &h); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(h.Contents.Value, "CSS") {
+			t.Fatalf("hover for %q = %q", needle, h.Contents.Value)
+		}
+	}
+}

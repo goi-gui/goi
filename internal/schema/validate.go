@@ -2,9 +2,9 @@ package schema
 
 import (
 	"fmt"
+	"github.com/goi-gui/goi/internal/csscolor"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/goi-gui/goi/internal/syntax"
@@ -742,8 +742,18 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 		case *syntax.Color:
 			// Already normalized by the lexer.
 		case *syntax.String:
-			if _, ok := parseColor(c.Val); !ok {
-				v.add(at, end, fmt.Sprintf("%s.%s is not a valid color: %q", e.Name, pd.Name, c.Val), "")
+			if csscolor.IsGradient(c.Val) {
+				if pd.Name != "background" {
+					v.add(at, end, fmt.Sprintf("%s.%s cannot be a gradient: a gradient is a box fill, so only background takes one", e.Name, pd.Name), "")
+					return
+				}
+				if _, ok := csscolor.ParseGradient(c.Val); !ok {
+					v.add(at, end, fmt.Sprintf("%s.%s is not a valid gradient: %q", e.Name, pd.Name, c.Val), "")
+				}
+				return
+			}
+			if _, ok := csscolor.Parse(c.Val); !ok {
+				v.add(at, end, fmt.Sprintf("%s.%s is not a valid color: %q (a hex literal, a CSS colour name, rgb()/rgba() or a gradient)", e.Name, pd.Name, c.Val), "")
 			}
 		case *syntax.Ident:
 			// A bare word is a theme role such as surfaceContainerHigh, or a
@@ -844,7 +854,7 @@ func (v *validator) checkShadow(e *syntax.Element, pd *Prop, sh *syntax.Shadow) 
 		switch c := l.Color.(type) {
 		case nil, *syntax.Color:
 		case *syntax.String:
-			if _, ok := parseColor(c.Val); !ok {
+			if _, ok := csscolor.Parse(c.Val); !ok {
 				v.add(c.At, c.At+syntax.Pos(len(c.Val)+2),
 					fmt.Sprintf("%s.%s is not a valid shadow color: %q", e.Name, pd.Name, c.Val), "")
 			}
@@ -1413,27 +1423,3 @@ func kindName(val syntax.Value) string {
 }
 
 // parseColor accepts #rgb, #rrggbb and #rrggbbaa.
-func parseColor(s string) (uint32, bool) {
-	if !strings.HasPrefix(s, "#") {
-		return 0, false
-	}
-	hexs := s[1:]
-	if len(hexs) != 3 && len(hexs) != 6 && len(hexs) != 8 {
-		return 0, false
-	}
-	n, err := strconv.ParseUint(hexs, 16, 32)
-	if err != nil {
-		return 0, false
-	}
-	switch len(hexs) {
-	case 3:
-		r := (n >> 8) & 0xF
-		g := (n >> 4) & 0xF
-		b := n & 0xF
-		return uint32(r*17)<<24 | uint32(g*17)<<16 | uint32(b*17)<<8 | 0xFF, true
-	case 6:
-		return uint32(n)<<8 | 0xFF, true
-	default:
-		return uint32(n), true
-	}
-}

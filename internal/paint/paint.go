@@ -46,6 +46,9 @@ const (
 	// scroll shadow is. StartAngle picks the opaque edge (see paint's grad*
 	// constants).
 	Gradient
+	// CSSGradient fills a shape with a CSS linear or radial gradient, using the
+	// op's Gradient field for its stops.
+	CSSGradient
 )
 
 // Align is the horizontal alignment of a text or icon run inside its box.
@@ -103,6 +106,10 @@ type Op struct {
 	// smaller than the shape; rounding that would put corners at the viewport
 	// edge. Zero means "round Clip itself".
 	ClipBox [4]float32
+
+	// Gradient is a CSS gradient fill, read only by CSSGradient. Its stops are
+	// in 0..1 with the same colour format as Color.
+	Gradient *tree.Gradient
 
 	// Bitmap fields. Src is the decoded image and UV is the crop inside it, in
 	// 0..1, so a cover or contain fit only changes the quad and the UVs.
@@ -264,6 +271,8 @@ func (l *List) paintContent(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
 		l.suppressElev = b.ShadowSet()
 		l.paintComponent(c.M3(), r, clip)
 		l.suppressElev = false
+	} else if g := b.Gradient("background"); g != nil {
+		l.fillGradient(r, g, b.Radius(), b.BorderColor(), b.BorderWidth(), clip)
 	} else if b.Background() != 0 || b.BorderWidth() > 0 {
 		l.fillRect(r, b.Background(), b.Radius(), b.BorderColor(), b.BorderWidth(), clip)
 	}
@@ -485,6 +494,22 @@ func (l *List) fillRect(r tree.Rect, color uint32, radius float64, borderColor u
 		Rect:        rectArr(r),
 		Radius:      [4]float32{rad, rad, rad, rad},
 		Color:       color,
+		BorderColor: borderColor,
+		BorderWidth: float32(borderWidth),
+		Clip:        clipArr(clip),
+	})
+}
+
+// fillGradient paints a box with a CSS gradient, keeping the border on top the
+// way fillRect does.
+func (l *List) fillGradient(r tree.Rect, g *tree.Gradient, radius float64, borderColor uint32, borderWidth float64, clip tree.Rect) {
+	rad := float32(radius)
+	l.Ops = append(l.Ops, Op{
+		Kind:        Fill,
+		Shape:       CSSGradient,
+		Rect:        rectArr(r),
+		Radius:      [4]float32{rad, rad, rad, rad},
+		Gradient:    g,
 		BorderColor: borderColor,
 		BorderWidth: float32(borderWidth),
 		Clip:        clipArr(clip),

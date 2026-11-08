@@ -94,6 +94,9 @@ func (l *List) paintCode(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	if c.ShowCopy.Get() {
 		btn := CodeCopyRect(r)
 		l.fillRect(btn, withAlpha(col.SecondaryContainer, 0.9), m3.ShapeSmall, 0, 0, clip)
+		// The copy button is one small press target inside the block, so its
+		// ripple is clipped to the button rather than to the whole Code box.
+		l.ripple(c, btn, m3.ShapeSmall, col.OnSecondaryContainer, intersect(clip, btn))
 		l.iconIn("content_copy", 18, col.OnSecondaryContainer, btn.X+btn.W/2, btn.Y+btn.H/2, clip)
 	}
 }

@@ -9,8 +9,10 @@ import (
 
 	"github.com/gogpu/gputypes"
 	"github.com/gogpu/wgpu"
+	"github.com/goi-gui/goi/internal/csscolor"
 	"github.com/goi-gui/goi/internal/paint"
 	"github.com/goi-gui/goi/internal/text"
+	"github.com/goi-gui/goi/internal/tree"
 
 	_ "github.com/gogpu/wgpu/hal/allbackends"
 )
@@ -47,6 +49,7 @@ struct Viewport {
 @group(0) @binding(3) var samp: sampler;
 @group(0) @binding(4) var images: texture_2d<f32>;
 @group(0) @binding(5) var imgSamp: sampler;
+@group(0) @binding(6) var<storage, read> gradients: array<vec4f>;
 
 struct VSOut {
 	@builtin(position) pos: vec4f,
@@ -108,6 +111,46 @@ fn sd_round_rect(p: vec2f, s: vec2f, r: f32) -> f32 {
 
 const PI = 3.14159265359;
 
+// gradient_color samples a CSS gradient. Each record is 6 vec4: header
+// (kind, angle, stop count, unused), the four stop positions, then four stop
+// colours. t is the position along the gradient line, 0..1.
+fn gradient_color(idx: f32, t: f32) -> vec4f {
+	let base = u32(idx) * 6u;
+	let count = u32(gradients[base].z);
+	if (count == 0u) { return vec4f(0.0); }
+	let p = gradients[base + 1u];
+	let ps = array<f32, 4>(p.x, p.y, p.z, p.w);
+	let cs = array<vec4f, 4>(
+		gradients[base + 2u], gradients[base + 3u],
+		gradients[base + 4u], gradients[base + 5u],
+	);
+	if (t <= ps[0]) { return cs[0]; }
+	for (var i = 1u; i < count; i = i + 1u) {
+		if (t <= ps[i]) {
+			let span = max(ps[i] - ps[i - 1u], 0.0001);
+			let f = clamp((t - ps[i - 1u]) / span, 0.0, 1.0);
+			return mix(cs[i - 1u], cs[i], f);
+		}
+	}
+	return cs[count - 1u];
+}
+
+// gradient_t is where a fragment falls on its gradient line.
+fn gradient_t(head: vec4f, idx: f32, local: vec2f, size: vec2f) -> f32 {
+	if (head.x > 2.5) {
+		// 3 = radial: out from the centre to the farthest corner.
+		let d = (local - size * 0.5) / max(length(size) * 0.5, 0.001);
+		return length(d);
+	}
+	// 2 = linear, angle in radians measured from "to top", clockwise the way CSS
+	// does, and the gradient line's length is the box projected on it.
+	let a = head.y;
+	let dir = vec2f(sin(a), -cos(a));
+	let len = abs(size.x * sin(a)) + abs(size.y * cos(a));
+	let c = local - size * 0.5;
+	return dot(c, dir) / max(len, 0.001) + 0.5;
+}
+
 @fragment
 fn fs_main(in: VSOut) -> @location(0) vec4f {
 	// Hard clip against the node's content box.
@@ -132,6 +175,28 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 
 	let aa = 0.5 / max(viewport.size.z, 1.0);
 	let kind = in.params.x;
+
+	if (kind > 8.5) {
+		// CSS gradient fill, linear or radial, with the shape's own rounded
+		// corners and border drawn on top.
+		let head = gradients[u32(in.params.y) * 6u];
+		let g = gradient_color(in.params.y, gradient_t(head, in.params.y, in.local, in.size));
+		let r = corner_radius(in.radius, in.local, in.size);
+		let d = sd_round_rect(in.local, in.size, r);
+		let cov = 1.0 - smoothstep(-aa, aa, d);
+		if (cov <= 0.0) { discard; }
+		let bw = in.border.w;
+		if (bw > 0.0) {
+			let inner = 1.0 - smoothstep(-aa, aa, d + bw);
+			let band = abs(d + bw * 0.5) - bw * 0.5;
+			let fa = g.a * inner;
+			let ba = in.border.a * (1.0 - smoothstep(-aa, aa, band));
+			let a = fa + ba;
+			if (a <= 0.0) { discard; }
+			return vec4f((g.rgb * fa + in.border.rgb * ba) / a, a);
+		}
+		return vec4f(g.rgb, g.a * cov);
+	}
 
 	if (kind > 7.5) {
 		// Edge gradient: opaque at the edge params.z names, transparent at the
@@ -320,8 +385,18 @@ type GPU struct {
 	images    *imageRenderer
 	instances []gpuInstance
 
-	text       *textRenderer
-	textLib    *text.Library
+	text    *textRenderer
+	textLib *text.Library
+
+	// grads holds the CSS gradients the frame draws, one 6-vec4 record each;
+	// gradSeen maps a gradient pointer to its index so two nodes with the same
+	// value share a record.
+	gradBuf   *wgpu.Buffer
+	gradData  []float32
+	gradSeen  map[*tree.Gradient]int
+	gradCount int
+	gradWrote int
+
 	textLayout *wgpu.BindGroupLayout
 
 	closed bool
@@ -433,6 +508,15 @@ func (g *GPU) initPipeline() error {
 	if err != nil {
 		return fmt.Errorf("storage buffer: %w", err)
 	}
+	g.gradData = make([]float32, maxGradients*gradRecordFloats)
+	g.gradBuf, err = g.device.CreateBuffer(&wgpu.BufferDescriptor{
+		Label: "gradients",
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopyDst,
+		Size:  gradBufferSize(),
+	})
+	if err != nil {
+		return fmt.Errorf("gradient buffer: %w", err)
+	}
 
 	layout, err := g.device.CreateBindGroupLayout(&wgpu.BindGroupLayoutDescriptor{
 		Label:   "shapes-layout",
@@ -520,11 +604,114 @@ func shapeLayoutEntries() []gputypes.BindGroupLayoutEntry {
 			Binding: 5, Visibility: gputypes.ShaderStageFragment,
 			Sampler: &gputypes.SamplerBindingLayout{Type: gputypes.SamplerBindingTypeFiltering},
 		},
+		{
+			Binding: 6, Visibility: gputypes.ShaderStageFragment,
+			Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeReadOnlyStorage},
+		},
 	}
 }
 
 func (g *GPU) storageSize(n int) uint64 {
 	return uint64(n) * uint64(unsafe.Sizeof(gpuInstance{}))
+}
+
+// maxGradients bounds the gradient record buffer. A frame with more distinct
+// gradients than this reuses the last slot, which is a design nobody ships.
+const maxGradients = 512
+
+// gradRecordFloats is one gradient record: a header, four positions and four
+// colours, all as vec4.
+const gradRecordFloats = 24
+
+func gradBufferSize() uint64 { return maxGradients * gradRecordFloats * 4 }
+
+// gradIndex queues a gradient for this frame and returns its record index.
+func (g *GPU) gradIndex(gr *tree.Gradient) int {
+	if g.gradSeen == nil {
+		g.gradSeen = map[*tree.Gradient]int{}
+	}
+	if i, ok := g.gradSeen[gr]; ok {
+		return i
+	}
+	if g.gradCount >= maxGradients {
+		return maxGradients - 1
+	}
+	i := g.gradCount
+	g.gradCount++
+	g.gradSeen[gr] = i
+	// Four stops: a longer gradient is resampled, which is invisible at this
+	// size and keeps the shader free of loops over a dynamic count.
+	stops := resample(gr.Stops, 4)
+	head := gr.Angle
+	if gr.Kind == csscolor.Radial {
+		head = 3
+	} else {
+		head = 2
+	}
+	base := i * gradRecordFloats
+	rec := make([]float32, gradRecordFloats)
+	rec[0] = float32(head)
+	rec[1] = float32(gr.Angle * 3.141592653589793 / 180)
+	rec[2] = float32(len(stops))
+	for k := 0; k < 4; k++ {
+		rec[4+k] = float32(stops[k].At)
+	}
+	for k := 0; k < 4; k++ {
+		c := stops[k].Color
+		o := 8 + k*4
+		rec[o] = float32((c>>24)&0xFF) / 255
+		rec[o+1] = float32((c>>16)&0xFF) / 255
+		rec[o+2] = float32((c>>8)&0xFF) / 255
+		rec[o+3] = float32(c&0xFF) / 255
+	}
+	if cap(g.gradData) < maxGradients*gradRecordFloats {
+		g.gradData = make([]float32, maxGradients*gradRecordFloats)
+	}
+	copy(g.gradData[base:], rec)
+	return i
+}
+
+// resample turns any stop list into exactly n stops, evenly in index, keeping
+// the first and last positions exact.
+func resample(stops []tree.GradientStop, n int) []tree.GradientStop {
+	out := make([]tree.GradientStop, n)
+	if len(stops) == 0 {
+		return out
+	}
+	for k := 0; k < n; k++ {
+		t := float64(k) / float64(n-1)
+		out[k] = sampleStops(stops, t)
+	}
+	out[0] = stops[0]
+	out[n-1] = stops[len(stops)-1]
+	return out
+}
+
+// sampleStops blends a stop list at position t.
+func sampleStops(stops []tree.GradientStop, t float64) tree.GradientStop {
+	if t <= stops[0].At {
+		return stops[0]
+	}
+	for i := 1; i < len(stops); i++ {
+		if t <= stops[i].At {
+			span := stops[i].At - stops[i-1].At
+			f := 0.0
+			if span > 0 {
+				f = (t - stops[i-1].At) / span
+			}
+			return tree.GradientStop{At: t, Color: mixColor(stops[i-1].Color, stops[i].Color, f)}
+		}
+	}
+	return stops[len(stops)-1]
+}
+
+func mixColor(a, b uint32, f float64) uint32 {
+	ch := func(shift uint) uint32 {
+		x := float64((a >> shift) & 0xFF)
+		y := float64((b >> shift) & 0xFF)
+		return uint32(x + (y-x)*f + 0.5)
+	}
+	return ch(24)<<24 | ch(16)<<16 | ch(8)<<8 | ch(0)
 }
 
 // TextLibrary exposes the font library so layout can measure real text.
@@ -592,6 +779,12 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 	}
 
 	g.instances = g.instances[:0]
+	g.gradCount = 0
+	if g.gradSeen == nil {
+		g.gradSeen = map[*tree.Gradient]int{}
+	} else {
+		clear(g.gradSeen)
+	}
 	// Reserve every glyph this frame needs before emitting, so an atlas
 	// compaction can only drop entries the frame does not reference.
 	if g.text != nil {
@@ -603,6 +796,15 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 	for i, op := range list.Ops {
 		switch op.Kind {
 		case paint.Fill:
+			params := [4]float32{shapeKind(op.Shape), 0, op.StartAngle, op.EndAngle}
+			if op.Gradient != nil {
+				// A CSS gradient: kind 9 linear, 10 radial, params.y its record.
+				kind := float32(9)
+				if op.Gradient.Kind == csscolor.Radial {
+					kind = 10
+				}
+				params = [4]float32{kind, float32(g.gradIndex(op.Gradient)), 0, 0}
+			}
 			g.instances = append(g.instances, gpuInstance{
 				Rect:    snapRect(op.Rect, g.scale),
 				Radius:  op.Radius,
@@ -610,7 +812,7 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 				Border:  borderVec(op.BorderColor, op.BorderWidth),
 				Clip:    clipVec(op.Clip),
 				ClipBox: clipVec(op.ClipBox),
-				Params:  [4]float32{shapeKind(op.Shape), 0, op.StartAngle, op.EndAngle},
+				Params:  params,
 				Misc:    [4]float32{op.Thickness, 0, op.ClipRadius, 0},
 			})
 		case paint.Shadow:
@@ -657,6 +859,12 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 	}
 	if len(g.instances) > 0 {
 		if err := g.queue.WriteBuffer(g.storage, 0, instancesToBytes(g.instances)); err != nil {
+			return err
+		}
+	}
+	if g.gradCount > 0 {
+		n := g.gradCount * gradRecordFloats
+		if err := g.queue.WriteBuffer(g.gradBuf, 0, floatsToBytes(g.gradData[:n])); err != nil {
 			return err
 		}
 	}
@@ -758,6 +966,7 @@ func (g *GPU) rebind() error {
 			{Binding: 3, Sampler: g.textSampler()},
 			{Binding: 4, TextureView: g.imageView()},
 			{Binding: 5, Sampler: g.imageSampler()},
+			{Binding: 6, Buffer: g.gradBuf, Size: gradBufferSize()},
 		},
 	})
 	if err != nil {
@@ -821,6 +1030,9 @@ func (g *GPU) Release() {
 	if g.storage != nil {
 		g.storage.Release()
 	}
+	if g.gradBuf != nil {
+		g.gradBuf.Release()
+	}
 	if g.uniform != nil {
 		g.uniform.Release()
 	}
@@ -883,6 +1095,8 @@ func shapeKind(s paint.Shape) float32 {
 		return 7
 	case paint.Gradient:
 		return 8
+	case paint.CSSGradient:
+		return 9
 	}
 	return 0
 }

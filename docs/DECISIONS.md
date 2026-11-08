@@ -1695,3 +1695,18 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   express. The SVG package now folds class rules and `:root` custom properties
   into presentation attributes before rasterizing, and interpolates path data
   when both keyframes share a command sequence.
+- **One colour parser, shared by the checker and the tree.** CSS syntax is not
+  worth implementing twice: `internal/csscolor` reads hex, the 148 names,
+  `rgb()`/`rgba()` in both spellings, `hsl()`/`hsla()` and gradients, and both
+  the validator and the property setter call it. A bare identifier is tried as a
+  CSS keyword first and only then as a theme role, so `white` is a literal while
+  `onSurface` still follows the scheme.
+- **A gradient is a value of its own, not a colour.** The tree keeps it beside
+  the colour cell, because a gradient has no single RGBA and the expression layer
+  reads a `uint32`. Paint emits a `CSSGradient` op and the renderer puts the stops
+  in a storage buffer: a stop list does not fit an instance, and a second texture
+  would need an upload per gradient. The shader walks four stops, so a longer
+  gradient is resampled on the CPU — invisible at the size a box fill is read at.
+- **A gradient only fills `background`.** `color` and `borderColor` are strokes
+  and glyph colours, where a box gradient has no meaning; the checker reports it
+  rather than storing a value paint would ignore.

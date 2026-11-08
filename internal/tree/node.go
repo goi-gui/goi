@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/goi-gui/goi/internal/csscolor"
 	"github.com/goi-gui/goi/internal/syntax"
 )
 
@@ -95,7 +96,11 @@ type NodeBase struct {
 	maxHeight          Prop[float64]
 	background         Prop[uint32]
 	borderColor        Prop[uint32]
-	radius             Prop[float64]
+	// gradient holds a CSS gradient written for a colour property, keyed by the
+	// property name. Only `background` paints one today; the map keeps the
+	// parser honest for the names that may grow later.
+	gradient map[string]*csscolor.Gradient
+	radius   Prop[float64]
 	// shadow is the CSS-style shadow list. It paints outside the layout box, so
 	// a change only repaints; Text draws it behind its glyphs and every other
 	// node draws it around its box.
@@ -305,6 +310,27 @@ func (b *NodeBase) SetMaxHeight(v float64) { b.maxHeight.Set(v) }
 
 // Background returns 0xRRGGBBAA.
 func (b *NodeBase) Background() uint32 { return b.background.Get() }
+
+// Gradients returns the gradient behind a colour property, or nil for a solid
+// one.
+func (b *NodeBase) Gradient(name string) *csscolor.Gradient {
+	if b.gradient == nil {
+		return nil
+	}
+	return b.gradient[name]
+}
+
+// setGradient records or clears the gradient for a colour property.
+func (b *NodeBase) setGradient(name string, g *csscolor.Gradient) {
+	if g == nil {
+		delete(b.gradient, name)
+		return
+	}
+	if b.gradient == nil {
+		b.gradient = map[string]*csscolor.Gradient{}
+	}
+	b.gradient[name] = g
+}
 
 // Opacity returns the node's opacity, 0 to 1. 1 is fully opaque.
 func (b *NodeBase) Opacity() float64 {

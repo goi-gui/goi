@@ -1214,3 +1214,32 @@ func TestSliderRangeGoSide(t *testing.T) {
 		t.Fatalf("range = %v..%v, want it clamped to 0..10", lo, hi)
 	}
 }
+
+// TestCodeCopyRipples checks that the copy button answers a press with the same
+// ripple every other tappable surface shows, and still copies.
+func TestCodeCopyRipples(t *testing.T) {
+	const src = "Window { Column {\n" +
+		"\tCode { id: c showCopy: true width: 400 height: 200 }\n" +
+		"} }"
+	_, win, in := inputFixture(t, src, 500, 400)
+	code := MustByID[*Code](win, "c")
+	code.Text.Set("package main\n\nfunc main() {}\n")
+
+	btn := absoluteRect(code)
+	r := paint.CodeCopyRect(btn)
+	in.MouseDown(r.X+r.W/2, r.Y+r.H/2, 0, false)
+	c := code.M3()
+	if !c.RippleOn || c.Ripple <= 0 {
+		t.Fatalf("copy press left ripple off: on=%v p=%v", c.RippleOn, c.Ripple)
+	}
+	if c.RippleX < r.X || c.RippleX > r.X+r.W || c.RippleY < r.Y || c.RippleY > r.Y+r.H {
+		t.Fatalf("ripple started at %v,%v, outside the button %+v", c.RippleX, c.RippleY, r)
+	}
+	// The ripple finishes on its own and the flag clears.
+	for i := 0; i < 50 && c.RippleOn; i++ {
+		in.tick(0.02)
+	}
+	if c.RippleOn {
+		t.Fatal("the ripple never finished")
+	}
+}

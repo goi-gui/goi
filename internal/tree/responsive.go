@@ -3,6 +3,7 @@ package tree
 import (
 	"sort"
 
+	"github.com/goi-gui/goi/internal/csscolor"
 	"github.com/goi-gui/goi/internal/schema"
 	"github.com/goi-gui/goi/internal/syntax"
 )
@@ -128,7 +129,7 @@ func literalMatches(cur any, v syntax.Value) bool {
 			return c == x.Val
 		}
 		if c, ok := cur.(uint32); ok {
-			rgba, ok := ParseHexColor(x.Val)
+			rgba, ok := csscolor.Parse(x.Val)
 			return ok && rgba == c
 		}
 	}

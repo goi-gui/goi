@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/goi-gui/goi/internal/asset"
+	"github.com/goi-gui/goi/internal/csscolor"
 	"github.com/goi-gui/goi/internal/goifmt"
 	"github.com/goi-gui/goi/internal/highlight"
 	"github.com/goi-gui/goi/internal/m3"
@@ -819,17 +820,7 @@ func valueItems(file *syntax.File, prop string, src []byte, off int, prefix stri
 				})
 			}
 		case pd.Type == schema.TypeColor:
-			for _, v := range m3.ColorRoles() {
-				out = append(out, completionResult{
-					Label: v, Kind: kindColor,
-					Detail: "colour role",
-					Documentation: &doc{
-						Kind: "markdown",
-						Value: "Theme role: follows the scheme. A `#rrggbb` literal stays fixed, " +
-							"and a name the app defines with `ui.SetCustomColor` follows the app.",
-					},
-				})
-			}
+			out = append(out, colourItems(elName)...)
 		case prop == "language" && elName == "Code":
 			// Code's language is a plain string in the schema, because an
 			// unknown one must still draw; the lexers the highlighter ships are
@@ -1289,10 +1280,63 @@ func colourDoc(name string) string {
 		return "`" + name + "` is a theme role: it follows the light/dark scheme."
 	}
 	if strings.HasPrefix(name, "#") {
-		return "`" + name + "` is a fixed literal: it does not follow the scheme."
+		return "`" + name + "` is a fixed hex literal: it does not follow the scheme."
+	}
+	if csscolor.IsName(name) {
+		return "`" + name + "` is a CSS colour name, so its value is the same in every theme."
+	}
+	low := strings.ToLower(name)
+	if strings.HasPrefix(low, "rgb(") || strings.HasPrefix(low, "rgba(") ||
+		strings.HasPrefix(low, "hsl(") || strings.HasPrefix(low, "hsla(") {
+		return "`" + name + "` is a CSS colour function. Its alpha is the fourth argument, " +
+			"0..1 or a percentage."
+	}
+	if csscolor.IsGradient(name) {
+		return "`" + name + "` is a CSS gradient. The stops may carry a position " +
+			"(`0%`, `50%`, `100%`); a missing one is spread between its neighbours."
 	}
 	return "`" + name + "` is a custom colour: the app defines it with `ui.SetCustomColor`. " +
 		"If nothing defines it, the runtime logs a warning and draws `onSurface`."
+}
+
+// colourItems completes a colour position: the theme roles first, then the CSS
+// names a design may write, then a gradient snippet.
+func colourItems(elName string) []completionResult {
+	out := make([]completionResult, 0, len(m3.ColorRoles())+8)
+	for _, v := range m3.ColorRoles() {
+		out = append(out, completionResult{
+			Label: v, Kind: kindColor,
+			Detail: "colour role",
+			Documentation: &doc{
+				Kind: "markdown",
+				Value: "Theme role: follows the scheme. A `#rrggbb` literal stays fixed, " +
+					"and a name the app defines with `ui.SetCustomColor` follows the app.",
+			},
+		})
+	}
+	for _, v := range []string{"white", "black", "red", "green", "blue", "transparent"} {
+		out = append(out, completionResult{
+			Label: v, Kind: kindColor, Detail: "CSS colour name",
+			Documentation: &doc{Kind: "markdown", Value: colourDoc(v)},
+		})
+	}
+	out = append(out, completionResult{
+		Label:      `"linear-gradient(…)"`,
+		InsertText: `"linear-gradient(90deg, `,
+		Kind:       kindColor, Detail: "CSS gradient",
+		Documentation: &doc{Kind: "markdown", Value: "**linear-gradient(angle, stop, stop …)**\n\n" +
+			"Fills the box along an angle: `90deg` points right, `0deg` up. Every colour position " +
+			"accepts a gradient, so `background`, `borderColor` and a shadow colour all take one."},
+	})
+	out = append(out, completionResult{
+		Label:      `"radial-gradient(…)"`,
+		InsertText: `"radial-gradient(circle, `,
+		Kind:       kindColor, Detail: "CSS gradient",
+		Documentation: &doc{Kind: "markdown", Value: "**radial-gradient(size, stop, stop …)**\n\n" +
+			"Fills the box out from its centre. `circle` and `closest-side` are accepted and the " +
+			"element's own box is the circle."},
+	})
+	return out
 }
 
 // ---------------------------------------------------------------- formatting
@@ -1841,16 +1885,24 @@ func valueAt(file *syntax.File, off int) (int, int, *schema.Prop, string) {
 		return 0, 0, nil, ""
 	}
 	for _, p := range el.Props() {
-		id, isIdent := p.Value.(*syntax.Ident)
-		if !isIdent {
+		// A bare word (a role) and a quoted string (a CSS colour, a gradient)
+		// are both values a reader points at.
+		var start, end int
+		var val string
+		switch v := p.Value.(type) {
+		case *syntax.Ident:
+			start, end, val = int(v.At), int(v.At)+len(v.Val), v.Val
+		case *syntax.String:
+			// The lexer records the opening quote, so the value starts after it.
+			start, end, val = int(v.At), int(v.At)+len(v.Val)+2, v.Val
+		default:
 			continue
 		}
-		start, end := int(id.At), int(id.At)+len(id.Val)
 		if off < start || off > end {
 			continue
 		}
 		if pd := elDef.Prop(p.Name); pd != nil {
-			return start, end, pd, id.Val
+			return start, end, pd, val
 		}
 	}
 	return 0, 0, nil, ""
@@ -2127,7 +2179,9 @@ func propDoc(el string, p schema.Prop) string {
 	}
 	if p.Type == schema.TypeColor {
 		b.WriteString("\n\nA theme role (`primary`, `onSurface`), a name the app defines with " +
-			"`ui.SetCustomColor`, or a `#rrggbb` literal.")
+			"`ui.SetCustomColor`, or CSS colour syntax: `#rrggbb`, any of the 148 CSS names " +
+			"(`white`, `rebeccapurple`), `rgb()`/`rgba()` and `hsl()`/`hsla()`. " +
+			"Quote a function or a gradient: `background: \"linear-gradient(90deg, red, blue)\")`.")
 	}
 	if p.Name == "src" {
 		b.WriteString("\n\n`goi://path` reads the design's asset container, `./path` or an absolute " +
@@ -2417,16 +2471,7 @@ func fragmentValueItems(file *syntax.File, prop string, frag *syntax.Prop, prefi
 					{Label: "false", Kind: kindKeyword, Detail: "bool"},
 				}
 			case "color":
-				for _, v := range m3.ColorRoles() {
-					out = append(out, completionResult{
-						Label: v, Kind: kindColor, Detail: "colour role",
-						Documentation: &doc{
-							Kind:  "markdown",
-							Value: "Theme role. A name the app defines with `ui.SetCustomColor` works here too.",
-						},
-					})
-				}
-				return out
+				return append(out, colourItems("")...)
 			}
 		}
 	}
