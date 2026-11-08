@@ -272,3 +272,29 @@ func TestTableVariantsPaintDistinctChrome(t *testing.T) {
 		t.Fatalf("plain: border=%v surface=%v tinted=%v", b, surface, tinted)
 	}
 }
+
+// TestTableMultipleSelectedRowsPaint checks that multiple mode paints every
+// selected row, whether the design seeded the flags or Go set them.
+func TestTableMultipleSelectedRowsPaint(t *testing.T) {
+	const src = `Window { Column { Table {
+		id: table
+		width: 300
+		selectable: multiple
+		TableColumn { label: "A" width: 150 }
+		TableColumn { label: "B" width: 150 }
+		TableRow { selected: true TableCell { text: "a1" } TableCell { text: "b1" } }
+		TableRow { TableCell { text: "a2" } TableCell { text: "b2" } }
+		TableRow { selected: true TableCell { text: "a3" } TableCell { text: "b3" } }
+	} } }`
+	l := list(t, src, 500, 400)
+	col := m3.Light().Colors
+	bands := 0
+	for _, op := range l.Ops {
+		if op.Kind == Fill && op.Color == col.SecondaryContainer {
+			bands++
+		}
+	}
+	if bands != 2 {
+		t.Fatalf("selected bands = %d, want the first and third row", bands)
+	}
+}

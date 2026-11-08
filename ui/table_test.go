@@ -219,3 +219,140 @@ func TestTableRowsSortedForLayoutAndHit(t *testing.T) {
 		t.Fatalf("hit = %s, want the first cell", hit.Kind())
 	}
 }
+
+const tableUIMulti = `Window { Column { Table {
+	id: table
+	width: 400
+	selectable: multiple
+	TableColumn { key: "name" label: "Name" width: 200 sortable: true }
+	TableColumn { key: "role" label: "Role" sortable: true }
+	TableColumn { key: "age" label: "Age" width: 80 align: end numeric: true sortable: true }
+	TableRow { TableCell { text: "Kaan" } TableCell { text: "Engineer" } TableCell { text: "31" } }
+	TableRow { TableCell { text: "Ada" } TableCell { text: "Mathematician" } TableCell { text: "36" } }
+	TableRow { TableCell { text: "Linus" } TableCell { text: "Kernel" } TableCell { text: "54" } }
+} } }`
+
+// pressRow clicks the middle of a row.
+func pressRow(t *testing.T, in *interactor, tbl *Table, i int) {
+	t.Helper()
+	r := absoluteRect(tbl.TableRows()[i])
+	in.MouseDown(r.X+10, r.Y+r.H/2, 0, false)
+	in.MouseUp(r.X+10, r.Y+r.H/2, 0)
+}
+
+// TestTableSingleSelectionTogglesOff checks the single mode: the selected row
+// deselects on a second click, and only one row is ever selected.
+func TestTableSingleSelectionTogglesOff(t *testing.T) {
+	_, win, in := inputFixture(t, tableUI, 500, 600)
+	tbl := MustByID[*Table](win, "table")
+
+	pressRow(t, in, tbl, 1)
+	if got := tbl.SelectedRows(); len(got) != 1 || got[0] != 1 {
+		t.Fatalf("selected = %v, want [1]", got)
+	}
+	pressRow(t, in, tbl, 1)
+	if got := tbl.SelectedRows(); len(got) != 0 {
+		t.Fatalf("selected = %v, want none after a second click", got)
+	}
+	pressRow(t, in, tbl, 0)
+	pressRow(t, in, tbl, 2)
+	if got := tbl.SelectedRows(); len(got) != 1 || got[0] != 2 {
+		t.Fatalf("selected = %v, want only the last row", got)
+	}
+}
+
+// TestTableMultipleSelectionToggles checks the multiple mode: each click adds
+// the row, a second click removes it, and the event reports every toggle.
+func TestTableMultipleSelectionToggles(t *testing.T) {
+	_, win, in := inputFixture(t, tableUIMulti, 500, 600)
+	tbl := MustByID[*Table](win, "table")
+	var picks []int
+	tbl.OnSelect(func(i int) { picks = append(picks, i) })
+
+	pressRow(t, in, tbl, 0)
+	pressRow(t, in, tbl, 1)
+	if got := tbl.SelectedRows(); !equalInts(got, []int{0, 1}) {
+		t.Fatalf("selected = %v, want [0 1]", got)
+	}
+	pressRow(t, in, tbl, 1)
+	if got := tbl.SelectedRows(); !equalInts(got, []int{0}) {
+		t.Fatalf("selected = %v, want [0] after re-clicking row 1", got)
+	}
+	pressRow(t, in, tbl, 0)
+	if got := tbl.SelectedRows(); len(got) != 0 {
+		t.Fatalf("selected = %v, want none", got)
+	}
+	if !equalInts(picks, []int{0, 1, 1, 0}) {
+		t.Fatalf("events = %v", picks)
+	}
+}
+
+// TestTableSelectableNone checks that none makes cells inert: no press event,
+// no selection and no pointer affordance.
+func TestTableSelectableNone(t *testing.T) {
+	const src = `Window { Column { Table {
+		id: table
+		width: 300
+		selectable: none
+		TableColumn { label: "A" width: 150 }
+		TableColumn { label: "B" width: 150 }
+		TableRow { TableCell { text: "a" } TableCell { text: "b" } }
+	} } }`
+	_, win, in := inputFixture(t, src, 500, 400)
+	tbl := MustByID[*Table](win, "table")
+	picked := false
+	tbl.OnSelect(func(int) { picked = true })
+	pressRow(t, in, tbl, 0)
+	if picked || len(tbl.SelectedRows()) != 0 {
+		t.Fatalf("none table selected a row (event=%v, rows=%v)", picked, tbl.SelectedRows())
+	}
+
+	var got platform.Cursor
+	in.setCursor = func(c platform.Cursor) { got = c }
+	cell := absoluteRect(tbl.TableRows()[0])
+	in.MouseMove(cell.X+10, cell.Y+cell.H/2)
+	if got == platform.CursorPointer {
+		t.Fatal("a cell showed the hand with selectable: none")
+	}
+}
+
+// TestTableMultipleGoSide covers SetSelectedRows and ToggleRow from Go.
+func TestTableMultipleGoSide(t *testing.T) {
+	_, win, _ := inputFixture(t, tableUIMulti, 500, 600)
+	tbl := MustByID[*Table](win, "table")
+	tbl.SetSelectedRows(0, 2)
+	if got := tbl.SelectedRows(); !equalInts(got, []int{0, 2}) {
+		t.Fatalf("selected = %v, want [0 2]", got)
+	}
+	if tbl.SelectedIndex() != 0 {
+		t.Fatalf("SelectedIndex = %d, want the first selected row", tbl.SelectedIndex())
+	}
+	tbl.ToggleRow(0)
+	if got := tbl.SelectedRows(); !equalInts(got, []int{2}) {
+		t.Fatalf("selected = %v, want [2]", got)
+	}
+	tbl.ToggleRow(2)
+	if got := tbl.SelectedRows(); len(got) != 0 {
+		t.Fatalf("selected = %v, want none", got)
+	}
+	// Single mode keeps one row even when Go passes several.
+	tbl.SetSelectedRow(-1)
+	_, win2, _ := inputFixture(t, tableUI, 500, 600)
+	single := MustByID[*Table](win2, "table")
+	single.SetSelectedRows(0, 1, 2)
+	if got := single.SelectedRows(); !equalInts(got, []int{2}) {
+		t.Fatalf("single selected = %v, want [2]", got)
+	}
+}
+
+func equalInts(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}

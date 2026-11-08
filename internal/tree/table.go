@@ -117,13 +117,53 @@ func (t *Table) Rows() []*Component {
 // RowCount returns how many rows the table shows.
 func (t *Table) RowCount() int { return len(t.TableRows()) }
 
-// SelectedIndex returns the selected row in display order, or -1.
+// Selection mode names, as `selectable` accepts them.
+const (
+	SelectNone     = "none"
+	SelectSingle   = "single"
+	SelectMultiple = "multiple"
+)
+
+// SelectableMode returns the table's selection mode, defaulting to single.
+func (t *Table) SelectableMode() string {
+	switch t.Selectable.Get() {
+	case SelectNone, SelectMultiple:
+		return t.Selectable.Get()
+	}
+	return SelectSingle
+}
+
+// SelectedIndex returns the first selected row in display order, or -1.
 func (t *Table) SelectedIndex() int {
-	i := int(t.SelectedRow.Get())
-	if i < 0 || i >= len(t.TableRows()) {
+	sel := t.SelectedRows()
+	if len(sel) == 0 {
 		return -1
 	}
-	return i
+	return sel[0]
+}
+
+// SelectedRows returns every selected row's display index, in display order.
+// In single mode the `selectedRow` cell is the state; in multiple mode the
+// rows' own `selected` flags are, so a design can seed them row by row.
+func (t *Table) SelectedRows() []int {
+	rows := t.TableRows()
+	switch t.SelectableMode() {
+	case SelectNone:
+		return nil
+	case SelectMultiple:
+		out := make([]int, 0, len(rows))
+		for i, r := range rows {
+			if r.Selected.Get() {
+				out = append(out, i)
+			}
+		}
+		return out
+	}
+	i := int(t.SelectedRow.Get())
+	if i < 0 || i >= len(rows) {
+		return nil
+	}
+	return []int{i}
 }
 
 // SetSelectedRow selects a row by display index; -1 clears the selection.
@@ -136,6 +176,81 @@ func (t *Table) SetSelectedRow(i int) {
 		row.Selected.Set(n == i)
 	}
 	t.MarkDirty(DirtyPaint)
+}
+
+// SetSelectedRows replaces the selection with the given display indices.
+// Multiple keeps them all, single keeps the last one and none clears them.
+func (t *Table) SetSelectedRows(indexes ...int) {
+	rows := t.TableRows()
+	want := make(map[int]bool, len(indexes))
+	for _, i := range indexes {
+		if i >= 0 && i < len(rows) {
+			want[i] = true
+		}
+	}
+	if t.SelectableMode() != SelectMultiple && len(want) > 1 {
+		last := -1
+		for _, i := range indexes {
+			if want[i] {
+				last = i
+			}
+		}
+		clear(want)
+		if last >= 0 {
+			want[last] = true
+		}
+	}
+	if t.SelectableMode() == SelectNone {
+		clear(want)
+	}
+	t.SelectedRow.Set(-1)
+	for i, row := range rows {
+		row.Selected.Set(want[i])
+		if want[i] {
+			t.SelectedRow.Set(float64(i))
+		}
+	}
+	t.MarkDirty(DirtyPaint)
+}
+
+// ToggleRow flips one row the way a click does, following the selectable mode:
+// single holds at most one row, multiple toggles each independently, none
+// ignores the press. It reports false for an out-of-range index.
+func (t *Table) ToggleRow(i int) bool {
+	rows := t.TableRows()
+	if i < 0 || i >= len(rows) {
+		return false
+	}
+	switch t.SelectableMode() {
+	case SelectNone:
+		return false
+	case SelectMultiple:
+		row := rows[i]
+		row.Selected.Set(!row.Selected.Get())
+		if row.Selected.Get() {
+			t.SelectedRow.Set(float64(i))
+		} else if !t.anyRowSelected() {
+			t.SelectedRow.Set(-1)
+		}
+		t.MarkDirty(DirtyPaint)
+		return true
+	}
+	if t.SelectedIndex() == i {
+		t.SetSelectedRow(-1)
+	} else {
+		t.SetSelectedRow(i)
+	}
+	return true
+}
+
+// anyRowSelected reports whether any row carries the selection flag.
+func (t *Table) anyRowSelected() bool {
+	for _, row := range t.TableRows() {
+		if row.Selected.Get() {
+			return true
+		}
+	}
+	return false
 }
 
 // SetCell sets a cell's text, addressing it by row display index and column

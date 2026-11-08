@@ -146,8 +146,8 @@ func clickable(n tree.Node) bool {
 }
 
 // tableTarget reports whether a table part reacts to a press: a sortable header
-// or any cell. They are deliberately not in `interactive`, so they never enter
-// the keyboard focus order.
+// or a selectable cell. They are deliberately not in `interactive`, so they
+// never enter the keyboard focus order.
 func tableTarget(n tree.Node) bool {
 	switch n.Kind() {
 	case "TableColumn":
@@ -155,9 +155,29 @@ func tableTarget(n tree.Node) bool {
 			return tc.Sortable.Get()
 		}
 	case "TableCell":
-		return true
+		if t := tableOf(n); t != nil {
+			return t.SelectableMode() != tree.SelectNone
+		}
 	}
 	return false
+}
+
+// tableOf returns the table a cell belongs to, or nil.
+func tableOf(n tree.Node) *tree.Table {
+	p := n.Base().Parent()
+	if p == nil {
+		return nil
+	}
+	row, ok := p.(*tree.TableRow)
+	if !ok {
+		return nil
+	}
+	gp := row.Base().Parent()
+	if gp == nil {
+		return nil
+	}
+	t, _ := gp.(*tree.Table)
+	return t
 }
 
 // dragRegionAt reports whether n or an ancestor moves the window on a press.
@@ -795,20 +815,12 @@ func (i *interactor) toggleSort(n tree.Node) {
 // selectRow selects the row a pressed cell belongs to and reports its display
 // index, which is what a reader means by "row 2" after sorting.
 func (i *interactor) selectRow(n tree.Node) {
-	p := n.Base().Parent()
-	if p == nil {
+	t := tableOf(n)
+	if t == nil {
 		return
 	}
-	row, ok := p.(*tree.TableRow)
-	if !ok {
-		return
-	}
-	gp := row.Base().Parent()
-	if gp == nil {
-		return
-	}
-	t, ok := gp.(*tree.Table)
-	if !ok {
+	row, _ := n.Base().Parent().(*tree.TableRow)
+	if row == nil {
 		return
 	}
 	idx := -1
@@ -818,10 +830,9 @@ func (i *interactor) selectRow(n tree.Node) {
 			break
 		}
 	}
-	if idx < 0 {
+	if idx < 0 || !t.ToggleRow(idx) {
 		return
 	}
-	t.SetSelectedRow(idx)
 	t.Select.Emit(idx)
 	i.markDirty()
 }

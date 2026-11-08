@@ -130,7 +130,10 @@ func (l *List) paintTable(t *tree.Table, r tree.Rect, clip tree.Rect) {
 	rows := t.TableRows()
 	def := t.RowHeight.Get()
 	y := r.Y + hh
-	selected := t.SelectedIndex()
+	selected := make(map[int]bool, len(rows))
+	for _, i := range t.SelectedRows() {
+		selected[i] = true
+	}
 	for i, row := range rows {
 		rh := row.Height()
 		if rh < 0 {
@@ -139,7 +142,7 @@ func (l *List) paintTable(t *tree.Table, r tree.Rect, clip tree.Rect) {
 				rh = tree.DefaultRowHeight
 			}
 		}
-		if i == selected {
+		if selected[i] {
 			band(tree.Rect{X: r.X, Y: y, W: r.W, H: rh}, col.SecondaryContainer)
 		} else if t.Striped.Get() && i%2 == 1 {
 			band(tree.Rect{X: r.X, Y: y, W: r.W, H: rh}, withAlpha(col.OnSurface, 0.03))

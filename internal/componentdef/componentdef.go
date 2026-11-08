@@ -99,7 +99,7 @@ var props = map[string][]string{
 	"Divider":          {"variant"},
 	"List":             {"variant"},
 	"ListItem":         {"label", "supporting", "icon", "trailingIcon", "variant", "disabled", "selected"},
-	"Table":            {"variant", "striped", "showHeader", "rowHeight", "headerHeight", "sortColumn", "sortAscending", "selectedRow"},
+	"Table":            {"variant", "striped", "showHeader", "rowHeight", "headerHeight", "sortColumn", "sortAscending", "selectable", "selectedRow"},
 	"TableColumn":      {"label", "key", "align", "sortable", "numeric"},
 	"TableRow":         {"selected", "disabled"},
 	"TableCell":        {"text", "icon", "align"},
@@ -166,6 +166,7 @@ var defaults = map[string]any{
 	"headerHeight":  40.0,
 	"sortColumn":    -1.0,
 	"sortAscending": true,
+	"selectable":    "single",
 	"selectedRow":   -1.0,
 }
 
@@ -185,7 +186,7 @@ func TypeOf(name string) PropType {
 	case "value", "min", "max", "step", "spacing", "gap",
 		"rowHeight", "headerHeight", "sortColumn", "selectedRow":
 		return Number
-	case "variant", "size", "crossAxisAlign", "mainAxisAlign", "align":
+	case "variant", "size", "crossAxisAlign", "mainAxisAlign", "align", "selectable":
 		return Enum
 	}
 	return String
@@ -204,6 +205,9 @@ func EnumValuesFor(kind, name string) []string {
 		if v, ok := variantValues[kind]; ok {
 			return v
 		}
+	}
+	if name == "selectable" && kind == "Table" {
+		return []string{"none", "single", "multiple"}
 	}
 	return EnumValues(name)
 }

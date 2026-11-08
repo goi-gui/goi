@@ -32,3 +32,16 @@ func TestTableNarrowsVariants(t *testing.T) {
 		t.Fatal("the table accepted a variant it does not paint")
 	}
 }
+
+// TestTableSelectableValues checks the mode enum and that single is the default.
+func TestTableSelectableValues(t *testing.T) {
+	for _, v := range []string{"none", "single", "multiple"} {
+		src := fmt.Sprintf("Window { Table { selectable: %s } }", v)
+		if _, diag := validate(t, src); !diag.Empty() {
+			t.Errorf("Table.selectable %q: %v", v, diag)
+		}
+	}
+	if _, diag := validate(t, "Window { Table { selectable: double } }"); diag.Empty() {
+		t.Fatal("the table accepted an unknown selection mode")
+	}
+}

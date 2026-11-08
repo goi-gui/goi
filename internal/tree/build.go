@@ -485,6 +485,7 @@ func newM3Component(name string) Node {
 			HeaderHeight:  newProp(nil, "headerHeight", DirtyLayout, DefaultHeaderHeight),
 			SortColumn:    newProp(nil, "sortColumn", DirtyLayout, -1.0),
 			SortAscending: newProp(nil, "sortAscending", DirtyLayout, true),
+			Selectable:    newProp(nil, "selectable", DirtyPaint, "single"),
 			SelectedRow:   newProp(nil, "selectedRow", DirtyPaint, -1.0),
 		}
 	case "TableColumn":

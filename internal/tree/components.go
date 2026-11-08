@@ -412,7 +412,9 @@ type Table struct {
 	HeaderHeight  Prop[float64]
 	SortColumn    Prop[float64]
 	SortAscending Prop[bool]
-	SelectedRow   Prop[float64]
+	// Selectable is none, single or multiple; single is the default.
+	Selectable  Prop[string]
+	SelectedRow Prop[float64]
 	// SortEvent fires when a header is clicked, with the column index and the
 	// new direction. SortBy from Go does not fire it, because the caller
 	// already knows.
@@ -425,13 +427,14 @@ func (*Table) Kind() string { return "Table" }
 func (c *Table) namedProps() []NamedProp {
 	return append(c.propsExcept("Table",
 		"striped", "showHeader", "rowHeight", "headerHeight",
-		"sortColumn", "sortAscending", "selectedRow"),
+		"sortColumn", "sortAscending", "selectable", "selectedRow"),
 		BoolProp(&c.NodeBase, "striped", DirtyPaint, &c.Striped),
 		BoolProp(&c.NodeBase, "showHeader", DirtyLayout, &c.ShowHeader),
 		NumberProp(&c.NodeBase, "rowHeight", DirtyLayout, &c.RowHeight),
 		NumberProp(&c.NodeBase, "headerHeight", DirtyLayout, &c.HeaderHeight),
 		NumberProp(&c.NodeBase, "sortColumn", DirtyLayout, &c.SortColumn),
 		BoolProp(&c.NodeBase, "sortAscending", DirtyLayout, &c.SortAscending),
+		EnumProp(&c.NodeBase, "selectable", DirtyPaint, &c.Selectable, "none", "single", "multiple"),
 		NumberProp(&c.NodeBase, "selectedRow", DirtyPaint, &c.SelectedRow),
 	)
 }
