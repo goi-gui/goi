@@ -298,3 +298,37 @@ func TestTableMultipleSelectedRowsPaint(t *testing.T) {
 		t.Fatalf("selected bands = %d, want the first and third row", bands)
 	}
 }
+
+// TestTableColumnIcon checks that a header can carry an icon: the glyph sits
+// before the label, and a column with only an icon still paints.
+func TestTableColumnIcon(t *testing.T) {
+	const src = `Window { Column { Table {
+		id: table
+		width: 300
+		TableColumn { label: "Name" icon: "person" width: 200 }
+		TableColumn { icon: "cake" width: 100 }
+		TableRow { TableCell { text: "Kaan" } TableCell { text: "31" } }
+	} } }`
+	l := list(t, src, 500, 400)
+	x := map[string]float32{}
+	for _, op := range l.Ops {
+		if op.Kind == Text && op.Icon {
+			x[op.Text] = op.Rect[0]
+		}
+	}
+	if _, ok := x["person"]; !ok {
+		t.Fatalf("missing the column icon:\n%s", l.Dump())
+	}
+	if _, ok := x["cake"]; !ok {
+		t.Fatalf("an icon-only column drew no icon:\n%s", l.Dump())
+	}
+	for _, op := range l.Ops {
+		if op.Kind == Text && op.Text == "Name" {
+			if x["person"] >= op.Rect[0] {
+				t.Fatalf("icon x = %v, label x = %v; want the icon first", x["person"], op.Rect[0])
+			}
+			return
+		}
+	}
+	t.Fatalf("missing the header label:\n%s", l.Dump())
+}

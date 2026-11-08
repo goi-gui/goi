@@ -191,7 +191,7 @@ func (l *List) tableColumnDividers(t *tree.Table, r tree.Rect, hh float64, clip 
 // the pointer shape the input layer sets.
 func (l *List) paintTableColumn(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	tc, ok := c.Node().(*tree.TableColumn)
-	if !ok || tc.Label.Get() == "" {
+	if !ok || (tc.Label.Get() == "" && tc.Icon.Get() == "") {
 		return
 	}
 	col := l.Theme.Colors
@@ -222,7 +222,27 @@ func (l *List) paintTableColumn(c *tree.Component, r tree.Rect, clip tree.Rect) 
 			box.X += 12
 		}
 	}
-	l.textIn(tc.Label.Get(), l.style("labelLarge"), fg, box, align, clip)
+	if icon := tc.Icon.Get(); icon != "" {
+		// Icon then label, as one aligned pair, the way a button draws them.
+		st := l.style("labelLarge")
+		labelW := textWidth(l, tc.Label.Get(), st)
+		total := 18.0
+		if tc.Label.Get() != "" {
+			total += 8 + labelW
+		}
+		x := box.X
+		switch align {
+		case AlignCenter:
+			x += (box.W - total) / 2
+		case AlignEnd:
+			x += box.W - total
+		}
+		l.iconIn(icon, 18, fg, x+9, r.Y+r.H/2, clip)
+		l.textIn(tc.Label.Get(), st, fg,
+			tree.Rect{X: x + 26, Y: r.Y, W: labelW, H: r.H}, AlignStart, clip)
+	} else {
+		l.textIn(tc.Label.Get(), l.style("labelLarge"), fg, box, align, clip)
+	}
 	if !sorted {
 		return
 	}

@@ -100,7 +100,7 @@ var props = map[string][]string{
 	"List":             {"variant"},
 	"ListItem":         {"label", "supporting", "icon", "trailingIcon", "variant", "disabled", "selected"},
 	"Table":            {"variant", "striped", "showHeader", "rowHeight", "headerHeight", "sortColumn", "sortAscending", "selectable", "selectedRow"},
-	"TableColumn":      {"label", "key", "align", "sortable", "numeric"},
+	"TableColumn":      {"label", "icon", "key", "align", "sortable", "numeric"},
 	"TableRow":         {"selected", "disabled"},
 	"TableCell":        {"text", "icon", "align"},
 	"Menu":             {"variant"},
