@@ -215,6 +215,30 @@ func TestTableHeaderAlignsWithCells(t *testing.T) {
 	}
 }
 
+// TestTableColumnDividers checks that a table with a surface separates its
+// columns with a vertical rule, and a plain table does not.
+func TestTableColumnDividers(t *testing.T) {
+	dividers := func(variant string) int {
+		l := list(t, tableSource("variant: "+variant, ""), 500, 400)
+		n := 0
+		for _, op := range l.Ops {
+			if op.Kind == Fill && op.BorderWidth == 0 && op.Rect[2] == 1 && op.Rect[3] > 1 {
+				n++
+			}
+		}
+		return n
+	}
+	// Three columns have two boundaries.
+	for _, v := range []string{"outlined", "filled"} {
+		if got := dividers(v); got != 2 {
+			t.Fatalf("%s dividers = %d, want 2", v, got)
+		}
+	}
+	if got := dividers("plain"); got != 0 {
+		t.Fatalf("plain dividers = %d, want none", got)
+	}
+}
+
 // TestTableVariantsPaintDistinctChrome pins the three styles: outlined draws a
 // surface and a border, filled draws the tinted surface, plain draws neither.
 // A variant that fell through to the same ops would be a no-op in a design.

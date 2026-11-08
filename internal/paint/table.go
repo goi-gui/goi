@@ -151,8 +151,35 @@ func (l *List) paintTable(t *tree.Table, r tree.Rect, clip tree.Rect) {
 	}
 
 	if variant != "plain" {
+		l.tableColumnDividers(t, r, hh, clip)
 		// A border last, so the separators cannot paint over it.
 		l.fillRect(r, 0, rad, col.OutlineVariant, 1, clip)
+	}
+}
+
+// tableColumnDividers draws a rule between columns, from the header's top to
+// the last row's bottom. A plain table has no surface to divide, so it keeps
+// its open look.
+func (l *List) tableColumnDividers(t *tree.Table, r tree.Rect, hh float64, clip tree.Rect) {
+	rows := t.TableRows()
+	if len(rows) == 0 {
+		return
+	}
+	first := rows[0].Base().Bounds()
+	top := r.Y + first.Y
+	if hh > 0 {
+		if cols := t.TableColumns(); len(cols) > 0 {
+			top = r.Y + cols[0].Base().Bounds().Y
+		}
+	}
+	last := rows[len(rows)-1].Base().Bounds()
+	color := withAlpha(l.Theme.Colors.OutlineVariant, 0.6)
+	for i, cell := range tree.CellNodes(rows[0]) {
+		if i == 0 {
+			continue
+		}
+		x := r.X + first.X + cell.Base().Bounds().X
+		l.vLine(x, top, r.Y+last.Y+last.H-top, color, clip)
 	}
 }
 
@@ -245,6 +272,18 @@ func (l *List) hLine(x, y, w float64, color uint32, clip tree.Rect) {
 	l.Ops = append(l.Ops, Op{
 		Kind: Fill, Shape: RoundedRect,
 		Rect:  [4]float32{float32(x), float32(y), float32(w), 1},
+		Color: color, Clip: clipArr(clip),
+	})
+}
+
+// vLine draws a 1dp vertical rule, clipped like the table.
+func (l *List) vLine(x, y, h float64, color uint32, clip tree.Rect) {
+	if h <= 0 || color == 0 {
+		return
+	}
+	l.Ops = append(l.Ops, Op{
+		Kind: Fill, Shape: RoundedRect,
+		Rect:  [4]float32{float32(x), float32(y), 1, float32(h)},
 		Color: color, Clip: clipArr(clip),
 	})
 }
