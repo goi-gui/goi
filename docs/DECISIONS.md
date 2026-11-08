@@ -1604,3 +1604,14 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   cells are handled by `tableTarget` in the input layer rather than added to
   `interactive`, so they react to the pointer but never enter the Tab order: a
   hundred-row grid must not add a hundred stops.
+- **A percentage column width is read before it is resolved.** `ResolveSize`
+  only runs for nodes the generic flow places, and a `Table` places its own
+  columns, so `width: 25%` would have stayed at `-1` and turned into a flexible
+  column. `NodeBase.PercentWidth` exposes the literal fraction, and the table
+  takes that share of its content width. Only a direct literal is read; an
+  expression has no fraction to report before it runs.
+- **A component may narrow the shared variant union.** A `Table` paints
+  `outlined`, `filled` and `plain`; accepting every word the union lists made
+  `variant: tonal` pass the checker and paint the outlined style, which reads
+  as a dead option. `EnumValuesFor` lets the component declare the styles it
+  implements, so completion, the checker and hover show only those.

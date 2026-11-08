@@ -181,15 +181,15 @@ func (l *List) paintTableColumn(c *tree.Component, r tree.Rect, clip tree.Rect) 
 	if tc.Align.Get() == "" && tc.Numeric.Get() {
 		align = AlignEnd
 	}
-	box := r
+	// A header shares the cell's inset, so the label sits in the same column as
+	// the values below it.
+	box := alignedBox(r)
 	if sorted {
-		// Room for the arrow, on the side the text ends at.
-		arrowGap := 24.0
-		if align == AlignEnd {
-			box.X += arrowGap
-			box.W -= arrowGap
-		} else {
-			box.W -= arrowGap
+		// Room for the arrow on the trailing side. Centring loses half of it
+		// on each side so the label stays over the cell text.
+		box.W -= 24
+		if align == AlignCenter {
+			box.X += 12
 		}
 	}
 	l.textIn(tc.Label.Get(), l.style("labelLarge"), fg, box, align, clip)

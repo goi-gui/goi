@@ -80,6 +80,21 @@ func (b *NodeBase) exprSpecFor(name string) (exprSpec, bool) {
 	return exprSpec{}, false
 }
 
+// PercentWidth reports a declared percentage width as a fraction: `width: 10%`
+// is 0.1. ResolveSize only runs for nodes the generic flow places, so a node
+// that reads a child's width itself (a TableColumn) asks here instead.
+func (b *NodeBase) PercentWidth() (float64, bool) {
+	spec, ok := b.exprSpecFor("width")
+	if !ok {
+		return 0, false
+	}
+	p, ok := spec.value.(*syntax.Percent)
+	if !ok {
+		return 0, false
+	}
+	return p.Val / 100, true
+}
+
 // writeExpr stores a resolved value without going through Go's Prop.Set, then
 // marks the node for the work the property needs. A value that did not change
 // costs nothing, which is what keeps a per-frame re-evaluation cheap.

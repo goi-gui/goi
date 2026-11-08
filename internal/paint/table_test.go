@@ -165,3 +165,86 @@ func TestTableCellsShareTheWidth(t *testing.T) {
 		t.Fatalf("last cell width = %v", cells[2].Base().Bounds().W)
 	}
 }
+
+// TestTablePercentWidths checks `width: 25%`: a percentage column takes that
+// share of the table's content box, and the flexible column takes the rest.
+func TestTablePercentWidths(t *testing.T) {
+	const src = `Window { Column { Table {
+		id: table
+		width: 500
+		TableColumn { key: "a" width: 10% }
+		TableColumn { key: "b" width: 100 }
+		TableColumn { key: "c" }
+		TableRow { TableCell { text: "a" } TableCell { text: "b" } TableCell { text: "c" } }
+	} } }`
+	tr, diag := tree.BuildSource([]byte(src), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 800, 600)
+	n, _ := tr.ByID("table")
+	cols := n.(*tree.Table).TableColumns()
+	want := []float64{50, 100, 350}
+	for i, c := range cols {
+		if got := c.Base().Bounds().W; got != want[i] {
+			t.Fatalf("column %d width = %v, want %v", i, got, want[i])
+		}
+	}
+}
+
+// TestTableHeaderAlignsWithCells keeps a column's label over its values: the
+// header and the cells start at the same inset, and an end-aligned column ends
+// at the same edge.
+func TestTableHeaderAlignsWithCells(t *testing.T) {
+	l := list(t, tableSource("", ""), 500, 400)
+	box := func(text string) Op {
+		t.Helper()
+		for _, op := range l.Ops {
+			if op.Kind == Text && !op.Icon && op.Text == text {
+				return op
+			}
+		}
+		t.Fatalf("no text op %q", text)
+		return Op{}
+	}
+	if h, c := box("Name"), box("Kaan"); h.TextX != c.TextX {
+		t.Fatalf("start-aligned header x = %v, cell x = %v", h.TextX, c.TextX)
+	}
+	if h, c := box("Age"), box("31"); h.TextX+h.BoxW != c.TextX+c.BoxW {
+		t.Fatalf("end-aligned header right = %v, cell right = %v", h.TextX+h.BoxW, c.TextX+c.BoxW)
+	}
+}
+
+// TestTableVariantsPaintDistinctChrome pins the three styles: outlined draws a
+// surface and a border, filled draws the tinted surface, plain draws neither.
+// A variant that fell through to the same ops would be a no-op in a design.
+func TestTableVariantsPaintDistinctChrome(t *testing.T) {
+	col := m3.Light().Colors
+	chrome := func(variant string) (border bool, tinted bool, surface bool) {
+		l := list(t, tableSource("variant: "+variant, ""), 500, 400)
+		for _, op := range l.Ops {
+			if op.Kind != Fill {
+				continue
+			}
+			if op.BorderWidth > 0 {
+				border = true
+			}
+			switch op.Color {
+			case col.SurfaceContainerLow:
+				tinted = true
+			case col.Surface:
+				surface = true
+			}
+		}
+		return
+	}
+	if b, tinted, surface := chrome("outlined"); !b || !surface || tinted {
+		t.Fatalf("outlined: border=%v surface=%v tinted=%v", b, surface, tinted)
+	}
+	if b, tinted, _ := chrome("filled"); !b || !tinted {
+		t.Fatalf("filled: border=%v tinted=%v", b, tinted)
+	}
+	if b, tinted, surface := chrome("plain"); b || tinted || surface {
+		t.Fatalf("plain: border=%v surface=%v tinted=%v", b, surface, tinted)
+	}
+}

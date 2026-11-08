@@ -191,8 +191,26 @@ func TypeOf(name string) PropType {
 	return String
 }
 
+// variantValues narrows the shared variant union where a component paints only
+// a few styles, so completion and the checker do not offer a word the painter
+// would ignore.
+var variantValues = map[string][]string{
+	"Table": {"outlined", "filled", "plain"},
+}
+
+// EnumValuesFor is EnumValues narrowed to the values one component implements.
+func EnumValuesFor(kind, name string) []string {
+	if name == "variant" {
+		if v, ok := variantValues[kind]; ok {
+			return v
+		}
+	}
+	return EnumValues(name)
+}
+
 // EnumValues returns the accepted identifiers for an enum property. It is a
-// union: a variant that does not apply to a component is simply unused.
+// union: a variant that does not apply to a component is simply unused, unless
+// that component narrows the list with EnumValuesFor.
 func EnumValues(name string) []string {
 	if name == "size" {
 		return []string{"xs", "sm", "md", "lg", "xl", "small", "large", "extended", "primary", "secondary"}

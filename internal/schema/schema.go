@@ -329,7 +329,7 @@ var elements = func() []Element {
 					p.Default = 1.0
 				}
 			case componentdef.Enum:
-				p.Type, p.Dirty, p.Enum = TypeEnum, DirtyLayout, componentdef.EnumValues(name)
+				p.Type, p.Dirty, p.Enum = TypeEnum, DirtyLayout, componentdef.EnumValuesFor(k.Name, name)
 			default:
 				p.Type, p.Dirty, p.Default = TypeString, DirtyLayout, ""
 			}

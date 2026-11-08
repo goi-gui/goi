@@ -17,3 +17,18 @@ func TestEveryComponentValidates(t *testing.T) {
 		}
 	}
 }
+
+// TestTableNarrowsVariants keeps the checker honest about the styles the table
+// painter implements: the shared union accepts many words, the table only three.
+func TestTableNarrowsVariants(t *testing.T) {
+	for _, v := range []string{"outlined", "filled", "plain"} {
+		src := fmt.Sprintf("Window { Table { variant: %s } }", v)
+		if _, diag := validate(t, src); !diag.Empty() {
+			t.Errorf("Table.variant %q: %v", v, diag)
+		}
+	}
+	src := "Window { Table { variant: tonal } }"
+	if _, diag := validate(t, src); diag.Empty() {
+		t.Fatal("the table accepted a variant it does not paint")
+	}
+}

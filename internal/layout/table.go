@@ -12,14 +12,20 @@ const (
 	tableFlexColumn = 140.0
 )
 
-// tableWidths resolves each column's width inside total. A declared width is
-// kept as written; the rest share what is left, never below TableColumnMin, and
-// the remainder goes to the last flexible column so the row fills the table.
+// tableWidths resolves each column's width inside total. A percentage takes
+// its share of total, a declared width is kept as written, and the rest share
+// what is left, never below TableColumnMin. The remainder goes to the last
+// flexible column so the row always fills the table.
 func tableWidths(cols []*tree.TableColumn, total float64) []float64 {
 	out := make([]float64, len(cols))
 	fixed := 0.0
 	flex := 0
 	for i, c := range cols {
+		if f, ok := c.PercentWidth(); ok {
+			out[i] = total * f
+			fixed += out[i]
+			continue
+		}
 		if w := c.Width(); w >= 0 {
 			out[i] = w
 			fixed += w
@@ -83,6 +89,13 @@ func (e *Engine) tableNatural(b *tree.NodeBase, availW, availH float64) (float64
 	rows := t.TableRows()
 	fixed, flex := 0.0, 0
 	for _, c := range cols {
+		// A percentage needs a table width to be a percentage of; while the
+		// width is still unknown, ask for the flexible default like any auto
+		// column.
+		if _, ok := c.PercentWidth(); ok {
+			flex++
+			continue
+		}
 		if w := c.Width(); w >= 0 {
 			fixed += w
 		} else {
