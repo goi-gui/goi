@@ -71,6 +71,7 @@ func (a *App) loadImages(tr *tree.Tree) {
 		return
 	}
 	a.hasSVG = false
+	a.hasSVGAnim = false
 	for _, n := range tr.All() {
 		if s, ok := n.(*tree.SVG); ok {
 			a.hasSVG = true
@@ -115,8 +116,7 @@ func (a *App) loadImages(tr *tree.Tree) {
 // src advance independently instead of swapping one shared Pix.
 func animData(im *tree.Image, d *img.Data, anim *img.Anim) {
 	im.Anim = anim
-	im.Frame, im.AnimTime = 0, 0
-	im.Paused = false
+	im.Frame, im.AnimTime, im.AnimDone = 0, 0, false
 	im.Data = d
 	if anim == nil || len(anim.Frames) == 0 {
 		return
@@ -182,6 +182,7 @@ func (a *App) renderSVGData(n *tree.SVG, b []byte, color uint32) {
 		return
 	}
 	n.IntrinsicW, n.IntrinsicH = source.Intrinsic()
+	a.useAnimatedSVG(n, source)
 	d, err := source.Render(svgColor(color))
 	if err != nil {
 		n.Data = nil
@@ -189,6 +190,18 @@ func (a *App) renderSVGData(n *tree.SVG, b []byte, color uint32) {
 		return
 	}
 	n.Data = d
+}
+
+// useAnimatedSVG records that a node plays an SMIL document, so the frame loop
+// re-rasterizes it; a still file clears the state.
+func (a *App) useAnimatedSVG(n *tree.SVG, source *svg.SVG) {
+	if !source.Animated() {
+		n.Source, n.AnimDur, n.AnimTime, n.Frame, n.AnimDone = nil, 0, 0, 0, false
+		return
+	}
+	n.Source, n.AnimDur = source, source.Duration()
+	n.AnimTime, n.Frame, n.AnimDone = 0, 0, false
+	a.hasSVGAnim = true
 }
 
 // renderSVG resolves src, parses it and rasterizes it with color as
@@ -222,6 +235,19 @@ func (a *App) renderSVG(n *tree.SVG, src string, color uint32) {
 	}
 	n.Loading = false
 	n.IntrinsicW, n.IntrinsicH = source.Intrinsic()
+	a.useAnimatedSVG(n, source)
+	if n.AnimDur > 0 {
+		// An animated file cannot use the shared bitmap: two nodes must be able
+		// to sit on different moments, and every frame replaces the pixels.
+		d, err := source.RenderAt(svgColor(color), n.AnimTime)
+		if err != nil {
+			n.Data = nil
+			n.LoadErr = fmt.Errorf("%s: %w", src, err)
+			return
+		}
+		n.Data = d
+		return
+	}
 
 	c := svgColor(color)
 	key := svgKey{src: src, color: c}
@@ -478,15 +504,14 @@ func (a *App) tickAnimatedImages(dt float64) bool {
 			return
 		}
 		any = true
-		if im.Paused || im.Data == nil {
+		if im.Paused.Get() || im.AnimDone || im.Data == nil {
 			return
 		}
 		im.AnimTime += time.Duration(dt * float64(time.Second))
 		i, done := im.Anim.FrameAt(im.AnimTime)
 		if done {
-			// A finite loop holds its last frame; setting Paused records that
-			// without a separate flag the next walk would have to derive.
-			im.Paused = true
+			// A finite loop holds its last frame.
+			im.AnimDone = true
 		} else {
 			active = true
 		}
@@ -501,7 +526,52 @@ func (a *App) tickAnimatedImages(dt float64) bool {
 		im.Base().MarkDirty(tree.DirtyPaint)
 	})
 	a.hasAnim = any
-	a.animating = active
+	return active
+}
+
+// svgFrameStep quantizes SMIL playback: the document is re-rasterized only when
+// the quantized time changes, so a 240Hz window does not pay 240 parses a second.
+const svgFrameStep = time.Second / 30
+
+// tickAnimatedSVGs advances every animated SVG and reports whether another frame
+// is needed. A node re-rasterizes at most once per svgFrameStep.
+func (a *App) tickAnimatedSVGs(dt float64) bool {
+	if !a.hasSVGAnim || a.win == nil || a.win.tree == nil {
+		return false
+	}
+	active, any := false, false
+	a.win.tree.Walk(func(n tree.Node) {
+		s, ok := n.(*tree.SVG)
+		if !ok || s.AnimDur <= 0 || s.Source == nil {
+			return
+		}
+		any = true
+		if s.Paused.Get() || s.AnimDone || s.Data == nil {
+			return
+		}
+		s.AnimTime += time.Duration(dt * float64(time.Second))
+		if end := s.Source.PlayLength(); end > 0 && s.AnimTime >= end {
+			s.AnimDone = true
+		} else {
+			active = true
+		}
+		frame := int(s.AnimTime / svgFrameStep)
+		if frame == s.Frame {
+			return
+		}
+		s.Frame = frame
+		d, err := s.Source.RenderAt(svgColor(s.RenderedColor), s.AnimTime)
+		if err != nil {
+			s.LoadErr = err
+			return
+		}
+		// The node keeps one bitmap and bumps its generation, so the renderer
+		// rewrites the atlas region instead of packing every frame.
+		d.Gen = s.Data.Gen + 1
+		s.Data = d
+		s.Base().MarkDirty(tree.DirtyPaint)
+	})
+	a.hasSVGAnim = any
 	return active
 }
 

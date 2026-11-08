@@ -2,6 +2,7 @@ package svg
 
 import (
 	"testing"
+	"time"
 
 	"github.com/goi-gui/goi/internal/img"
 )
@@ -90,4 +91,114 @@ func TestRenderPath(t *testing.T) {
 func pixelAt(d *img.Data, x, y int) (r, g, b, a uint8) {
 	i := (y*d.W + x) * 4
 	return d.Pix[i], d.Pix[i+1], d.Pix[i+2], d.Pix[i+3]
+}
+
+// animSVG fades a rect from red to blue over one second and loops.
+const animSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
+	<rect width="10" height="10" fill="#ff0000">
+		<animate attributeName="fill" from="#ff0000" to="#0000ff" dur="1s" repeatCount="indefinite"/>
+	</rect>
+</svg>`
+
+// TestAnimatedSVGInterpolatesColours checks the SMIL fill path: the same file
+// renders a different colour at the start, the middle and the end of its cycle.
+func TestAnimatedSVGInterpolatesColours(t *testing.T) {
+	s, err := Parse([]byte(animSVG))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !s.Animated() || s.Duration() != time.Second {
+		t.Fatalf("animated = %v, duration = %v", s.Animated(), s.Duration())
+	}
+	at := func(d time.Duration) (uint8, uint8, uint8) {
+		d2, err := s.RenderAt(0xFFFFFFFF, d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, g, b, _ := pixelAt(d2, d2.W/2, d2.H/2)
+		return r, g, b
+	}
+	if r, _, b := at(0); r < 240 || b > 15 {
+		t.Fatalf("at 0 = %d,%d, want red", r, b)
+	}
+	if r, _, b := at(500 * time.Millisecond); r < 100 || r > 155 || b < 100 || b > 155 {
+		t.Fatalf("at 500ms = %d,%d, want the mix", r, b)
+	}
+	if r, _, b := at(999 * time.Millisecond); r > 15 || b < 240 {
+		t.Fatalf("at 999ms = %d,%d, want blue", r, b)
+	}
+	// Indefinite repeats wrap around.
+	if r, _, b := at(1500 * time.Millisecond); r < 100 || r > 155 {
+		t.Fatalf("at 1.5s = %d,%d, want it wrapped to the middle", r, b)
+	}
+}
+
+// TestAnimatedSVGOpacity checks a numeric attribute and that the animation
+// element itself is not drawn.
+func TestAnimatedSVGOpacity(t *testing.T) {
+	const src = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
+		<rect width="10" height="10" fill="#00ff00">
+			<animate attributeName="opacity" from="1" to="0" dur="2s" repeatCount="indefinite"/>
+		</rect>
+	</svg>`
+	s, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	full, err := s.RenderAt(0xFFFFFFFF, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, a := pixelAt(full, full.W/2, full.H/2); a < 250 {
+		t.Fatalf("alpha at 0 = %d, want opaque", a)
+	}
+	half, err := s.RenderAt(0xFFFFFFFF, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, a := pixelAt(half, half.W/2, half.H/2); a < 100 || a > 155 {
+		t.Fatalf("alpha at 1s = %d, want about half", a)
+	}
+}
+
+// TestAnimatedSVGTransform checks animateTransform: a rotation sweeps the shape
+// across the canvas.
+func TestAnimatedSVGTransform(t *testing.T) {
+	const src = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+		<rect x="0" y="9" width="20" height="2" fill="#000000" transform="rotate(0 10 10)">
+			<animateTransform attributeName="transform" type="rotate" from="0 10 10" to="360 10 10" dur="1s" repeatCount="indefinite"/>
+		</rect>
+	</svg>`
+	s, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !s.Animated() {
+		t.Fatal("animateTransform was not recognised")
+	}
+	flat, err := s.RenderAt(0xFFFFFFFF, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	turned, err := s.RenderAt(0xFFFFFFFF, 250*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(flat.Pix) == string(turned.Pix) {
+		t.Fatal("a quarter turn drew the same picture as the start")
+	}
+}
+
+// TestStillSVGStaysStill keeps a plain file on the fast path.
+func TestStillSVGStaysStill(t *testing.T) {
+	s, err := Parse([]byte(testSVG))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Animated() || s.Duration() != 0 {
+		t.Fatalf("a plain SVG reported animation: %v %v", s.Animated(), s.Duration())
+	}
+	if string(s.renderAt(time.Second)) != testSVG {
+		t.Fatal("a still file was rewritten")
+	}
 }

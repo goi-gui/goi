@@ -1626,3 +1626,13 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   frame just drawn, so animation alone would have parked the loop after one
   frame; `App.animating` re-arms it while a clock is actually advancing, the same
   way the FPS overlay does.
+- **SMIL is replayed by rewriting the document, not by a transform engine.** An
+  animated SVG is rasterized by oksvg, which has no animation support, so the
+  frame's attribute values are interpolated into a copy of the XML and that copy
+  is rasterized. It costs a parse per frame (quantized to 30 Hz) but needs no
+  new renderer, and a file with an unsupported construct draws its first frame
+  rather than failing.
+- **`paused` is a property, not UI state.** As a Go field it could not be set
+  from a design; as a Prop both the design and Go drive it, and a finite
+  animation that played its passes uses a separate `AnimDone` flag so `Paused`
+  keeps meaning "the app asked for this".

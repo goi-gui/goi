@@ -6,6 +6,7 @@ import (
 
 	"github.com/goi-gui/goi/internal/img"
 	"github.com/goi-gui/goi/internal/schema"
+	"github.com/goi-gui/goi/internal/svg"
 	"github.com/goi-gui/goi/internal/text"
 )
 
@@ -297,8 +298,11 @@ type Image struct {
 	Anim     *img.Anim
 	Frame    int
 	AnimTime time.Duration
+	// AnimDone is set when a finite animation played its passes; the last
+	// frame then stays on screen.
+	AnimDone bool
 	// Paused stops the animation clock; it stays where it is until set back.
-	Paused bool
+	Paused Prop[bool]
 }
 
 // Kind implements Node.
@@ -317,7 +321,8 @@ func (i *Image) SetImage(src image.Image) {
 		i.Data = img.FromImage(src)
 	}
 	i.Anim = nil
-	i.Frame, i.AnimTime = 0, 0
+	i.Frame, i.AnimTime, i.AnimDone = 0, 0, false
+	i.Paused.Set(false)
 	i.LoadErr = nil
 	i.Loading = false
 	i.Base().MarkDirty(DirtyPaint)
@@ -328,6 +333,7 @@ func (i *Image) namedProps() []NamedProp {
 		commonProps(&i.NodeBase),
 		StringProp(&i.NodeBase, "src", &i.Src),
 		EnumProp(&i.NodeBase, "fit", DirtyLayout, &i.Fit, "cover", "contain", "fill"),
+		BoolProp(&i.NodeBase, "paused", DirtyPaint, &i.Paused),
 	)
 }
 
@@ -363,6 +369,18 @@ type SVG struct {
 	Inline      []byte
 	InlineGen   int
 	RenderedGen int
+	// Source is the parsed document when it animates, so a frame can be
+	// rasterized again without parsing the file; AnimDur is its length.
+	Source *svg.SVG
+	// AnimDur is the file's SMIL animation length, zero for a still document.
+	// AnimTime and Frame are the player's state, advanced by the ui layer.
+	AnimDur  time.Duration
+	AnimTime time.Duration
+	Frame    int
+	// AnimDone is set when a finite animation played its passes.
+	AnimDone bool
+	// Paused stops the SMIL clock; the frame it stopped on stays on screen.
+	Paused Prop[bool]
 }
 
 // Kind implements Node.
@@ -378,6 +396,8 @@ func (s *SVG) SetDataString(v string) { s.SetDataBytes([]byte(v)) }
 func (s *SVG) SetDataBytes(b []byte) {
 	s.Inline = b
 	s.InlineGen++
+	s.AnimTime, s.Frame, s.AnimDone = 0, 0, false
+	s.Source = nil
 	s.LoadErr = nil
 	s.Loading = false
 	// The new document may have a different viewBox, so the element's size can
@@ -388,6 +408,7 @@ func (s *SVG) SetDataBytes(b []byte) {
 func (s *SVG) namedProps() []NamedProp {
 	return append(
 		commonProps(&s.NodeBase),
+		BoolProp(&s.NodeBase, "paused", DirtyPaint, &s.Paused),
 		StringProp(&s.NodeBase, "src", &s.Src),
 		EnumProp(&s.NodeBase, "fit", DirtyLayout, &s.Fit, "cover", "contain", "fill"),
 		ColorProp(&s.NodeBase, "color", DirtyPaint, &s.Color),

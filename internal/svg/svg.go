@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"image"
 	"math"
+	"time"
 
 	"github.com/srwiley/oksvg"
 	"github.com/srwiley/rasterx"
@@ -23,11 +24,16 @@ const (
 )
 
 // SVG is one parsed file. The source is kept so a colour change can be applied
-// again without reading the file.
+// again without reading the file, and the element tree so an animation can be
+// re-rendered at a moment in time.
 type SVG struct {
-	src []byte
-	w   float64
-	h   float64
+	src   []byte
+	w     float64
+	h     float64
+	tree  *elem
+	anims []*anim
+	// dur is the longest animation in the file, zero for a still document.
+	dur time.Duration
 }
 
 // Parse reads an SVG and returns its viewBox size. currentColor is replaced
@@ -43,7 +49,40 @@ func Parse(b []byte) (*SVG, error) {
 		// a small square gives it somewhere to draw.
 		w, h = 24, 24
 	}
-	return &SVG{src: b, w: w, h: h}, nil
+	s := &SVG{src: b, w: w, h: h}
+	// The tree is only needed when the file animates, and parsing it costs a
+	// second walk of the document.
+	if bytes.Contains(b, []byte("<animate")) {
+		if tree, err := parseTree(b); err == nil {
+			anims, dur := collectAnims(tree)
+			if len(anims) > 0 && dur > 0 {
+				s.tree, s.anims, s.dur = tree, anims, dur
+			}
+		}
+	}
+	return s, nil
+}
+
+// Duration is the longest animation in the file; zero means it is still.
+func (s *SVG) Duration() time.Duration { return s.dur }
+
+// Animated reports whether the file declares a SMIL animation this package can
+// play.
+func (s *SVG) Animated() bool { return s.dur > 0 }
+
+// PlayLength is how long the document animates before it holds its last frame.
+// Zero means at least one animation repeats forever.
+func (s *SVG) PlayLength() time.Duration {
+	var longest time.Duration
+	for _, a := range s.anims {
+		if a.repeat == 0 {
+			return 0
+		}
+		if end := a.begin + a.dur; end > longest {
+			longest = end
+		}
+	}
+	return longest
 }
 
 // Intrinsic is the viewBox size in logical pixels.
@@ -53,7 +92,17 @@ func (s *SVG) Intrinsic() (w, h float64) { return s.w, s.h }
 // color becomes the drawing opacity, so a half-transparent design colour keeps
 // working even though SVG hex colours have no alpha.
 func (s *SVG) Render(color uint32) (*img.Data, error) {
-	icon, err := oksvg.ReadReplacingCurrentColor(bytes.NewReader(s.src), hexRGB(color))
+	return s.RenderAt(color, 0)
+}
+
+// RenderAt rasterizes the file as it looks at elapsed, applying its SMIL
+// animations first. A file with no animation ignores elapsed.
+//
+// shortcut: the document is re-parsed for every frame, so an animated SVG costs
+// a parse and a raster per repaint. Upgrade with a retained oksvg icon and a
+// transform-only fast path if a large animated SVG ever shows up in a profile.
+func (s *SVG) RenderAt(color uint32, elapsed time.Duration) (*img.Data, error) {
+	icon, err := oksvg.ReadReplacingCurrentColor(bytes.NewReader(s.renderAt(elapsed)), hexRGB(color))
 	if err != nil {
 		return nil, fmt.Errorf("svg: render: %w", err)
 	}

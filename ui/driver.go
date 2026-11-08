@@ -209,9 +209,13 @@ func (a *App) frame() {
 	if a.tickImageLoads(dt) {
 		a.needsFrame = true
 	}
-	if a.tickAnimatedImages(dt) {
+	imgAnim := a.tickAnimatedImages(dt)
+	svgAnim := a.tickAnimatedSVGs(dt)
+	if imgAnim || svgAnim {
 		a.needsFrame = true
 	}
+	// One clock per frame keeps the loop awake while anything advances.
+	a.animating = imgAnim || svgAnim
 	if a.tickTweens() {
 		a.needsFrame = true
 	}

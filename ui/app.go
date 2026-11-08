@@ -100,6 +100,8 @@ type App struct {
 	// as pending: one request per URL.
 	svgPending map[string]bool
 	hasSVG     bool
+	// hasSVGAnim is true while the tree holds an animated SVG document.
+	hasSVGAnim bool
 	// pending holds the URLs with a fetch in flight, so two nodes with the same
 	// src share one request and a reload does not start a second.
 	pending map[string]bool

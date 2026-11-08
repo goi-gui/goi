@@ -281,11 +281,13 @@ var elements = func() []Element {
 		{Name: "Image", Children: false, Attrs: withCommon(
 			Prop{Name: "src", Type: TypeString, Dirty: DirtyLayout, Default: ""},
 			Prop{Name: "fit", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"cover", "contain", "fill"}, Default: "cover"},
+			Prop{Name: "paused", Type: TypeBool, Dirty: DirtyPaint, Default: false},
 		)},
 		{Name: "SVG", Children: false, Attrs: withCommon(
 			Prop{Name: "src", Type: TypeString, Dirty: DirtyLayout, Default: ""},
 			Prop{Name: "fit", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"cover", "contain", "fill"}, Default: "contain"},
 			Prop{Name: "color", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0)},
+			Prop{Name: "paused", Type: TypeBool, Dirty: DirtyPaint, Default: false},
 		)},
 		{Name: "Text", Children: false, Attrs: withCommon(
 			Prop{Name: "text", Type: TypeString, Dirty: DirtyLayout, Default: ""},

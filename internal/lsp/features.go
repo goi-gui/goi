@@ -2078,10 +2078,11 @@ func propDoc(el string, p schema.Prop) string {
 		switch el {
 		case "Image":
 			b.WriteString(" `SetImage` from Go skips the file entirely. An animated GIF or " +
-				"APNG plays on its own; `Paused` stops it.")
+				"APNG plays on its own; `paused` stops it.")
 		case "SVG":
 			b.WriteString(" `currentColor` in the file takes the element's `color`, so one icon " +
-				"follows the theme; `SetDataString`/`SetDataBytes` supply the document from Go.")
+				"follows the theme; `SetDataString`/`SetDataBytes` supply the document from Go. " +
+				"A SMIL `<animate>` or `<animateTransform>` plays on its own; `paused` stops it.")
 		}
 	}
 	switch p.Name {
@@ -2121,6 +2122,10 @@ func propDoc(el string, p schema.Prop) string {
 		b.WriteString("\n\nRow height in dp; 48 by default. A row's own `height` wins.")
 	case "headerHeight":
 		b.WriteString("\n\nHeader height in dp; 40 by default.")
+	case "paused":
+		b.WriteString("\n\nHolds an animation where it is: a GIF or APNG frame, or an SVG's " +
+			"SMIL clock. A design can start it paused with `paused: true`; from Go, " +
+			"`Paused.Set(false)` resumes it.")
 	case "center":
 		b.WriteString("\n\nThe value a `centered` slider fills from. Left out, it is the " +
 			"midpoint of `min` and `max`, so the fill marks above or below the middle.")
