@@ -17,6 +17,10 @@ import (
 type Data struct {
 	W, H int
 	Pix  []byte
+	// Gen counts in-place updates: an animation swaps Pix and bumps it, which
+	// tells the renderer to upload this image's atlas region again instead of
+	// packing a new one.
+	Gen int
 }
 
 // Decode reads a PNG, JPEG or GIF. Anything else is an error naming the format,

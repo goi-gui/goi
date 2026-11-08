@@ -9,6 +9,7 @@ require (
 	github.com/go-text/typesetting v0.3.4
 	github.com/gogpu/gputypes v0.8.0
 	github.com/gogpu/wgpu v0.34.5
+	github.com/kettek/apng v0.0.0-20250827064933-2bb5f5fcf253
 	github.com/ksckaan1/logger v0.4.0
 	github.com/ncruces/zenity v0.10.15
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c

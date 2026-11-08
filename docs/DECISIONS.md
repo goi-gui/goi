@@ -1615,3 +1615,14 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   `variant: tonal` pass the checker and paint the outlined style, which reads
   as a dead option. `EnumValuesFor` lets the component declare the styles it
   implements, so completion, the checker and hover show only those.
+- **An animation is decoded to full frames and swaps pixels in place.** A GIF or
+  APNG is composited once, when the file loads, into one RGBA picture per frame,
+  so playing a frame costs a pointer swap rather than a decode or a per-frame
+  blit. The renderer watches `img.Data.Gen` and rewrites that image's atlas
+  region instead of packing each frame beside the last, which would grow GPU
+  memory every frame. Each node owns its `img.Data`, because two elements with
+  the same `src` must be able to sit on different frames.
+- **An animation keeps the frame loop awake.** `needsFrame` is cleared for the
+  frame just drawn, so animation alone would have parked the loop after one
+  frame; `App.animating` re-arms it while a clock is actually advancing, the same
+  way the FPS overlay does.

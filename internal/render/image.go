@@ -31,7 +31,10 @@ type imageRenderer struct {
 	shelf img.Shelf
 	// regions maps a decoded image to its rect in the atlas.
 	regions map[*img.Data]img.Region
-	dirty   bool
+	// gens is the Data.Gen each region holds, so an animation frame that swaps
+	// Pix in place is uploaded again instead of packed a second time.
+	gens  map[*img.Data]int
+	dirty bool
 	// resized is set when the atlas grew, so the texture must be rebuilt.
 	resized bool
 }
@@ -47,6 +50,7 @@ func (g *GPU) initImages() error {
 		pix:     make([]byte, size*size*4),
 		shelf:   img.Shelf{W: size, H: size},
 		regions: map[*img.Data]img.Region{},
+		gens:    map[*img.Data]int{},
 		dirty:   true,
 	}
 	tex, err := g.device.CreateTexture(&wgpu.TextureDescriptor{
@@ -87,8 +91,16 @@ func (t *imageRenderer) prepare(list *paint.List) {
 		if op.Kind != paint.Bitmap || op.Src == nil {
 			continue
 		}
-		if _, ok := t.regions[op.Src]; !ok {
+		r, ok := t.regions[op.Src]
+		if !ok {
 			t.pack(op.Src)
+			continue
+		}
+		// An animation swaps Pix in place and bumps Gen; the region stays, only
+		// its pixels are refreshed.
+		if t.gens[op.Src] != op.Src.Gen {
+			t.writeRegion(op.Src, r)
+			t.gens[op.Src] = op.Src.Gen
 		}
 	}
 }
@@ -154,13 +166,24 @@ func (t *imageRenderer) pack(d *img.Data) (img.Region, bool) {
 	if w != d.W || h != d.H {
 		src = img.Scale(d, w, h)
 	}
-	for row := 0; row < h; row++ {
-		copy(t.pix[((y+row)*t.w+x)*4:], src.Pix[row*src.W*4:(row*src.W+src.W)*4])
+	r := img.Region{X: x, Y: y, W: w, H: h}
+	t.writeRegion(src, r)
+	t.regions[d] = r
+	t.gens[d] = d.Gen
+	return r, true
+}
+
+// writeRegion copies an image's pixels into an existing atlas rect, scaling when
+// the packed rect is smaller than the source.
+func (t *imageRenderer) writeRegion(d *img.Data, r img.Region) {
+	src := d
+	if r.W != d.W || r.H != d.H {
+		src = img.Scale(d, r.W, r.H)
+	}
+	for row := 0; row < r.H; row++ {
+		copy(t.pix[((r.Y+row)*t.w+r.X)*4:], src.Pix[row*src.W*4:(row*src.W+src.W)*4])
 	}
 	t.dirty = true
-	r := img.Region{X: x, Y: y, W: w, H: h}
-	t.regions[d] = r
-	return r, true
 }
 
 // grow doubles the shorter side of the atlas, moving the packed images across.

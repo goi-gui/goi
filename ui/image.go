@@ -96,22 +96,47 @@ func (a *App) loadImages(tr *tree.Tree) {
 				im.LoadErr = err
 				continue
 			}
-			if d, err = img.Decode(b); err != nil {
+			var anim *img.Anim
+			if d, anim, err = img.DecodeAnimated(b); err != nil {
 				im.LoadErr = fmt.Errorf("%s: %w", src, err)
 				continue
 			}
-			a.cacheImage(src, d)
+			a.cacheImage(src, d, anim)
 		}
-		im.Data = d
+		anim := a.anims[src]
+		animData(im, d, anim)
+		if anim != nil {
+			a.hasAnim = true
+		}
 	}
 }
 
-// cacheImage stores a decoded bitmap for src.
-func (a *App) cacheImage(src string, d *img.Data) {
+// animData gives an animated node its own bitmap, so two elements with the same
+// src advance independently instead of swapping one shared Pix.
+func animData(im *tree.Image, d *img.Data, anim *img.Anim) {
+	im.Anim = anim
+	im.Frame, im.AnimTime = 0, 0
+	im.Paused = false
+	im.Data = d
+	if anim == nil || len(anim.Frames) == 0 {
+		return
+	}
+	im.Data = &img.Data{W: anim.W, H: anim.H, Pix: anim.Frames[0].Pix}
+}
+
+// cacheImage stores a decoded bitmap for src, and its animation when it has one.
+func (a *App) cacheImage(src string, d *img.Data, anim *img.Anim) {
 	if a.images == nil {
 		a.images = map[string]*img.Data{}
 	}
 	a.images[src] = d
+	if anim == nil {
+		return
+	}
+	if a.anims == nil {
+		a.anims = map[string]*img.Anim{}
+	}
+	a.anims[src] = anim
 }
 
 // svgColor normalises a design colour for the rasterizer. SVG colours have no
@@ -345,7 +370,11 @@ func (a *App) syncSVGs() {
 // keyed by URL rather than by node.
 func (a *App) loadRemoteImage(im *tree.Image, src string) {
 	if d, ok := a.images[src]; ok {
-		im.Data = d
+		anim := a.anims[src]
+		animData(im, d, anim)
+		if anim != nil {
+			a.hasAnim = true
+		}
 		return
 	}
 	im.Loading = true
@@ -358,25 +387,25 @@ func (a *App) loadRemoteImage(im *tree.Image, src string) {
 	}
 	a.pending[src] = true
 	go func() {
-		d, err := fetchRemoteImage(src)
+		d, anim, err := fetchRemoteImage(src)
 		// Post runs on the UI goroutine, which is the only place a node may be
 		// touched.
-		a.Post(func() { a.finishImageLoad(src, d, err) })
+		a.Post(func() { a.finishImageLoad(src, d, anim, err) })
 	}()
 }
 
 // fetchRemoteImage downloads and decodes one URL. Decoding happens here, off the
 // UI goroutine: a large JPEG takes long enough to drop a frame.
-func fetchRemoteImage(src string) (*img.Data, error) {
+func fetchRemoteImage(src string) (*img.Data, *img.Anim, error) {
 	b, err := fetchRemote(src)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	d, err := img.Decode(b)
+	d, anim, err := img.DecodeAnimated(b)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", src, err)
+		return nil, nil, fmt.Errorf("%s: %w", src, err)
 	}
-	return d, nil
+	return d, anim, nil
 }
 
 // fetchRemote downloads one URL and returns its bytes. Image decodes them here
@@ -408,10 +437,10 @@ func fetchRemote(src string) ([]byte, error) {
 // finishImageLoad hands a finished download to the nodes that asked for it. It
 // walks the current tree rather than remembering node pointers, so a fetch that
 // lands after a hot reload still fills in the new nodes.
-func (a *App) finishImageLoad(src string, d *img.Data, err error) {
+func (a *App) finishImageLoad(src string, d *img.Data, anim *img.Anim, err error) {
 	delete(a.pending, src)
 	if d != nil {
-		a.cacheImage(src, d)
+		a.cacheImage(src, d, anim)
 	}
 	if a.win == nil || a.win.tree == nil {
 		return
@@ -423,13 +452,57 @@ func (a *App) finishImageLoad(src string, d *img.Data, err error) {
 		}
 		im.Loading = false
 		if d != nil {
-			im.Data = d
+			animData(im, d, anim)
+			if anim != nil {
+				a.hasAnim = true
+			}
 		} else {
 			im.LoadErr = err
 		}
 		im.Base().MarkDirty(tree.DirtyPaint)
 	})
 	a.needsFrame = true
+}
+
+// tickAnimatedImages advances every animated Image and reports whether another
+// frame is needed. It walks the tree only while the design has an animation, so
+// a window with still pictures pays nothing.
+func (a *App) tickAnimatedImages(dt float64) bool {
+	if !a.hasAnim || a.win == nil || a.win.tree == nil {
+		return false
+	}
+	active, any := false, false
+	a.win.tree.Walk(func(n tree.Node) {
+		im, ok := n.(*tree.Image)
+		if !ok || im.Anim == nil {
+			return
+		}
+		any = true
+		if im.Paused || im.Data == nil {
+			return
+		}
+		im.AnimTime += time.Duration(dt * float64(time.Second))
+		i, done := im.Anim.FrameAt(im.AnimTime)
+		if done {
+			// A finite loop holds its last frame; setting Paused records that
+			// without a separate flag the next walk would have to derive.
+			im.Paused = true
+		} else {
+			active = true
+		}
+		if i == im.Frame && im.Data.Pix != nil {
+			return
+		}
+		im.Frame = i
+		im.Data.Pix = im.Anim.Frames[i].Pix
+		// Bumping the generation makes the renderer upload this image's atlas
+		// region again instead of packing the new frame beside the old one.
+		im.Data.Gen++
+		im.Base().MarkDirty(tree.DirtyPaint)
+	})
+	a.hasAnim = any
+	a.animating = active
+	return active
 }
 
 // loadPulsePeriod is how long one breath of the loading placeholder takes.

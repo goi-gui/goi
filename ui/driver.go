@@ -209,6 +209,9 @@ func (a *App) frame() {
 	if a.tickImageLoads(dt) {
 		a.needsFrame = true
 	}
+	if a.tickAnimatedImages(dt) {
+		a.needsFrame = true
+	}
 	if a.tickTweens() {
 		a.needsFrame = true
 	}
@@ -269,6 +272,11 @@ func (a *App) frame() {
 	if a.showFPS {
 		// The overlay measures paint rate, so it keeps painting to have
 		// something to measure. Only a debug build pays this.
+		a.needsFrame = true
+	}
+	// An animation advances on its own, so it keeps the loop awake the same
+	// way; needsFrame was cleared for this frame and would otherwise park it.
+	if a.animating {
 		a.needsFrame = true
 	}
 	d.list.Theme = themeFor(a.win)

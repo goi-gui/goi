@@ -4,11 +4,15 @@ import (
 	"bytes"
 	"image"
 	"image/color"
+	"image/gif"
 	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"testing/fstest"
 	"time"
+
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // testPNG is a 3x2 image, small enough to inline and big enough that a decode
@@ -187,5 +191,132 @@ func TestImageLoadingPulsesAndStops(t *testing.T) {
 	}
 	if a.pulsing {
 		t.Fatal("the pulse flag stayed on")
+	}
+}
+
+// testGIF builds a two-frame animation, red then blue, 50ms each.
+func testGIF(t *testing.T) []byte {
+	t.Helper()
+	pal := color.Palette{color.RGBA{R: 0xFF, A: 0xFF}, color.RGBA{B: 0xFF, A: 0xFF}}
+	frames := make([]*image.Paletted, 2)
+	for i := range frames {
+		frames[i] = image.NewPaletted(image.Rect(0, 0, 4, 4), pal)
+		for j := range frames[i].Pix {
+			frames[i].Pix[j] = uint8(i)
+		}
+	}
+	var buf bytes.Buffer
+	if err := gif.EncodeAll(&buf, &gif.GIF{
+		Image:  frames,
+		Delay:  []int{5, 5},
+		Config: image.Config{Width: 4, Height: 4, ColorModel: pal},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// TestImageAnimatedGIF loads a GIF from the asset container and plays it: the
+// node gets the animation, and a tick swaps the pixels in place.
+func TestImageAnimatedGIF(t *testing.T) {
+	a := newHeadlessApp()
+	a.assets = fstest.MapFS{"spin.gif": &fstest.MapFile{Data: testGIF(t)}}
+	a.win = &Window{}
+	tr, diag := tree.BuildSource([]byte(`Window { Column {
+		Image { id: spin src: "goi://spin.gif" width: 40 height: 40 }
+	} }`), &tree.Hooks{Marked: a.markDirty})
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	a.win.tree = tr
+	a.loadImages(tr)
+
+	im := MustByID[*Image](a.win, "spin")
+	if im.Anim == nil {
+		t.Fatal("the GIF loaded as a still image")
+	}
+	if im.Data == nil || im.Data.W != 4 || im.Frame != 0 {
+		t.Fatalf("Data = %+v, frame = %d", im.Data, im.Frame)
+	}
+	if im.Data.Pix[0] != 0xFF || im.Data.Pix[2] != 0 {
+		t.Fatalf("frame 0 = %v, want red", im.Data.Pix[:4])
+	}
+	gen := im.Data.Gen
+
+	// Past the first frame's 50ms the player swaps Pix and bumps the generation
+	// the renderer watches.
+	if !a.tickAnimatedImages(0.06) {
+		t.Fatal("an animated image did not ask for another frame")
+	}
+	if im.Frame != 1 || im.Data.Pix[2] != 0xFF {
+		t.Fatalf("frame = %d, pix = %v, want the blue frame", im.Frame, im.Data.Pix[:4])
+	}
+	if im.Data.Gen == gen {
+		t.Fatal("the pixel swap did not bump the upload generation")
+	}
+
+	// Paused stops the clock.
+	im.Paused = true
+	im.AnimTime = 0
+	a.hasAnim = true
+	if a.tickAnimatedImages(0.06) {
+		t.Fatal("a paused animation asked for a frame")
+	}
+	if im.Frame != 1 {
+		t.Fatalf("frame = %d, want it held while paused", im.Frame)
+	}
+}
+
+// TestImageSetImageClearsAnim keeps the Go path still: a bitmap handed to the
+// node replaces the animation it was playing.
+func TestImageSetImageClearsAnim(t *testing.T) {
+	a := newHeadlessApp()
+	a.assets = fstest.MapFS{"spin.gif": &fstest.MapFile{Data: testGIF(t)}}
+	a.win = &Window{}
+	tr, diag := tree.BuildSource([]byte(`Window { Column {
+		Image { id: spin src: "goi://spin.gif" }
+	} }`), &tree.Hooks{Marked: a.markDirty})
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	a.win.tree = tr
+	a.loadImages(tr)
+	im := MustByID[*Image](a.win, "spin")
+	if im.Anim == nil {
+		t.Fatal("no animation to replace")
+	}
+	im.SetImage(image.NewRGBA(image.Rect(0, 0, 2, 2)))
+	if im.Anim != nil || im.Paused {
+		t.Fatalf("SetImage left the animation: anim=%v paused=%v", im.Anim, im.Paused)
+	}
+}
+
+// TestImageAnimationsAreIndependent keeps two elements with the same src on
+// their own frame, so one pause or clock does not move the other.
+func TestImageAnimationsAreIndependent(t *testing.T) {
+	a := newHeadlessApp()
+	a.assets = fstest.MapFS{"spin.gif": &fstest.MapFile{Data: testGIF(t)}}
+	a.win = &Window{}
+	tr, diag := tree.BuildSource([]byte(`Window { Column {
+		Image { id: one src: "goi://spin.gif" }
+		Image { id: two src: "goi://spin.gif" }
+	} }`), &tree.Hooks{Marked: a.markDirty})
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	a.win.tree = tr
+	a.loadImages(tr)
+	one := MustByID[*Image](a.win, "one")
+	two := MustByID[*Image](a.win, "two")
+	if one.Data == two.Data {
+		t.Fatal("two animated nodes share one bitmap, so a frame swap moves both")
+	}
+	two.Paused = true
+	a.tickAnimatedImages(0.06)
+	if one.Frame != 1 {
+		t.Fatalf("frame = %d, want the first image to advance", one.Frame)
+	}
+	if two.Frame != 0 {
+		t.Fatalf("paused frame = %d, want it held", two.Frame)
 	}
 }

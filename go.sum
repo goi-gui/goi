@@ -69,6 +69,8 @@ github.com/jackmordaunt/icns/v3 v3.0.1 h1:xxot6aNuGrU+lNgxz5I5H0qSeCjNKp8uTXB1j8
 github.com/jackmordaunt/icns/v3 v3.0.1/go.mod h1:5sHL59nqTd2ynTnowxB/MDQFhKNqkK8X687uKNygaSQ=
 github.com/josephspurrier/goversioninfo v1.7.0 h1:LQzXOlVm/CtbwJ9/UHl5a2HT0BjcLAwid5gqGd7ZUJ8=
 github.com/josephspurrier/goversioninfo v1.7.0/go.mod h1:z9y0r2G6g5jwSJaFE0cxW9to0aeIibK7UYeLx53aQRU=
+github.com/kettek/apng v0.0.0-20250827064933-2bb5f5fcf253 h1:ar6YqPcuumkcWgAJHkmda6Q35V3OnpxeTej4iU/QFLA=
+github.com/kettek/apng v0.0.0-20250827064933-2bb5f5fcf253/go.mod h1:x78/VRQYKuCftMWS0uK5e+F5RJ7S4gSlESRWI0Prl6Q=
 github.com/ksckaan1/logger v0.4.0 h1:wxRJnF2UnIgIC7k4IrBZwTMLYG2Ev3bHZxvTWGgE9tw=
 github.com/ksckaan1/logger v0.4.0/go.mod h1:8YVIndHq+WRBr6eRusqYo2L2WwUpTCau5vmTrKhP0i8=
 github.com/leodido/go-urn v1.4.0 h1:WT9HwE9SGECu3lg4d/dIA+jxlljEa1/ffXKmRjqdmIQ=

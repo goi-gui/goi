@@ -2,6 +2,7 @@ package tree
 
 import (
 	"image"
+	"time"
 
 	"github.com/goi-gui/goi/internal/img"
 	"github.com/goi-gui/goi/internal/schema"
@@ -290,6 +291,14 @@ type Image struct {
 	// LoadErr is the load or decode failure, if any. The node keeps drawing its
 	// placeholder, which is why a bad src shows as a coloured box.
 	LoadErr error
+	// Anim is the decoded animation behind src, nil for a still picture. Frame
+	// and AnimTime are the player's state: the ui layer advances them and swaps
+	// Data.Pix before repainting, so the design file never mentions them.
+	Anim     *img.Anim
+	Frame    int
+	AnimTime time.Duration
+	// Paused stops the animation clock; it stays where it is until set back.
+	Paused bool
 }
 
 // Kind implements Node.
@@ -307,6 +316,8 @@ func (i *Image) SetImage(src image.Image) {
 	} else {
 		i.Data = img.FromImage(src)
 	}
+	i.Anim = nil
+	i.Frame, i.AnimTime = 0, 0
 	i.LoadErr = nil
 	i.Loading = false
 	i.Base().MarkDirty(DirtyPaint)

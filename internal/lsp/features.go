@@ -2077,7 +2077,8 @@ func propDoc(el string, p schema.Prop) string {
 			"path reads this machine, and `http(s)://` is fetched in the background.")
 		switch el {
 		case "Image":
-			b.WriteString(" `SetImage` from Go skips the file entirely.")
+			b.WriteString(" `SetImage` from Go skips the file entirely. An animated GIF or " +
+				"APNG plays on its own; `Paused` stops it.")
 		case "SVG":
 			b.WriteString(" `currentColor` in the file takes the element's `color`, so one icon " +
 				"follows the theme; `SetDataString`/`SetDataBytes` supply the document from Go.")
