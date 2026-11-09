@@ -341,9 +341,16 @@ func TestCursorForMapsEveryCSSValue(t *testing.T) {
 // TestCursorExampleTilesResolve is the end-to-end guard for the cursor example:
 // every tile declares a value, the hit test lands on it, and the pointer shape
 // changes. Tiles are laid out in one tall viewport so all of them are reachable
-// without scrolling.
+// without scrolling. The examples live in the sibling goi-gui/examples
+// repository, so CI without that checkout skips the test.
 func TestCursorExampleTilesResolve(t *testing.T) {
 	dir := "../../examples/cursor"
+	if _, err := os.Stat(dir); err != nil {
+		if os.IsNotExist(err) {
+			t.Skip("examples are not checked out next to the repo")
+		}
+		t.Fatal(err)
+	}
 	b, diag := asset.Load(os.DirFS(dir), "cursor.goi")
 	if !diag.Empty() {
 		t.Fatalf("%v", diag)

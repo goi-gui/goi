@@ -20,6 +20,9 @@ jobs:
         with:
           go-version: "1.27.x"
 
+      # SDL3's Linux packages do not carry the X11 and Wayland bits goi needs on
+      # every runner, so Linux builds it from source with SDL's README-linux
+      # dependency set.
       - name: SDL3 (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -27,10 +30,12 @@ jobs:
           sudo apt-get install -y build-essential cmake ninja-build pkg-config \
             libasound2-dev libpulse-dev libudev-dev libdrm-dev libgbm-dev \
             libegl1-mesa-dev libwayland-dev libdecor-0-dev wayland-protocols \
-            libxkbcommon-dev libx11-dev libxext-dev libxrandr-dev libxi-dev \
-            libxcursor-dev libxfixes-dev libxss-dev
-          curl -sL "https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.tar.gz" | tar xz
-          cmake -S SDL3-3.4.18 -B sdl-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
+            libxkbcommon-dev libxkbcommon-x11-dev libxtst-dev libx11-dev libxext-dev \
+            libxrandr-dev libxi-dev libxcursor-dev libxfixes-dev libxss-dev \
+            libxinerama-dev
+          curl -sL "https://github.com/libsdl-org/SDL/releases/download/release-3.4.20/SDL3-3.4.20.tar.gz" | tar xz
+          cmake -S SDL3-3.4.20 -B sdl-build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
           sudo cmake --install sdl-build
 
       - name: SDL3 (macOS)
@@ -48,7 +53,7 @@ jobs:
           install: >-
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-pkgconf
-            mingw-w64-x86_64-SDL3
+            mingw-w64-x86_64-sdl3
 
       - name: Build
         if: runner.os != 'Windows'
@@ -71,7 +76,7 @@ jobs:
       # Headless packages only: the renderer and the window need a display, so
       # those are exercised by the examples. Linux links the internal linker
       # because goffi's dynamic imports and the cgo SDL shim cannot share the
-      # external one.
+      # external one. Tests that read a sibling checkout skip without it.
       - name: Test
         if: runner.os == 'Linux'
         run: go test -race -ldflags=-linkmode=internal ./internal/syntax ./internal/schema ./internal/layout ./internal/paint ./internal/text ./internal/hotreload ./internal/lsp ./internal/goifmt ./ui
@@ -91,9 +96,12 @@ jobs:
           go-version: "1.27.x"
       - run: |
           for os in linux windows darwin; do
-            CGO_ENABLED=0 GOOS=$os go build \
-              ./internal/syntax ./internal/schema ./internal/tree ./internal/layout \
-              ./internal/paint ./internal/text ./internal/render
+            for arch in amd64 arm64; do
+              echo "== $os/$arch"
+              CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build \
+                ./internal/syntax ./internal/schema ./internal/tree ./internal/layout \
+                ./internal/paint ./internal/text ./internal/render
+            done
           done
 
   lint:
@@ -103,17 +111,21 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.27.x"
-      - name: SDL3
+
+      - name: SDL3 (Linux)
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential cmake ninja-build pkg-config \
             libasound2-dev libpulse-dev libudev-dev libdrm-dev libgbm-dev \
             libegl1-mesa-dev libwayland-dev libdecor-0-dev wayland-protocols \
-            libxkbcommon-dev libx11-dev libxext-dev libxrandr-dev libxi-dev \
-            libxcursor-dev libxfixes-dev libxss-dev
-          curl -sL "https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.tar.gz" | tar xz
-          cmake -S SDL3-3.4.18 -B sdl-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
+            libxkbcommon-dev libxkbcommon-x11-dev libxtst-dev libx11-dev \
+            libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxfixes-dev \
+            libxss-dev libxinerama-dev
+          curl -sL "https://github.com/libsdl-org/SDL/releases/download/release-3.4.20/SDL3-3.4.20.tar.gz" | tar xz
+          cmake -S SDL3-3.4.20 -B sdl-build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
           sudo cmake --install sdl-build
+
       - run: go install honnef.co/go/tools/cmd/staticcheck@latest
       - run: staticcheck ./...
       - name: gofmt
