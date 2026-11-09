@@ -2,6 +2,7 @@ package paint
 
 import (
 	"fmt"
+	"math"
 	"testing"
 
 	"github.com/goi-gui/goi/internal/layout"
@@ -562,4 +563,70 @@ func TestWrapCacheInvalidates(t *testing.T) {
 	if narrow := lineCount(); narrow >= before {
 		t.Fatalf("lines at a wider column = %d, want fewer than %d", narrow, before)
 	}
+}
+
+// TestRotateTurnsSubtree checks that `rotate` marks every op a subtree emits
+// with the same angle and the node's centre as pivot, which is what the shader
+// turns about.
+func TestRotateTurnsSubtree(t *testing.T) {
+	const src = `Window { Column {
+		Column {
+			id:     box
+			width:  200
+			height: 100
+			rotate: 45deg
+			Text { text: "turned" }
+		}
+		Text { text: "still" }
+	} }`
+	l := list(t, src, 500, 400)
+	turned := 0
+	for _, op := range l.Ops {
+		if op.Kind == Text && op.Text == "still" {
+			if op.Rotate != 0 {
+				t.Fatalf("a sibling outside the rotated box turned: %+v", op)
+			}
+			continue
+		}
+		if op.Rotate != 0 {
+			turned++
+			if math.Abs(float64(op.Rotate)-math.Pi/4) > 1e-6 {
+				t.Fatalf("angle = %v, want pi/4", op.Rotate)
+			}
+		}
+	}
+	if turned == 0 {
+		t.Fatalf("nothing turned:\n%s", l.Dump())
+	}
+}
+
+// TestRotateComposesNested checks that an inner turn survives an outer one and
+// its pivot moves with the outer frame, which is what a rigid transform does.
+func TestRotateComposesNested(t *testing.T) {
+	const src = `Window { Column {
+		Column {
+			width:  300
+			height: 300
+			rotate: 90deg
+			Column {
+				width:  100
+				height: 100
+				rotate: 45deg
+				Rectangle { width: 100 height: 100 background: "#ff0000ff" }
+			}
+		}
+	} }`
+	l := list(t, src, 500, 400)
+	for _, op := range l.Ops {
+		if op.Kind == Fill && op.Color == 0xFF0000FF {
+			if op.Rotate == 0 {
+				continue
+			}
+			if math.Abs(float64(op.Rotate)-3*math.Pi/4) > 1e-6 {
+				t.Fatalf("nested angle = %v, want 135 degrees", op.Rotate)
+			}
+			return
+		}
+	}
+	t.Fatalf("no rectangle op:\n%s", l.Dump())
 }

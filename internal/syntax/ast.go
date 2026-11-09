@@ -396,6 +396,7 @@ const (
 	TernaryKind
 	CallKind
 	ShadowKind
+	RotateKind
 )
 
 // Value is a property literal. The concrete type is one of *String,
@@ -515,6 +516,22 @@ type ShadowLayer struct {
 	// way CSS box-shadow paints it.
 	Inset bool
 }
+
+// Rotate is a CSS `rotate` value: `none`, `90deg`, `x 90deg` or a vector plus an
+// angle. Angle is in degrees; Axis is "x", "y", "z" or empty, and Vector carries
+// the three numbers of the vector form.
+type Rotate struct {
+	At     Pos
+	Axis   string
+	Vector [3]float64
+	Angle  float64
+}
+
+// Kind implements Value.
+func (r *Rotate) Kind() ValueKind { return RotateKind }
+
+// Pos implements Value.
+func (r *Rotate) Pos() Pos { return r.At }
 
 // Ternary is `cond ? then : else`.
 type Ternary struct {

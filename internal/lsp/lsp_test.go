@@ -1878,7 +1878,7 @@ func TestColourCompletionOffersCSSForms(t *testing.T) {
 	for _, it := range list.Items {
 		labels[it.Label] = true
 	}
-	for _, want := range []string{"primary", "white", "transparent", `"linear-gradient(…)"`, `"radial-gradient(…)"`} {
+	for _, want := range []string{"theme", "customColor", "theme.primary", "white", "transparent", `"linear-gradient(…)"`, `"radial-gradient(…)"`} {
 		if !labels[want] {
 			t.Fatalf("%s missing from %d items", want, len(list.Items))
 		}
@@ -1907,5 +1907,112 @@ func TestHoverExplainsCSSColour(t *testing.T) {
 		if !strings.Contains(h.Contents.Value, "CSS") {
 			t.Fatalf("hover for %q = %q", needle, h.Contents.Value)
 		}
+	}
+}
+
+// TestColourReferenceCompletion covers `theme.` and `customColor.`: the members
+// of each namespace, and the two prefixes themselves in a colour position.
+func TestColourReferenceCompletion(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tText {\n\t\ttext: \"x\"\n\t\tcolor: theme.\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+	res := c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "color: theme.", len("color: theme.")),
+	})
+	var list completionList
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	labels := map[string]bool{}
+	for _, it := range list.Items {
+		labels[it.Label] = true
+	}
+	for _, want := range []string{"theme.primary", "theme.onSurface", "theme.surfaceContainerHigh"} {
+		if !labels[want] {
+			t.Fatalf("%s missing from %d items", want, len(list.Items))
+		}
+	}
+	if labels["width"] {
+		t.Fatal("element properties leaked into theme members")
+	}
+}
+
+// TestHoverExplainsColourReference explains both halves of theme.primary and a
+// custom name.
+func TestHoverExplainsColourReference(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tText {\n\t\ttext: \"x\"\n\t\tcolor: theme.primary\n\t}\n\tRectangle {\n\t\tbackground: customColor.brand\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	hover := func(needle string, delta int) string {
+		res := c.request("textDocument/hover", map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     at(t, src, needle, delta),
+		})
+		var h struct {
+			Contents doc `json:"contents"`
+		}
+		if err := json.Unmarshal(res, &h); err != nil {
+			t.Fatal(err)
+		}
+		return h.Contents.Value
+	}
+	if got := hover("theme.", 1); !strings.Contains(got, "colour scheme") {
+		t.Fatalf("theme hover = %q", got)
+	}
+	if got := hover("theme.primary", len("theme.")); !strings.Contains(got, "theme role") {
+		t.Fatalf("role hover = %q", got)
+	}
+	if got := hover("customColor.brand", len("customColor.")); !strings.Contains(got, "SetCustomColor") {
+		t.Fatalf("custom hover = %q", got)
+	}
+}
+
+// TestRotateCompletionAndHover covers the new property: the CSS forms complete,
+// and hover explains it.
+func TestRotateCompletionAndHover(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tColumn {\n\t\trotate: \n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+	res := c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "rotate: ", len("rotate: ")),
+	})
+	var list completionList
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	labels := map[string]bool{}
+	for _, it := range list.Items {
+		labels[it.Label] = true
+	}
+	for _, want := range []string{"none", "90deg", "x 90deg", "1 1 1 90deg"} {
+		if !labels[want] {
+			t.Fatalf("%s missing from %d items", want, len(list.Items))
+		}
+	}
+
+	valid := "Window {\n\tColumn {\n\t\trotate: 90deg\n\t}\n}\n"
+	uri2 := writeDesign(t, dir, "hover.goi", valid)
+	c.openDoc(uri2, valid)
+	res = c.request("textDocument/hover", map[string]any{
+		"textDocument": map[string]any{"uri": uri2},
+		"position":     at(t, valid, "rotate", 2),
+	})
+	var h struct {
+		Contents doc `json:"contents"`
+	}
+	if err := json.Unmarshal(res, &h); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.Contents.Value, "rotate") {
+		t.Fatalf("hover = %q", h.Contents.Value)
 	}
 }

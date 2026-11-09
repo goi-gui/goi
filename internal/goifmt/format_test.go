@@ -221,3 +221,35 @@ func TestFormatShadow(t *testing.T) {
 		t.Fatalf("not idempotent:\n%s", again)
 	}
 }
+
+// TestRotateRoundTrips pins the formatter for the CSS rotate forms: a unit is
+// written back as degrees (the same value), and `none` stays `none`.
+func TestRotateRoundTrips(t *testing.T) {
+	src := `Window {
+	Column {
+		rotate: none
+		rotate: 90deg
+		rotate: -45deg
+		rotate: x 45deg
+		rotate: 1 1 1 90deg
+	}
+}
+`
+	got := string(Source([]byte(src)))
+	if got != src {
+		t.Fatalf("rotate did not round-trip:\n%s", got)
+	}
+	if again := string(Source([]byte(got))); again != got {
+		t.Fatalf("format is not idempotent:\n%s", again)
+	}
+	// A turn or rad value becomes the equivalent angle in degrees, which is the
+	// same value written the way the renderer reads it.
+	for src, want := range map[string]string{
+		`Window { Column { rotate: 1.5707963267948966rad } }`: "rotate: 90deg",
+		`Window { Column { rotate: 0.25turn } }`:              "rotate: 90deg",
+	} {
+		if got := string(Source([]byte(src))); !strings.Contains(got, want) {
+			t.Fatalf("%s:\n%s", src, got)
+		}
+	}
+}

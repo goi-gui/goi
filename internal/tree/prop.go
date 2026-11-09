@@ -1,6 +1,7 @@
 package tree
 
 import (
+	"math"
 	"strconv"
 
 	"github.com/goi-gui/goi/internal/csscolor"
@@ -115,6 +116,7 @@ const (
 	// propScalar writes a string cell from a string, number or bool literal: a
 	// table cell's value takes whatever the row's data holds.
 	propScalar
+	propRotate
 )
 
 // Get returns the value as an interface, boxing it. The expression layer reads
@@ -123,6 +125,8 @@ func (p *NamedProp) Get() any {
 	switch p.kind {
 	case propNumber:
 		return p.cell.(*Prop[float64]).val
+	case propRotate:
+		return p.cell.(*Prop[Rotation]).val
 	case propString, propEnum, propScalar:
 		return p.cell.(*Prop[string]).val
 	case propBool:
@@ -154,6 +158,9 @@ func (p *NamedProp) Same(v any) bool {
 	case propColor:
 		c, ok := v.(uint32)
 		return ok && p.cell.(*Prop[uint32]).val == c
+	case propRotate:
+		r, ok := v.(Rotation)
+		return ok && p.cell.(*Prop[Rotation]).val == r
 	}
 	return false
 }
@@ -168,6 +175,13 @@ func (p *NamedProp) SetLiteral(v syntax.Value) bool {
 			return false
 		}
 		p.cell.(*Prop[float64]).val = n.Val
+		return true
+	case propRotate:
+		r, ok := v.(*syntax.Rotate)
+		if !ok {
+			return false
+		}
+		p.cell.(*Prop[Rotation]).val = rotationOf(r)
 		return true
 	case propScalar:
 		// A value is the sort key, so a number is kept as its exact decimal
@@ -249,6 +263,24 @@ func (p *NamedProp) SetLiteral(v syntax.Value) bool {
 			cp.base.clearColorRole(p.Name)
 			cp.base.setGradient(p.Name, nil)
 			cp.val = rgba
+		case *syntax.Ref:
+			// `theme.primary` follows the scheme; `customColor.brand` is the
+			// name the app defined with ui.SetCustomColor. The role cell keeps
+			// the prefix so the resolver knows which side to ask.
+			switch c.ID {
+			case "theme":
+				if !cp.base.setColorRole(p.Name, "theme:"+c.Prop) {
+					return false
+				}
+			case "customColor":
+				if !cp.base.setColorRole(p.Name, "custom:"+c.Prop) {
+					return false
+				}
+			default:
+				return false
+			}
+			cp.base.setGradient(p.Name, nil)
+			return true
 		case *syntax.Ident:
 			// A CSS colour keyword is a literal, not a theme role.
 			if rgba, ok := csscolor.Parse(c.Val); ok {
@@ -279,6 +311,26 @@ func (p *NamedProp) SetLiteral(v syntax.Value) bool {
 		return true
 	}
 	return false
+}
+
+// rotationOf converts a parsed rotate to the radians paint needs. Only a
+// z-axis rotation is turned into an angle; an x or y axis is kept so the value
+// round-trips and paint can ignore the three-dimensional case it cannot show.
+func rotationOf(r *syntax.Rotate) Rotation {
+	axis := [3]float64{0, 0, 1}
+	switch r.Axis {
+	case "x":
+		axis = [3]float64{1, 0, 0}
+	case "y":
+		axis = [3]float64{0, 1, 0}
+	case "z":
+		axis = [3]float64{0, 0, 1}
+	default:
+		if r.Vector != [3]float64{} {
+			axis = r.Vector
+		}
+	}
+	return Rotation{Angle: r.Angle * math.Pi / 180, Axis: axis}
 }
 
 func (p *NamedProp) allows(s string) bool {
@@ -385,6 +437,13 @@ func (p *NamedProp) setGoSet(v bool) {
 func StringProp(b *NodeBase, name string, p *Prop[string]) NamedProp {
 	wire(b, name, p)
 	return NamedProp{Name: name, kind: propString, cell: p}
+}
+
+// RotateProp builds a NamedProp for a Rotation cell, written as a CSS rotate
+// value.
+func RotateProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[Rotation]) NamedProp {
+	wire(b, name, p)
+	return NamedProp{Name: name, Dirty: dirty, kind: propRotate, cell: p}
 }
 
 // ScalarProp builds a NamedProp for a string cell that also accepts a number or

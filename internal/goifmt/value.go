@@ -162,6 +162,23 @@ func printInner(v syntax.Value) string {
 		return x.Op + printPrec(x.X, precUnary)
 	case *syntax.Ternary:
 		return printPrec(x.Cond, precOr) + " ? " + printPrec(x.Then, precTernary) + " : " + printPrec(x.Else, precTernary)
+	case *syntax.Rotate:
+		// The angle is degrees, so a turn or rad becomes the equivalent degree
+		// value; the meaning is the same and the file stays round-trippable.
+		num := func(v float64) string { return strconv.FormatFloat(v, 'g', -1, 64) }
+		if x.Axis == "" && x.Vector == [3]float64{} && x.Angle == 0 {
+			return "none"
+		}
+		parts := make([]string, 0, 5)
+		if x.Axis != "" {
+			parts = append(parts, x.Axis)
+		} else if x.Vector != [3]float64{} {
+			for _, v := range x.Vector {
+				parts = append(parts, num(v))
+			}
+		}
+		parts = append(parts, num(x.Angle)+"deg")
+		return strings.Join(parts, " ")
 	case *syntax.Shadow:
 		if len(x.Layers) == 0 {
 			return "none"

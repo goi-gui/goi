@@ -58,6 +58,7 @@ func commonProps(b *NodeBase) []NamedProp {
 		EnumProp(b, "cursor", DirtyPaint, &b.cursor, schema.CursorValues...),
 		NumberProp(b, "flex", DirtyLayout, &b.flex),
 		EnumProp(b, "alignSelf", DirtyLayout, &b.alignSelf, "start", "center", "end", "stretch"),
+		RotateProp(b, "rotate", DirtyPaint, &b.rotate),
 	}
 }
 

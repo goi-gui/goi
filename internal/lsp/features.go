@@ -595,6 +595,19 @@ func refItems(file *syntax.File, src []byte, off int, ref string) []completionRe
 		return nil
 	}
 	switch ref {
+	case "theme":
+		// The scheme's colour roles, which is the whole list a colour position
+		// accepts after `theme.`.
+		return colourRoleItems("theme.")
+	case "customColor":
+		return []completionResult{{
+			Label:  "myColor",
+			Kind:   kindColor,
+			Detail: "customColor.name · the app defines it",
+			Documentation: &doc{Kind: "markdown", Value: "**customColor.name**\n\n" +
+				"A colour the app defined with `ui.SetCustomColor(\"name\", …)`. " +
+				"The design cannot list these, because they are declared in Go."},
+		}}
 	case "app", "window":
 		return globalItems(ref)
 	case "props":
@@ -821,6 +834,13 @@ func valueItems(file *syntax.File, prop string, src []byte, off int, prefix stri
 			}
 		case pd.Type == schema.TypeColor:
 			out = append(out, colourItems(elName)...)
+		case prop == "rotate":
+			for _, v := range []string{"none", "90deg", "180deg", "0.25turn", "x 90deg", "y 90deg", "z 45deg", "1 1 1 90deg"} {
+				out = append(out, completionResult{
+					Label: v, Kind: kindKeyword, Detail: "rotate",
+					Documentation: &doc{Kind: "markdown", Value: "**" + v + "**"},
+				})
+			}
 		case prop == "language" && elName == "Code":
 			// Code's language is a plain string in the schema, because an
 			// unknown one must still draw; the lexers the highlighter ships are
@@ -1217,6 +1237,21 @@ func (s *Server) hover(raw json.RawMessage) any {
 				"range":    idx.at(int(r.At), int(r.At)+len(r.ID)+1),
 			}
 		}
+		if r.ID == "theme" || r.ID == "customColor" {
+			// A colour reference: the first half names the namespace, the second
+			// the colour.
+			if off < propStart {
+				return map[string]any{
+					"contents": doc{Kind: "markdown", Value: namespaceDoc(r.ID)},
+					"range":    idx.at(int(r.At), int(r.At)+len(r.ID)),
+				}
+			}
+			body := colourRefDoc(r.ID, r.Prop)
+			return map[string]any{
+				"contents": doc{Kind: "markdown", Value: body},
+				"range":    idx.at(propStart, propStart+len(r.Prop)),
+			}
+		}
 		if r.ID == "props" {
 			// Either half of props.title explains the prop.
 			if pr := file.Prop(r.Prop); pr != nil {
@@ -1299,13 +1334,68 @@ func colourDoc(name string) string {
 		"If nothing defines it, the runtime logs a warning and draws `onSurface`."
 }
 
-// colourItems completes a colour position: the theme roles first, then the CSS
-// names a design may write, then a gradient snippet.
-func colourItems(elName string) []completionResult {
-	out := make([]completionResult, 0, len(m3.ColorRoles())+8)
+// namespaceDoc explains one of the two colour namespaces.
+func namespaceDoc(id string) string {
+	if id == "theme" {
+		return "**theme**\n\nThe colour scheme: `theme.primary`, `theme.onSurface`. " +
+			"A role follows the light/dark scheme, so one design serves both."
+	}
+	return "**customColor**\n\nA colour the app defined with `ui.SetCustomColor`. " +
+		"The names live in Go, so completion cannot list them."
+}
+
+// colourRefDoc explains the second half of a colour reference.
+func colourRefDoc(id, name string) string {
+	if id != "theme" {
+		return "**customColor." + name + "**\n\nA colour the app defined with " +
+			"`ui.SetCustomColor(\"" + name + "\", …)`. If nothing defines it, the runtime " +
+			"logs a warning and draws `onSurface`."
+	}
+	if _, ok := (m3.Colors{}).Role(name); !ok {
+		hint := syntax.Suggest(name, m3.ColorRoles())
+		return "**theme." + name + "** is not a theme colour." + hint
+	}
+	return "**theme." + name + "**\n\nA theme role: it follows the light/dark scheme."
+}
+
+// colourRoleItems lists the scheme's roles, prefixed so a member completion
+// shows `theme.primary` as the whole reference.
+func colourRoleItems(prefix string) []completionResult {
+	out := make([]completionResult, 0, len(m3.ColorRoles()))
 	for _, v := range m3.ColorRoles() {
 		out = append(out, completionResult{
-			Label: v, Kind: kindColor,
+			Label: prefix + v, InsertText: prefix + v, Kind: kindColor,
+			Detail: "theme colour",
+			Documentation: &doc{Kind: "markdown", Value: "**" + prefix + v + "**\n\n" +
+				"A theme role: it follows the light/dark scheme."},
+		})
+	}
+	return out
+}
+
+// colourItems completes a colour position: the two references, the theme roles,
+// the CSS names a design may write, then a gradient snippet.
+func colourItems(elName string) []completionResult {
+	out := make([]completionResult, 0, len(m3.ColorRoles())+16)
+	out = append(out,
+		completionResult{
+			Label: "theme", InsertText: "theme.", Kind: kindVariable,
+			Detail: "theme.<role> · follows the scheme",
+			Documentation: &doc{Kind: "markdown", Value: "**theme.<role>**\n\n" +
+				"The scheme's colour: `theme.primary`, `theme.surfaceContainerHigh`. " +
+				"It follows the light/dark scheme."},
+		},
+		completionResult{
+			Label: "customColor", InsertText: "customColor.", Kind: kindVariable,
+			Detail: "customColor.<name> · app-defined",
+			Documentation: &doc{Kind: "markdown", Value: "**customColor.<name>**\n\n" +
+				"A colour the app defined with `ui.SetCustomColor`. The name is Go's, " +
+				"so completion cannot list it."},
+		},
+	)
+	for _, v := range m3.ColorRoles() {
+		out = append(out, completionResult{
+			Label: "theme." + v, InsertText: "theme." + v, Kind: kindColor,
 			Detail: "colour role",
 			Documentation: &doc{
 				Kind: "markdown",
@@ -2233,6 +2323,12 @@ func propDoc(el string, p schema.Prop) string {
 		b.WriteString("\n\nRow height in dp; 48 by default. A row's own `height` wins.")
 	case "headerHeight":
 		b.WriteString("\n\nHeader height in dp; 40 by default.")
+	case "rotate":
+		b.WriteString("\n\nCSS `rotate`: `none`, an angle (`90deg`, `0.25turn`, `1.57rad`), " +
+			"an axis plus angle (`x 90deg`, `y 0.25turn`, `z 1.57rad`) or a vector plus " +
+			"angle (`1 1 1 90deg`). It turns the element and its subtree about its own " +
+			"centre; layout ignores it. The renderer is two-dimensional, so only a z-axis " +
+			"turn shows.")
 	case "paused":
 		b.WriteString("\n\nHolds an animation where it is: a GIF or APNG frame, or an SVG's " +
 			"SMIL clock. A design can start it paused with `paused: true`; from Go, " +

@@ -36,6 +36,15 @@ func isExpression(v syntax.Value) bool {
 // expression. Expressions are recorded for the frame loop instead of stored in
 // the property cell directly.
 func (b *NodeBase) applyValue(name string, v syntax.Value) bool {
+	// A colour reference is a literal for the cell, though it reads like a
+	// reference: the resolver keeps it as a role and rewrites it per theme.
+	if r, ok := v.(*syntax.Ref); ok && (r.ID == "theme" || r.ID == "customColor") {
+		b.clearExpr(name)
+		if b.SetPropLiteral(name, v) {
+			b.mark(b.PropDirty(name))
+			return true
+		}
+	}
 	if isExpression(v) {
 		return b.setExpr(name, v)
 	}
@@ -328,6 +337,11 @@ func (b *NodeBase) applyExpressions() {
 		}
 		if hasPercent(spec.value) {
 			continue // ResolveSize needs the parent's content size
+		}
+		// A colour reference names a scheme role or an app-defined colour, which
+		// the colour resolver owns; evaluating it as a value would write zero.
+		if r, ok := spec.value.(*syntax.Ref); ok && (r.ID == "theme" || r.ID == "customColor") {
+			continue
 		}
 		c := evalCtx{tree: b.tree, sc: b.scope}
 		if v, ok := c.evalSpec(b, spec, 0); ok {

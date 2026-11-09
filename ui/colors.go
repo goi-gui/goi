@@ -100,6 +100,31 @@ func (a *App) resolveColors() bool {
 	w := a.win
 	theme := themeFor(w)
 	lookup := func(name string) (uint32, bool) {
+		// A reference carries its namespace, so `theme.primary` never falls back
+		// to a custom name of the same spelling and `customColor.primary` never
+		// silently becomes the scheme's role.
+		switch {
+		case strings.HasPrefix(name, "theme:"):
+			role := strings.TrimPrefix(name, "theme:")
+			if c, ok := theme.Colors.Role(role); ok {
+				return c, true
+			}
+			if w.noteMissingColor(name) {
+				logg().Warn(logCtx, "ui: unknown theme colour, using onSurface",
+					"name", role, "file", a.path, "hint", syntax.Suggest(role, m3.ColorRoles()))
+			}
+			return theme.Colors.OnSurface, true
+		case strings.HasPrefix(name, "custom:"):
+			name = strings.TrimPrefix(name, "custom:")
+			if c, ok := w.customColor(name); ok {
+				return c, true
+			}
+			if w.noteMissingColor(name) {
+				logg().Warn(logCtx, "ui: undefined custom colour, using onSurface",
+					"name", name, "file", a.path, "hint", "define it with ui.SetCustomColor")
+			}
+			return theme.Colors.OnSurface, true
+		}
 		if c, ok := theme.Colors.Role(name); ok {
 			return c, true
 		}

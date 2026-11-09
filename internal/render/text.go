@@ -53,6 +53,7 @@ type glyphQuad struct {
 	clip    [4]float32
 	clipBox [4]float32
 	clipR   float32
+	rot     [4]float32
 }
 
 // placedGlyph is one glyph's quad and atlas slot, before the shadow copies are
@@ -81,6 +82,7 @@ type emojiQuad struct {
 	clip    [4]float32
 	clipBox [4]float32
 	clipR   float32
+	rot     [4]float32
 }
 
 func (g *GPU) initText(lib *text.Library) error {
@@ -206,7 +208,7 @@ func (t *textRenderer) shapeOp(op paint.Op, atlas *text.Atlas) (int, int) {
 	before := len(t.emoji)
 	for _, run := range runs {
 		if run.Face.IsEmoji() {
-			penX = t.placeEmoji(run, penX, penY, scale, clip, clipBox, op.ClipRadius)
+			penX = t.placeEmoji(run, penX, penY, scale, op, clip, clipBox)
 			continue
 		}
 		for _, gl := range run.Output.Glyphs {
@@ -253,6 +255,7 @@ func (t *textRenderer) shapeOp(op paint.Op, atlas *text.Atlas) (int, int) {
 				clip:    clip,
 				clipBox: clipBox,
 				clipR:   op.ClipRadius,
+				rot:     glyphRot(op),
 			})
 			n++
 		}
@@ -265,6 +268,7 @@ func (t *textRenderer) shapeOp(op paint.Op, atlas *text.Atlas) (int, int) {
 			clip:    clip,
 			clipBox: clipBox,
 			clipR:   op.ClipRadius,
+			rot:     glyphRot(op),
 		})
 	}
 	return n + len(placed), len(t.emoji) - before
@@ -273,7 +277,7 @@ func (t *textRenderer) shapeOp(op paint.Op, atlas *text.Atlas) (int, int) {
 // placeEmoji appends the colour quads for one emoji run and returns the pen
 // position after it. A glyph with no colour bitmap is skipped rather than
 // drawn as a box.
-func (t *textRenderer) placeEmoji(run text.ShapedRun, penX, penY, scale float64, clip, clipBox [4]float32, clipR float32) float64 {
+func (t *textRenderer) placeEmoji(run text.ShapedRun, penX, penY, scale float64, op paint.Op, clip, clipBox [4]float32) float64 {
 	for _, gl := range run.Output.Glyphs {
 		gid := uint16(gl.GlyphID)
 		if e, ok := t.colorGlyph(run.Face, gid); ok {
@@ -287,7 +291,8 @@ func (t *textRenderer) placeEmoji(run text.ShapedRun, penX, penY, scale float64,
 				data:    e.data,
 				clip:    clip,
 				clipBox: clipBox,
-				clipR:   clipR,
+				clipR:   op.ClipRadius,
+				rot:     glyphRot(op),
 			})
 		}
 		penX += float64(gl.Advance) / 64 / scale
@@ -313,6 +318,11 @@ func (t *textRenderer) colorGlyph(face *text.Face, gid uint16) (emojiBitmap, boo
 	}
 	t.emojiData[key] = e
 	return e, true
+}
+
+// glyphRot carries a text op's rotation onto every glyph quad.
+func glyphRot(op paint.Op) [4]float32 {
+	return [4]float32{op.Rotate, op.PivotX, op.PivotY, 0}
 }
 
 // glyphRect is the quad a slot covers, given the run's pen position. The x is
@@ -350,6 +360,7 @@ func (t *textRenderer) emit(i int) {
 				float32(q.slot.Max.X) / float32(t.atlasW),
 				float32(q.slot.Max.Y) / float32(t.atlasH), q.clipR, 0,
 			},
+			Rot: q.rot,
 		})
 	}
 	// Colour emoji come after the run's outline glyphs and sample the image
@@ -374,6 +385,7 @@ func (t *textRenderer) emit(i int) {
 				ClipBox: q.clipBox,
 				Params:  [4]float32{5, q.clipR, u0, v0},
 				Misc:    [4]float32{u1, v1, q.clipR, 0},
+				Rot:     q.rot,
 			})
 		}
 	}

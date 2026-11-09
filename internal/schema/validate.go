@@ -2,11 +2,12 @@ package schema
 
 import (
 	"fmt"
-	"github.com/goi-gui/goi/internal/csscolor"
 	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/goi-gui/goi/internal/csscolor"
+	"github.com/goi-gui/goi/internal/m3"
 	"github.com/goi-gui/goi/internal/syntax"
 )
 
@@ -659,6 +660,26 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 	}
 
 	if isExprValue(val) {
+		// `theme.primary` and `customColor.brand` are colour references, not
+		// expressions: the checker knows both namespaces.
+		if r, ok := val.(*syntax.Ref); ok && pd.Type == TypeColor {
+			switch r.ID {
+			case "theme":
+				if _, ok := (m3.Colors{}).Role(r.Prop); !ok {
+					v.add(at, end,
+						fmt.Sprintf("%s.%s: %q is not a theme colour", e.Name, pd.Name, r.Prop),
+						syntax.Suggest(r.Prop, m3.ColorRoles()))
+				}
+				return
+			case "customColor":
+				if !idPattern.MatchString(r.Prop) {
+					v.add(at, end, fmt.Sprintf("%s.%s: %q is not a custom colour name", e.Name, pd.Name, r.Prop), "")
+				}
+				return
+			}
+			// Any other reference is an ordinary expression (an id's property,
+			// props.x, a bridge field) and goes through the expression path.
+		}
 		// Expressions are evaluated at runtime against the property type, so a
 		// string, bool, color or enum can be conditional too. A percentage is
 		// still only meaningful where a parent offers a size.
@@ -676,6 +697,11 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 	}
 
 	switch pd.Type {
+	case TypeRotate:
+		if _, ok := val.(*syntax.Rotate); !ok {
+			fail("a rotate value: none, 90deg, x 90deg or 1 1 1 90deg")
+		}
+		return
 	case TypeScalar:
 		switch val.(type) {
 		case *syntax.String, *syntax.Ident, *syntax.Number, *syntax.Bool:
@@ -1096,6 +1122,11 @@ func (v *validator) checkRefs(e *syntax.Element, pd *Prop, val syntax.Value) {
 		at := x.At
 		end := at + syntax.Pos(len(x.ID)+1+len(x.Prop))
 		free := pd == anyProp || pd == lenProp
+		// A colour reference is checked by checkLiteral, which knows the two
+		// namespaces; it is not an element id.
+		if pd.Type == TypeColor && (x.ID == "theme" || x.ID == "customColor") {
+			return
+		}
 		if x.ID == "props" {
 			v.checkPropRef(e, pd, x, at, end, free)
 			return

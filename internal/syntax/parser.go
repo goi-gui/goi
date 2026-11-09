@@ -825,6 +825,8 @@ func (p *parser) parseProperty() (*Property, bool) {
 		v, ok = p.parseDecorationValue()
 	case "cursor":
 		v, ok = p.parseCursorValue()
+	case "rotate":
+		v, ok = p.parseRotate()
 	default:
 		v, ok = p.parseValue()
 	}
@@ -840,6 +842,77 @@ func (p *parser) parseProperty() (*Property, bool) {
 		p.next()
 	}
 	return prop, true
+}
+
+// parseRotate reads a CSS rotate: `none`, `90deg`, `x 90deg` or `1 1 1 90deg`.
+// The angle may use deg, rad, turn or grad; the result is always degrees.
+func (p *parser) parseRotate() (Value, bool) {
+	if t := p.peek(); t.kind == tokIdent && t.text == "none" {
+		p.next()
+		return &Rotate{At: t.pos}, true
+	}
+	at := p.peek().pos
+	var parts []float64
+	axis := ""
+	sawUnit := false
+	// A keyword axis comes first in `x 90deg`.
+	if t := p.peek(); t.kind == tokIdent && (t.text == "x" || t.text == "y" || t.text == "z") {
+		axis = t.text
+		p.next()
+	}
+	for {
+		t := p.peek()
+		if t.kind != tokNumber || !p.sameLine(t.pos) {
+			break
+		}
+		// Look ahead for an angle unit glued to the number.
+		if p.i+1 < len(p.toks) && p.toks[p.i+1].kind == tokIdent && p.toks[p.i+1].pos == t.end {
+			unit := p.toks[p.i+1].text
+			if f, ok := angleToDegrees(t.num, unit); ok {
+				p.next()
+				p.next()
+				parts = append(parts, f)
+				sawUnit = true
+				break
+			}
+		}
+		p.next()
+		parts = append(parts, t.num)
+	}
+	if !sawUnit || len(parts) < 1 || len(parts) > 4 {
+		p.errorf(p.peek(), "expected a rotate value: none, 90deg, x 90deg or 1 1 1 90deg")
+		return nil, false
+	}
+	// A vector form is exactly three numbers before the angle; anything else is
+	// a typo, and CSS has no two-number form.
+	if axis == "" && len(parts) != 1 && len(parts) != 4 {
+		p.errorf(p.peek(), "a rotate vector needs three numbers: 1 1 1 90deg")
+		return nil, false
+	}
+	r := &Rotate{At: at, Axis: axis}
+	angle := parts[len(parts)-1]
+	r.Angle = angle
+	if axis == "" && len(parts) > 1 {
+		for i := 0; i < len(parts)-1 && i < 3; i++ {
+			r.Vector[i] = parts[i]
+		}
+	}
+	return r, true
+}
+
+// angleToDegrees converts an angle unit to degrees.
+func angleToDegrees(n float64, unit string) (float64, bool) {
+	switch unit {
+	case "deg":
+		return n, true
+	case "rad":
+		return n * 180 / 3.141592653589793, true
+	case "turn":
+		return n * 360, true
+	case "grad":
+		return n * 0.9, true
+	}
+	return 0, false
 }
 
 // sameLine reports whether a token at pos starts on the line the previous token

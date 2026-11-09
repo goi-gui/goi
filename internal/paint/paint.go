@@ -7,6 +7,7 @@ package paint
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -111,6 +112,11 @@ type Op struct {
 	// in 0..1 with the same colour format as Color.
 	Gradient *tree.Gradient
 
+	// Rotate is the op's turn in radians, about PivotX/PivotY in window space.
+	// A node's `rotate` composes into every op its subtree emits.
+	Rotate         float32
+	PivotX, PivotY float32
+
 	// Bitmap fields. Src is the decoded image and UV is the crop inside it, in
 	// 0..1, so a cover or contain fit only changes the quad and the UVs.
 	Src *img.Data
@@ -206,6 +212,7 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 	l.paintScrollShadows(b, frame, clip)
 	l.paintScrollbar(b, frame, clip)
 	l.roundClip(b, r, fromClip)
+	l.applyRotate(from, b, r)
 	l.applyOpacity(from, b.Opacity())
 	l.applyDisabled(from, b)
 }
@@ -219,6 +226,35 @@ func (l *List) applyDisabled(from int, b *tree.NodeBase) {
 	}
 	if cell, ok := b.Node().(*tree.TableCell); ok && cell.RowDisabled() {
 		l.applyOpacity(from, m3.DisabledOpacity)
+	}
+}
+
+// applyRotate turns every op a subtree emitted around the node's own centre. A
+// nested rotation composes: the inner turn stays, and its pivot moves with the
+// outer one, which is what a rigid transform does.
+func (l *List) applyRotate(from int, b *tree.NodeBase, r tree.Rect) {
+	rot := b.Rotation()
+	if rot.IsZero() || from >= len(l.Ops) {
+		return
+	}
+	// A two-dimensional turn is all this renderer can show; an x or y axis is a
+	// 3D rotation whose projection is a scale, which is a different feature.
+	angle := float32(rot.Angle)
+	px := float32(r.X + r.W/2)
+	py := float32(r.Y + r.H/2)
+	c, s := float32(math.Cos(float64(angle))), float32(math.Sin(float64(angle)))
+	for i := from; i < len(l.Ops); i++ {
+		op := &l.Ops[i]
+		if op.Rotate != 0 {
+			// Move the inner pivot into the outer frame, then add the angles.
+			dx, dy := op.PivotX-px, op.PivotY-py
+			op.PivotX = px + dx*c - dy*s
+			op.PivotY = py + dx*s + dy*c
+			op.Rotate += angle
+			continue
+		}
+		op.Rotate = angle
+		op.PivotX, op.PivotY = px, py
 	}
 }
 
@@ -254,6 +290,7 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 	l.paintScrollShadows(b, frame, clip)
 	l.paintScrollbar(b, frame, clip)
 	l.roundClip(b, r, fromClip)
+	l.applyRotate(from, b, r)
 	l.applyOpacity(from, b.Opacity())
 	l.applyDisabled(from, b)
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/goi-gui/goi/internal/componentdef"
+	"github.com/goi-gui/goi/internal/syntax"
 )
 
 // TestEveryComponentValidates keeps the schema vocabulary and the component
@@ -133,5 +134,48 @@ func TestGradientOnlyOnBackground(t *testing.T) {
 	src = `Window { Text { text: "x" color: "linear-gradient(90deg, red, blue)" } }`
 	if _, diag := validate(t, src); diag.Empty() {
 		t.Fatal("a gradient was accepted as a text colour")
+	}
+}
+
+// TestColourReferences checks the two reference namespaces and what is rejected:
+// a role the scheme does not have, and a third namespace.
+func TestColourReferences(t *testing.T) {
+	for _, src := range []string{
+		`Window { Text { text: "x" color: theme.primary } }`,
+		`Window { Rectangle { background: customColor.brand } }`,
+		`Window { Text { text: "x" color: theme.surfaceContainerHigh } }`,
+	} {
+		if _, diag := validate(t, src); !diag.Empty() {
+			t.Errorf("%s: %v", src, diag)
+		}
+	}
+	for _, src := range []string{
+		`Window { Text { text: "x" color: theme.nope } }`,
+		`Window { Text { text: "x" color: palette.primary } }`,
+	} {
+		if _, diag := validate(t, src); diag.Empty() {
+			t.Errorf("%s was accepted", src)
+		}
+	}
+}
+
+// TestRotateValues covers every CSS rotate form, and the typos that must fail.
+func TestRotateValues(t *testing.T) {
+	for _, v := range []string{"none", "90deg", "0.25turn", "1.57rad", "100grad", "x 90deg", "y 0.25turn", "z 1.57rad", "1 1 1 90deg"} {
+		src := fmt.Sprintf("Window { Column { rotate: %s } }", v)
+		if _, diag := validate(t, src); !diag.Empty() {
+			t.Errorf("rotate: %q: %v", v, diag)
+		}
+	}
+	for _, v := range []string{`"90deg"`, "90", "w 90deg", "1 1 90deg"} {
+		src := fmt.Sprintf("Window { Column { rotate: %s } }", v)
+		// Some of these are syntax errors and some validation errors; either way
+		// the file must not pass.
+		if _, diag := syntax.Parse([]byte(src)); !diag.Empty() {
+			continue
+		}
+		if _, diag := validate(t, src); diag.Empty() {
+			t.Errorf("rotate: %s was accepted", v)
+		}
 	}
 }

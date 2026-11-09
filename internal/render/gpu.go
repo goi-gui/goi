@@ -37,6 +37,7 @@ struct Instance {
 	clipbox: vec4f, // x0, y0, x1, y1 of the unclipped rounded box; empty = none
 	params: vec4f,  // kind, blur, startAngle, endAngle
 	misc: vec4f,    // thickness, uv far (glyphs, bitmaps), clip radius
+	rot: vec4f,     // angle in radians, pivot x, pivot y, unused
 }
 
 struct Viewport {
@@ -88,6 +89,18 @@ fn vs_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
 	out.misc = inst.misc;
 	out.clipbox = inst.clipbox;
 	out.uv = mix(inst.params.zw, inst.misc.xy, c);
+	// A rotated op turns its quad about the pivot in window space. Local
+	// coordinates stay unrotated, so every distance field is evaluated in the
+	// element's own frame.
+	if (inst.rot.x != 0.0) {
+		let ca = cos(inst.rot.x);
+		let sa = sin(inst.rot.x);
+		let d = p - inst.rot.yz;
+		let q = vec2f(d.x * ca - d.y * sa, d.x * sa + d.y * ca);
+		out.pos = vec4f((inst.rot.yz.x + q.x) / viewport.size.x * 2.0 - 1.0,
+			1.0 - (inst.rot.yz.y + q.y) / viewport.size.y * 2.0, 0.0, 1.0);
+		out.pos2 = inst.rot.yz + q;
+	}
 	return out;
 }
 
@@ -361,6 +374,7 @@ type gpuInstance struct {
 	ClipBox [4]float32
 	Params  [4]float32 // kind, blur, startAngle, endAngle
 	Misc    [4]float32 // thickness, uv far (glyphs, bitmaps), clip radius
+	Rot     [4]float32 // angle (radians), pivot x, pivot y
 }
 
 // GPU is the WebGPU renderer.
@@ -814,6 +828,7 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 				ClipBox: clipVec(op.ClipBox),
 				Params:  params,
 				Misc:    [4]float32{op.Thickness, 0, op.ClipRadius, 0},
+				Rot:     [4]float32{op.Rotate, op.PivotX, op.PivotY, 0},
 			})
 		case paint.Shadow:
 			kind := float32(3)
@@ -828,6 +843,7 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 				ClipBox: clipVec(op.ClipBox),
 				Params:  [4]float32{kind, op.Blur, op.OffsetX, op.OffsetY},
 				Misc:    [4]float32{0, 0, op.ClipRadius, op.Spread},
+				Rot:     [4]float32{op.Rotate, op.PivotX, op.PivotY, 0},
 			})
 		case paint.Text:
 			if g.text != nil {

@@ -258,6 +258,10 @@ func plainValue(pd Prop) syntax.Value {
 		}
 	case TypeShadow:
 		return &syntax.Shadow{Layers: []syntax.ShadowLayer{{X: 1, Y: 1}}}
+	case TypeScalar:
+		return &syntax.String{Val: "x"}
+	case TypeRotate:
+		return &syntax.Rotate{Angle: 90}
 	}
 	return &syntax.Ident{Val: "start"}
 }

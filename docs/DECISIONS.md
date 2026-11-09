@@ -1710,3 +1710,20 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
 - **A gradient only fills `background`.** `color` and `borderColor` are strokes
   and glyph colours, where a box gradient has no meaning; the checker reports it
   rather than storing a value paint would ignore.
+- **A colour reference is a literal for its cell, not an expression.** `theme.x`
+  and `customColor.y` parse as references, which the expression pass would
+  evaluate to nil and write as zero. They are stored in the colour-role list
+  instead, tagged with their namespace, so the resolver knows which side to ask
+  and neither can shadow the other. The bare spellings still work, and the
+  prefixed form is what completion offers.
+- **`rotate` rides the instance, not a separate pass.** A turn is one angle and
+  one pivot per op; the vertex shader rotates the quad about the pivot and leaves
+  local coordinates unrotated, so every distance field still measures in the
+  element's own frame and a rounded, bordered, gradient-filled box turns
+  correctly. Nested turns compose on the CPU: the inner pivot moves into the
+  outer frame and the angles add, which is what a rigid transform does.
+- **`rotate` takes a dedicated parser.** The CSS grammar (`none`, an angle with
+  any unit, `x|y|z` plus angle, or three numbers plus angle) is not an
+  expression, and squeezing it into one would have made `90deg` a lexer special
+  case. `parseRotate` runs before the generic value reader and stores degrees, so
+  the tree, formatter and renderer agree on one unit.

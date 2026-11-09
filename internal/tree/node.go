@@ -1,6 +1,7 @@
 package tree
 
 import (
+	"math"
 	"sort"
 	"sync"
 	"time"
@@ -65,7 +66,10 @@ type NodeBase struct {
 	borderW                                              Prop[float64]
 	flex                                                 Prop[float64]
 	alignSelf                                            Prop[string]
-	scroll                                               Prop[bool]
+	// rotate turns the node and its subtree; layout ignores it, the way CSS
+	// rotate does.
+	rotate Prop[Rotation]
+	scroll Prop[bool]
 	// Scrollbar and scroll-shadow behaviour. `hideScrollbar` removes the bar;
 	// `autoHideScrollbar` (the default) shows it only while the pointer is over
 	// the area or the area scrolled recently.
@@ -275,6 +279,30 @@ func (b *NodeBase) Flex() float64 { return b.flex.Get() }
 
 // AlignSelf returns "" or start/center/end/stretch.
 func (b *NodeBase) AlignSelf() string { return b.alignSelf.Get() }
+
+// Rotation is a CSS `rotate` value in the form paint needs: an angle in radians
+// about an axis. A two-dimensional rotation uses the z axis.
+type Rotation struct {
+	Angle float64 // radians
+	Axis  [3]float64
+}
+
+// IsZero reports whether the rotation is a no-op.
+func (r Rotation) IsZero() bool { return r.Angle == 0 }
+
+// Rotation returns the node's rotation.
+func (b *NodeBase) Rotation() Rotation { return b.rotate.Get() }
+
+// SetRotation turns the node and its subtree by deg degrees about axis (the z
+// axis by default), like CSS `rotate`.
+func (b *NodeBase) SetRotation(deg float64, axis ...[3]float64) {
+	r := Rotation{Angle: deg * math.Pi / 180, Axis: [3]float64{0, 0, 1}}
+	if len(axis) > 0 {
+		r.Axis = axis[0]
+	}
+	b.rotate.Set(r)
+	b.mark(DirtyPaint)
+}
 
 // Width returns the declared width, or -1 for auto.
 func (b *NodeBase) Width() float64 { return b.width.Get() }

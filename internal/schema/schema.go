@@ -26,6 +26,9 @@ const (
 	// TypeScalar accepts a string, number or bool, which is what a table cell's
 	// sort value is: whatever the row's data holds.
 	TypeScalar
+	// TypeRotate is the CSS rotate value: none, an angle, an axis plus angle, or
+	// a vector plus angle.
+	TypeRotate
 )
 
 func (t ValueType) String() string {
@@ -46,6 +49,8 @@ func (t ValueType) String() string {
 		return "shadow"
 	case TypeScalar:
 		return "string, number or bool"
+	case TypeRotate:
+		return "a rotate value"
 	}
 	return "unknown"
 }
@@ -206,6 +211,9 @@ var common = []Prop{
 	// cursor is the pointer shape, named the way CSS names it.
 	{Name: "cursor", Type: TypeEnum, Dirty: DirtyPaint, Enum: CursorValues, Default: "", Common: true},
 	{Name: "template", Type: TypeBool, Dirty: DirtyLayout, Default: false, Common: true},
+	// rotate turns the element and everything under it, the way CSS rotate
+	// does. Layout ignores it, so the box keeps its place.
+	{Name: "rotate", Type: TypeRotate, Dirty: DirtyPaint, Common: true},
 }
 
 func withCommon(extra ...Prop) []Prop {
