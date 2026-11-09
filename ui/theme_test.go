@@ -24,7 +24,7 @@ func TestRegisteredThemeIsUsed(t *testing.T) {
 		theme: brand
 		Column { Text { id: label text: "x" color: primary } }
 	}`)
-	a.themes = map[string]*m3.Theme{"light": m3.Light(), "dark": m3.Dark(), "brand": brandTheme()}
+	win.DefineTheme(brandTheme())
 	win.tree.ResolveColors(themeFor(win).Colors.Role)
 	if got := themeFor(win).Name; got != "brand" {
 		t.Fatalf("resolved theme = %q, want brand", got)
@@ -38,16 +38,45 @@ func TestRegisteredThemeIsUsed(t *testing.T) {
 	}
 }
 
+// TestSeedThemeDefinedAfterLoad is the DefineTheme contract: the design names a
+// scheme that does not exist at load, the app builds it from a seed, and the
+// window picks it up without a reload.
+func TestSeedThemeDefinedAfterLoad(t *testing.T) {
+	_, win := reloadApp(t, `Window {
+		theme: darkFromSeed
+		Column { Text { id: label text: "x" color: theme.primary } }
+	}`)
+	if got := themeFor(win).Name; !strings.Contains(got, "light") {
+		t.Fatalf("unregistered theme resolved to %q", got)
+	}
+	dark := NewThemeFromSeed(0x6750A4FF, true)
+	win.DefineTheme(dark)
+	if got := themeFor(win); got != dark {
+		t.Fatalf("defined theme resolved to %q", got.Name)
+	}
+	win.tree.SetDark(themeFor(win).Dark)
+	if !win.tree.Dark() || win.Mode() != ModeDark {
+		t.Fatal("a seed dark scheme did not read as dark")
+	}
+	win.app.resolveColors()
+	if got := MustByID[*Text](win, "label").Color.Get(); got != dark.Colors.Primary {
+		t.Fatalf("role colour = #%08x, want the seed primary", got)
+	}
+	if dark.Name != "darkFromSeed" {
+		t.Fatalf("name = %q", dark.Name)
+	}
+}
+
 // TestCustomDarkThemeReadsAsDark keeps app.dark honest: it is the scheme's mood,
 // not a comparison against the literal name "dark".
 func TestCustomDarkThemeReadsAsDark(t *testing.T) {
 	dark := *m3.Dark()
 	dark.Name = "midnight"
-	a, win := reloadApp(t, `Window {
+	_, win := reloadApp(t, `Window {
 		theme: midnight
 		Column { Text { id: label text: app.dark ? "dark" : "light" } }
 	}`)
-	a.themes = map[string]*m3.Theme{"light": m3.Light(), "dark": m3.Dark(), "midnight": &dark}
+	win.DefineTheme(&dark)
 	win.tree.SetDark(themeFor(win).Dark)
 	if !win.tree.Dark() {
 		t.Fatal("a registered dark theme did not report dark")
@@ -62,11 +91,14 @@ func TestCustomDarkThemeReadsAsDark(t *testing.T) {
 // TestUnknownThemeFallsBackAndReports catches the typo case: the window still
 // draws, but the app hears about the name it could not resolve.
 func TestUnknownThemeFallsBackAndReports(t *testing.T) {
-	a, win := reloadApp(t, `Window { theme: nope Column { Text { text: "x" } } }`)
+	_, win := reloadApp(t, `Window { theme: nope Column { Text { text: "x" } } }`)
 	if got := themeFor(win).Name; !strings.Contains(got, "light") {
 		t.Fatalf("fallback theme = %q, want light", got)
 	}
-	_ = a
+	win.app.resolveColors() // the frame-time warning marks the name
+	if win.noteMissingTheme("nope") {
+		t.Fatal("the same unknown theme would warn twice")
+	}
 }
 
 // TestWindowModeReachesGo is the Go half of the feature: the enum follows the

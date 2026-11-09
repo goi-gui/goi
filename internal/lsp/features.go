@@ -2268,9 +2268,10 @@ func propDoc(el string, p schema.Prop) string {
 		b.WriteString("\n\nAccepted by every element.")
 	}
 	if p.Type == schema.TypeColor {
-		b.WriteString("\n\nA theme role (`primary`, `onSurface`), a name the app defines with " +
-			"`ui.SetCustomColor`, or CSS colour syntax: `#rrggbb`, any of the 148 CSS names " +
-			"(`white`, `rebeccapurple`), `rgb()`/`rgba()` and `hsl()`/`hsla()`. " +
+		b.WriteString("\n\nA theme role (`theme.primary`, `theme.onSurface`), an app colour " +
+			"(`customColor.brand`, defined with `ui.SetCustomColor`), or CSS colour syntax: " +
+			"`#rrggbb`, any of the 148 CSS names (`white`, `rebeccapurple`), " +
+			"`rgb()`/`rgba()` and `hsl()`/`hsla()`. " +
 			"Quote a function or a gradient: `background: \"linear-gradient(90deg, red, blue)\")`.")
 	}
 	if p.Name == "src" {
@@ -2323,6 +2324,12 @@ func propDoc(el string, p schema.Prop) string {
 		b.WriteString("\n\nRow height in dp; 48 by default. A row's own `height` wins.")
 	case "headerHeight":
 		b.WriteString("\n\nHeader height in dp; 40 by default.")
+	case "theme":
+		b.WriteString("\n\n`light` and `dark` are built in, and `app.systemMode` follows the " +
+			"desktop. A scheme the app defines with `Window.DefineTheme` is selected by its " +
+			"`Theme.Name`; `ui.NewThemeFromSeed(color, dark)` names its result " +
+			"`lightFromSeed` or `darkFromSeed`. A name defined after `LoadWindow` still " +
+			"applies on the next frame.")
 	case "rotate":
 		b.WriteString("\n\nCSS `rotate`: `none`, an angle (`90deg`, `0.25turn`, `1.57rad`), " +
 			"an axis plus angle (`x 90deg`, `y 0.25turn`, `z 1.57rad`) or a vector plus " +

@@ -20,9 +20,6 @@ type Options struct {
 	HotReload bool
 	Width     int // used only when the .goi file has no width
 	Height    int
-	// Themes are schemes registered by name for this window, on top of the
-	// built-in light and dark.
-	Themes map[string]*Theme
 }
 
 // Option mutates Options.
@@ -33,21 +30,6 @@ func WithHotReload(on bool) Option { return func(o *Options) { o.HotReload = on 
 
 // WithSize sets the fallback client size for files that do not declare one.
 func WithSize(w, h int) Option { return func(o *Options) { o.Width, o.Height = w, h } }
-
-// WithTheme registers a colour scheme under a name, so a design can say
-// `theme: "brand"`. `light` and `dark` are always available; a registered name
-// replaces a built-in one of the same name.
-func WithTheme(name string, t *Theme) Option {
-	return func(o *Options) {
-		if name == "" || t == nil {
-			return
-		}
-		if o.Themes == nil {
-			o.Themes = map[string]*Theme{}
-		}
-		o.Themes[name] = t
-	}
-}
 
 // App owns the UI goroutine, the posted-function queue and every window's
 // state. It is safe to call Post from any goroutine.
@@ -196,14 +178,6 @@ func (a *App) LoadWindow(fsys fs.FS, path string, opts ...Option) (*Window, erro
 	}
 	a.win, a.assets, a.path, a.opts = w, fsys, name, o
 	a.themes = map[string]*Theme{"light": m3.Light(), "dark": m3.Dark()}
-	for n, t := range o.Themes {
-		a.themes[n] = t
-	}
-	// A typo in a theme name would otherwise paint a light window with no hint
-	// that the design asked for something else.
-	if _, ok := a.themes[tr.Root.Theme.Get()]; !ok {
-		a.reportError(fmt.Errorf("goi: %s: unknown theme %q, using light", name, tr.Root.Theme.Get()))
-	}
 	// Images resolve against the container above, so this runs after it is set.
 	a.loadImages(tr)
 	if err := a.initWindow(w); err != nil {

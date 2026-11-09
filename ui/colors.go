@@ -99,6 +99,15 @@ func (a *App) resolveColors() bool {
 	}
 	w := a.win
 	theme := themeFor(w)
+	// DefineTheme runs after LoadWindow — usually inside Bind — so a name is only
+	// a typo once the first frame is drawing. Warning at load would fire before
+	// the app had a chance to register its scheme.
+	if name := w.tree.Root.Theme.Get(); name != "" && name != "light" && name != "dark" {
+		if _, ok := a.themes[name]; !ok && w.noteMissingTheme(name) {
+			logg().Warn(logCtx, "ui: unknown theme, using light", "name", name,
+				"file", a.path, "hint", "define it with ui.Window.DefineTheme")
+		}
+	}
 	lookup := func(name string) (uint32, bool) {
 		// A reference carries its namespace, so `theme.primary` never falls back
 		// to a custom name of the same spelling and `customColor.primary` never

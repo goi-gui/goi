@@ -46,7 +46,8 @@ type Rect = tree.Rect
 type Shadow = tree.ShadowLayer
 
 // Theme is a complete Material 3 colour scheme. Start from LightTheme or
-// DarkTheme and change the roles you want, then register it with WithTheme.
+// DarkTheme and change the roles you want, or build one from a single seed
+// colour with NewThemeFromSeed, then register it with Window.DefineTheme.
 type Theme = m3.Theme
 
 // Colors is the set of Material 3 colour roles, as 0xRRGGBBAA.
@@ -58,6 +59,24 @@ func LightTheme() *Theme { return m3.Light() }
 
 // DarkTheme returns the baseline dark scheme.
 func DarkTheme() *Theme { return m3.Dark() }
+
+// NewThemeFromSeed builds a complete light or dark scheme from one seed colour,
+// so an app can theme itself from a brand colour without naming every role. The
+// result is named `lightFromSeed` or `darkFromSeed`; register it with
+// Window.DefineTheme and select it from the design:
+//
+//	light := ui.NewThemeFromSeed(0x6750A4FF, false)
+//	dark := ui.NewThemeFromSeed(0x6750A4FF, true)
+//	win.DefineTheme(light)
+//	win.DefineTheme(dark)
+//
+//	Window { theme: darkFromSeed }
+//
+// The colour is 0xRRGGBBAA, the same form a role uses. The seed sets the hue;
+// every role's tone follows Material 3.
+func NewThemeFromSeed(color uint32, isDark bool) *Theme {
+	return m3.FromSeed(color, isDark)
+}
 
 // Mode is a light or dark scheme: the mood a design shows, which
 // `Theme.Dark` on the resolved scheme decides.

@@ -522,6 +522,21 @@ batch. This is what the display list will feed.
   to the old name convention so a bare `tree.BuildSource` test still works.
   `ui.Theme`/`ui.Colors` are aliases and `ui.LightTheme()`/`ui.DarkTheme()` are
   the public entry points, so the `internal/m3` package stays internal.
+- **A theme is defined on the window, after it loads.** `ui.WithTheme` had to run
+  before `LoadWindow`, which put the scheme's name in Go and its value in options
+  while the design had a third spelling. `Window.DefineTheme` reads the name from
+  `Theme.Name`, so registration happens after the window exists (inside `Bind`)
+  and redefining the same name replaces the scheme in place. That moves the
+  unknown-name check from load time to the first drawn frame: warning at load
+  would fire for a scheme the app was about to define. A name that is still
+  unknown when the frame draws logs once and falls back to light.
+- **A seed palette is CIELCh, not HCT.** `NewThemeFromSeed` needs a full scheme
+  from one colour, and CAM16/HCT would be a large amount of code for a result a
+  designer tunes anyway. Tones are L*, the seed's hue drives primary, tertiary is
+  +60°, and chroma is clamped per palette and lowered until the colour fits sRGB,
+  so every role stays in gamut and the text pairs keep their contrast. The fixed
+  names `lightFromSeed`/`darkFromSeed` mean a design can select a seed scheme
+  without the app passing a string through.
 - **One name per enum, one cell per property.** `variant` and `size` were
   spelled twice: the schema validated against `componentdef.EnumValues`, while
   `Component.one` had its own shorter lists, so `Divider { variant: vertical }`

@@ -26,6 +26,47 @@ type Window struct {
 	colorMu       sync.RWMutex
 	customColors  map[string]uint32
 	missingColors map[string]bool
+
+	// missingThemes holds the names a design asked for that nothing defined, so
+	// the warning is logged once rather than every frame.
+	themeMu       sync.Mutex
+	missingThemes map[string]bool
+}
+
+// DefineTheme registers a scheme under its Name, so a design can select it with
+// `theme: <name>`. Call it after the window exists — inside Bind is the usual
+// place — and call it again with a new scheme of the same name to replace it:
+//
+//	win.DefineTheme(ui.NewThemeFromSeed(0x6750A4FF, false))
+//	win.DefineTheme(ui.NewThemeFromSeed(0x6750A4FF, true))
+//
+// `light` and `dark` are built in and can be overridden by the same name. The
+// design resolves the name on the next frame, so a theme defined after
+// LoadWindow still applies without a reload.
+func (w *Window) DefineTheme(t *Theme) {
+	if w == nil || t == nil || t.Name == "" || w.app == nil {
+		return
+	}
+	if w.app.themes == nil {
+		w.app.themes = map[string]*Theme{}
+	}
+	w.app.themes[t.Name] = t
+	w.app.markDirty(tree.DirtyPaint)
+}
+
+// noteMissingTheme records a name no theme defines and reports whether this is
+// the first time it was seen, so the warning is not per frame.
+func (w *Window) noteMissingTheme(name string) bool {
+	w.themeMu.Lock()
+	defer w.themeMu.Unlock()
+	if w.missingThemes[name] {
+		return false
+	}
+	if w.missingThemes == nil {
+		w.missingThemes = map[string]bool{}
+	}
+	w.missingThemes[name] = true
+	return true
 }
 
 // OnKey subscribes to key presses in this window, whether or not a text field

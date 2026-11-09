@@ -2016,3 +2016,28 @@ func TestRotateCompletionAndHover(t *testing.T) {
 		t.Fatalf("hover = %q", h.Contents.Value)
 	}
 }
+
+// TestThemeHoverExplainsRegistration keeps goipls in step with DefineTheme: the
+// property that names a scheme explains where schemes come from.
+func TestThemeHoverExplainsRegistration(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\ttheme: darkFromSeed\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+	res := c.request("textDocument/hover", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "theme", 2),
+	})
+	var h struct {
+		Contents doc `json:"contents"`
+	}
+	if err := json.Unmarshal(res, &h); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"DefineTheme", "lightFromSeed", "darkFromSeed"} {
+		if !strings.Contains(h.Contents.Value, want) {
+			t.Fatalf("hover missing %q: %q", want, h.Contents.Value)
+		}
+	}
+}

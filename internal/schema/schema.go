@@ -235,8 +235,8 @@ var elements = func() []Element {
 	out := []Element{
 		{Name: "Window", Children: true, Attrs: withCommon(
 			Prop{Name: "title", Type: TypeString, Dirty: DirtyNone, Default: ""},
-			// Any name the app registered with ui.WithTheme; `light` and `dark`
-			// are always available.
+			// Any scheme the app defined with Window.DefineTheme; `light` and
+			// `dark` are always available.
 			Prop{Name: "theme", Type: TypeString, Dirty: DirtyPaint, Default: "light"},
 			// system keeps the platform's title bar; custom hides it, so the
 			// design draws its own inside a TitleBar.
