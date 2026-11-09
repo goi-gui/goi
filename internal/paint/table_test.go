@@ -273,6 +273,46 @@ func TestTableVariantsPaintDistinctChrome(t *testing.T) {
 	}
 }
 
+// TestTableRowBackground paints a row's own background: it is a common
+// property, and the row draws it over the table's bands.
+func TestTableRowBackground(t *testing.T) {
+	const src = `Window { Column { Table {
+		id: table
+		width: 300
+		striped: true
+		TableColumn { label: "A" width: 150 }
+		TableColumn { label: "B" width: 150 }
+		TableRow { background: #ff0000ff TableCell { value: "a1" Text { text: "a1" } } TableCell { value: "b1" Text { text: "b1" } } }
+		TableRow { TableCell { value: "a2" Text { text: "a2" } } TableCell { value: "b2" Text { text: "b2" } } }
+	} } }`
+	tr, diag := tree.BuildSource([]byte(src), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 500, 400)
+	l := &List{}
+	l.Build(tr, 500, 400)
+
+	tbl, _ := tr.ByID("table")
+	tab := tbl.(*tree.Table)
+	rows := tab.TableRows()
+	b := rows[0].Base().Bounds()
+	base := tab.Base().Bounds()
+	want := tree.Rect{X: base.X + b.X, Y: base.Y + b.Y, W: b.W, H: b.H}
+
+	const want0 = uint32(0xff0000ff)
+	for _, op := range l.Ops {
+		if op.Kind != Fill || op.Color != want0 {
+			continue
+		}
+		got := tree.Rect{X: float64(op.Rect[0]), Y: float64(op.Rect[1]), W: float64(op.Rect[2]), H: float64(op.Rect[3])}
+		if got == want {
+			return
+		}
+	}
+	t.Fatalf("no row background at the first row's box %v:\n%s", want, l.Dump())
+}
+
 // TestTableMultipleSelectedRowsPaint checks that multiple mode paints every
 // selected row, whether the design seeded the flags or Go set them.
 func TestTableMultipleSelectedRowsPaint(t *testing.T) {

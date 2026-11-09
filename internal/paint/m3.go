@@ -326,6 +326,10 @@ func (l *List) paintComponent(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		}
 	case "TableColumn":
 		l.paintTableColumn(c, r, clip)
+	case "TableRow":
+		// The table paints the bands; a row's own box goes on top of them, so
+		// `background` on a row wins over striped and selected.
+		l.paintBox(c.Base(), r, clip)
 	case "TableCell":
 		l.paintTableCell(c, r, clip)
 	case "Menu":

@@ -308,10 +308,8 @@ func (l *List) paintContent(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
 		l.suppressElev = b.ShadowSet()
 		l.paintComponent(c.M3(), r, clip)
 		l.suppressElev = false
-	} else if g := b.Gradient("background"); g != nil {
-		l.fillGradient(r, g, b.Radius(), b.BorderColor(), b.BorderWidth(), clip)
-	} else if b.Background() != 0 || b.BorderWidth() > 0 {
-		l.fillRect(r, b.Background(), b.Radius(), b.BorderColor(), b.BorderWidth(), clip)
+	} else {
+		l.paintBox(b, r, clip)
 	}
 	if !isText {
 		// An inset shadow belongs on top of the fill and below the content, the
@@ -326,6 +324,17 @@ func (l *List) paintContent(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
 	}
 	if s, ok := b.Node().(*tree.SVG); ok {
 		l.paintSVG(s, r, clip)
+	}
+}
+
+// paintBox draws the common box of an element: its background (a solid colour
+// or a gradient) and its border. Components paint their own surface, so they
+// call this only where one of their parts is an ordinary box.
+func (l *List) paintBox(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
+	if g := b.Gradient("background"); g != nil {
+		l.fillGradient(r, g, b.Radius(), b.BorderColor(), b.BorderWidth(), clip)
+	} else if b.Background() != 0 || b.BorderWidth() > 0 {
+		l.fillRect(r, b.Background(), b.Radius(), b.BorderColor(), b.BorderWidth(), clip)
 	}
 }
 
