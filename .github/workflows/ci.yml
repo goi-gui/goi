@@ -36,6 +36,7 @@ jobs:
           curl -sL "https://github.com/libsdl-org/SDL/releases/download/release-3.4.20/SDL3-3.4.20.tar.gz" | tar xz
           cmake -S SDL3-3.4.20 -B sdl-build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
+          cmake --build sdl-build --parallel
           sudo cmake --install sdl-build
 
       - name: SDL3 (macOS)
@@ -124,6 +125,7 @@ jobs:
           curl -sL "https://github.com/libsdl-org/SDL/releases/download/release-3.4.20/SDL3-3.4.20.tar.gz" | tar xz
           cmake -S SDL3-3.4.20 -B sdl-build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
+          cmake --build sdl-build --parallel
           sudo cmake --install sdl-build
 
       - run: go install honnef.co/go/tools/cmd/staticcheck@latest
