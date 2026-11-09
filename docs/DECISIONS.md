@@ -743,6 +743,16 @@ batch. This is what the display list will feed.
   the expose to `Input.Expose`, which sets `needsFrame` without touching the
   tree: the same display list is repainted, that frame completes the ack, and
   the resize follows the pointer.
+- **One window, four native surfaces, no build tags.** `platform.SurfaceHandles`
+  asks SDL which video driver it got and returns the handle pair the renderer
+  needs: `wl_display`/`wl_surface`, X11 `Display*`/`Window`, Win32
+  `HINSTANCE`/`HWND` or a `CAMetalLayer`. `render.NewGPU` then picks
+  `SurfaceTargetFromWaylandSurface`, `FromXlibWindow`, `FromWindowsHWND` or
+  `FromMetalLayer`. The alternative — build tags per platform — would mean four
+  copies of the driver loop and a binary that cannot be cross-compiled at all;
+  everything above `platform` is pure Go, so only this one package needs a
+  compiler. The Metal view is created once and destroyed before its window,
+  because SDL attaches it to the window and does not own its lifetime.
 - **A Wayland session gets SDL's Wayland driver, not its XWayland fallback.**
   SDL 3.4 keeps the Wayland driver only when the compositor offers `fifo-v1`;
   without it (niri does not) it prefers X11 and connects through XWayland. There

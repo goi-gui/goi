@@ -85,7 +85,8 @@ func sdlQuit() { C.SDL_Quit() }
 func sdlCreateWindow(title string, w, h int, decorated bool) (unsafe.Pointer, error) {
 	ctitle := C.CString(title)
 	defer C.free(unsafe.Pointer(ctitle))
-	flags := C.SDL_WindowFlags(C.SDL_WINDOW_RESIZABLE) | C.SDL_WindowFlags(C.SDL_WINDOW_HIGH_PIXEL_DENSITY)
+	flags := C.SDL_WindowFlags(C.SDL_WINDOW_RESIZABLE) | C.SDL_WindowFlags(C.SDL_WINDOW_HIGH_PIXEL_DENSITY) |
+		C.SDL_WindowFlags(C.goiExtraWindowFlags())
 	if !decorated {
 		// A borderless window has no platform title bar; the design draws its
 		// own and the hit test supplies drag and resize edges.
@@ -103,6 +104,8 @@ func sdlDestroyWindow(p unsafe.Pointer) {
 		return
 	}
 	C.goiFreeCursors()
+	// A Metal view is attached to the window, so it has to go first.
+	C.goiFreeMetalView()
 	C.SDL_DestroyWindow((*C.SDL_Window)(p))
 }
 
@@ -260,6 +263,19 @@ func sdlWaylandHandles(p unsafe.Pointer) (display, surface unsafe.Pointer) {
 func sdlX11Handles(p unsafe.Pointer) (display unsafe.Pointer, window uintptr) {
 	w := (*C.SDL_Window)(p)
 	return C.goiX11Display(w), uintptr(C.goiX11Window(w))
+}
+
+// sdlWin32Handles returns the HINSTANCE and HWND of a Windows window. The
+// instance may be nil, which DXGI resolves from the current module.
+func sdlWin32Handles(p unsafe.Pointer) (instance, hwnd unsafe.Pointer) {
+	w := (*C.SDL_Window)(p)
+	return C.goiWin32Instance(w), C.goiWin32Hwnd(w)
+}
+
+// sdlMetalLayer returns the CAMetalLayer behind the window, creating the
+// Metal view on first use.
+func sdlMetalLayer(p unsafe.Pointer) unsafe.Pointer {
+	return C.goiMetalLayer((*C.SDL_Window)(p))
 }
 
 // Window flag bits, mirrored so the rest of the package needs no cgo.

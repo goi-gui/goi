@@ -2,13 +2,13 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
 
 jobs:
+  # The platform layer is cgo over SDL3, so every target is built natively on
+  # its own runner rather than cross-compiled.
   test:
-    # Native build matrix: GLFW is cgo, so cross-compiling is not the same as
-    # building on the target. Each entry is run, not just compiled.
     strategy:
       fail-fast: false
       matrix:
@@ -20,50 +20,81 @@ jobs:
         with:
           go-version: "1.27.x"
 
-      - name: Install GLFW (Linux)
+      - name: SDL3 (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libglfw3-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build pkg-config \
+            libasound2-dev libpulse-dev libudev-dev libdrm-dev libgbm-dev \
+            libegl1-mesa-dev libwayland-dev libdecor-0-dev wayland-protocols \
+            libxkbcommon-dev libx11-dev libxext-dev libxrandr-dev libxi-dev \
+            libxcursor-dev libxfixes-dev libxss-dev
+          curl -sL "https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.tar.gz" | tar xz
+          cmake -S SDL3-3.4.18 -B sdl-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
+          sudo cmake --install sdl-build
 
-      - name: Install GLFW (macOS)
+      - name: SDL3 (macOS)
         if: runner.os == 'macOS'
-        run: brew install glfw
+        run: |
+          brew install sdl3
+          echo "PKG_CONFIG_PATH=$(brew --prefix)/lib/pkgconfig" >> "$GITHUB_ENV"
 
-      - name: Install GLFW (Windows)
+      - uses: msys2/setup-msys2@v2
         if: runner.os == 'Windows'
-        run: vcpkg install glfw3:x64-windows
-
-      - name: Vet
-        shell: bash
-        run: |
-          go vet ./...
-          if [ "$RUNNER_OS" = "Linux" ]; then
-            go vet -tags x11 ./...
-          fi
-
-      - name: Test
-        shell: bash
-        # Headless packages only: the renderer and window need a display, so
-        # those are exercised by the examples. Linux links the internal linker
-        # because goffi's dynamic imports and the cgo SDL shim cannot share the
-        # external one.
-        run: |
-          if [ "$RUNNER_OS" = "Linux" ]; then
-            go test -race -ldflags=-linkmode=internal ./internal/syntax/ ./internal/schema/ ./internal/layout/ ./internal/paint/ ./internal/text/ ./internal/hotreload/ ./internal/lsp/ ./internal/goifmt/ ./ui/
-          else
-            go test -race ./internal/syntax/ ./internal/schema/ ./internal/layout/ ./internal/paint/ ./internal/text/ ./internal/hotreload/ ./internal/lsp/ ./internal/goifmt/ ./ui/
-          fi
+        with:
+          msystem: MINGW64
+          update: false
+          path-type: inherit
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-SDL3
 
       - name: Build
-        shell: bash
-        # GLFW's cgo forces the external linker on Linux, which rejects goffi's
-        # dynamic imports; -linkmode=internal is the documented workaround.
+        if: runner.os != 'Windows'
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then
             go build -ldflags=-linkmode=internal ./...
-            go build -tags x11 -ldflags=-linkmode=internal ./...
           else
             go build ./...
           fi
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: go build ./...
+
+      - name: Vet
+        if: runner.os != 'Windows'
+        run: go vet ./...
+
+      # Headless packages only: the renderer and the window need a display, so
+      # those are exercised by the examples. Linux links the internal linker
+      # because goffi's dynamic imports and the cgo SDL shim cannot share the
+      # external one.
+      - name: Test
+        if: runner.os == 'Linux'
+        run: go test -race -ldflags=-linkmode=internal ./internal/syntax ./internal/schema ./internal/layout ./internal/paint ./internal/text ./internal/hotreload ./internal/lsp ./internal/goifmt ./ui
+
+      - name: Test (macOS)
+        if: runner.os == 'macOS'
+        run: go test -race ./internal/syntax ./internal/schema ./internal/layout ./internal/paint ./internal/text ./internal/hotreload ./internal/lsp ./internal/goifmt ./ui
+
+  # Everything above internal/platform is pure Go, so it must cross-compile
+  # without a C toolchain. This catches a cgo import leaking into a pure layer.
+  cross:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.x"
+      - run: |
+          for os in linux windows darwin; do
+            CGO_ENABLED=0 GOOS=$os go build \
+              ./internal/syntax ./internal/schema ./internal/tree ./internal/layout \
+              ./internal/paint ./internal/text ./internal/render
+          done
 
   lint:
     runs-on: ubuntu-latest
@@ -72,7 +103,17 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.27.x"
-      - run: sudo apt-get update && sudo apt-get install -y libglfw3-dev
+      - name: SDL3
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build pkg-config \
+            libasound2-dev libpulse-dev libudev-dev libdrm-dev libgbm-dev \
+            libegl1-mesa-dev libwayland-dev libdecor-0-dev wayland-protocols \
+            libxkbcommon-dev libx11-dev libxext-dev libxrandr-dev libxi-dev \
+            libxcursor-dev libxfixes-dev libxss-dev
+          curl -sL "https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.tar.gz" | tar xz
+          cmake -S SDL3-3.4.18 -B sdl-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
+          sudo cmake --install sdl-build
       - run: go install honnef.co/go/tools/cmd/staticcheck@latest
       - run: staticcheck ./...
       - name: gofmt
@@ -80,4 +121,10 @@ jobs:
           unformatted=$(gofmt -l .)
           if [ -n "$unformatted" ]; then
             echo "unformatted files:"; echo "$unformatted"; exit 1
+          fi
+      - name: goifmt
+        run: |
+          out=$(go run ./cmd/goifmt -l .)
+          if [ -n "$out" ]; then
+            echo "$out"; exit 1
           fi

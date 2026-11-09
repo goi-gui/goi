@@ -441,6 +441,8 @@ type SurfaceKind int
 const (
 	SurfaceWayland SurfaceKind = iota
 	SurfaceX11
+	SurfaceWin32
+	SurfaceMetal
 )
 
 // Visible reports whether the window is shown (some compositors report a nil

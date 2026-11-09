@@ -240,10 +240,42 @@ For a single binary, pass an embedded filesystem instead:
 - **Formatter.** `goifmt` aligns fields and properties, one property per line,
   and runs through the language server or as `go run ./cmd/goifmt -w`.
 - **Renderer.** Instanced WebGPU drawing below a small SDL3 platform layer,
-  HiDPI aware, Wayland and X11 from one binary.
+  HiDPI aware: one binary draws through Vulkan on Wayland and X11, DX12 on
+  Windows and Metal on macOS.
 
 See the [documentation](https://goi-gui.github.io/docs/) for the language and
 every element.
+
+## Building
+
+goi builds on Linux, Windows and macOS. The Go packages above `internal/platform`
+are pure Go, so they cross-compile as they are; the platform layer is cgo over
+SDL3, so each target needs a C compiler, `pkg-config` and SDL3's development
+files. There is no build tag to pick a platform: the same binary asks SDL which
+driver it got and hands the matching native handle to the renderer.
+
+```sh
+# Linux (also needs SDL3's own deps: libwayland-dev, libdecor-0-dev,
+# libxkbcommon-dev, libx11-dev, libegl1-mesa-dev, libasound2-dev, libudev-dev)
+sudo apt install libsdl3-dev        # or build SDL3 from source and install it
+go build -ldflags=-linkmode=internal ./...
+
+# macOS
+brew install sdl3
+go build ./...
+
+# Windows (MSYS2, MINGW64 shell, so cgo finds gcc and pkg-config)
+pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-pkgconf mingw-w64-x86_64-SDL3
+go build ./...
+```
+
+`-ldflags=-linkmode=internal` is Linux-only: goffi's dynamic imports and the cgo
+SDL shim cannot share the external linker. Add `-ldflags="-H windowsgui"` on
+Windows for a program without a console window.
+
+The renderer picks its backend from the surface it is given: Vulkan through
+Wayland or X11, Direct3D 12 on Windows, Metal on macOS. All four go through
+`github.com/gogpu/wgpu`'s pure-Go backends, so no extra GPU SDK is needed.
 
 ## Contributing
 

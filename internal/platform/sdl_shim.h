@@ -67,6 +67,18 @@ void *goiWaylandSurface(SDL_Window *win);
 void *goiX11Display(SDL_Window *win);
 unsigned long goiX11Window(SDL_Window *win);
 
+// goiWin32Hwnd, goiWin32Instance and goiMetalLayer return the native handles
+// the Windows and Apple renderers need; they return NULL on other platforms.
+void *goiWin32Hwnd(SDL_Window *win);
+void *goiWin32Instance(SDL_Window *win);
+void *goiMetalLayer(SDL_Window *win);
+// goiFreeMetalView releases the view a Metal window attached to itself.
+void goiFreeMetalView(void);
+
+// goiExtraWindowFlags is the platform bit a window must carry for its
+// renderer: Metal on Apple, nothing elsewhere.
+Uint64 goiExtraWindowFlags(void);
+
 int goiSetTextInputArea(SDL_Window *win, int x, int y, int w, int h);
 
 // goiInstallHitTest routes presses through the Go hit-test callback.

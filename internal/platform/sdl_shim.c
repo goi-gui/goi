@@ -211,6 +211,56 @@ unsigned long goiX11Window(SDL_Window *win) {
 		SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0);
 }
 
+#ifdef SDL_PLATFORM_WIN32
+void *goiWin32Hwnd(SDL_Window *win) {
+	return SDL_GetPointerProperty(SDL_GetWindowProperties(win),
+		SDL_PROP_WINDOW_WIN32_HWND_POINTER, NULL);
+}
+
+void *goiWin32Instance(SDL_Window *win) {
+	return SDL_GetPointerProperty(SDL_GetWindowProperties(win),
+		SDL_PROP_WINDOW_WIN32_INSTANCE_POINTER, NULL);
+}
+
+Uint64 goiExtraWindowFlags(void) { return 0; }
+void goiFreeMetalView(void) {}
+void *goiMetalLayer(SDL_Window *win) { (void)win; return NULL; }
+#elif defined(SDL_PLATFORM_APPLE)
+#include <SDL3/SDL_metal.h>
+
+// The layer must outlive every frame, and SDL destroys the view with the
+// window only if asked, so it is created once and released in
+// goiFreeMetalView. There is one window per process, as elsewhere here.
+static SDL_MetalView goiMetalView;
+
+void *goiMetalLayer(SDL_Window *win) {
+	if (!goiMetalView) {
+		goiMetalView = SDL_Metal_CreateView(win);
+	}
+	if (!goiMetalView) {
+		return NULL;
+	}
+	return SDL_Metal_GetLayer(goiMetalView);
+}
+
+void goiFreeMetalView(void) {
+	if (goiMetalView) {
+		SDL_Metal_DestroyView(goiMetalView);
+		goiMetalView = NULL;
+	}
+}
+
+Uint64 goiExtraWindowFlags(void) { return SDL_WINDOW_METAL; }
+void *goiWin32Hwnd(SDL_Window *win) { (void)win; return NULL; }
+void *goiWin32Instance(SDL_Window *win) { (void)win; return NULL; }
+#else
+Uint64 goiExtraWindowFlags(void) { return 0; }
+void goiFreeMetalView(void) {}
+void *goiMetalLayer(SDL_Window *win) { (void)win; return NULL; }
+void *goiWin32Hwnd(SDL_Window *win) { (void)win; return NULL; }
+void *goiWin32Instance(SDL_Window *win) { (void)win; return NULL; }
+#endif
+
 int goiSetTextInputArea(SDL_Window *win, int x, int y, int w, int h) {
 	SDL_Rect r;
 	r.x = x;

@@ -15,7 +15,7 @@ window; Go finds elements by id and attaches behaviour.
 
 ```sh
 go build -ldflags=-linkmode=internal ./...   # required on Linux
-go vet ./...                                 # SDL picks Wayland/X11 at runtime
+go vet ./...                                 # SDL picks the driver at runtime
 gofmt -l .                                   # CI fails on any output
 go test -race -ldflags=-linkmode=internal ./ui ./internal/syntax ./internal/schema ./internal/layout ./internal/paint ./internal/text ./internal/hotreload ./internal/lsp ./internal/goifmt
 go test -ldflags=-linkmode=internal ./...    # test binaries link goffi too
@@ -28,6 +28,10 @@ go run ./cmd/goifmt -l .                                # CI fails on any output
 - `internal/platform` is the only cgo in the tree: a small `sdl_shim.c` over
   SDL3, because SDL3 has no Go binding we own and its dark, `cgo_import_dynamic`
   build clashes with goffi's. Everything above `platform` stays cgo-free.
+- `-ldflags=-linkmode=internal` is Linux-only; Windows and macOS build plain.
+  The platform layer is cgo, so each target is built on its own machine
+  (`.github/workflows/ci.yml` does that for all three); there is no build tag
+  per platform, `SurfaceHandles` asks SDL which driver it got.
 - The examples are their own module in `../examples`, next to this checkout.
   `make -C ../examples gallery` runs one, because each loads
   `<name>/<name>.goi` by relative path; running the binary from elsewhere fails

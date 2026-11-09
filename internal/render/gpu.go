@@ -423,13 +423,16 @@ type TargetKind int
 const (
 	TargetWayland TargetKind = iota
 	TargetX11
+	TargetWin32
+	TargetMetal
 )
 
 // NewGPU creates a renderer for an existing native window.
-// display and window are the platform handles: X11 Display*/Window or Wayland
-// wl_display*/wl_surface*. The kind must match, because the legacy
-// CreateSurface sniffs the environment and picks the wrong backend when a
-// Wayland session also has DISPLAY set.
+// display and window are the platform handles: X11 Display*/Window, Wayland
+// wl_display*/wl_surface*, Win32 HINSTANCE/HWND, or a Metal layer in window
+// with display unused. The kind must match, because the legacy CreateSurface
+// sniffs the environment and picks the wrong backend when a Wayland session
+// also has DISPLAY set.
 func NewGPU(display, window uintptr, kind TargetKind) (*GPU, error) {
 	inst, err := wgpu.CreateInstance(nil)
 	if err != nil {
@@ -438,8 +441,13 @@ func NewGPU(display, window uintptr, kind TargetKind) (*GPU, error) {
 	g := &GPU{instance: inst, scale: 1, vsync: true, capacity: 256}
 
 	target := wgpu.SurfaceTargetFromWaylandSurface(display, window)
-	if kind == TargetX11 {
+	switch kind {
+	case TargetX11:
 		target = wgpu.SurfaceTargetFromXlibWindow(display, window)
+	case TargetWin32:
+		target = wgpu.SurfaceTargetFromWindowsHWND(display, window)
+	case TargetMetal:
+		target = wgpu.SurfaceTargetFromMetalLayer(window)
 	}
 	surface, err := inst.CreateSurfaceUnsafe(target)
 	if err != nil {
