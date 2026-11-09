@@ -44,6 +44,23 @@ func (b *NodeBase) clearColorRole(name string) {
 	}
 }
 
+// writeRole stores a colour property as a theme or custom role, so the resolver
+// rewrites it whenever the scheme changes. This is the expression layer's
+// counterpart to writing `theme.primary` as a literal: a conditional can pick a
+// role and the property keeps following the theme. A repeat of the role already
+// on the cell costs nothing, which is what makes the per-frame pass cheap.
+func (b *NodeBase) writeRole(name, role string) {
+	b.properties()
+	i, ok := b.byName[name]
+	if !ok || b.props[i].kind != propColor || b.colorRoleFor(name) == role {
+		return
+	}
+	b.setGradient(name, nil)
+	if b.setColorRole(name, role) {
+		b.mark(DirtyPaint)
+	}
+}
+
 // writeColor stores a resolved color without marking the node dirty. The
 // resolver decides whether the change needs a repaint.
 func (b *NodeBase) writeColor(name string, rgba uint32) bool {

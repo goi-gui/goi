@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/goi-gui/goi/internal/csscolor"
 	"github.com/goi-gui/goi/internal/i18n"
 	"github.com/goi-gui/goi/internal/syntax"
 )
@@ -104,10 +105,23 @@ func (b *NodeBase) PercentWidth() (float64, bool) {
 	return p.Val / 100, true
 }
 
+// colorRef is a theme or custom colour a design wrote inside an expression:
+// the role name, not the value. It stays a name so a change of theme keeps the
+// property following the scheme, exactly like the literal `background:
+// theme.primary` does.
+type colorRef struct {
+	ns   string // "theme" or "custom"
+	role string
+}
+
 // writeExpr stores a resolved value without going through Go's Prop.Set, then
 // marks the node for the work the property needs. A value that did not change
 // costs nothing, which is what keeps a per-frame re-evaluation cheap.
 func (b *NodeBase) writeExpr(name string, v any) {
+	if r, ok := v.(colorRef); ok {
+		b.writeRole(name, r.ns+":"+r.role)
+		return
+	}
 	// A number written into a string property is formatted, so `text: data.count`
 	// reads naturally instead of silently doing nothing.
 	if f, ok := v.(float64); ok {
@@ -127,6 +141,17 @@ func (b *NodeBase) writeExpr(name string, v any) {
 	case float64:
 		lit = &syntax.Number{Val: x}
 	case string:
+		// A gradient or a CSS colour keyword has to stay a string: the colour
+		// writer reads those from the string form, and an Ident would turn
+		// "linear-gradient(...)" into a role name.
+		if csscolor.IsGradient(x) {
+			lit = &syntax.String{Val: x}
+			break
+		}
+		if _, ok := csscolor.Parse(x); ok {
+			lit = &syntax.String{Val: x}
+			break
+		}
 		// Ident, not String: a string expression can feed an enum, a text
 		// property or a color role, and all three accept an identifier.
 		lit = &syntax.Ident{Val: x}
@@ -143,7 +168,9 @@ func (b *NodeBase) writeExpr(name string, v any) {
 }
 
 func (b *NodeBase) sameExprValue(name string, v any) bool {
-	if s, ok := v.(string); ok && b.colorRoleFor(name) == s {
+	// An empty string means "no colour", which must reach the writer so it can
+	// clear whatever the other arm set.
+	if s, ok := v.(string); ok && s != "" && b.colorRoleFor(name) == s {
 		return true
 	}
 	b.properties()
@@ -853,6 +880,12 @@ func (c *evalCtx) evalRef(r *syntax.Ref) (any, bool) {
 	}
 	// Two reserved namespaces: the app's theme and the window's size.
 	switch r.ID {
+	case "theme":
+		// A role name, resolved by the theme pass, so a conditional that picks
+		// `theme.primary` keeps following the scheme.
+		return colorRef{ns: "theme", role: r.Prop}, true
+	case "customColor":
+		return colorRef{ns: "custom", role: r.Prop}, true
 	case "app":
 		switch r.Prop {
 		case "theme":

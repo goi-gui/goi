@@ -242,6 +242,14 @@ func (p *NamedProp) SetLiteral(v syntax.Value) bool {
 			cp.base.setGradient(p.Name, nil)
 			cp.val = c.RGBA
 		case *syntax.String:
+			// An empty value is "no colour": a conditional arm writes `""` to
+			// undo the colour the other arm set.
+			if c.Val == "" {
+				cp.base.clearColorRole(p.Name)
+				cp.base.setGradient(p.Name, nil)
+				cp.val = 0
+				return true
+			}
 			// A gradient is a fill, not a colour; only background paints one.
 			if csscolor.IsGradient(c.Val) {
 				if p.Name != "background" {
@@ -282,6 +290,12 @@ func (p *NamedProp) SetLiteral(v syntax.Value) bool {
 			cp.base.setGradient(p.Name, nil)
 			return true
 		case *syntax.Ident:
+			if c.Val == "" {
+				cp.base.clearColorRole(p.Name)
+				cp.base.setGradient(p.Name, nil)
+				cp.val = 0
+				return true
+			}
 			// A CSS colour keyword is a literal, not a theme role.
 			if rgba, ok := csscolor.Parse(c.Val); ok {
 				cp.base.clearColorRole(p.Name)
