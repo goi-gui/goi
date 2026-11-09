@@ -743,6 +743,17 @@ batch. This is what the display list will feed.
   the expose to `Input.Expose`, which sets `needsFrame` without touching the
   tree: the same display list is repainted, that frame completes the ack, and
   the resize follows the pointer.
+- **A Wayland session gets SDL's Wayland driver, not its XWayland fallback.**
+  SDL 3.4 keeps the Wayland driver only when the compositor offers `fifo-v1`;
+  without it (niri does not) it prefers X11 and connects through XWayland. There
+  the window is redrawn by the X server between buffers, so an interactive
+  resize shows the window black for a frame at a time and only settles when the
+  drag ends; a borderless window also loses its hit-test resize and move edges,
+  because XWayland has no client-side drag. `platform.Init` therefore sets
+  `SDL_HINT_VIDEO_DRIVER=wayland` before `SDL_Init` when `WAYLAND_DISPLAY` is
+  set, as SDL's own fallback message suggests. An explicit `SDL_VIDEODRIVER`
+  still wins. The frame pacing the hint trades away is what the renderer's FIFO
+  present already gives, so nothing is lost.
 - **The language server completes the reserved globals too.** `app.os` was
   added to the expression layer with the custom title bar, and discovering a
   global by reading the docs is not the same as getting it from the editor. The

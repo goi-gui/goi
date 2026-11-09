@@ -56,6 +56,9 @@ enum {
 void goiSetCursorKind(int kind);
 void goiFreeCursors(void);
 
+// goiPreferWaylandDriver asks SDL for the Wayland video driver.
+void goiPreferWaylandDriver(void);
+
 void goiWindowSizePixels(SDL_Window *win, int *w, int *h);
 float goiWindowScale(SDL_Window *win);
 

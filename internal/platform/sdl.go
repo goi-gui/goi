@@ -9,6 +9,7 @@ import "C"
 
 import (
 	"errors"
+	"os"
 	"unsafe"
 )
 
@@ -58,7 +59,21 @@ func sdlError(what string) error {
 	return errors.New(what + ": " + msg)
 }
 
+// wantWaylandDriver reports whether a Wayland session should get SDL's native
+// driver. An explicit SDL_VIDEODRIVER wins, as it does inside SDL.
+func wantWaylandDriver(getenv func(string) string) bool {
+	return getenv("SDL_VIDEODRIVER") == "" && getenv("WAYLAND_DISPLAY") != ""
+}
+
 func sdlInit() error {
+	// SDL keeps the Wayland driver only on a compositor that offers fifo-v1 and
+	// otherwise falls back to XWayland, which shows black during an interactive
+	// resize and cannot drag or resize a borderless window at all. SDL documents
+	// this override; the frame pacing it avoids is what the renderer's FIFO
+	// present already provides.
+	if wantWaylandDriver(os.Getenv) {
+		C.goiPreferWaylandDriver()
+	}
 	if !C.SDL_Init(C.SDL_INIT_VIDEO) {
 		return sdlError("init video")
 	}

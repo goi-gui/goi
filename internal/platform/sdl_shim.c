@@ -91,6 +91,10 @@ static int goiTranslate(SDL_Event *e, goiEvent *o) {
 	return 0;
 }
 
+void goiPreferWaylandDriver(void) {
+	SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "wayland");
+}
+
 int goiPollEvent(goiEvent *o) {
 	SDL_Event e;
 	while (SDL_PollEvent(&e)) {
