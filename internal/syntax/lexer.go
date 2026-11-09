@@ -56,7 +56,6 @@ type token struct {
 	num  float64 // for tokNumber
 	b    bool    // for tokBool
 	rgba uint32  // for tokColor
-	err  string  // for tokError
 }
 
 type lexer struct {

@@ -83,17 +83,15 @@ func (c *client) request(method string, params any) json.RawMessage {
 	c.next++
 	id, _ := json.Marshal(c.next)
 	c.send(&message{ID: id, Method: method, Params: body})
-	for {
-		m := c.nextMatching(func(m *message) bool { return string(m.ID) == string(id) })
-		if m.Error != nil {
-			c.t.Fatalf("%s: %s", method, m.Error.Message)
-		}
-		raw, err := json.Marshal(m.Result)
-		if err != nil {
-			c.t.Fatal(err)
-		}
-		return raw
+	m := c.nextMatching(func(m *message) bool { return string(m.ID) == string(id) })
+	if m.Error != nil {
+		c.t.Fatalf("%s: %s", method, m.Error.Message)
 	}
+	raw, err := json.Marshal(m.Result)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	return raw
 }
 
 // nextMatching waits for a queued message that matches, dropping the rest.

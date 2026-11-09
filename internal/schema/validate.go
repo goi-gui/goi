@@ -265,24 +265,6 @@ func (v *validator) lookupLoopVar(name string) *syntax.DataShape {
 	return nil
 }
 
-// fieldType maps a data type name onto the property type it can feed.
-func fieldType(list bool, typ string) (ValueType, bool) {
-	if list {
-		return TypeString, false
-	}
-	switch typ {
-	case "bool":
-		return TypeBool, true
-	case "string":
-		return TypeString, true
-	case "number":
-		return TypeNumber, true
-	case "color":
-		return TypeColor, true
-	}
-	return TypeString, false
-}
-
 func (v *validator) elementUnknown(e *syntax.Element) {
 	v.add(e.NameAt, e.NameAt+2, fmt.Sprintf("unknown element %q", e.Name), syntax.Suggest(e.Name, ElementNames()))
 }
@@ -564,9 +546,6 @@ func (v *validator) checkProps() {
 		v.checkType(pr.Type, "prop "+pr.Name)
 	}
 }
-
-// propsElement names the `props` block in diagnostics: "props.title expects …".
-var propsElement = &syntax.Element{Name: "props"}
 
 // declaredPropNames lists the props a fragment declares, for suggestions.
 func declaredPropNames(f *syntax.File) []string {

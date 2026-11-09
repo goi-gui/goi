@@ -304,7 +304,7 @@ type fontSeg struct {
 // shapeBidi shapes one face's stretch, honouring its runs' directions.
 func (f *Face) shapeBidi(s string) shaping.Output {
 	runs := splitBidi(s)
-	if len(runs) == 1 && runs[0].rtl == false {
+	if len(runs) == 1 && !runs[0].rtl {
 		return f.shapeRun(s, di.DirectionLTR, runs[0].script)
 	}
 	out := shaping.Output{Size: fixed.Int26_6(f.size * 64)}

@@ -136,9 +136,6 @@ func newComponent() Component {
 	}
 }
 
-// p is a shorthand for the component's node base, used by every prop table.
-func (c *Component) p() *Component { return c }
-
 // namedProps returns the properties listed in propsFor(kind), in that order.
 func (c *Component) props(kind string) []NamedProp {
 	names := propsFor(kind)

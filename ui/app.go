@@ -36,7 +36,6 @@ func WithSize(w, h int) Option { return func(o *Options) { o.Width, o.Height = w
 type App struct {
 	mu     sync.Mutex
 	posted []func()
-	wake   func() // pushes the platform loop out of WaitEvents
 
 	win        *Window
 	assets     fs.FS

@@ -151,28 +151,7 @@ func (b *NodeBase) sameExprValue(name string, v any) bool {
 	if !ok {
 		return false
 	}
-	if same := b.props[i].Same; same != nil {
-		return same(v)
-	}
-	cur, ok := b.props[i].Get(), true
-	if !ok {
-		return false
-	}
-	switch x := v.(type) {
-	case float64:
-		f, ok := cur.(float64)
-		return ok && f == x
-	case string:
-		s, ok := cur.(string)
-		return ok && s == x
-	case bool:
-		p, ok := cur.(bool)
-		return ok && p == x
-	case uint32:
-		c, ok := cur.(uint32)
-		return ok && c == x
-	}
-	return false
+	return b.props[i].Same(v)
 }
 
 // ApplyExpressions resolves every expression that does not need the parent's

@@ -2007,11 +2007,6 @@ func (i *interactor) caretFromPoint(f *tree.Component, x, y float64, extend bool
 	i.markDirty()
 }
 
-// indexAt maps an x position to the nearest byte index on the field's only line.
-func (i *interactor) indexAt(f *tree.Component, x float64) int {
-	return i.indexAtXY(f, x, 0)
-}
-
 // indexAtXY is the multiline form: a TextArea is mapped through its wrapped
 // lines, everything else through the single line it draws.
 func (i *interactor) indexAtXY(f *tree.Component, x, y float64) int {

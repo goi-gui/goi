@@ -38,6 +38,8 @@ jobs:
             -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
           cmake --build sdl-build --parallel
           sudo cmake --install sdl-build
+          # /usr/local/lib is not on the loader's default path on every runner.
+          sudo ldconfig
 
       - name: SDL3 (macOS)
         if: runner.os == 'macOS'
@@ -127,6 +129,8 @@ jobs:
             -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
           cmake --build sdl-build --parallel
           sudo cmake --install sdl-build
+          # /usr/local/lib is not on the loader's default path on every runner.
+          sudo ldconfig
 
       - run: go install honnef.co/go/tools/cmd/staticcheck@latest
       - run: staticcheck ./...

@@ -220,7 +220,7 @@ func Preview(f *syntax.File) (*syntax.File, syntax.Diagnostics) {
 		}
 		props[pr.Name] = &syntax.Ref{ID: "bridge", Prop: pr.Name}
 		if out.Var(pr.Name) == nil {
-			out.Vars = append(out.Vars, syntax.Field{Name: pr.Name, NameAt: pr.NameAt, Type: pr.Type, At: pr.At})
+			out.Vars = append(out.Vars, syntax.Field(pr))
 		}
 	}
 	root := copyElement(f.Root)

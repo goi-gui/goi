@@ -9,7 +9,6 @@ type row struct {
 	Title  string `goi:"title"`
 	Unread bool
 	Count  int
-	hidden string
 }
 
 const eachUI = `bridge {

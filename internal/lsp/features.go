@@ -411,46 +411,6 @@ func blockItems(file *syntax.File) []completionResult {
 	}
 }
 
-// openBlockAt returns the innermost block whose body contains off.
-func openBlockAt(file *syntax.File, off int) *syntax.Block {
-	if file == nil || file.Root == nil {
-		return nil
-	}
-	var best *syntax.Block
-	walk := func(blk *syntax.Block) {
-		if off > int(blk.At) && off <= int(blk.Close) {
-			best = blk
-		}
-	}
-	syntax.WalkElements(file.Root, func(e *syntax.Element) {
-		for _, m := range e.Members {
-			if blk, ok := m.(*syntax.Block); ok {
-				blocksIn(blk, walk)
-			}
-		}
-	})
-	return best
-}
-
-// blocksIn visits blk and every block nested in its arms.
-func blocksIn(blk *syntax.Block, fn func(*syntax.Block)) {
-	fn(blk)
-	for _, br := range blk.Branches {
-		for _, m := range br.Members {
-			switch x := m.(type) {
-			case *syntax.Block:
-				blocksIn(x, fn)
-			case *syntax.Element:
-				for _, sm := range x.Members {
-					if nested, ok := sm.(*syntax.Block); ok {
-						blocksIn(nested, fn)
-					}
-				}
-			}
-		}
-	}
-}
-
 // slotDoc explains a slot marker. It takes no properties; the instance supplies
 // the elements, at `$children` for its plain children or `$name` for a named
 // slot it fills with `$name { ... }`.
@@ -2100,9 +2060,6 @@ func refAt(file *syntax.File, off int) *syntax.Ref {
 	}
 	return found
 }
-
-// propTypeName writes a declaration's type the way the file reads.
-func propTypeName(f syntax.Field) string { return f.Type.String() }
 
 // loopRefDoc explains `row` or `row.title` when row is a loop variable.
 func loopRefDoc(file *syntax.File, src []byte, off int, r *syntax.Ref) (doc, bool) {

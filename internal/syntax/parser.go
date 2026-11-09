@@ -264,9 +264,6 @@ func (p *parser) parseFields(out *[]Field, what string) {
 	}
 }
 
-// parseProp reads one entry of a fragment's `props` block.
-func (p *parser) parseProp() (Prop, bool) { return p.parseField() }
-
 // parseField reads `Name Type`.
 func (p *parser) parseField() (Field, bool) {
 	name := p.peek()

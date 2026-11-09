@@ -31,7 +31,6 @@ type eachBlock struct {
 	listName string
 	src      string
 	arm      []syntax.Member
-	empty    []syntax.Member
 	// parent is the element the arm members are built under.
 	parent *NodeBase
 	scope  *scope
@@ -641,27 +640,6 @@ func scopeValue(sc *scope, name, field string) (any, bool) {
 func normalizeData(v any) (any, bool) {
 	if _, isList := sliceItems(v); isList {
 		return nil, false
-	}
-	return normalize(v)
-}
-
-// literalRuntime turns a scalar literal into the value the expression engine
-// carries: a number is float64, a color is uint32.
-func literalRuntime(v syntax.Value) (any, bool) {
-	switch x := v.(type) {
-	case nil:
-		return nil, false
-	case *syntax.Number:
-		return x.Val, true
-	case *syntax.String:
-		return x.Val, true
-	case *syntax.Bool:
-		return x.Val, true
-	case *syntax.Color:
-		return x.RGBA, true
-	case *syntax.Ident:
-		// A bare word is a string, the way a string property reads it.
-		return x.Val, true
 	}
 	return normalize(v)
 }

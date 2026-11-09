@@ -453,7 +453,7 @@ func (l *List) paintButton(c *tree.Component, r tree.Rect, clip tree.Rect) {
 func (l *List) paintIconButton(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
 	radius := radiusFor(m3.ShapeFull, r)
-	icon := disabledAlpha(c, 0)
+	var icon uint32
 	switch variant(c, "standard") {
 	case "filled":
 		bg := col.Primary

@@ -409,7 +409,6 @@ type GPU struct {
 	gradData  []float32
 	gradSeen  map[*tree.Gradient]int
 	gradCount int
-	gradWrote int
 
 	textLayout *wgpu.BindGroupLayout
 
@@ -664,11 +663,9 @@ func (g *GPU) gradIndex(gr *tree.Gradient) int {
 	// Four stops: a longer gradient is resampled, which is invisible at this
 	// size and keeps the shader free of loops over a dynamic count.
 	stops := resample(gr.Stops, 4)
-	head := gr.Angle
+	head := float32(2) // a CSS linear gradient
 	if gr.Kind == csscolor.Radial {
 		head = 3
-	} else {
-		head = 2
 	}
 	base := i * gradRecordFloats
 	rec := make([]float32, gradRecordFloats)
@@ -1041,6 +1038,9 @@ func (g *GPU) Release() {
 	g.closed = true
 	if g.text != nil {
 		g.text.release()
+	}
+	if g.images != nil {
+		g.images.release()
 	}
 	if g.textLayout != nil {
 		g.textLayout.Release()
