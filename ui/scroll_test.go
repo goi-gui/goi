@@ -155,3 +155,38 @@ func TestScrollHitReachesTheEndEdge(t *testing.T) {
 		t.Fatalf("hit in the left padding = %v, want the page", got)
 	}
 }
+
+// inTableRow reports whether n sits inside a TableRow.
+func inTableRow(n tree.Node) bool {
+	for ; n != nil; n = n.Base().Parent() {
+		if n.Kind() == "TableRow" {
+			return true
+		}
+	}
+	return false
+}
+
+// TestStickyHeaderKeepsRowsOutOfTheBand guards the clip the paint and hit tests
+// share: a row scrolled under a sticky header must not take a press meant for
+// the header, while a row below the band stays clickable.
+func TestStickyHeaderKeepsRowsOutOfTheBand(t *testing.T) {
+	_, win, in := inputFixture(t, `Window { Table {
+		id: t
+		width: 200
+		height: 100
+		scroll: true
+		stickyHeader: true
+		TableColumn { label: "Name" width: 200 }
+		TableRow { TableCell { value: "a" Text { text: "a" } } }
+		TableRow { TableCell { value: "b" Text { text: "b" } } }
+		TableRow { TableCell { value: "c" Text { text: "c" } } }
+	} }`, 200, 200)
+	table := MustByID[*Table](win, "t")
+	table.Base().SetScrollOffsetFor(tree.AxisY, 60)
+	if got := in.hit(100, 20); inTableRow(got) {
+		t.Fatalf("hit %s: a row took a press inside the sticky header", got.Kind())
+	}
+	if got := in.hit(100, 50); !inTableRow(got) {
+		t.Fatalf("hit %v, want a row below the header", got)
+	}
+}

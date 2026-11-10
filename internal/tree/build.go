@@ -15,7 +15,8 @@ type Tree struct {
 	ids  map[string]Node
 	// responsive lists the nodes that declared at least one breakpoint map.
 	responsive []*NodeBase
-	// exprNodes lists the nodes with at least one expression property.
+	// exprNodes lists the nodes with at least one expression property, which
+	// includes a node whose only expression is a conditional modifier.
 	exprNodes []*NodeBase
 	// colorNodes lists the nodes with at least one role-valued color, and
 	// shadowNodes the ones whose shadow names a role.
@@ -230,6 +231,12 @@ func (t *Tree) build(el *syntax.Element, parent *NodeBase, hooks *Hooks) (Node, 
 		if m, ok := p.Value.(*syntax.Map); ok {
 			if !b.setResponsive(p.Name, m) {
 				return nil, fmt.Errorf("%s.%s: invalid responsive value", el.Name, p.Name)
+			}
+			continue
+		}
+		if m, ok := p.Value.(*syntax.Modifier); ok {
+			if !b.setModifier(p.Name, m) {
+				return nil, fmt.Errorf("%s.%s: invalid %s value", el.Name, p.Name, m.Form)
 			}
 			continue
 		}

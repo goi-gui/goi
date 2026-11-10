@@ -1154,10 +1154,73 @@ func (p *parser) parseValue() (Value, bool) {
 		// produce two diagnostics for one typo.
 		return nil, false
 	}
+	// A modifier is a keyword-led block, not an expression: `responsive { … }`
+	// and `conditional { … }` are values with their own member syntax.
+	if t.kind == tokIdent && p.peek2().kind == tokLBrace {
+		switch t.text {
+		case "responsive":
+			return p.parseModifier(ModifierResponsive)
+		case "conditional":
+			return p.parseModifier(ModifierConditional)
+		}
+	}
 	// Every other value is an expression: a literal, reference or call, with
 	// the operators and a conditional on top. Starting a bare identifier here
 	// is what lets `i+1` work inside a call's arguments.
 	return p.parseExpr()
+}
+
+// parseModifier reads `responsive { base: 8, md: 16 }` or
+// `conditional { 10: bridge.narrow 20: !bridge.narrow }`. A comma between
+// entries is optional, so a one-line block reads without punctuation.
+func (p *parser) parseModifier(kind ModifierKind) (Value, bool) {
+	kw := p.next()
+	p.next() // '{'
+	m := &Modifier{At: kw.pos, Form: kind}
+	for p.peek().kind != tokRBrace && p.peek().kind != tokEOF {
+		at := p.peek().pos
+		if kind == ModifierResponsive {
+			key := p.next()
+			if key.kind != tokIdent {
+				p.errorf(key, "expected a breakpoint name")
+				return nil, false
+			}
+			if p.peek().kind != tokColon {
+				p.errorf(p.peek(), "expected ':' after the breakpoint name")
+				return nil, false
+			}
+			p.next()
+			v, ok := p.parseValue()
+			if !ok {
+				return nil, false
+			}
+			m.Entries = append(m.Entries, ModifierEntry{At: at, Key: key.text, KeyAt: key.pos, Value: v})
+		} else {
+			v, ok := p.parseValue()
+			if !ok {
+				return nil, false
+			}
+			if p.peek().kind != tokColon {
+				p.errorf(p.peek(), "expected ':' after the value")
+				return nil, false
+			}
+			p.next()
+			cond, ok := p.parseValue()
+			if !ok {
+				return nil, false
+			}
+			m.Entries = append(m.Entries, ModifierEntry{At: at, Value: v, Cond: cond})
+		}
+		if p.peek().kind == tokComma {
+			p.next()
+		}
+	}
+	if p.peek().kind != tokRBrace {
+		p.errorf(p.peek(), "expected '}' to close the "+kind.String()+" block")
+		return nil, false
+	}
+	p.next()
+	return m, true
 }
 
 // parseExpr parses a full expression: a conditional at the top, then logical,

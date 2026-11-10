@@ -948,3 +948,48 @@ func TestParseHyphenatedCursorNames(t *testing.T) {
 		t.Fatalf("base = %#v", m.Entries[0].Value)
 	}
 }
+
+// TestParseModifiers covers both spellings of a modifier block: a responsive
+// one keys breakpoints to values, and a conditional one pairs a value with the
+// condition that picks it.
+func TestParseModifiers(t *testing.T) {
+	f, diag := Parse([]byte(`Window {
+		Column {
+			padding: responsive { base: 8 md: 16 }
+			gap: responsive {
+				base: 10
+				sm: 20
+			}
+			Text {
+				text: conditional {
+					"✅": l == "W"
+					"❌": l == "L"
+				}
+			}
+		}
+	}`))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	col := f.Root.Children()[0]
+	rp, ok := col.Prop("padding").Value.(*Modifier)
+	if !ok || rp.Form != ModifierResponsive || len(rp.Entries) != 2 {
+		t.Fatalf("padding = %#v", col.Prop("padding").Value)
+	}
+	if rp.Entries[1].Key != "md" || rp.Entries[1].Value.(*Number).Val != 16 {
+		t.Fatalf("second tier = %+v", rp.Entries[1])
+	}
+	text := col.Children()[0].Prop("text").Value.(*Modifier)
+	if text.Form != ModifierConditional || len(text.Entries) != 2 {
+		t.Fatalf("text = %#v", text)
+	}
+	if text.Entries[0].Value.(*String).Val != "✅" {
+		t.Fatalf("first value = %#v", text.Entries[0].Value)
+	}
+	if b, ok := text.Entries[0].Cond.(*Binary); !ok || b.Op != "==" {
+		t.Fatalf("first condition = %#v", text.Entries[0].Cond)
+	}
+	if got := Dump(f); !strings.Contains(got, `gap = responsive { base: 10, sm: 20 }`) {
+		t.Fatalf("dump:\n%s", got)
+	}
+}

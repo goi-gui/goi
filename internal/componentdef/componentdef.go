@@ -101,7 +101,7 @@ var props = map[string][]string{
 	"Divider":          {"variant"},
 	"List":             {"variant"},
 	"ListItem":         {"label", "supporting", "icon", "trailingIcon", "variant", "disabled", "selected"},
-	"Table":            {"variant", "striped", "showHeader", "rowHeight", "headerHeight", "sortColumn", "sortAscending", "selectable", "selectedRow"},
+	"Table":            {"variant", "striped", "showHeader", "stickyHeader", "rowHeight", "headerHeight", "sortColumn", "sortAscending", "selectable", "selectedRow"},
 	"TableColumn":      {"label", "icon", "key", "align", "sortable", "numeric"},
 	"TableRow":         {"selected", "disabled"},
 	"TableCell":        {"value", "icon", "align"},
@@ -197,7 +197,7 @@ func TypeOfFor(kind, name string) PropType {
 func TypeOf(name string) PropType {
 	switch name {
 	case "disabled", "checked", "selected", "expanded", "showCopy",
-		"sortable", "numeric", "striped", "showHeader", "sortAscending":
+		"sortable", "numeric", "striped", "showHeader", "stickyHeader", "sortAscending":
 		return Bool
 	case "value", "end", "center", "min", "max", "step", "spacing", "gap",
 		"rowHeight", "headerHeight", "sortColumn", "selectedRow":

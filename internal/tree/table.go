@@ -25,6 +25,51 @@ func (t *Table) TableColumns() []*TableColumn {
 	return out
 }
 
+// HeaderBand is the header's height, or 0 when the design hides the header.
+func (t *Table) HeaderBand() float64 {
+	if !t.ShowHeader.Get() {
+		return 0
+	}
+	if h := t.HeaderHeight.Get(); h > 0 {
+		return h
+	}
+	return DefaultHeaderHeight
+}
+
+// RowsClip narrows clip to the area the rows show in: below the band when the
+// header sticks, unchanged otherwise. r is the table's frame.
+func (t *Table) RowsClip(r, clip Rect) Rect {
+	hh := t.HeaderBand()
+	if hh <= 0 || !t.StickyHeader.Get() {
+		return clip
+	}
+	top := r.Y + hh
+	if cols := t.TableColumns(); len(cols) > 0 {
+		top = r.Y + cols[0].Base().Bounds().Y
+	}
+	out := clip
+	if y := top + hh; y > out.Y {
+		out.Y = y
+	}
+	if h := out.Bottom() - out.Y; h < 0 {
+		out.H = 0
+	} else {
+		out.H = h
+	}
+	return out
+}
+
+// ChildClip is the clip for one child: a table's rows stop below a sticky
+// header so they cannot paint or take a press through it, while the header
+// columns and every other node's children keep the node's clip.
+func (b *NodeBase) ChildClip(k *NodeBase, r, clip Rect) Rect {
+	t, ok := b.Node().(*Table)
+	if !ok || !t.StickyHeader.Get() || k.Node().Kind() == "TableColumn" {
+		return clip
+	}
+	return t.RowsClip(r, clip)
+}
+
 // TableRows returns the row children in display order: the sort column decides
 // when one is set, ties keep declaration order. Layout, paint and hit-testing
 // all use this, so the row a reader sees is the row a click selects.

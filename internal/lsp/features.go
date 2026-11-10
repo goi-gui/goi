@@ -1736,9 +1736,14 @@ func enclosingProperty(file *syntax.File, src []byte, off int) (string, bool) {
 			if off < start || off > end {
 				continue
 			}
-			if _, ok := p.Value.(*syntax.Map); ok {
+			switch v := p.Value.(type) {
+			case *syntax.Map:
 				// Inside the braces of a map the keys are breakpoints.
 				return "", mapKeyPosition(src, start, off)
+			case *syntax.Modifier:
+				if v.Form == syntax.ModifierResponsive {
+					return "", mapKeyPosition(src, start, off)
+				}
 			}
 			return p.Name, false
 		}
@@ -1831,16 +1836,20 @@ func braceProperty(src []byte, off int) (string, bool) {
 	if name == "" {
 		return "", false
 	}
-	// A value that opens a brace is a responsive map: keys, not values.
-	for i := colon + 1; i < off && i < len(src); i++ {
-		switch src[i] {
-		case ' ', '\t':
-			continue
-		case '{':
-			return "", mapKeyPosition(src, i, off)
-		default:
-			i = off
+	// A value that opens a brace is a responsive map, and the responsive
+	// modifier spells the same keys after a word: both offer breakpoints.
+	j = colon + 1
+	for j < off && j < len(src) && (src[j] == ' ' || src[j] == '\t') {
+		j++
+	}
+	if j < len(src) && src[j] == '{' {
+		return "", mapKeyPosition(src, j, off)
+	}
+	if j+len("responsive") <= len(src) && string(src[j:j+len("responsive")]) == "responsive" {
+		for j < off && j < len(src) && src[j] != '{' {
+			j++
 		}
+		return "", mapKeyPosition(src, j, off)
 	}
 	return name, false
 }

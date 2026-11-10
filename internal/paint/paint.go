@@ -200,13 +200,13 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 	if b.ClipsChildren() {
 		childClip = intersect(clip, inner)
 	}
-	ox, oy := scrollShift(b)
 	fromClip := len(l.Ops)
 	for _, k := range b.PaintOrder() {
 		kb := k.Bounds()
-		kb.X += ox
-		kb.Y += oy
-		l.walkOffset(k, x, y, kb, childClip)
+		kx, ky := b.ChildScrollShift(k)
+		kb.X += kx
+		kb.Y += ky
+		l.walkOffset(k, x, y, kb, b.ChildClip(k, r, childClip))
 	}
 	frame := b.ScrollViewport(r)
 	l.paintScrollShadows(b, frame, clip)
@@ -278,13 +278,13 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 	if b.ClipsChildren() {
 		childClip = intersect(clip, inner)
 	}
-	ox, oy := scrollShift(b)
 	fromClip := len(l.Ops)
 	for _, k := range b.PaintOrder() {
 		kb := k.Bounds()
-		kb.X += ox
-		kb.Y += oy
-		l.walkOffset(k, x, y, kb, childClip)
+		kx, ky := b.ChildScrollShift(k)
+		kb.X += kx
+		kb.Y += ky
+		l.walkOffset(k, x, y, kb, b.ChildClip(k, r, childClip))
 	}
 	frame := b.ScrollViewport(r)
 	l.paintScrollShadows(b, frame, clip)
@@ -365,7 +365,19 @@ func (l *List) paintScrollbar(b *tree.NodeBase, frame tree.Rect, clip tree.Rect)
 	if !b.ScrollbarVisible() {
 		return
 	}
-	thumb, ok := b.ScrollbarThumb(frame)
+	switch b.ScrollAxis() {
+	case tree.AxisBoth:
+		l.paintScrollbarAxis(b, frame, clip, tree.AxisX)
+		l.paintScrollbarAxis(b, frame, clip, tree.AxisY)
+	case tree.AxisNone:
+	default:
+		l.paintScrollbarAxis(b, frame, clip, b.ScrollAxis())
+	}
+}
+
+// paintScrollbarAxis draws one thumb of a node that may scroll both ways.
+func (l *List) paintScrollbarAxis(b *tree.NodeBase, frame tree.Rect, clip tree.Rect, axis tree.Axis) {
+	thumb, ok := b.ScrollbarThumbFor(frame, axis)
 	if !ok {
 		return
 	}
@@ -383,16 +395,30 @@ const scrollShadowBand = 28.0
 // away from, the way CSS scroll shadows do: present at the top once the content
 // moves down, at the bottom until it reaches the end, and gone at rest.
 func (l *List) paintScrollShadows(b *tree.NodeBase, frame tree.Rect, clip tree.Rect) {
-	if !b.ScrollShadow() || b.ScrollMax() <= 0 {
+	if !b.ScrollShadow() {
+		return
+	}
+	switch b.ScrollAxis() {
+	case tree.AxisBoth:
+		l.paintScrollShadowsAxis(b, frame, clip, tree.AxisX)
+		l.paintScrollShadowsAxis(b, frame, clip, tree.AxisY)
+	case tree.AxisNone:
+	default:
+		l.paintScrollShadowsAxis(b, frame, clip, b.ScrollAxis())
+	}
+}
+
+// paintScrollShadowsAxis draws the two edge fades of one axis.
+func (l *List) paintScrollShadowsAxis(b *tree.NodeBase, frame tree.Rect, clip tree.Rect, axis tree.Axis) {
+	off, max := b.ScrollOffsetFor(axis), b.ScrollMaxFor(axis)
+	if max <= 0 {
 		return
 	}
 	col := b.ScrollShadowColor()
 	if col == 0 {
 		col = withAlpha(l.Theme.Colors.Shadow, 0.45)
 	}
-	off := b.ScrollOffset()
-	max := b.ScrollMax()
-	switch b.ScrollAxis() {
+	switch axis {
 	case tree.AxisY:
 		band := minf(scrollShadowBand, frame.H/2)
 		if off > 0 {
@@ -519,13 +545,7 @@ type componentNode interface {
 
 // scrollShift is how far a node's children are moved by its scroll offset.
 func scrollShift(b *tree.NodeBase) (x, y float64) {
-	switch b.ScrollAxis() {
-	case tree.AxisX:
-		return -b.ScrollOffset(), 0
-	case tree.AxisY:
-		return 0, -b.ScrollOffset()
-	}
-	return 0, 0
+	return b.ScrollShift()
 }
 
 // fillRect appends a rounded rectangle with an optional border.

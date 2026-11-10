@@ -122,6 +122,8 @@ type NodeBase struct {
 	Click Event[ClickEvent]
 	// responsive holds properties declared as a breakpoint map.
 	responsive []responsiveProp
+	// conds holds properties whose value the first true conditional arm picks.
+	conds []conditionalProp
 	// exprs holds expression-valued properties, resolved every frame and (for
 	// percentages) during layout.
 	exprs      []exprSpec

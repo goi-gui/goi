@@ -92,6 +92,7 @@ type interactor struct {
 	// Fling keeps a wheel or touchpad scroll moving after the gesture ends.
 	flingNode tree.Node
 	flingV    float64 // logical pixels per second
+	flingAxis tree.Axis
 	lastWheel time.Time
 
 	// scrollbar is the node whose bar the pointer grabbed, with the thumb
@@ -466,11 +467,11 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 	// A press on a visible scrollbar grabs the thumb before anything else: the
 	// bar is drawn on top of the content, so it has to receive the press first.
 	if button == 0 {
-		if n, in := i.scrollbarAt(x, y); n != nil {
+		if n, axis, in := i.scrollbarAt(x, y); n != nil {
 			i.scrollbar = n
-			i.scrollbarAxis = n.Base().ScrollAxis()
+			i.scrollbarAxis = axis
 			i.scrollbarIn = in
-			thumb, _ := n.Base().ScrollbarThumb(in)
+			thumb, _ := n.Base().ScrollbarThumbFor(in, axis)
 			if i.scrollbarAxis == tree.AxisX {
 				i.scrollbarGrab = x - thumb.X
 			} else {
@@ -954,7 +955,7 @@ func (i *interactor) Scroll(dx, dy float64, shift bool) {
 	if start == nil {
 		return
 	}
-	last, used := scrollChain(start, panX, panY)
+	last, used, axis := scrollChain(start, panX, panY)
 	if last == nil {
 		return
 	}
@@ -962,7 +963,7 @@ func (i *interactor) Scroll(dx, dy float64, shift bool) {
 	// stop where it lands; letting it fling too made every click of the wheel
 	// travel several times as far as the notch.
 	if precise {
-		i.startFling(last, used)
+		i.startFling(last, used, axis)
 	} else {
 		i.flingNode, i.flingV = nil, 0
 	}
@@ -975,40 +976,45 @@ func (i *interactor) Scroll(dx, dy float64, shift bool) {
 // scrollChain moves a gesture in logical pixels, starting at start and walking
 // up the scrollable ancestors: each node takes the part along its own axis and
 // the rest goes to the next one, so a child at its end does not swallow the
-// gesture. It returns the outermost node that moved and the pixels it absorbed
-// along its own axis.
-func scrollChain(start tree.Node, panX, panY float64) (tree.Node, float64) {
+// gesture. A table takes both axes at once. It returns the outermost node that
+// moved, the pixels it absorbed and the axis they went to.
+func scrollChain(start tree.Node, panX, panY float64) (tree.Node, float64, tree.Axis) {
 	var last tree.Node
 	var used float64
+	var usedAxis tree.Axis
 	for n := start; n != nil; n = n.Base().Parent() {
 		b := n.Base()
-		px := panY
-		if b.ScrollAxis() == tree.AxisX {
-			px = panX
+		moved := 0.0
+		axis := tree.AxisNone
+		if b.ScrollAxis() != tree.AxisNone && panX != 0 {
+			off := b.ScrollOffsetFor(tree.AxisX)
+			after := min(max(off+panX, 0), b.ScrollMaxFor(tree.AxisX))
+			if after != off {
+				b.SetScrollOffsetFor(tree.AxisX, after)
+				panX -= after - off
+				moved, axis = after-off, tree.AxisX
+			}
 		}
-		if b.ScrollAxis() == tree.AxisNone || px == 0 {
+		if b.ScrollAxis() != tree.AxisNone && panY != 0 {
+			off := b.ScrollOffsetFor(tree.AxisY)
+			after := min(max(off+panY, 0), b.ScrollMaxFor(tree.AxisY))
+			if after != off {
+				b.SetScrollOffsetFor(tree.AxisY, after)
+				panY -= after - off
+				moved, axis = after-off, tree.AxisY
+			}
+		}
+		if axis == tree.AxisNone {
 			continue
 		}
-		before := b.ScrollOffset()
-		after := min(max(before+px, 0), b.ScrollMax())
-		if after == before {
-			continue
-		}
-		b.SetScrollOffset(after)
 		b.MarkDirty(tree.DirtyPaint)
-		if b.ScrollAxis() == tree.AxisX {
-			panX -= after - before
-			used = after - before
-		} else {
-			panY -= after - before
-			used = after - before
-		}
+		used, usedAxis = moved, axis
 		last = n
 		if panX == 0 && panY == 0 {
 			break
 		}
 	}
-	return last, used
+	return last, used, usedAxis
 }
 
 // preciseWheel reports whether a wheel delta comes from a touchpad or another
@@ -1025,14 +1031,14 @@ func preciseWheel(delta float64) bool {
 // startFling turns the last touchpad step into a velocity, so a fast flick
 // coasts. A step that arrives after a pause starts a new gesture instead of
 // adding to a stale one.
-func (i *interactor) startFling(n tree.Node, moved float64) {
+func (i *interactor) startFling(n tree.Node, moved float64, axis tree.Axis) {
 	now := time.Now()
 	dt := now.Sub(i.lastWheel).Seconds()
 	i.lastWheel = now
 	if dt <= 0 || dt > 0.25 {
 		dt = 0.05 // one step is about a 20 Hz gesture
 	}
-	i.flingNode = n
+	i.flingNode, i.flingAxis = n, axis
 	// A flick that is faster than this coasts further than the page is tall,
 	// which reads as the scroll running away from the finger.
 	i.flingV = min(max(moved/dt, -flingMaxSpeed), flingMaxSpeed)
@@ -1053,11 +1059,13 @@ func (i *interactor) tickFling(dt float64) bool {
 	if i.flingNode == nil || i.flingV == 0 {
 		return false
 	}
-	panX, panY := 0.0, i.flingV*dt
-	if i.flingNode.Base().ScrollAxis() == tree.AxisX {
-		panX, panY = panY, 0
+	panX, panY := 0.0, 0.0
+	if i.flingAxis == tree.AxisX {
+		panX = i.flingV * dt
+	} else {
+		panY = i.flingV * dt
 	}
-	last, _ := scrollChain(i.flingNode, panX, panY)
+	last, _, _ := scrollChain(i.flingNode, panX, panY)
 	i.flingV *= math.Exp(-flingFriction * dt)
 	// Hitting an edge kills the momentum; otherwise the offset would keep
 	// asking for frames while nothing moves. The chain hands a coast that
@@ -1097,7 +1105,7 @@ func (i *interactor) dragScroll(x, y float64) bool {
 	}
 	// Dragging pulls the content with the hand, and it chains to the page the
 	// same way the wheel does, so the pointer never sticks at a child's end.
-	last, _ := scrollChain(n, -dx, -dy)
+	last, _, _ := scrollChain(n, -dx, -dy)
 	if last == nil {
 		return i.scrolled
 	}
@@ -1119,13 +1127,14 @@ func scrollableAt(n tree.Node) tree.Node {
 // scrollbarAt finds the visible scrollbar thumb under the pointer. The thumb is
 // only 4dp wide, so the grab area is padded by 8dp on each side across the axis:
 // easy to hit without stealing presses from content further in.
-func (i *interactor) scrollbarAt(x, y float64) (tree.Node, tree.Rect) {
+func (i *interactor) scrollbarAt(x, y float64) (tree.Node, tree.Axis, tree.Rect) {
 	if i.tree.Root == nil {
-		return nil, tree.Rect{}
+		return nil, tree.AxisNone, tree.Rect{}
 	}
 	var (
-		found tree.Node
-		inner tree.Rect
+		found  tree.Node
+		foundA tree.Axis
+		inner  tree.Rect
 	)
 	var walk func(b *tree.NodeBase, ox, oy float64, clip tree.Rect)
 	walk = func(b *tree.NodeBase, ox, oy float64, clip tree.Rect) {
@@ -1141,37 +1150,42 @@ func (i *interactor) scrollbarAt(x, y float64) (tree.Node, tree.Rect) {
 		if b.ClipsChildren() {
 			kidClip = intersectRect(clip, innerBox)
 		}
-		sx, sy := scrollShift(b)
 		kids := b.PaintOrder()
 		// Children first, so a nested area's bar wins over the page's.
 		for n := len(kids) - 1; n >= 0 && found == nil; n-- {
 			kb := kids[n].Bounds()
-			kb.X += sx
-			kb.Y += sy
-			walk(kids[n], ox, oy, kidClip)
+			kx, ky := b.ChildScrollShift(kids[n])
+			kb.X += kx
+			kb.Y += ky
+			walk(kids[n], ox, oy, b.ChildClip(kids[n], box, kidClip))
 		}
 		if found != nil || b.ScrollAxis() == tree.AxisNone || !b.ScrollbarVisible() {
 			return
 		}
-		thumb, ok := b.ScrollbarThumb(b.ScrollViewport(box))
-		if !ok {
-			return
-		}
-		const pad = 8.0
-		hit := thumb
-		if b.ScrollAxis() == tree.AxisX {
-			hit.Y -= pad
-			hit.H += pad * 2
-		} else {
-			hit.X -= pad
-			hit.W += pad * 2
-		}
-		if hit.Contains(x, y) && clip.Contains(x, y) {
-			found, inner = b.Node(), innerBox
+		view := b.ScrollViewport(box)
+		// The vertical thumb is painted last, so it wins where they cross.
+		for _, axis := range [...]tree.Axis{tree.AxisY, tree.AxisX} {
+			thumb, ok := b.ScrollbarThumbFor(view, axis)
+			if !ok {
+				continue
+			}
+			const pad = 8.0
+			hit := thumb
+			if axis == tree.AxisX {
+				hit.Y -= pad
+				hit.H += pad * 2
+			} else {
+				hit.X -= pad
+				hit.W += pad * 2
+			}
+			if hit.Contains(x, y) && clip.Contains(x, y) {
+				found, foundA, inner = b.Node(), axis, innerBox
+				return
+			}
 		}
 	}
 	walk(i.tree.Root.Base(), 0, 0, tree.Rect{X: 0, Y: 0, W: i.windowW(), H: i.windowH()})
-	return found, inner
+	return found, foundA, inner
 }
 
 // dragScrollbar moves the grabbed thumb with the pointer. The thumb is the
@@ -1182,7 +1196,7 @@ func (i *interactor) dragScrollbar(x, y float64) {
 		return
 	}
 	b := n.Base()
-	thumb, ok := b.ScrollbarThumb(i.scrollbarIn)
+	thumb, ok := b.ScrollbarThumbFor(i.scrollbarIn, i.scrollbarAxis)
 	if !ok {
 		return
 	}
@@ -1203,7 +1217,7 @@ func (i *interactor) dragScrollbar(x, y float64) {
 	} else if frac > 1 {
 		frac = 1
 	}
-	b.SetScrollOffset(frac * b.ScrollMax())
+	b.SetScrollOffsetFor(i.scrollbarAxis, frac*b.ScrollMaxFor(i.scrollbarAxis))
 	i.flingNode, i.flingV = nil, 0
 	i.showScrollbar(n)
 	i.markDirty()
@@ -1574,13 +1588,13 @@ func walkHit(b *tree.NodeBase, ox, oy float64, x, y float64, clip tree.Rect, fou
 	if b.ClipsChildren() {
 		kidClip = intersectRect(clip, inner)
 	}
-	ox2, oy2 := scrollShift(b)
 	kids := b.PaintOrder()
 	for n := len(kids) - 1; n >= 0; n-- {
 		kb := kids[n].Bounds()
-		kb.X += ox2
-		kb.Y += oy2
-		walkHitOffset(kids[n], ox, oy, kb, x, y, kidClip, found)
+		kx, ky := b.ChildScrollShift(kids[n])
+		kb.X += kx
+		kb.Y += ky
+		walkHitOffset(kids[n], ox, oy, kb, x, y, b.ChildClip(kids[n], box, kidClip), found)
 		if *found != nil {
 			return
 		}
@@ -1602,13 +1616,13 @@ func walkHitOffset(b *tree.NodeBase, ox, oy float64, bounds tree.Rect, x, y floa
 	if b.ClipsChildren() {
 		kidClip = intersectRect(clip, inner)
 	}
-	ox2, oy2 := scrollShift(b)
 	kids := b.PaintOrder()
 	for n := len(kids) - 1; n >= 0; n-- {
 		kb := kids[n].Bounds()
-		kb.X += ox2
-		kb.Y += oy2
-		walkHitOffset(kids[n], ox, oy, kb, x, y, kidClip, found)
+		kx, ky := b.ChildScrollShift(kids[n])
+		kb.X += kx
+		kb.Y += ky
+		walkHitOffset(kids[n], ox, oy, kb, x, y, b.ChildClip(kids[n], box, kidClip), found)
 		if *found != nil {
 			return
 		}
@@ -1636,17 +1650,6 @@ func (i *interactor) windowH() float64 {
 		return d.windowLogicalH()
 	}
 	return 0
-}
-
-// scrollShift is how much a node's children are moved by its scroll offset.
-func scrollShift(b *tree.NodeBase) (x, y float64) {
-	switch b.ScrollAxis() {
-	case tree.AxisX:
-		return -b.ScrollOffset(), 0
-	case tree.AxisY:
-		return 0, -b.ScrollOffset()
-	}
-	return 0, 0
 }
 
 // setFocus moves keyboard focus, clearing the old field.
@@ -2490,12 +2493,9 @@ func absoluteRect(n tree.Node) tree.Rect {
 		pb := p.Base().Bounds()
 		x += pb.X
 		y += pb.Y
-		switch p.Base().ScrollAxis() {
-		case tree.AxisX:
-			x -= p.Base().ScrollOffset()
-		case tree.AxisY:
-			y -= p.Base().ScrollOffset()
-		}
+		sx, sy := p.Base().ScrollShift()
+		x += sx
+		y += sy
 	}
 	return tree.Rect{X: x, Y: y, W: b.W, H: b.H}
 }

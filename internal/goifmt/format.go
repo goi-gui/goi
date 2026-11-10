@@ -207,7 +207,7 @@ func (p *printer) members(members []syntax.Member) {
 		p.indent()
 		p.b.WriteString(pr.Name + ":")
 		p.b.WriteString(strings.Repeat(" ", width-len(pr.Name)))
-		p.b.WriteString(printProperty(pr.Name, pr.Value))
+		p.b.WriteString(printProperty(pr.Name, pr.Value, p.depth))
 		p.b.WriteString("\n")
 		p.trailing(pr.Value.Pos() + syntax.Pos(len(printValue(pr.Value))))
 	}

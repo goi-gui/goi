@@ -502,6 +502,64 @@ func TestFlexShrinksForScroll(t *testing.T) {
 	}
 }
 
+// TestTableScrollsBothWaysAndSticksItsHeader guards the table's two-axis
+// scroll: the columns may run past the right edge while the rows run past the
+// bottom, and a sticky header ignores the vertical offset while still moving
+// sideways with its columns.
+func TestTableScrollsBothWaysAndSticksItsHeader(t *testing.T) {
+	tr := build(t, `Window {
+		Table {
+			id: t
+			width: 250
+			height: 100
+			scroll: true
+			stickyHeader: true
+			TableColumn { id: c1 label: "One" width: 200 }
+			TableColumn { id: c2 label: "Two" width: 200 }
+			TableRow {
+				id: r1
+				TableCell { value: "a1" }
+				TableCell { value: "b1" }
+			}
+			TableRow {
+				TableCell { value: "a2" }
+				TableCell { value: "b2" }
+			}
+			TableRow {
+				TableCell { value: "a3" }
+				TableCell { value: "b3" }
+			}
+		}
+	}`)
+	New(nil).Layout(tr.Root, 400, 300)
+	n, _ := tr.ByID("t")
+	b := n.Base()
+	if b.ScrollAxis() != tree.AxisBoth {
+		t.Fatalf("axis = %v, want AxisBoth", b.ScrollAxis())
+	}
+	if got := b.ScrollMaxFor(tree.AxisX); got != 150 {
+		t.Fatalf("horizontal max = %v, want 150", got)
+	}
+	// Header 40 + three 48dp rows - the 100dp box.
+	if got := b.ScrollMaxFor(tree.AxisY); got != 84 {
+		t.Fatalf("vertical max = %v, want 84", got)
+	}
+
+	b.SetScrollOffsetFor(tree.AxisY, 40)
+	b.SetScrollOffsetFor(tree.AxisX, 30)
+	col, _ := tr.ByID("c1")
+	if _, y := b.ChildScrollShift(col.Base()); y != 0 {
+		t.Fatalf("sticky header moved %v vertically", y)
+	}
+	if x, y := b.ChildScrollShift(col.Base()); x != -30 || y != 0 {
+		t.Fatalf("header shift = (%v, %v), want (-30, 0)", x, y)
+	}
+	row, _ := tr.ByID("r1")
+	if x, y := b.ChildScrollShift(row.Base()); x != -30 || y != -40 {
+		t.Fatalf("row shift = (%v, %v), want (-30, -40)", x, y)
+	}
+}
+
 func TestWrapStartsNewRun(t *testing.T) {
 	tr := build(t, `Window {
 		Wrap {

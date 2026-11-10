@@ -68,6 +68,18 @@ func LiteralEqual(a, b syntax.Value) bool {
 			}
 		}
 		return true
+	case *syntax.Modifier:
+		y, ok := b.(*syntax.Modifier)
+		if !ok || x.Form != y.Form || len(x.Entries) != len(y.Entries) {
+			return false
+		}
+		for i := range x.Entries {
+			p, q := x.Entries[i], y.Entries[i]
+			if p.Key != q.Key || !LiteralEqual(p.Value, q.Value) || !LiteralEqual(p.Cond, q.Cond) {
+				return false
+			}
+		}
+		return true
 	case *syntax.Shadow:
 		y, ok := b.(*syntax.Shadow)
 		if !ok || len(x.Layers) != len(y.Layers) {

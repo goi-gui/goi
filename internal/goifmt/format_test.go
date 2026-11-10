@@ -74,6 +74,39 @@ Window {
 	}
 }
 
+func TestFormatModifiers(t *testing.T) {
+	src := `Window {
+Column {
+padding: { base: 8, md: 16 }
+Text { text: conditional { "a": true "b": false } }
+}
+}
+`
+	want := `Window {
+	Column {
+		padding: responsive {
+			base: 8
+			md: 16
+		}
+
+		Text {
+			text: conditional {
+				"a": true
+				"b": false
+			}
+		}
+	}
+}
+`
+	got := string(Source([]byte(src)))
+	if got != want {
+		t.Fatalf("format:\n%s\n--- want ---\n%s", got, want)
+	}
+	if again := string(Source([]byte(got))); again != got {
+		t.Fatalf("not idempotent:\n%s\n--- second ---\n%s", got, again)
+	}
+}
+
 func TestFormatBlocksAndHandlers(t *testing.T) {
 	src := `bridge {
 onOpen func(id string)

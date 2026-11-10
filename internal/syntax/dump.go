@@ -174,6 +174,16 @@ func dumpValue(v Value) string {
 			return "{}"
 		}
 		return "{ " + strings.Join(parts, ", ") + " }"
+	case *Modifier:
+		parts := make([]string, len(v.Entries))
+		for i, e := range v.Entries {
+			if v.Form == ModifierConditional {
+				parts[i] = dumpValue(e.Value) + ": " + dumpValue(e.Cond)
+			} else {
+				parts[i] = e.Key + ": " + dumpValue(e.Value)
+			}
+		}
+		return v.Form.String() + " { " + strings.Join(parts, ", ") + " }"
 	}
 	return "?"
 }

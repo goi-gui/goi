@@ -28,6 +28,12 @@ type responsiveTier struct {
 // setResponsive registers a map literal for one property. It returns false when
 // the property is unknown, a tier name is unknown, or the map is empty.
 func (b *NodeBase) setResponsive(name string, m *syntax.Map) bool {
+	return b.setResponsiveEntries(name, m.Entries)
+}
+
+// setResponsiveEntries is the shared body of the map and the responsive
+// modifier: a breakpoint name and its value.
+func (b *NodeBase) setResponsiveEntries(name string, entries []syntax.MapEntry) bool {
 	b.properties()
 	i, ok := b.byName[name]
 	if !ok {
@@ -35,7 +41,7 @@ func (b *NodeBase) setResponsive(name string, m *syntax.Map) bool {
 	}
 	rp := responsiveProp{prop: b.props[i], fallback: valueLiteral(b.props[i].Get())}
 	rp.applied = rp.fallback
-	for _, e := range m.Entries {
+	for _, e := range entries {
 		min, ok := schema.BreakpointMin(e.Key)
 		if !ok {
 			return false

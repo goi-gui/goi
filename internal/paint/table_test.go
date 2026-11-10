@@ -215,6 +215,85 @@ func TestTableHeaderAlignsWithCells(t *testing.T) {
 	}
 }
 
+// TestTableStickyHeaderKeepsLabelsAndClipsRows checks the sticky header: after
+// a vertical scroll the header labels stay at the top while the row text moves
+// up, and a row that runs under the header is clipped below it.
+func TestTableStickyHeaderKeepsLabelsAndClipsRows(t *testing.T) {
+	src := tableSource("height: 100 scroll: true stickyHeader: true", "")
+	tr, diag := tree.BuildSource([]byte(src), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 500, 400)
+	n, _ := tr.ByID("table")
+	base := n.Base()
+
+	yOf := func(text string) (float64, bool) {
+		l := &List{}
+		l.Build(tr, 500, 400)
+		for _, op := range l.Ops {
+			if op.Kind == Text && !op.Icon && op.Text == text {
+				return float64(op.Rect[1]), true
+			}
+		}
+		return 0, false
+	}
+	header0, ok := yOf("Name")
+	if !ok {
+		t.Fatal("no header before scrolling")
+	}
+	row0, ok := yOf("Kaan")
+	if !ok {
+		t.Fatal("no first row before scrolling")
+	}
+
+	base.SetScrollOffsetFor(tree.AxisY, 40)
+	header1, _ := yOf("Name")
+	row1, _ := yOf("Kaan")
+	if header1 != header0 {
+		t.Fatalf("header y moved %v -> %v, want it stuck", header0, header1)
+	}
+	if row1 >= row0 {
+		t.Fatalf("row y = %v, want less than %v after scrolling", row1, row0)
+	}
+}
+
+// TestTableScrollsBandsWithContent checks that a horizontally scrolled table
+// moves its stripes and rules with the cells and keeps the outer frame put.
+func TestTableScrollsBandsWithContent(t *testing.T) {
+	src := tableSource("height: 100 scroll: true striped: true", "width: 400")
+	tr, diag := tree.BuildSource([]byte(src), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 500, 400)
+	n, _ := tr.ByID("table")
+	b := n.Base()
+	if got := b.ScrollMaxFor(tree.AxisX); got <= 0 {
+		t.Fatalf("horizontal max = %v, want the columns to overflow", got)
+	}
+	if b.Bounds().W != 420 {
+		t.Fatalf("table width = %v, want the frame to keep its 420", b.Bounds().W)
+	}
+	b.SetScrollOffsetFor(tree.AxisX, 100)
+	l := &List{}
+	l.Build(tr, 500, 400)
+	var stripe float32
+	for _, op := range l.Ops {
+		// The striped band is the first wide fill inside the table frame.
+		if op.Kind == Fill && op.BorderWidth == 0 && op.Rect[2] > 250 && op.Rect[1] > 40 {
+			stripe = op.Rect[0]
+			break
+		}
+	}
+	if stripe == 0 {
+		t.Fatalf("no striped band found:\n%s", l.Dump())
+	}
+	if want := float32(b.Bounds().X - 100); stripe != want {
+		t.Fatalf("stripe x = %v, want %v", stripe, want)
+	}
+}
+
 // TestTableColumnDividers checks that a table with a surface separates its
 // columns with a vertical rule, and a plain table does not.
 func TestTableColumnDividers(t *testing.T) {

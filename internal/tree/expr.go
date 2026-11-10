@@ -354,6 +354,7 @@ func (b *NodeBase) applyExpressions() {
 			b.writeExpr(spec.name, v)
 		}
 	}
+	b.applyConditionals()
 }
 
 // ResolveSize resolves a percentage width or height against the space the

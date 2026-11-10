@@ -9,18 +9,6 @@ import (
 // table's 16dp edge.
 const tableCellInset = 16.0
 
-// tableHeaderHeight mirrors the layout's rule: the declared height, or zero when
-// the design hides the header.
-func tableHeaderHeight(t *tree.Table) float64 {
-	if !t.ShowHeader.Get() {
-		return 0
-	}
-	if h := t.HeaderHeight.Get(); h > 0 {
-		return h
-	}
-	return tree.DefaultHeaderHeight
-}
-
 // alignOf maps a design alignment name to the painter's.
 func alignOf(name string) Align {
 	switch name {
@@ -44,21 +32,28 @@ func alignedBox(r tree.Rect) tree.Rect {
 
 // paintTable draws the surface, the header band, the row stripes, the selected
 // row and the separators. Cells and headers paint their own content on top.
+//
+// Bands and rules are part of the scrollable content: they move with the rows by
+// the table's offsets and are clipped to its viewport, so a table with a fixed
+// height does not leak stripes past its frame. A sticky header keeps the band
+// and the column labels at the top while the rows pass underneath.
 func (l *List) paintTable(t *tree.Table, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
 	rad := t.Base().Radius()
 	variant := variant(&t.Component, "outlined")
+	view := t.Base().ScrollViewport(r)
+	tableClip := intersect(clip, view)
 
 	// The bands follow the table's rounded frame, so a rounded table does not
 	// show square corners behind its border.
 	box := r
-	band := func(b tree.Rect, color uint32) {
+	band := func(b tree.Rect, color uint32, c tree.Rect) {
 		if color == 0 {
 			return
 		}
 		l.Ops = append(l.Ops, Op{
 			Kind: Fill, Shape: RoundedRect, Rect: rectArr(b), Color: color,
-			Clip: clipArr(clip), ClipRadius: float32(rad), ClipBox: rectArr(box),
+			Clip: clipArr(c), ClipRadius: float32(rad), ClipBox: rectArr(box),
 		})
 	}
 
@@ -66,20 +61,51 @@ func (l *List) paintTable(t *tree.Table, r tree.Rect, clip tree.Rect) {
 	case "plain":
 		// The design already put the table on its own surface.
 	case "filled":
-		band(r, col.SurfaceContainerLow)
+		band(r, col.SurfaceContainerLow, tableClip)
 	default: // outlined
-		band(r, col.Surface)
-	}
-
-	hh := tableHeaderHeight(t)
-	if hh > 0 {
-		band(tree.Rect{X: r.X, Y: r.Y, W: r.W, H: hh}, withAlpha(col.OnSurface, 0.04))
-		l.hLine(r.X, r.Y+hh, r.W, col.OutlineVariant, clip)
+		band(r, col.Surface, tableClip)
 	}
 
 	rows := t.TableRows()
+	cols := t.TableColumns()
+	hh := t.HeaderBand()
+	sticky := hh > 0 && t.StickyHeader.Get()
+	ox, oy := t.Base().ScrollShift()
+
+	// Layout positions include the table's padding and border, so the header
+	// and the first row start where the cells actually are.
+	headerY := r.Y + hh
+	if len(cols) > 0 {
+		headerY = r.Y + cols[0].Base().Bounds().Y
+	}
+	if !sticky {
+		headerY += oy
+	}
+	rowY := r.Y + hh
+	if len(rows) > 0 {
+		rowY = r.Y + rows[0].Base().Bounds().Y
+	}
+	rowY += oy
+
+	rowsClip := tableClip
+	if sticky {
+		rowsClip = t.RowsClip(r, tableClip)
+	}
+
+	if hh > 0 {
+		band(tree.Rect{X: r.X, Y: headerY, W: r.W, H: hh}, withAlpha(col.OnSurface, 0.04), tableClip)
+		l.hLine(r.X, headerY+hh, r.W, col.OutlineVariant, tableClip)
+	}
+
+	// The stripes span the full column width, which may be wider than the frame.
+	contentX, contentW := r.X+ox, r.W
+	if len(rows) > 0 {
+		contentX = r.X + rows[0].Base().Bounds().X + ox
+		contentW = rows[0].Base().Bounds().W
+	}
+
 	def := t.RowHeight.Get()
-	y := r.Y + hh
+	y := rowY
 	selected := make(map[int]bool, len(rows))
 	for _, i := range t.SelectedRows() {
 		selected[i] = true
@@ -93,18 +119,18 @@ func (l *List) paintTable(t *tree.Table, r tree.Rect, clip tree.Rect) {
 			}
 		}
 		if selected[i] {
-			band(tree.Rect{X: r.X, Y: y, W: r.W, H: rh}, col.SecondaryContainer)
+			band(tree.Rect{X: contentX, Y: y, W: contentW, H: rh}, col.SecondaryContainer, rowsClip)
 		} else if t.Striped.Get() && i%2 == 1 {
-			band(tree.Rect{X: r.X, Y: y, W: r.W, H: rh}, withAlpha(col.OnSurface, 0.03))
+			band(tree.Rect{X: contentX, Y: y, W: contentW, H: rh}, withAlpha(col.OnSurface, 0.03), rowsClip)
 		}
 		if i > 0 {
-			l.hLine(r.X, y, r.W, withAlpha(col.OutlineVariant, 0.6), clip)
+			l.hLine(contentX, y, contentW, withAlpha(col.OutlineVariant, 0.6), rowsClip)
 		}
 		y += rh
 	}
 
 	if variant != "plain" {
-		l.tableColumnDividers(t, r, hh, clip)
+		l.tableColumnDividers(t, r, ox, oy, headerY, tableClip)
 		// A border last, so the separators cannot paint over it.
 		l.fillRect(r, 0, rad, col.OutlineVariant, 1, clip)
 	}
@@ -112,27 +138,22 @@ func (l *List) paintTable(t *tree.Table, r tree.Rect, clip tree.Rect) {
 
 // tableColumnDividers draws a rule between columns, from the header's top to
 // the last row's bottom. A plain table has no surface to divide, so it keeps
-// its open look.
-func (l *List) tableColumnDividers(t *tree.Table, r tree.Rect, hh float64, clip tree.Rect) {
+// its open look. The rule moves with the content and is clipped like the bands.
+func (l *List) tableColumnDividers(t *tree.Table, r tree.Rect, ox, oy float64, headerY float64, clip tree.Rect) {
 	rows := t.TableRows()
 	if len(rows) == 0 {
 		return
 	}
 	first := rows[0].Base().Bounds()
-	top := r.Y + first.Y
-	if hh > 0 {
-		if cols := t.TableColumns(); len(cols) > 0 {
-			top = r.Y + cols[0].Base().Bounds().Y
-		}
-	}
 	last := rows[len(rows)-1].Base().Bounds()
+	rowBottom := r.Y + last.Y + last.H + oy
 	color := withAlpha(l.Theme.Colors.OutlineVariant, 0.6)
 	for i, cell := range tree.CellNodes(rows[0]) {
 		if i == 0 {
 			continue
 		}
-		x := r.X + first.X + cell.Base().Bounds().X
-		l.vLine(x, top, r.Y+last.Y+last.H-top, color, clip)
+		x := r.X + first.X + cell.Base().Bounds().X + ox
+		l.vLine(x, headerY, rowBottom-headerY, color, clip)
 	}
 }
 

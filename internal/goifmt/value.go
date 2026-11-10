@@ -30,14 +30,14 @@ func printValue(v syntax.Value) string {
 // printProperty prints a property value, keeping the friendly spellings the
 // parser accepts: a fontWeight keyword and a decoration's bare keywords. The
 // formatter must not turn `bold` into 700 or add quotes around `underline`,
-// because the next read would be a different file.
-func printProperty(name string, v syntax.Value) string {
-	if m, ok := v.(*syntax.Map); ok && len(m.Entries) > 0 {
-		parts := make([]string, len(m.Entries))
-		for i, e := range m.Entries {
-			parts[i] = e.Key + ": " + printProperty(name, e.Value)
-		}
-		return "{ " + strings.Join(parts, ", ") + " }"
+// because the next read would be a different file. depth is the property's own
+// indentation, so a multi-line value block lines up with the file.
+func printProperty(name string, v syntax.Value, depth int) string {
+	switch m := v.(type) {
+	case *syntax.Map:
+		return printResponsive(m, depth)
+	case *syntax.Modifier:
+		return printModifier(m, depth)
 	}
 	switch name {
 	case "fontWeight":
@@ -59,6 +59,44 @@ func printProperty(name string, v syntax.Value) string {
 		}
 	}
 	return printValue(v)
+}
+
+// printResponsive writes the old brace map in the modifier spelling, one entry
+// per line: `responsive {` reads as a word, and the rows keep a long breakpoint
+// list from running past the margin.
+func printResponsive(m *syntax.Map, depth int) string {
+	if len(m.Entries) == 0 {
+		return "responsive {}"
+	}
+	pad := strings.Repeat("\t", depth+1)
+	var b strings.Builder
+	b.WriteString("responsive {\n")
+	for _, e := range m.Entries {
+		b.WriteString(pad + e.Key + ": " + printValue(e.Value) + "\n")
+	}
+	b.WriteString(strings.Repeat("\t", depth) + "}")
+	return b.String()
+}
+
+// printModifier writes a responsive or conditional block, one entry per line.
+func printModifier(m *syntax.Modifier, depth int) string {
+	if len(m.Entries) == 0 {
+		return m.Form.String() + " {}"
+	}
+	pad := strings.Repeat("\t", depth+1)
+	var b strings.Builder
+	b.WriteString(m.Form.String() + " {\n")
+	for _, e := range m.Entries {
+		b.WriteString(pad)
+		if m.Form == syntax.ModifierConditional {
+			b.WriteString(printValue(e.Value) + ": " + printValue(e.Cond))
+		} else {
+			b.WriteString(e.Key + ": " + printValue(e.Value))
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString(strings.Repeat("\t", depth) + "}")
+	return b.String()
 }
 
 // isDecorationText reports whether a string is only the keywords `decoration`
@@ -152,6 +190,16 @@ func printInner(v syntax.Value) string {
 			parts[i] = e.Key + ": " + printPrec(e.Value, precTernary)
 		}
 		return "{ " + strings.Join(parts, ", ") + " }"
+	case *syntax.Modifier:
+		parts := make([]string, len(x.Entries))
+		for i, e := range x.Entries {
+			if x.Form == syntax.ModifierConditional {
+				parts[i] = printValue(e.Value) + ": " + printValue(e.Cond)
+			} else {
+				parts[i] = e.Key + ": " + printValue(e.Value)
+			}
+		}
+		return x.Form.String() + " { " + strings.Join(parts, ", ") + " }"
 	case *syntax.Binary:
 		prec := precOf(x)
 		// A same-precedence right operand of a left-associative operator needs

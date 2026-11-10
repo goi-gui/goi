@@ -520,8 +520,12 @@ func propNames(def *Element) []string {
 // the responsive form: one ordinary literal per breakpoint.
 func (v *validator) checkValue(e *syntax.Element, p *syntax.Property, pd *Prop) {
 	val := p.Value
-	if m, ok := val.(*syntax.Map); ok {
-		v.checkMap(e, pd, m)
+	switch x := val.(type) {
+	case *syntax.Map:
+		v.checkMap(e, pd, x)
+		return
+	case *syntax.Modifier:
+		v.checkModifier(e, pd, x)
 		return
 	}
 	v.checkLiteral(e, pd, val)
@@ -628,6 +632,59 @@ func (v *validator) checkMap(e *syntax.Element, pd *Prop, m *syntax.Map) {
 			continue
 		}
 		v.checkLiteral(e, pd, entry.Value)
+	}
+}
+
+// checkModifier verifies a responsive or conditional value block. A responsive
+// entry checks exactly like the map form it replaces; a conditional entry's
+// value must fit the property and its condition must be a bool expression.
+func (v *validator) checkModifier(e *syntax.Element, pd *Prop, m *syntax.Modifier) {
+	if pd.Type == TypeID {
+		v.add(m.At, m.At+1, fmt.Sprintf("%s.%s cannot be %s", e.Name, pd.Name, m.Form), "")
+		return
+	}
+	if len(m.Entries) == 0 {
+		v.add(m.At, m.At+1, fmt.Sprintf("%s.%s: an empty %s block does nothing", e.Name, pd.Name, m.Form), "")
+		return
+	}
+	if m.Form == syntax.ModifierResponsive {
+		seen := map[string]bool{}
+		for _, entry := range m.Entries {
+			keyAt, keyEnd := entry.KeyAt, entry.KeyAt+syntax.Pos(len(entry.Key))
+			if _, ok := BreakpointMin(entry.Key); !ok {
+				v.add(keyAt, keyEnd,
+					fmt.Sprintf("%s.%s has no breakpoint %q", e.Name, pd.Name, entry.Key),
+					syntax.Suggest(entry.Key, BreakpointNames()))
+				continue
+			}
+			if seen[entry.Key] {
+				v.add(keyAt, keyEnd,
+					fmt.Sprintf("%s.%s repeats the breakpoint %q", e.Name, pd.Name, entry.Key), "")
+				continue
+			}
+			seen[entry.Key] = true
+			if nested, ok := entry.Value.(*syntax.Modifier); ok {
+				v.add(nested.At, nested.At+1,
+					fmt.Sprintf("%s.%s: a breakpoint value cannot be another modifier", e.Name, pd.Name), "")
+				continue
+			}
+			v.checkLiteral(e, pd, entry.Value)
+		}
+		return
+	}
+	for _, entry := range m.Entries {
+		if nested, ok := entry.Value.(*syntax.Modifier); ok {
+			v.add(nested.At, nested.At+1,
+				fmt.Sprintf("%s.%s: a conditional value cannot be another modifier", e.Name, pd.Name), "")
+			continue
+		}
+		v.checkLiteral(e, pd, entry.Value)
+		if entry.Cond != nil && !isExprValue(entry.Cond) {
+			if b, ok := entry.Cond.(*syntax.Bool); !ok || !b.Val {
+				v.add(entry.Cond.Pos(), entry.Cond.Pos()+1,
+					fmt.Sprintf("%s.%s: a condition must be a bool, got %s", e.Name, pd.Name, kindName(entry.Cond)), "")
+			}
+		}
 	}
 }
 
@@ -1074,6 +1131,13 @@ func (v *validator) checkRefs(e *syntax.Element, pd *Prop, val syntax.Value) {
 		for _, entry := range x.Entries {
 			v.checkRefs(e, pd, entry.Value)
 		}
+	case *syntax.Modifier:
+		for _, entry := range x.Entries {
+			v.checkRefs(e, pd, entry.Value)
+			if entry.Cond != nil {
+				v.checkRefs(e, boolProp, entry.Cond)
+			}
+		}
 	case *syntax.Binary:
 		// A comparison mixes two values of the same type on purpose, so
 		// neither side is checked against the property; a logical operator
@@ -1391,6 +1455,12 @@ func valueHasPercent(val syntax.Value) bool {
 				return true
 			}
 		}
+	case *syntax.Modifier:
+		for _, entry := range x.Entries {
+			if valueHasPercent(entry.Value) || valueHasPercent(entry.Cond) {
+				return true
+			}
+		}
 	}
 	return false
 }
@@ -1419,6 +1489,8 @@ func kindName(val syntax.Value) string {
 		return "an identifier"
 	case syntax.MapKind:
 		return "a map"
+	case syntax.ModifierValueKind:
+		return "a modifier"
 	case syntax.PercentKind:
 		return "a percentage"
 	case syntax.RefKind:

@@ -397,6 +397,7 @@ const (
 	CallKind
 	ShadowKind
 	RotateKind
+	ModifierValueKind
 )
 
 // Value is a property literal. The concrete type is one of *String,
@@ -448,6 +449,48 @@ type MapEntry struct {
 	Key   string
 	KeyAt Pos
 	Value Value
+}
+
+// ModifierKind is the keyword of a `responsive { ... }` or
+// `conditional { ... }` value.
+type ModifierKind int
+
+// Modifier kinds.
+const (
+	// ModifierResponsive is `responsive { base: 8, md: 16 }`: the value follows
+	// the window width.
+	ModifierResponsive ModifierKind = iota
+	// ModifierConditional is `conditional { 10: bridge.narrow }`: the first
+	// true condition picks the value.
+	ModifierConditional
+)
+
+// String returns the keyword as written.
+func (k ModifierKind) String() string {
+	if k == ModifierConditional {
+		return "conditional"
+	}
+	return "responsive"
+}
+
+// Modifier is a keyword-led value block. Responsive entries key a breakpoint
+// name to a value; conditional entries pair a value with the condition that
+// selects it.
+type Modifier struct {
+	At      Pos
+	Form    ModifierKind
+	Entries []ModifierEntry
+}
+
+// ModifierEntry is one line of a Modifier. Key and KeyAt are the breakpoint
+// name of a responsive entry; Value is the result in both forms, and Cond is
+// the condition of a conditional entry.
+type ModifierEntry struct {
+	At    Pos
+	Key   string
+	KeyAt Pos
+	Value Value
+	Cond  Value
 }
 
 // Percent is `<number>%`, relative to the space the parent offers. Only width
@@ -542,32 +585,34 @@ type Ternary struct {
 
 // Kind implementations.
 
-func (s *String) Kind() ValueKind  { return StringKind }
-func (n *Number) Kind() ValueKind  { return NumberKind }
-func (b *Bool) Kind() ValueKind    { return BoolKind }
-func (c *Color) Kind() ValueKind   { return ColorKind }
-func (i *Ident) Kind() ValueKind   { return IdentKind }
-func (m *Map) Kind() ValueKind     { return MapKind }
-func (p *Percent) Kind() ValueKind { return PercentKind }
-func (r *Ref) Kind() ValueKind     { return RefKind }
-func (b *Binary) Kind() ValueKind  { return BinaryKind }
-func (u *Unary) Kind() ValueKind   { return UnaryKind }
-func (t *Ternary) Kind() ValueKind { return TernaryKind }
-func (c *Call) Kind() ValueKind    { return CallKind }
-func (s *Shadow) Kind() ValueKind  { return ShadowKind }
+func (s *String) Kind() ValueKind   { return StringKind }
+func (n *Number) Kind() ValueKind   { return NumberKind }
+func (b *Bool) Kind() ValueKind     { return BoolKind }
+func (c *Color) Kind() ValueKind    { return ColorKind }
+func (i *Ident) Kind() ValueKind    { return IdentKind }
+func (m *Map) Kind() ValueKind      { return MapKind }
+func (p *Percent) Kind() ValueKind  { return PercentKind }
+func (r *Ref) Kind() ValueKind      { return RefKind }
+func (b *Binary) Kind() ValueKind   { return BinaryKind }
+func (u *Unary) Kind() ValueKind    { return UnaryKind }
+func (t *Ternary) Kind() ValueKind  { return TernaryKind }
+func (c *Call) Kind() ValueKind     { return CallKind }
+func (s *Shadow) Kind() ValueKind   { return ShadowKind }
+func (m *Modifier) Kind() ValueKind { return ModifierValueKind }
 
 // Pos implementations.
 
-func (s *String) Pos() Pos  { return s.At }
-func (n *Number) Pos() Pos  { return n.At }
-func (b *Bool) Pos() Pos    { return b.At }
-func (c *Color) Pos() Pos   { return c.At }
-func (i *Ident) Pos() Pos   { return i.At }
-func (m *Map) Pos() Pos     { return m.At }
-func (p *Percent) Pos() Pos { return p.At }
-func (r *Ref) Pos() Pos     { return r.At }
-func (b *Binary) Pos() Pos  { return b.At }
-func (u *Unary) Pos() Pos   { return u.At }
-func (t *Ternary) Pos() Pos { return t.At }
-func (c *Call) Pos() Pos    { return c.At }
-func (s *Shadow) Pos() Pos  { return s.At }
+func (s *String) Pos() Pos   { return s.At }
+func (n *Number) Pos() Pos   { return n.At }
+func (b *Bool) Pos() Pos     { return b.At }
+func (c *Color) Pos() Pos    { return c.At }
+func (i *Ident) Pos() Pos    { return i.At }
+func (m *Map) Pos() Pos      { return m.At }
+func (p *Percent) Pos() Pos  { return p.At }
+func (r *Ref) Pos() Pos      { return r.At }
+func (b *Binary) Pos() Pos   { return b.At }
+func (u *Unary) Pos() Pos    { return u.At }
+func (t *Ternary) Pos() Pos  { return t.At }
+func (c *Call) Pos() Pos     { return c.At }
+func (s *Shadow) Pos() Pos   { return s.At }
+func (m *Modifier) Pos() Pos { return m.At }

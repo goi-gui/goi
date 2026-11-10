@@ -451,6 +451,7 @@ type Table struct {
 	Component
 	Striped       Prop[bool]
 	ShowHeader    Prop[bool]
+	StickyHeader  Prop[bool]
 	RowHeight     Prop[float64]
 	HeaderHeight  Prop[float64]
 	SortColumn    Prop[float64]
@@ -469,10 +470,11 @@ func (*Table) Kind() string { return "Table" }
 
 func (c *Table) namedProps() []NamedProp {
 	return append(c.propsExcept("Table",
-		"striped", "showHeader", "rowHeight", "headerHeight",
+		"striped", "showHeader", "stickyHeader", "rowHeight", "headerHeight",
 		"sortColumn", "sortAscending", "selectable", "selectedRow"),
 		BoolProp(&c.NodeBase, "striped", DirtyPaint, &c.Striped),
 		BoolProp(&c.NodeBase, "showHeader", DirtyLayout, &c.ShowHeader),
+		BoolProp(&c.NodeBase, "stickyHeader", DirtyLayout, &c.StickyHeader),
 		NumberProp(&c.NodeBase, "rowHeight", DirtyLayout, &c.RowHeight),
 		NumberProp(&c.NodeBase, "headerHeight", DirtyLayout, &c.HeaderHeight),
 		NumberProp(&c.NodeBase, "sortColumn", DirtyLayout, &c.SortColumn),
