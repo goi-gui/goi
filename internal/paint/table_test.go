@@ -215,6 +215,53 @@ func TestTableHeaderAlignsWithCells(t *testing.T) {
 	}
 }
 
+// TestTableClipStaysInsideFrame guards the sticky header's row clip: a row that
+// runs past the table's fixed height must be cut at the frame, not painted on
+// the window behind it.
+func TestTableClipStaysInsideFrame(t *testing.T) {
+	for _, sticky := range []bool{false, true} {
+		checkTableClipInsideFrame(t, sticky)
+	}
+}
+
+func checkTableClipInsideFrame(t *testing.T, sticky bool) {
+	src := fmt.Sprintf(`Window { Table {
+		id: t
+		width: 300
+		height: 100
+		scroll: true
+		stickyHeader: %v
+		TableColumn { label: "A" width: 300 }
+		TableRow { TableCell { value: "1" Text { text: "r1" } } }
+		TableRow { TableCell { value: "2" Text { text: "r2" } } }
+		TableRow { TableCell { value: "3" Text { text: "r3" } } }
+		TableRow { TableCell { value: "4" Text { text: "r4" } } }
+	} }`, sticky)
+	tr, diag := tree.BuildSource([]byte(src), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 400, 300)
+	n, _ := tr.ByID("t")
+	frame := n.Base().Bounds()
+	bottom := frame.Bottom()
+	l := &List{}
+	l.Build(tr, 400, 300)
+	for _, op := range l.Ops {
+		if op.Kind != Text || op.Icon {
+			continue
+		}
+		// An op outside the clip keeps its own box in Clip with zero height, so
+		// a positive height is what says it would actually draw.
+		if op.Clip[2] == 0 || op.Clip[3] == 0 {
+			continue
+		}
+		if got := float64(op.Clip[1] + op.Clip[3]); got > bottom {
+			t.Fatalf("text %q clip bottom = %v, want inside the frame's %v", op.Text, got, bottom)
+		}
+	}
+}
+
 // TestTableStickyHeaderKeepsLabelsAndClipsRows checks the sticky header: after
 // a vertical scroll the header labels stay at the top while the row text moves
 // up, and a row that runs under the header is clipped below it.

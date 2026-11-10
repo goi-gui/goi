@@ -49,12 +49,13 @@ func (t *Table) RowsClip(r, clip Rect) Rect {
 	}
 	out := clip
 	if y := top + hh; y > out.Y {
+		bottom := out.Bottom()
 		out.Y = y
-	}
-	if h := out.Bottom() - out.Y; h < 0 {
-		out.H = 0
-	} else {
-		out.H = h
+		if h := bottom - y; h < 0 {
+			out.H = 0
+		} else {
+			out.H = h
+		}
 	}
 	return out
 }
