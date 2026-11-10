@@ -113,10 +113,10 @@ func (e *Engine) tableChildren(b *tree.NodeBase, w, h float64) {
 	if !ok {
 		return
 	}
-	pe, bw := b.PaddingEdges(), b.BorderWidth()
-	left := pe.Left + bw
-	top := pe.Top + bw
-	cw := maxf(w-pe.Left-pe.Right-2*bw, 0)
+	pe, be := b.PaddingEdges(), b.BorderEdges()
+	left := pe.Left + be.Left
+	top := pe.Top + be.Top
+	cw := maxf(w-pe.Left-pe.Right-be.Left-be.Right, 0)
 
 	cols := t.TableColumns()
 	widths := tableWidths(cols, cw)

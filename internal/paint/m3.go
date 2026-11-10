@@ -57,17 +57,18 @@ func (l *List) textIn(s string, st m3.TextStyle, color uint32, box tree.Rect, al
 	}
 	baseline := box.Y + box.H/2 + st.Size*textBaseline
 	l.Ops = append(l.Ops, Op{
-		Kind:     Text,
-		Rect:     rectArr(box),
-		Color:    color,
-		Clip:     clipArr(clip),
-		Text:     s,
-		FontSize: float32(st.Size),
-		Weight:   weightOf(st.Weight),
-		Align:    align,
-		TextX:    float32(box.X),
-		TextY:    float32(baseline),
-		BoxW:     float32(box.W),
+		Kind:       Text,
+		Rect:       rectArr(box),
+		Color:      color,
+		Clip:       clipArr(clip),
+		Text:       s,
+		FontSize:   float32(st.Size),
+		Weight:     weightOf(st.Weight),
+		FontFamily: l.family,
+		Align:      align,
+		TextX:      float32(box.X),
+		TextY:      float32(baseline),
+		BoxW:       float32(box.W),
 	})
 }
 
@@ -1767,6 +1768,7 @@ type wrapKey struct {
 	width  float64
 	size   float64
 	weight int
+	family string
 }
 
 // maxWrapEntries bounds the wrap cache. A page shows far fewer distinct runs
@@ -1775,7 +1777,7 @@ const maxWrapEntries = 512
 
 // wrapLines wraps a run, reusing the previous answer when nothing changed.
 func (l *List) wrapLines(s string, width float64, st m3.TextStyle) []text.Line {
-	key := wrapKey{s: s, width: width, size: st.Size, weight: st.Weight}
+	key := wrapKey{s: s, width: width, size: st.Size, weight: st.Weight, family: l.family}
 	if lines, ok := l.wrap[key]; ok {
 		return lines
 	}
@@ -1792,6 +1794,9 @@ func (l *List) wrapLines(s string, width float64, st m3.TextStyle) []text.Line {
 func textWidth(l *List, s string, st m3.TextStyle) float64 {
 	if s == "" {
 		return 0
+	}
+	if l.MeasureFamily != nil && l.family != "" {
+		return l.MeasureFamily(s, st.Size, st.Weight, l.family)
 	}
 	if l.Measure != nil {
 		return l.Measure(s, st.Size, st.Weight)

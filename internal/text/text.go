@@ -23,7 +23,7 @@ import (
 // Face is a font at one pixel size, ready to shape and rasterize.
 type Face struct {
 	font   *font.Face
-	tag    uint8 // font identity, so atlas keys never collide across fonts
+	tag    uint16 // font identity, so atlas keys never collide across fonts
 	size   float64
 	upem   float32
 	italic bool
@@ -54,7 +54,12 @@ const maxShapedRuns = 512
 type Library struct {
 	mu    sync.Mutex
 	fonts map[Weight]*font.Face
-	icon  *font.Face
+	// families holds the app's own fonts, keyed by the name a design writes in
+	// `fontFamily`. One file serves every weight; familyTag is the atlas tag it
+	// was given, so its glyphs cannot collide with Roboto's.
+	families  map[string]familyFace
+	familyTag uint16
+	icon      *font.Face
 	// emoji is Noto Color Emoji, the face a rune Roboto has no glyph for falls
 	// back to; emojiCache holds its decoded bitmaps per size and glyph.
 	emoji      *font.Face
@@ -75,6 +80,15 @@ type faceKey struct {
 	icon   bool
 	italic bool
 	emoji  bool
+	// family is the registered name, so two families at one size get their own
+	// face and atlas tag.
+	family string
+}
+
+// familyFace is one registered family: the parsed file and its atlas tag.
+type familyFace struct {
+	face *font.Face
+	tag  uint16
 }
 
 // faceSlot is one entry of the direct-mapped face cache.
@@ -86,8 +100,10 @@ type faceSlot struct {
 // NewLibrary returns a library with Roboto and Material Symbols loaded.
 func NewLibrary() *Library {
 	l := &Library{
-		fonts: map[Weight]*font.Face{},
-		faces: map[faceKey]*Face{},
+		fonts:     map[Weight]*font.Face{},
+		families:  map[string]familyFace{},
+		familyTag: 16, // 0..15 are the built-in weights and the icon font
+		faces:     map[faceKey]*Face{},
 		// A small window fits in 1024² with room to spare, and the atlas grows
 		// when a page needs more. Starting at the maximum spent 4MB on every
 		// app, most of it never touched.
@@ -131,35 +147,87 @@ func (l *Library) RegisterFont(weight Weight, data []byte) error {
 	return nil
 }
 
+// RegisterFamily adds an app font under name, which is what a design's
+// `fontFamily` writes. The file serves every weight: a single face cannot vary
+// its weight, and a heavier one falls back to the same outlines.
+func (l *Library) RegisterFamily(name string, data []byte) error {
+	if name == "" {
+		return fmt.Errorf("text: a family needs a name")
+	}
+	f, err := font.ParseTTF(bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("text: parse font %q: %w", name, err)
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if _, ok := l.families[name]; !ok {
+		if l.familyTag >= 256 {
+			return fmt.Errorf("text: too many font families")
+		}
+		l.familyTag += 2 // the odd tag is the slanted copy
+	}
+	l.families[name] = familyFace{face: f, tag: l.familyTag - 2}
+	// A face already built for this family holds the old file; drop it so the
+	// next frame reshapes with the new one.
+	for k := range l.faces {
+		if k.family == name {
+			delete(l.faces, k)
+		}
+	}
+	l.front = [4]faceSlot{}
+	return nil
+}
+
+// HasFamily reports whether name was registered.
+func (l *Library) HasFamily(name string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	_, ok := l.families[name]
+	return ok
+}
+
 // Atlas returns the glyph atlas, for the renderer to upload.
 func (l *Library) Atlas() *Atlas { return l.atlas }
 
 // Face returns the face for a size and weight, creating it once.
 func (l *Library) Face(size float64, weight Weight) *Face {
-	return l.face(size, weight, false, false)
+	return l.face(size, weight, false, false, "")
+}
+
+// FamilyFace returns the face of a registered family, falling back to Roboto
+// when the name is unknown or empty, so a design that names a font the app never
+// loaded still draws.
+func (l *Library) FamilyFace(size float64, weight Weight, family string) *Face {
+	return l.face(size, weight, false, false, family)
+}
+
+// FamilyItalicFace is FamilyFace slanted for `fontStyle: italic`.
+func (l *Library) FamilyItalicFace(size float64, weight Weight, family string) *Face {
+	return l.face(size, weight, false, true, family)
 }
 
 // ItalicFace returns the same face slanted for `fontStyle: italic`. Roboto has
 // no italic file embedded, so the slant is synthesized at raster time.
 func (l *Library) ItalicFace(size float64, weight Weight) *Face {
-	return l.face(size, weight, false, true)
+	return l.face(size, weight, false, true, "")
 }
 
 // IconFace returns the face for Material Symbols at a size.
 func (l *Library) IconFace(size float64) *Face {
-	return l.face(size, WeightRegular, true, false)
+	return l.face(size, WeightRegular, true, false, "")
 }
 
-func (l *Library) face(size float64, weight Weight, icon, italic bool) *Face {
+func (l *Library) face(size float64, weight Weight, icon, italic bool, family string) *Face {
 	if size <= 0 {
 		size = 16
 	}
 	if icon {
 		italic = false
+		family = ""
 	} else {
 		weight = NearestWeight(weight)
 	}
-	key := faceKey{weight: weight, size: int(size * 4), icon: icon, italic: italic}
+	key := faceKey{weight: weight, size: int(size * 4), icon: icon, italic: italic, family: family}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	slot := &l.front[(key.size^int(weight)*7^boolInt(italic)*5)&3]
@@ -168,8 +236,14 @@ func (l *Library) face(size float64, weight Weight, icon, italic bool) *Face {
 	}
 
 	var src *font.Face
-	var tag uint8
-	if icon {
+	var tag uint16
+	if fam, ok := l.families[family]; ok && !icon {
+		src, tag = fam.face, fam.tag
+		if italic {
+			// Keep slanted glyphs in their own atlas entries.
+			tag++
+		}
+	} else if icon {
 		src = l.icon
 		tag = 3
 	} else {
@@ -215,7 +289,7 @@ func boolInt(b bool) int {
 }
 
 // Tag returns the font identity used in atlas keys.
-func (f *Face) Tag() uint8 { return f.tag }
+func (f *Face) Tag() uint16 { return f.tag }
 
 // Size returns the pixel size of the face.
 func (f *Face) Size() float64 { return f.size }

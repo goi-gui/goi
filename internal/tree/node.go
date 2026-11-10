@@ -64,6 +64,9 @@ type NodeBase struct {
 	marginTop, marginRight, marginBottom, marginLeft     Prop[float64]
 	paddingTop, paddingRight, paddingBottom, paddingLeft Prop[float64]
 	borderW                                              Prop[float64]
+	borderTopW, borderRightW, borderBottomW, borderLeftW Prop[float64]
+	borderTopColor, borderRightColor                     Prop[uint32]
+	borderBottomColor, borderLeftColor                   Prop[uint32]
 	flex                                                 Prop[float64]
 	alignSelf                                            Prop[string]
 	// rotate turns the node and its subtree; layout ignores it, the way CSS
@@ -105,6 +108,13 @@ type NodeBase struct {
 	// parser honest for the names that may grow later.
 	gradient map[string]*csscolor.Gradient
 	radius   Prop[float64]
+	// Per-side and per-corner radii, all -1 unless a design sets them: `radius`
+	// is the fallback, then the four sides, then the four corners.
+	radiusTop, radiusRight, radiusBottom, radiusLeft Prop[float64]
+	radiusTopLeft, radiusTopRight                    Prop[float64]
+	radiusBottomRight, radiusBottomLeft              Prop[float64]
+	// fontFamily names a family the app registered; empty follows the parent.
+	fontFamily Prop[string]
 	// shadow is the CSS-style shadow list. It paints outside the layout box, so
 	// a change only repaints; Text draws it behind its glyphs and every other
 	// node draws it around its box.
@@ -225,16 +235,16 @@ func (b *NodeBase) PaddingEdges() Edges {
 
 // ContentBox returns r inset by the border and the padding, clamped to empty.
 func (b *NodeBase) ContentBox(r Rect) Rect {
-	pe, bw := b.PaddingEdges(), b.BorderWidth()
-	w := r.W - pe.Left - pe.Right - 2*bw
-	h := r.H - pe.Top - pe.Bottom - 2*bw
+	pe, be := b.PaddingEdges(), b.BorderEdges()
+	w := r.W - pe.Left - pe.Right - be.Left - be.Right
+	h := r.H - pe.Top - pe.Bottom - be.Top - be.Bottom
 	if w < 0 {
 		w = 0
 	}
 	if h < 0 {
 		h = 0
 	}
-	return Rect{X: r.X + pe.Left + bw, Y: r.Y + pe.Top + bw, W: w, H: h}
+	return Rect{X: r.X + pe.Left + be.Left, Y: r.Y + pe.Top + be.Top, W: w, H: h}
 }
 
 // ScrollClip is the box children clip to. A scrolling node clips to its frame:
@@ -254,16 +264,16 @@ func (b *NodeBase) ScrollClip(r Rect) Rect {
 // border box minus the border, ignoring padding. Padding spaces the moving
 // content only, so the chrome stays against the frame.
 func (b *NodeBase) ScrollViewport(r Rect) Rect {
-	bw := b.BorderWidth()
-	w := r.W - 2*bw
-	h := r.H - 2*bw
+	be := b.BorderEdges()
+	w := r.W - be.Left - be.Right
+	h := r.H - be.Top - be.Bottom
 	if w < 0 {
 		w = 0
 	}
 	if h < 0 {
 		h = 0
 	}
-	return Rect{X: r.X + bw, Y: r.Y + bw, W: w, H: h}
+	return Rect{X: r.X + be.Left, Y: r.Y + be.Top, W: w, H: h}
 }
 
 func edgeOr(v, fallback float64) float64 {
@@ -273,8 +283,95 @@ func edgeOr(v, fallback float64) float64 {
 	return v
 }
 
-// BorderWidth returns the border thickness in logical pixels.
+// BorderWidth returns the border thickness in logical pixels, the value a
+// single-width border reads. An uneven border asks BorderEdges per side.
 func (b *NodeBase) BorderWidth() float64 { return b.borderW.Get() }
+
+// BorderEdges returns the border thickness per side: a side override wins, and
+// an unset side follows borderWidth.
+func (b *NodeBase) BorderEdges() Edges {
+	v := b.borderW.Get()
+	return Edges{
+		Top:    edgeOr(b.borderTopW.Get(), v),
+		Right:  edgeOr(b.borderRightW.Get(), v),
+		Bottom: edgeOr(b.borderBottomW.Get(), v),
+		Left:   edgeOr(b.borderLeftW.Get(), v),
+	}
+}
+
+// BorderColors returns the four side colours in paint order: top, right,
+// bottom, left. A side that was not written follows borderColor.
+func (b *NodeBase) BorderColors() [4]uint32 {
+	v := b.borderColor.Get()
+	pick := func(c Prop[uint32]) uint32 {
+		if got := c.Get(); got != 0 {
+			return got
+		}
+		return v
+	}
+	return [4]uint32{
+		pick(b.borderTopColor), pick(b.borderRightColor),
+		pick(b.borderBottomColor), pick(b.borderLeftColor),
+	}
+}
+
+// UniformBorder reports whether every side shares one colour and width, which
+// is the case paint can draw with a single rounded op.
+func (b *NodeBase) UniformBorder() bool {
+	cols := b.BorderColors()
+	be := b.BorderEdges()
+	for i := 0; i < 4; i++ {
+		if cols[i] != cols[0] {
+			return false
+		}
+		switch i {
+		case 1:
+			if be.Right != be.Top {
+				return false
+			}
+		case 2:
+			if be.Bottom != be.Top {
+				return false
+			}
+		case 3:
+			if be.Left != be.Top {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// Radii returns the four corner radii in paint order: top-left, top-right,
+// bottom-right, bottom-left.
+//
+// Specificity runs from the general to the narrow one: `radius` sets all four,
+// `radiusTop`/`radiusRight`/`radiusBottom`/`radiusLeft` set one side, and
+// `radiusTopLeft` and friends set a single corner. A narrower property wins
+// whatever the order in the file; of the two sides that meet at a corner, the
+// horizontal one (left or right) wins over the vertical one.
+func (b *NodeBase) Radii() [4]float64 {
+	base := b.radius.Get()
+	top, right := b.radiusTop.Get(), b.radiusRight.Get()
+	bottom, left := b.radiusBottom.Get(), b.radiusLeft.Get()
+	return [4]float64{
+		edgeOr(b.radiusTopLeft.Get(), edgeOr(left, edgeOr(top, base))),
+		edgeOr(b.radiusTopRight.Get(), edgeOr(right, edgeOr(top, base))),
+		edgeOr(b.radiusBottomRight.Get(), edgeOr(right, edgeOr(bottom, base))),
+		edgeOr(b.radiusBottomLeft.Get(), edgeOr(left, edgeOr(bottom, base))),
+	}
+}
+
+// FontFamily returns the family the node draws text in: its own, else the
+// nearest ancestor's, else "" for the built-in Roboto.
+func (b *NodeBase) FontFamily() string {
+	for n := b; n != nil; n = n.parent {
+		if f := n.fontFamily.Get(); f != "" {
+			return f
+		}
+	}
+	return ""
+}
 
 // Flex returns the flex grow factor along the parent's main axis.
 func (b *NodeBase) Flex() float64 { return b.flex.Get() }
@@ -410,6 +507,10 @@ func (b *NodeBase) ScrollShadowColor() uint32 { return b.scrollShadowColor.Get()
 // Cursor returns the pointer shape this node asks for, or "" for auto.
 func (b *NodeBase) Cursor() string { return b.cursor.Get() }
 
+// SetFontFamily sets the family the node and its subtree draw in, named the way
+// the app registered it. "" hands the node back to its parent's family.
+func (b *NodeBase) SetFontFamily(name string) { b.fontFamily.Set(name) }
+
 // SetCursor changes the pointer shape over the node, using a CSS name.
 func (b *NodeBase) SetCursor(name string) { b.cursor.Set(name) }
 
@@ -466,8 +567,12 @@ func (t *Table) paintOrder() []*NodeBase {
 // BorderColor returns 0xRRGGBBAA.
 func (b *NodeBase) BorderColor() uint32 { return b.borderColor.Get() }
 
-// Radius returns the corner radius.
-func (b *NodeBase) Radius() float64 { return b.radius.Get() }
+// Radius returns the largest corner radius, for the places that can only use
+// one: clip rounding and the M3 shapes. A per-corner box asks Radii.
+func (b *NodeBase) Radius() float64 {
+	r := b.Radii()
+	return max(max(r[0], r[1]), max(r[2], r[3]))
+}
 
 // Shadow returns the node's shadow layers, in paint order.
 func (b *NodeBase) Shadow() []ShadowLayer { return b.shadow.layers }

@@ -2,7 +2,10 @@
 // import a graphics API; everything above it works with plain data.
 package render
 
-import "github.com/goi-gui/goi/internal/paint"
+import (
+	"github.com/goi-gui/goi/internal/paint"
+	"github.com/goi-gui/goi/internal/text"
+)
 
 // Renderer draws display lists into a window surface.
 type Renderer interface {
@@ -20,12 +23,11 @@ type Renderer interface {
 	Release()
 }
 
-// FontLibrary returns the renderer's text library when it has one, so callers
-// can register extra fonts and use the same faces for measuring.
-func FontLibrary(r Renderer) (any, bool) {
-	type hasLib interface{ TextLibrary() any }
-	if h, ok := r.(hasLib); ok {
-		return h.TextLibrary(), true
+// FontLibrary returns the renderer's text library, so callers can register extra
+// fonts and the same faces measure and draw them.
+func FontLibrary(r Renderer) (*text.Library, bool) {
+	if g, ok := r.(*GPU); ok {
+		return g.Text(), true
 	}
 	return nil, false
 }

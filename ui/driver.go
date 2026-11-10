@@ -72,6 +72,14 @@ func (a *App) initWindow(w *Window) error {
 			a.reportError(err)
 		}
 	}
+	// Families the app loaded before this window existed.
+	if lib, ok := render.FontLibrary(gpu); ok {
+		for name, data := range a.fonts {
+			if err := lib.RegisterFamily(name, data); err != nil {
+				a.reportError(err)
+			}
+		}
+	}
 	meas := textMeasurer{lib: gpu.Text()}
 	d := &gpuDriver{
 		app:    a,
@@ -81,6 +89,10 @@ func (a *App) initWindow(w *Window) error {
 	}
 	d.list.Measure = func(s string, size float64, weight int) float64 {
 		w, _ := meas.MeasureWeight(s, size, weight)
+		return w
+	}
+	d.list.MeasureFamily = func(s string, size float64, weight int, family string) float64 {
+		w, _ := meas.MeasureFamily(s, size, weight, family)
 		return w
 	}
 	d.list.Theme = themeFor(w)

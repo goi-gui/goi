@@ -175,11 +175,16 @@ func (t *textRenderer) shapeOp(op paint.Op, atlas *text.Atlas) (int, int) {
 		scale = 1
 	}
 	var face *text.Face
-	if op.Icon {
+	switch {
+	case op.Icon:
 		face = lib.IconFace(float64(op.FontSize) * scale)
-	} else if op.Italic {
+	case op.FontFamily != "" && op.Italic:
+		face = lib.FamilyItalicFace(float64(op.FontSize)*scale, text.Weight(op.Weight), op.FontFamily)
+	case op.FontFamily != "":
+		face = lib.FamilyFace(float64(op.FontSize)*scale, text.Weight(op.Weight), op.FontFamily)
+	case op.Italic:
 		face = lib.ItalicFace(float64(op.FontSize)*scale, text.Weight(op.Weight))
-	} else {
+	default:
 		face = lib.Face(float64(op.FontSize)*scale, text.Weight(op.Weight))
 	}
 	if face == nil {

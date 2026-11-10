@@ -205,3 +205,45 @@ func TestShapedRTLKeepsEveryGlyph(t *testing.T) {
 		t.Fatalf("more glyphs than runes: %d", n)
 	}
 }
+
+// TestRegisterFamily serves a family from a file the app hands over, and keeps
+// its glyphs in their own atlas tag so a custom face cannot collide with Roboto.
+func TestRegisterFamily(t *testing.T) {
+	l := NewLibrary()
+	if err := l.RegisterFamily("Brand", robotoMedium); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if !l.HasFamily("Brand") {
+		t.Fatal("family was not recorded")
+	}
+	f := l.FamilyFace(20, WeightRegular, "Brand")
+	if f == nil {
+		t.Fatal("no face for the registered family")
+	}
+	if f.Tag() < 16 {
+		t.Fatalf("tag = %d, want a tag of its own above the built-ins", f.Tag())
+	}
+	// The same family keeps its tag between calls, so atlas keys stay stable.
+	if again := l.FamilyFace(20, WeightRegular, "Brand"); again.Tag() != f.Tag() {
+		t.Fatalf("tag changed: %d then %d", f.Tag(), again.Tag())
+	}
+	if italic := l.FamilyItalicFace(20, WeightRegular, "Brand"); italic.Tag() != f.Tag()+1 {
+		t.Fatalf("italic tag = %d, want %d", italic.Tag(), f.Tag()+1)
+	}
+	// An unknown name falls back to Roboto rather than drawing nothing.
+	if fallback := l.FamilyFace(20, WeightRegular, "Missing"); fallback == nil || fallback.Tag() >= 16 {
+		t.Fatalf("unknown family did not fall back: %+v", fallback)
+	}
+	// The evolution of one tag per family is what makes the canvas of the
+	// system independent of an app's choices.
+	if err := l.RegisterFamily("Other", robotoBold); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	other := l.FamilyFace(20, WeightRegular, "Other")
+	if other.Tag() == f.Tag() {
+		t.Fatal("two families share one atlas tag")
+	}
+	if w, _ := other.Measure("Brand", -1); w <= 0 {
+		t.Fatal("a registered face measured nothing")
+	}
+}

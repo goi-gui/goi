@@ -22,6 +22,13 @@ type Measurer interface {
 	MeasureWeight(text string, fontSize float64, weight int) (w, h float64)
 }
 
+// FamilyMeasurer is a Measurer that also knows the app's font families. A
+// measurer that does not implement it still works: layout then measures every
+// run in the built-in face, which is what `fontFamily` never set means.
+type FamilyMeasurer interface {
+	MeasureFamily(text string, fontSize float64, weight int, family string) (w, h float64)
+}
+
 // FakeMeasurer approximates text as half the font size per character and 1.2
 // font sizes per line, so layout tests need no font files.
 type FakeMeasurer struct{}
@@ -79,6 +86,7 @@ type wrapKey struct {
 	width  float64
 	size   float64
 	weight int
+	family string
 }
 
 // maxWrapCounts bounds the wrap cache; past it the map is dropped and the
@@ -141,16 +149,16 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 	if len(kids) == 0 {
 		return
 	}
-	pe, bw := b.PaddingEdges(), b.BorderWidth()
-	cw := maxf(w-pe.Left-pe.Right-2*bw, 0)
-	ch := maxf(h-pe.Top-pe.Bottom-2*bw, 0)
+	pe, be := b.PaddingEdges(), b.BorderEdges()
+	cw := maxf(w-pe.Left-pe.Right-be.Left-be.Right, 0)
+	ch := maxf(h-pe.Top-pe.Bottom-be.Top-be.Bottom, 0)
 
 	// Material components declare their own content inset.
 	if cv, ok := e.componentOf(b); ok {
 		mt := e.metricsFor(b, cv)
-		insetL, insetT := pe.Left+bw+mt.Left, pe.Top+bw+mt.Top
-		cw = maxf(w-insetL-pe.Right-bw-mt.Right, 0)
-		ch = maxf(h-insetT-pe.Bottom-bw-mt.Bottom, 0)
+		insetL, insetT := pe.Left+be.Left+mt.Left, pe.Top+be.Top+mt.Top
+		cw = maxf(w-insetL-pe.Right-be.Right-mt.Right, 0)
+		ch = maxf(h-insetT-pe.Bottom-be.Bottom-mt.Bottom, 0)
 		switch b.Node().Kind() {
 		case "NavigationBar", "Tabs":
 			e.equalRow(b, kids, cw, ch, insetL, insetT)
@@ -166,15 +174,15 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 
 	switch b.Node().Kind() {
 	case "Row", "TitleBar":
-		e.linear(b, kids, cw, ch, pe.Left+bw, true, pe.Top+bw)
+		e.linear(b, kids, cw, ch, pe.Left+be.Left, true, pe.Top+be.Top)
 	case "Stack", "ClipRRect", "Positioned":
-		e.stackChildren(b, w, h, pe.Left+bw, pe.Top+bw, pe.Right+bw, pe.Bottom+bw)
+		e.stackChildren(b, w, h, pe.Left+be.Left, pe.Top+be.Top, pe.Right+be.Right, pe.Bottom+be.Bottom)
 	case "Wrap":
-		e.wrap(b, kids, cw, ch, pe.Left+bw, pe.Top+bw)
+		e.wrap(b, kids, cw, ch, pe.Left+be.Left, pe.Top+be.Top)
 	case "Grid":
-		e.grid(b, kids, cw, ch, pe.Left+bw, pe.Top+bw)
+		e.grid(b, kids, cw, ch, pe.Left+be.Left, pe.Top+be.Top)
 	default: // Window, Column
-		e.linear(b, kids, cw, ch, pe.Left+bw, false, pe.Top+bw)
+		e.linear(b, kids, cw, ch, pe.Left+be.Left, false, pe.Top+be.Top)
 	}
 }
 
@@ -293,12 +301,13 @@ func (e *Engine) linear(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH,
 		// A Wrap or Grid wraps to the width it actually gets, which may be a
 		// declared one rather than the parent's, so its height follows cs.
 		if !horizontal && k.Height() < 0 && (k.Node().Kind() == "Wrap" || k.Node().Kind() == "Grid") {
-			pe, bw := k.PaddingEdges(), k.BorderWidth()
-			inner := maxf(cs-pe.Left-pe.Right-2*bw, 0)
+			pe, be := k.PaddingEdges(), k.BorderEdges()
+			inner := maxf(cs-pe.Left-pe.Right-be.Left-be.Right, 0)
+			insetH := pe.Top + pe.Bottom + be.Top + be.Bottom
 			if k.Node().Kind() == "Wrap" {
-				sz = e.wrapHeight(visibleChildren(k), inner, containerOf(k).Spacing.Get()) + pe.Top + pe.Bottom + 2*bw
+				sz = e.wrapHeight(visibleChildren(k), inner, containerOf(k).Spacing.Get()) + insetH
 			} else {
-				sz = e.gridHeight(visibleChildren(k), inner, gridColumns(k), containerOf(k).Spacing.Get()) + pe.Top + pe.Bottom + 2*bw
+				sz = e.gridHeight(visibleChildren(k), inner, gridColumns(k), containerOf(k).Spacing.Get()) + insetH
 			}
 		}
 		crossPos := 0.0
@@ -889,23 +898,24 @@ func (e *Engine) textSize(s string, t *tree.Text, availW float64) (float64, floa
 	if lineHeight <= 0 {
 		lineHeight = size * 1.2
 	}
+	family := t.FontFamily()
 	if !t.Wrap.Get() {
-		return e.Measurer.MeasureWeight(s, size, weight)
+		return e.measureFamily(s, size, weight, family)
 	}
 	limit := availW
 	if v := t.Width(); v >= 0 {
 		limit = v
 	}
 	if limit <= 0 {
-		return e.Measurer.MeasureWeight(s, size, weight)
+		return e.measureFamily(s, size, weight, family)
 	}
 	// Layout and paint must break in the same places or the reserved height is
 	// wrong, so both use the shared greedy wrap with the same advances.
-	key := wrapKey{s: s, width: limit, size: size, weight: weight}
+	key := wrapKey{s: s, width: limit, size: size, weight: weight, family: t.FontFamily()}
 	n, ok := e.wraps[key]
 	if !ok {
 		n = len(text.WrapRanges(s, limit, func(run string) float64 {
-			w, _ := e.Measurer.MeasureWeight(run, size, weight)
+			w, _ := e.measureFamily(run, size, weight, key.family)
 			return w
 		}))
 		if e.wraps == nil || len(e.wraps) >= maxWrapCounts {
@@ -916,7 +926,14 @@ func (e *Engine) textSize(s string, t *tree.Text, availW float64) (float64, floa
 	return limit, float64(n) * lineHeight
 }
 
-func (e *Engine) measure(s string, size float64, weight int) (float64, float64) {
+// measureFamily measures one run in a design's font family, falling back to the
+// measured face when the app registered none or the measurer cannot ask.
+func (e *Engine) measureFamily(s string, size float64, weight int, family string) (float64, float64) {
+	if family != "" {
+		if fm, ok := e.Measurer.(FamilyMeasurer); ok {
+			return fm.MeasureFamily(s, size, weight, family)
+		}
+	}
 	return e.Measurer.MeasureWeight(s, size, weight)
 }
 
@@ -1007,7 +1024,10 @@ func (e *Engine) metricsFor(k *tree.NodeBase, cv *m3.ComponentView) m3.Metrics {
 	if mt, ok := e.metrics[k]; ok {
 		return mt
 	}
-	mt := m3.MetricsFor(k.Node().Kind(), cv, e.measure)
+	family := k.FontFamily()
+	mt := m3.MetricsFor(k.Node().Kind(), cv, func(s string, size float64, weight int) (float64, float64) {
+		return e.measureFamily(s, size, weight, family)
+	})
 	if e.metrics == nil {
 		e.metrics = make(map[*tree.NodeBase]m3.Metrics, 32)
 	}
@@ -1055,10 +1075,10 @@ func (e *Engine) fabMenuChildren(b *tree.NodeBase, kids []*tree.NodeBase, w, h f
 		}
 		return
 	}
-	pe, bw := b.PaddingEdges(), b.BorderWidth()
-	innerW := maxf(w-pe.Left-pe.Right-2*bw, 0)
-	right := pe.Left + bw + innerW
-	y := h - pe.Bottom - bw - fabSize
+	pe, be := b.PaddingEdges(), b.BorderEdges()
+	innerW := maxf(w-pe.Left-pe.Right-be.Left-be.Right, 0)
+	right := pe.Left + be.Left + innerW
+	y := h - pe.Bottom - be.Bottom - fabSize
 	for _, k := range kids {
 		kw, kh := e.natural(k, innerW, y)
 		if v := k.Width(); v >= 0 {
@@ -1077,9 +1097,9 @@ func (e *Engine) fabMenuChildren(b *tree.NodeBase, kids []*tree.NodeBase, w, h f
 func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (float64, float64) {
 	kids := visibleChildren(k)
 	spacing := containerOf(k).Spacing.Get()
-	pe, bw := k.PaddingEdges(), k.BorderWidth()
-	insetW := pe.Left + pe.Right + 2*bw
-	insetH := pe.Top + pe.Bottom + 2*bw
+	pe, be := k.PaddingEdges(), k.BorderEdges()
+	insetW := pe.Left + pe.Right + be.Left + be.Right
+	insetH := pe.Top + pe.Bottom + be.Top + be.Bottom
 	kind := k.Node().Kind()
 	innerW := maxf(availW-insetW, 0)
 

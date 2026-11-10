@@ -45,7 +45,7 @@ const maxAtlasDim = 4096
 // the blur radius in device pixels for a shadow copy, which is a distinct atlas
 // entry because its bitmap is grown and softened.
 type GlyphKey struct {
-	Font uint8
+	Font uint16
 	Size int // size in 1/4 pixel
 	GID  uint16
 	Blur int

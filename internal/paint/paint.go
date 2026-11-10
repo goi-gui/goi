@@ -126,6 +126,9 @@ type Op struct {
 	Text     string
 	FontSize float32
 	Weight   float32
+	// FontFamily names a family the app registered with ui.LoadFont, or "" for
+	// the built-in Roboto.
+	FontFamily string
 	// Italic slants the face; decoration uses it too, because the underline
 	// follows the same glyphs.
 	Italic bool
@@ -144,6 +147,9 @@ type List struct {
 	// Measure returns the advance width of a string. The UI sets it to the real
 	// shaper; when nil a rough estimate is used, which keeps tests font-free.
 	Measure func(s string, size float64, weight int) float64
+	// MeasureFamily is Measure with a font family, for the wrapping of text a
+	// design set `fontFamily` on. Nil measures every run with Measure.
+	MeasureFamily func(s string, size float64, weight int, family string) float64
 	// ShowFPS draws the frame rate in the top-right corner, above the tree. It is
 	// a debug overlay; the app turns it on with App.ShowFPS.
 	ShowFPS bool
@@ -151,6 +157,9 @@ type List struct {
 	// suppressElev drops a component's own M3 elevation shadow for the node
 	// being painted, so an explicit `shadow` replaces it instead of stacking.
 	suppressElev bool
+	// family is the font family of the node being painted, resolved with the
+	// same inheritance a design has. Every text op the node emits carries it.
+	family string
 	// wrap caches wrapped text runs across frames: a repaint re-wraps every
 	// visible paragraph, and the answer only changes with the text, the column
 	// and the style. Reset keeps it, because it is still valid.
@@ -192,6 +201,8 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 	// from is where this node's own ops begin, so an opacity can fade the node
 	// together with everything under it.
 	from := len(l.Ops)
+	outerFamily := l.family
+	l.family = b.FontFamily()
 	if !empty {
 		l.paintContent(b, r, clip)
 	}
@@ -215,6 +226,7 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 	l.applyRotate(from, b, r)
 	l.applyOpacity(from, b.Opacity())
 	l.applyDisabled(from, b)
+	l.family = outerFamily
 }
 
 // applyDisabled dims a table row's content when the row asked for it. A cell is
@@ -269,6 +281,8 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 	empty := bounds.W <= 0 || bounds.H <= 0
 
 	from := len(l.Ops)
+	outerFamily := l.family
+	l.family = b.FontFamily()
 	if !empty {
 		l.paintContent(b, r, clip)
 	}
@@ -293,6 +307,7 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 	l.applyRotate(from, b, r)
 	l.applyOpacity(from, b.Opacity())
 	l.applyDisabled(from, b)
+	l.family = outerFamily
 }
 
 // paintContent draws one node's own visuals: its shadow, its fill and its
@@ -331,11 +346,77 @@ func (l *List) paintContent(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
 // or a gradient) and its border. Components paint their own surface, so they
 // call this only where one of their parts is an ordinary box.
 func (l *List) paintBox(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
-	if g := b.Gradient("background"); g != nil {
-		l.fillGradient(r, g, b.Radius(), b.BorderColor(), b.BorderWidth(), clip)
-	} else if b.Background() != 0 || b.BorderWidth() > 0 {
-		l.fillRect(r, b.Background(), b.Radius(), b.BorderColor(), b.BorderWidth(), clip)
+	radii := b.Radii()
+	be := b.BorderEdges()
+	cols := b.BorderColors()
+	// A border whose sides agree is one rounded op. Per-side colours weight no
+	// more than the fallback, so this stays the fast path for ordinary boxes.
+	uniform := b.UniformBorder()
+	borderColor, borderWidth := cols[0], be.Top
+	if !uniform {
+		borderColor, borderWidth = 0, 0
 	}
+	g := b.Gradient("background")
+	if g != nil || b.Background() != 0 || borderWidth > 0 {
+		l.fillShape(r, b.Background(), g, radii, borderColor, borderWidth, clip)
+	}
+	if uniform {
+		return
+	}
+	l.paintSideBorders(b, r, radii, be, cols, clip)
+}
+
+// fillShape is fillRect and fillGradient with one radius per corner, which is
+// what a design with radiusTop or radiusTopLeft asks for. A uniform radius
+// still goes through the same op; only the array differs.
+func (l *List) fillShape(r tree.Rect, color uint32, g *tree.Gradient, radii [4]float64, borderColor uint32, borderWidth float64, clip tree.Rect) {
+	if color == 0 && g == nil && (borderColor == 0 || borderWidth <= 0) {
+		return
+	}
+	shape := RoundedRect
+	if g != nil {
+		shape = CSSGradient
+	}
+	l.Ops = append(l.Ops, Op{
+		Kind:        Fill,
+		Shape:       shape,
+		Gradient:    g,
+		Rect:        rectArr(r),
+		Radius:      [4]float32{float32(radii[0]), float32(radii[1]), float32(radii[2]), float32(radii[3])},
+		Color:       color,
+		BorderColor: borderColor,
+		BorderWidth: float32(borderWidth),
+		Clip:        clipArr(clip),
+	})
+}
+
+// paintSideBorders draws an uneven border as four bands, each in its own colour
+// and width. The bands are cut to the box's rounded outline when every corner
+// shares a radius; an uneven border on uneven corners keeps square corners,
+// which is the one thing this cannot round.
+//
+// shortcut: per-side borders do not follow per-corner radii, upgrade by
+// carrying four border widths into the shape shader.
+func (l *List) paintSideBorders(b *tree.NodeBase, r tree.Rect, radii [4]float64, be tree.Edges, cols [4]uint32, clip tree.Rect) {
+	inner := intersect(clip, r)
+	rad := float32(0)
+	if radii[0] == radii[1] && radii[1] == radii[2] && radii[2] == radii[3] {
+		rad = float32(radii[0])
+	}
+	box := rectArr(r)
+	side := func(band tree.Rect, color uint32) {
+		if color == 0 || band.W <= 0 || band.H <= 0 {
+			return
+		}
+		l.Ops = append(l.Ops, Op{
+			Kind: Fill, Shape: RoundedRect, Rect: rectArr(band), Color: color,
+			Clip: clipArr(inner), ClipRadius: rad, ClipBox: box,
+		})
+	}
+	side(tree.Rect{X: r.X, Y: r.Y, W: r.W, H: be.Top}, cols[0])
+	side(tree.Rect{X: r.X, Y: r.Y, W: be.Left, H: r.H}, cols[3])
+	side(tree.Rect{X: r.Right() - be.Right, Y: r.Y, W: be.Right, H: r.H}, cols[1])
+	side(tree.Rect{X: r.X, Y: r.Bottom() - be.Bottom, W: r.W, H: be.Bottom}, cols[2])
 }
 
 // roundClip rounds the clip of every op a subtree produced, which is what a
@@ -560,22 +641,6 @@ func (l *List) fillRect(r tree.Rect, color uint32, radius float64, borderColor u
 		Rect:        rectArr(r),
 		Radius:      [4]float32{rad, rad, rad, rad},
 		Color:       color,
-		BorderColor: borderColor,
-		BorderWidth: float32(borderWidth),
-		Clip:        clipArr(clip),
-	})
-}
-
-// fillGradient paints a box with a CSS gradient, keeping the border on top the
-// way fillRect does.
-func (l *List) fillGradient(r tree.Rect, g *tree.Gradient, radius float64, borderColor uint32, borderWidth float64, clip tree.Rect) {
-	rad := float32(radius)
-	l.Ops = append(l.Ops, Op{
-		Kind:        Fill,
-		Shape:       CSSGradient,
-		Rect:        rectArr(r),
-		Radius:      [4]float32{rad, rad, rad, rad},
-		Gradient:    g,
 		BorderColor: borderColor,
 		BorderWidth: float32(borderWidth),
 		Clip:        clipArr(clip),

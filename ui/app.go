@@ -92,6 +92,9 @@ type App struct {
 	loadClock float64
 	// themes are the schemes a `.goi` file may name, keyed by name.
 	themes map[string]*Theme
+	// fonts holds the families LoadFont registered, so a window created after
+	// the call still finds them.
+	fonts map[string][]byte
 	// catalog is the design's i18n folder, nil when it has none. language and
 	// fallbackLanguage are what SetLanguage chose; empty means "follow the
 	// desktop", which is why neither needs a startup write.

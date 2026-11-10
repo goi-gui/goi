@@ -33,6 +33,19 @@ func (m textMeasurer) MeasureWeight(s string, fontSize float64, weight int) (flo
 	return f.Measure(s, -1)
 }
 
+// MeasureFamily implements layout.FamilyMeasurer for a design that names a font
+// family with `fontFamily`.
+func (m textMeasurer) MeasureFamily(s string, fontSize float64, weight int, family string) (float64, float64) {
+	if m.lib == nil {
+		return fakeMeasure(s, fontSize, -1)
+	}
+	f := m.lib.FamilyFace(fontSize, text.Weight(weight), family)
+	if f == nil {
+		return fakeMeasure(s, fontSize, -1)
+	}
+	return f.Measure(s, -1)
+}
+
 func fakeMeasure(s string, fontSize, maxWidth float64) (float64, float64) {
 	w := float64(len(s)) * fontSize * 0.5
 	if maxWidth > 0 && w > maxWidth {
