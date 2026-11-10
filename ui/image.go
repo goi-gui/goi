@@ -122,20 +122,27 @@ func (a *App) loadImage(im *tree.Image, src string) {
 }
 
 // syncImages loads a src that an expression or Go changed after the build. It
-// runs once per frame and only walks the tree while the design has an Image.
+// runs once per frame and only walks the tree while the design has an Image or a
+// frame is pending.
 //
 // A row built by `for ... range` over bridge data is the case that needs it: the
-// loop variable only exists once the expression pass has run, so the build sees
-// an empty src and the picture would stay a placeholder.
+// build made the row before the data arrived, so it saw neither an Image nor a
+// src, and the picture would stay a placeholder. A pending frame is what a row
+// rebuild leaves behind, which is why the walk cannot trust the flag from the
+// build alone.
 func (a *App) syncImages() {
-	if a.win == nil || a.win.tree == nil || !a.hasImages {
+	if a.win == nil || a.win.tree == nil || (!a.hasImages && !a.needsFrame) {
 		return
 	}
+	// The walk sees every node, so it also maintains the flag: a rebuilt row may
+	// be the first Image in the design, and one removed leaves no reason to walk.
+	a.hasImages = false
 	a.win.tree.Walk(func(n tree.Node) {
 		im, ok := n.(*tree.Image)
 		if !ok {
 			return
 		}
+		a.hasImages = true
 		src := im.Src.Get()
 		if src == im.RenderedSrc {
 			return
@@ -392,15 +399,19 @@ func (a *App) syncSVGs() {
 	}
 	// The walk is free only while nothing is pending: a design with an SVG needs
 	// it every frame for a colour change, and a document set from Go marks the
-	// tree dirty, which is the frame this has to run on.
+	// tree dirty, which is the frame this has to run on. A row built later can
+	// bring the first SVG with it, so a pending frame has to walk even when the
+	// build saw none, and the walk keeps the flag honest either way.
 	if !a.hasSVG && !a.needsFrame {
 		return
 	}
+	a.hasSVG = false
 	a.win.tree.Walk(func(n tree.Node) {
 		s, ok := n.(*tree.SVG)
 		if !ok {
 			return
 		}
+		a.hasSVG = true
 		color := s.Color.Get()
 		if s.InlineGen > 0 {
 			// A document from Go owns the node until another set replaces it.

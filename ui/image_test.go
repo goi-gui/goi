@@ -716,6 +716,58 @@ func TestAnimatedSVGSurvivesTransportAndPageSwitching(t *testing.T) {
 	}
 }
 
+// TestImageInRowBuiltAfterTheDesignLoads is the league shape: the design has no
+// Image of its own, the table rows arrive with SetData later, and their badges
+// still have to load. A flag set only while the design was built missed them.
+func TestImageInRowBuiltAfterTheDesignLoads(t *testing.T) {
+	a, win := reloadApp(t, `bridge {
+	rows []Row
+}
+
+type Row {
+	badge string
+}
+
+Window { Column {
+	for i, r := range bridge.rows {
+		Image { src: r.badge width: 30 height: 30 fit: cover }
+	}
+} }`)
+	a.assets = fstest.MapFS{
+		"a.png": &fstest.MapFile{Data: testPNG(t)},
+	}
+	// The window loads first, with no rows in the tree yet.
+	a.loadImages(win.tree)
+	if a.hasImages {
+		t.Fatal("the design has no Image yet, so the flag should be clear")
+	}
+
+	// Then the data lands, which rebuilds the loop and marks a frame.
+	win.tree.SetData("rows", []map[string]any{{"badge": "goi://a.png"}})
+	a.markDirty(tree.DirtyLayout)
+	win.tree.ApplyExpressions()
+	a.syncImages()
+
+	var im *Image
+	for _, n := range win.tree.All() {
+		if got, ok := n.(*Image); ok {
+			im = got
+		}
+	}
+	if im == nil {
+		t.Fatal("the loop built no Image")
+	}
+	if !a.hasImages {
+		t.Fatal("the walk did not record the Image it found")
+	}
+	if im.LoadErr != nil {
+		t.Fatalf("load: %v", im.LoadErr)
+	}
+	if im.Data == nil {
+		t.Fatalf("src %q loaded no bitmap", im.Src.Get())
+	}
+}
+
 // TestImageSrcFromLoopVariable covers a src that only exists once the expression
 // pass has run: a row built by `for ... range` reads the loop variable, so the
 // build sees an empty string and the picture has to load on the next frame.

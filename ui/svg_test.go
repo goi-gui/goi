@@ -214,3 +214,60 @@ Window { Column {
 		t.Fatalf("intrinsic = %vx%v, want 10x20", n.IntrinsicW, n.IntrinsicH)
 	}
 }
+
+// TestSVGInRowBuiltAfterTheDesignLoads is the Image case for SVG: the design has
+// no SVG of its own, and the rows that bring one arrive later. The colour of such
+// a node still has to follow a change.
+func TestSVGInRowBuiltAfterTheDesignLoads(t *testing.T) {
+	a := newHeadlessApp()
+	a.assets = fstest.MapFS{"icon.svg": &fstest.MapFile{Data: []byte(svgFixture)}}
+	tr, diag := tree.BuildSource([]byte(`bridge {
+	rows []Row
+}
+
+type Row {
+	icon string
+}
+
+Window { Column {
+	for i, r := range bridge.rows {
+		SVG { id: mark src: r.icon color: #ff0000 }
+	}
+} }`), &tree.Hooks{Marked: a.markDirty})
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	a.win = &Window{tree: tr, app: a}
+	a.loadImages(tr)
+	if a.hasSVG {
+		t.Fatal("the design has no SVG yet, so the flag should be clear")
+	}
+
+	tr.SetData("rows", []map[string]any{{"icon": "goi://icon.svg"}})
+	a.markDirty(tree.DirtyLayout)
+	tr.ApplyExpressions()
+	a.syncSVGs()
+	if !a.hasSVG {
+		t.Fatal("the walk did not record the SVG it found")
+	}
+	var n *SVG
+	for _, x := range tr.All() {
+		if got, ok := x.(*SVG); ok {
+			n = got
+		}
+	}
+	if n == nil {
+		t.Fatal("the loop built no SVG")
+	}
+	if n.Data == nil || n.LoadErr != nil {
+		t.Fatalf("raster = %v, err = %v", n.Data, n.LoadErr)
+	}
+
+	// The flag now makes the per-frame walk run, so a colour change lands.
+	first := n.Data
+	n.Color.Set(0x0000FFFF)
+	a.syncSVGs()
+	if n.Data == first {
+		t.Fatal("a later colour change reused the old raster")
+	}
+}
