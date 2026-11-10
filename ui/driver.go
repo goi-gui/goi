@@ -266,6 +266,9 @@ func (a *App) frame() {
 	// A role may just have given an SVG its colour, and Go may have changed it
 	// between frames. This runs before layout, so a changed src can still size.
 	a.syncSVGs()
+	// An Image src written as an expression, or a row built by a loop, only has
+	// its value once the expression pass above has run.
+	a.syncImages()
 	// The window properties can change from Go or an expression, and the
 	// platform has to hear about them before the frame is measured.
 	a.syncChrome()

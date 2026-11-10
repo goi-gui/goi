@@ -715,3 +715,60 @@ func TestAnimatedSVGSurvivesTransportAndPageSwitching(t *testing.T) {
 		t.Fatalf("LoadErr = %v", n.LoadErr)
 	}
 }
+
+// TestImageSrcFromLoopVariable covers a src that only exists once the expression
+// pass has run: a row built by `for ... range` reads the loop variable, so the
+// build sees an empty string and the picture has to load on the next frame.
+func TestImageSrcFromLoopVariable(t *testing.T) {
+	a, win := reloadApp(t, `bridge {
+	rows []Row
+}
+
+type Row {
+	badge string
+}
+
+Window { Column {
+	for i, r := range bridge.rows {
+		Image { src: r.badge width: 30 height: 30 fit: cover }
+	}
+} }`)
+	a.assets = fstest.MapFS{
+		"a.png": &fstest.MapFile{Data: testPNG(t)},
+	}
+	win.tree.SetData("rows", []map[string]any{{"badge": "goi://a.png"}})
+
+	var im *Image
+	for _, n := range win.tree.All() {
+		if got, ok := n.(*Image); ok {
+			im = got
+		}
+	}
+	if im == nil {
+		t.Fatal("the loop built no Image")
+	}
+	a.loadImages(win.tree)
+	if im.Data != nil {
+		t.Fatal("the bitmap was already there before the expression ran")
+	}
+
+	win.tree.ApplyExpressions()
+	a.syncImages()
+
+	if im.LoadErr != nil {
+		t.Fatalf("load: %v", im.LoadErr)
+	}
+	if im.Data == nil {
+		t.Fatalf("src %q loaded no bitmap", im.Src.Get())
+	}
+	if im.Data.W != 3 || im.Data.H != 2 {
+		t.Fatalf("bitmap = %dx%d, want the 3x2 test image", im.Data.W, im.Data.H)
+	}
+
+	// A second pass with an unchanged src must not reload it.
+	im.Data = nil
+	a.syncImages()
+	if im.Data != nil {
+		t.Fatal("an unchanged src loaded again")
+	}
+}

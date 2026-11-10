@@ -318,6 +318,9 @@ type Image struct {
 	// LoadErr is the load or decode failure, if any. The node keeps drawing its
 	// placeholder, which is why a bad src shows as a coloured box.
 	LoadErr error
+	// RenderedSrc is the src the current Data came from, so the ui layer can
+	// tell a src an expression just changed from one it already loaded.
+	RenderedSrc string
 	// Anim is the decoded animation behind src, nil for a still picture. Frame
 	// and AnimTime are the player's state: the ui layer advances them and swaps
 	// Data.Pix before repainting, so the design file never mentions them.

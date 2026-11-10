@@ -162,3 +162,55 @@ func svgPixel(n *SVG, x, y int) (r, g, b, a uint8) {
 	i := (y*n.Data.W + x) * 4
 	return n.Data.Pix[i], n.Data.Pix[i+1], n.Data.Pix[i+2], n.Data.Pix[i+3]
 }
+
+// TestSVGSrcFromLoopVariable is the SVG half of the same case: a src that only
+// exists once the expression pass has run must load on the next frame.
+func TestSVGSrcFromLoopVariable(t *testing.T) {
+	a := newHeadlessApp()
+	a.assets = fstest.MapFS{"icon.svg": &fstest.MapFile{Data: []byte(svgFixture)}}
+	tr, diag := tree.BuildSource([]byte(`bridge {
+	rows []Row
+}
+
+type Row {
+	icon string
+}
+
+Window { Column {
+	for i, r := range bridge.rows {
+		SVG { src: r.icon }
+	}
+} }`), &tree.Hooks{Marked: a.markDirty})
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	a.win = &Window{tree: tr, app: a}
+	tr.SetData("rows", []map[string]any{{"icon": "goi://icon.svg"}})
+	a.loadImages(tr)
+
+	var n *SVG
+	for _, x := range tr.All() {
+		if got, ok := x.(*SVG); ok {
+			n = got
+		}
+	}
+	if n == nil {
+		t.Fatal("the loop built no SVG")
+	}
+	if n.Data != nil {
+		t.Fatal("the raster was already there before the expression ran")
+	}
+
+	tr.ApplyExpressions()
+	a.syncSVGs()
+
+	if n.LoadErr != nil {
+		t.Fatalf("load: %v", n.LoadErr)
+	}
+	if n.Data == nil {
+		t.Fatalf("src %q rasterized nothing", n.Src.Get())
+	}
+	if n.IntrinsicW != 10 || n.IntrinsicH != 20 {
+		t.Fatalf("intrinsic = %vx%v, want 10x20", n.IntrinsicW, n.IntrinsicH)
+	}
+}

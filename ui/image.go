@@ -63,15 +63,15 @@ func (a *App) readSrc(src string) ([]byte, error) {
 // in the background, so a slow host cannot hold up the window. The placeholder
 // breathes until the bitmap lands.
 //
-// shortcut: src is read once, when the tree is built or reloaded. An expression
-// that changes src at runtime updates the string but not the bitmap; upgrade with
-// a per-frame check on Src when an app swaps images without a reload.
+// A src written as an expression (`src: team.badge`) has no value yet at this
+// point, so syncImages picks it up once the expression pass has run.
 func (a *App) loadImages(tr *tree.Tree) {
 	if tr == nil {
 		return
 	}
 	a.hasSVG = false
 	a.hasSVGAnim = false
+	a.hasImages = false
 	for _, n := range tr.All() {
 		if s, ok := n.(*tree.SVG); ok {
 			a.hasSVG = true
@@ -82,34 +82,69 @@ func (a *App) loadImages(tr *tree.Tree) {
 		if !ok {
 			continue
 		}
-		src := im.Src.Get()
-		if src == "" {
-			continue
-		}
-		if isRemoteSrc(src) {
-			a.loadRemoteImage(im, src)
-			continue
-		}
-		d, cached := a.images[src]
-		if !cached {
-			b, err := a.readSrc(src)
-			if err != nil {
-				im.LoadErr = err
-				continue
-			}
-			var anim *img.Anim
-			if d, anim, err = img.DecodeAnimated(b); err != nil {
-				im.LoadErr = fmt.Errorf("%s: %w", src, err)
-				continue
-			}
-			a.cacheImage(src, d, anim)
-		}
-		anim := a.anims[src]
-		animData(im, d, anim)
-		if anim != nil {
-			a.hasAnim = true
-		}
+		a.hasImages = true
+		a.loadImage(im, im.Src.Get())
 	}
+}
+
+// loadImage gives one node the bitmap behind src: from the cache when it has
+// been decoded before, from disk on the UI goroutine, or from the network in the
+// background. It records the src it loaded, which is how syncImages notices a
+// later change.
+func (a *App) loadImage(im *tree.Image, src string) {
+	im.RenderedSrc = src
+	if src == "" {
+		return
+	}
+	if isRemoteSrc(src) {
+		a.loadRemoteImage(im, src)
+		return
+	}
+	d, cached := a.images[src]
+	if !cached {
+		b, err := a.readSrc(src)
+		if err != nil {
+			im.LoadErr = err
+			return
+		}
+		var anim *img.Anim
+		if d, anim, err = img.DecodeAnimated(b); err != nil {
+			im.LoadErr = fmt.Errorf("%s: %w", src, err)
+			return
+		}
+		a.cacheImage(src, d, anim)
+	}
+	anim := a.anims[src]
+	animData(im, d, anim)
+	if anim != nil {
+		a.hasAnim = true
+	}
+}
+
+// syncImages loads a src that an expression or Go changed after the build. It
+// runs once per frame and only walks the tree while the design has an Image.
+//
+// A row built by `for ... range` over bridge data is the case that needs it: the
+// loop variable only exists once the expression pass has run, so the build sees
+// an empty src and the picture would stay a placeholder.
+func (a *App) syncImages() {
+	if a.win == nil || a.win.tree == nil || !a.hasImages {
+		return
+	}
+	a.win.tree.Walk(func(n tree.Node) {
+		im, ok := n.(*tree.Image)
+		if !ok {
+			return
+		}
+		src := im.Src.Get()
+		if src == im.RenderedSrc {
+			return
+		}
+		a.loadImage(im, src)
+		// A new bitmap may be a different size, and a design that declares no
+		// width or height takes the picture's.
+		im.Base().MarkDirty(tree.DirtyLayout)
+	})
 }
 
 // animData gives an animated node its own bitmap, so two elements with the same

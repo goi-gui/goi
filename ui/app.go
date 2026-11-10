@@ -81,6 +81,9 @@ type App struct {
 	// as pending: one request per URL.
 	svgPending map[string]bool
 	hasSVG     bool
+	// hasImages is true while the tree holds an Image, so the per-frame src
+	// check only walks a design that can use one.
+	hasImages bool
 	// hasSVGAnim is true while the tree holds an animated SVG document.
 	hasSVGAnim bool
 	// pending holds the URLs with a fetch in flight, so two nodes with the same
