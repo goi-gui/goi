@@ -20,6 +20,12 @@ import (
 // full of photos does not silently lose one. Only at the cap does an image get
 // downscaled, and the last resort is skipping the op. A real photo wall wants
 // per-image textures with a mip chain.
+//
+// Each image is packed at its own drawn size, halved while it stays more than
+// twice the quad's device size. A 512px logo drawn at 30dp would otherwise be
+// minified 17x by a bilinear sampler that can only read 2x2 texels, which is
+// what makes small pictures look grainy; packing it near 2x the drawn size
+// keeps every mip a box filter over the original.
 type imageRenderer struct {
 	texture *wgpu.Texture
 	view    *wgpu.TextureView
@@ -29,11 +35,10 @@ type imageRenderer struct {
 	pix   []byte
 	gpu   *GPU
 	shelf img.Shelf
-	// regions maps a decoded image to its rect in the atlas.
-	regions map[*img.Data]img.Region
-	// gens is the Data.Gen each region holds, so an animation frame that swaps
-	// Pix in place is uploaded again instead of packed a second time.
-	gens map[*img.Data]int
+	// regions maps one packed size of an image to its rect in the atlas. The
+	// same picture drawn small and large holds two entries, each filtered for
+	// its own size.
+	regions map[imageKey]imageSlot
 	// dirty is set when pix changed since the last upload.
 	dirty bool
 	// resized is set when the atlas grew, so the texture must be rebuilt.
@@ -43,6 +48,22 @@ type imageRenderer struct {
 // Image atlases are capped so a pathological set cannot allocate without bound.
 const maxImageAtlasDim = 4096
 
+// imageKey identifies one packed copy of an image: the source, and the size it
+// was scaled to.
+type imageKey struct {
+	src *img.Data
+	w   int
+	h   int
+}
+
+// imageSlot is a packed rect together with the animation generation it holds,
+// so a frame that swapped Pix in place is uploaded again instead of packed a
+// second time.
+type imageSlot struct {
+	r   img.Region
+	gen int
+}
+
 func (g *GPU) initImages() error {
 	const size = 2048
 	t := &imageRenderer{
@@ -50,8 +71,7 @@ func (g *GPU) initImages() error {
 		w:   size, h: size,
 		pix:     make([]byte, size*size*4),
 		shelf:   img.Shelf{W: size, H: size},
-		regions: map[*img.Data]img.Region{},
-		gens:    map[*img.Data]int{},
+		regions: map[imageKey]imageSlot{},
 		dirty:   true,
 	}
 	tex, err := g.device.CreateTexture(&wgpu.TextureDescriptor{
@@ -92,18 +112,45 @@ func (t *imageRenderer) prepare(list *paint.List) {
 		if op.Kind != paint.Bitmap || op.Src == nil {
 			continue
 		}
-		r, ok := t.regions[op.Src]
-		if !ok {
-			t.pack(op.Src)
+		key := t.keyFor(op)
+		if slot, ok := t.regions[key]; ok {
+			// An animation swaps Pix in place and bumps Gen; the region stays,
+			// only its pixels are refreshed.
+			if slot.gen != op.Src.Gen {
+				t.writeRegion(op.Src, slot.r)
+				slot.gen = op.Src.Gen
+				t.regions[key] = slot
+			}
 			continue
 		}
-		// An animation swaps Pix in place and bumps Gen; the region stays, only
-		// its pixels are refreshed.
-		if t.gens[op.Src] != op.Src.Gen {
-			t.writeRegion(op.Src, r)
-			t.gens[op.Src] = op.Src.Gen
-		}
+		t.pack(op.Src, key)
 	}
+}
+
+// keyFor is the atlas key one op asks for: the image, packed at a size close to
+// its drawn one. Halving keeps the number of distinct sizes per image small, and
+// each one stays a clean box filter of the original.
+func (t *imageRenderer) keyFor(op paint.Op) imageKey {
+	return t.keyForSize(op.Src, float64(op.Rect[2]), float64(op.Rect[3]))
+}
+
+// keyForSize is keyFor for a picture drawn at dw by dh logical pixels, which is
+// what a colour emoji quad has.
+func (t *imageRenderer) keyForSize(d *img.Data, dw, dh float64) imageKey {
+	scale := float64(t.gpu.scale)
+	if scale <= 0 {
+		scale = 1
+	}
+	dw *= scale
+	dh *= scale
+	w, h := d.W, d.H
+	// Stop at the power of two that is 2x to 4x the drawn size. The sampler then
+	// reads no more than a 4x4 footprint per pixel, which its 2x2 taps plus the
+	// box filtering here turn into a smooth edge instead of speckle.
+	for w > 1 && h > 1 && (float64(w) > 4*dw+1 || float64(h) > 4*dh+1) {
+		w, h = w/2, h/2
+	}
+	return imageKey{src: d, w: w, h: h}
 }
 
 // addOp appends the quad for one bitmap op. prepare has already packed it.
@@ -112,12 +159,16 @@ func (t *imageRenderer) addOp(op paint.Op) {
 	if d == nil {
 		return
 	}
-	r, ok := t.regions[d]
+	key := t.keyFor(op)
+	slot, ok := t.regions[key]
 	if !ok {
-		if r, ok = t.pack(d); !ok {
+		var r img.Region
+		if r, ok = t.pack(d, key); !ok {
 			return
 		}
+		slot = imageSlot{r: r, gen: d.Gen}
 	}
+	r := slot.r
 	u0, v0 := float32(r.X)/float32(t.w), float32(r.Y)/float32(t.h)
 	u1, v1 := float32(r.X+r.W)/float32(t.w), float32(r.Y+r.H)/float32(t.h)
 	// The op's UV is a crop of the whole image; map it into the packed rect.
@@ -139,9 +190,17 @@ func (t *imageRenderer) addOp(op paint.Op) {
 	})
 }
 
-// pack places d in the atlas, downscaling it when the space left is smaller.
-func (t *imageRenderer) pack(d *img.Data) (img.Region, bool) {
-	w, h := d.W, d.H
+// pack places d in the atlas at key's size, shrinking further only when the
+// space left is smaller. The region is filed under key, which is what the caller
+// looked up, and under the size it actually got when that differs.
+func (t *imageRenderer) pack(d *img.Data, key imageKey) (img.Region, bool) {
+	w, h := key.w, key.h
+	if w < 1 {
+		w = 1
+	}
+	if h < 1 {
+		h = 1
+	}
 	if w > t.w || h > t.h {
 		s := min(float64(t.w)/float64(w), float64(t.h)/float64(h))
 		w, h = max(1, int(float64(w)*s)), max(1, int(float64(h)*s))
@@ -170,8 +229,13 @@ func (t *imageRenderer) pack(d *img.Data) (img.Region, bool) {
 	}
 	r := img.Region{X: x, Y: y, W: w, H: h}
 	t.writeRegion(src, r)
-	t.regions[d] = r
-	t.gens[d] = d.Gen
+	slot := imageSlot{r: r, gen: d.Gen}
+	t.regions[key] = slot
+	if key.w != w || key.h != h {
+		// The atlas was too full for the requested size: the same shrunken copy
+		// answers that key too, so nothing repacks it every frame.
+		t.regions[imageKey{src: d, w: w, h: h}] = slot
+	}
 	return r, true
 }
 
@@ -216,8 +280,9 @@ func (t *imageRenderer) grow() bool {
 	t.shelf = img.Shelf{W: nw, H: nh}
 	t.w, t.h = nw, nh
 
-	regions := make(map[*img.Data]img.Region, len(t.regions))
-	for d, r := range t.regions {
+	regions := make(map[imageKey]imageSlot, len(t.regions))
+	for k, slot := range t.regions {
+		r := slot.r
 		x, y, ok := t.shelf.Place(r.W, r.H)
 		if !ok {
 			continue // repacked on the next request
@@ -226,7 +291,8 @@ func (t *imageRenderer) grow() bool {
 			copy(t.pix[((y+row)*nw+x)*4:],
 				oldPix[((r.Y+row)*ow+r.X)*4:((r.Y+row)*ow+r.X+r.W)*4])
 		}
-		regions[d] = img.Region{X: x, Y: y, W: r.W, H: r.H}
+		slot.r = img.Region{X: x, Y: y, W: r.W, H: r.H}
+		regions[k] = slot
 	}
 	t.regions = regions
 	t.resized = true

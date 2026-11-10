@@ -212,8 +212,10 @@ func printInner(v syntax.Value) string {
 		return printPrec(x.Cond, precOr) + " ? " + printPrec(x.Then, precTernary) + " : " + printPrec(x.Else, precTernary)
 	case *syntax.Rotate:
 		// The angle is degrees, so a turn or rad becomes the equivalent degree
-		// value; the meaning is the same and the file stays round-trippable.
-		num := func(v float64) string { return strconv.FormatFloat(v, 'g', -1, 64) }
+		// value. Seven significant digits is as fine as the radians the painter
+		// stores can resolve, and it keeps `1.57rad` from becoming
+		// `89.95437383553926deg`.
+		num := func(v float64) string { return strconv.FormatFloat(v, 'g', 7, 64) }
 		if x.Axis == "" && x.Vector == [3]float64{} && x.Angle == 0 {
 			return "none"
 		}

@@ -373,12 +373,16 @@ func (t *textRenderer) emit(i int) {
 	if i < len(t.emojiSpan) && g.images != nil {
 		es := t.emojiSpan[i]
 		for _, q := range t.emoji[es.start : es.start+es.n] {
-			r, ok := g.images.regions[q.data]
+			key := g.images.keyForSize(q.data, float64(q.rect[2]), float64(q.rect[3]))
+			slot, ok := g.images.regions[key]
 			if !ok {
-				if r, ok = g.images.pack(q.data); !ok {
+				var packed img.Region
+				if packed, ok = g.images.pack(q.data, key); !ok {
 					continue
 				}
+				slot = imageSlot{r: packed, gen: q.data.Gen}
 			}
+			r := slot.r
 			u0 := float32(r.X) / float32(g.images.w)
 			v0 := float32(r.Y) / float32(g.images.h)
 			u1 := float32(r.X+r.W) / float32(g.images.w)

@@ -280,6 +280,9 @@ func TestRotateRoundTrips(t *testing.T) {
 	for src, want := range map[string]string{
 		`Window { Column { rotate: 1.5707963267948966rad } }`: "rotate: 90deg",
 		`Window { Column { rotate: 0.25turn } }`:              "rotate: 90deg",
+		// A radian value that is not a round angle is rounded to seven digits,
+		// which is finer than the radians the painter keeps.
+		`Window { Column { rotate: 1.57rad } }`: "rotate: 89.95437deg",
 	} {
 		if got := string(Source([]byte(src))); !strings.Contains(got, want) {
 			t.Fatalf("%s:\n%s", src, got)

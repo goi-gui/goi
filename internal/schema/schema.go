@@ -199,15 +199,6 @@ var common = []Prop{
 	{Name: "borderRightColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
 	{Name: "borderBottomColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
 	{Name: "borderLeftColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
-	// A side colour or width overrides borderColor/borderWidth for that side.
-	{Name: "borderTopColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
-	{Name: "borderRightColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
-	{Name: "borderBottomColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
-	{Name: "borderLeftColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
-	{Name: "borderTopWidth", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
-	{Name: "borderRightWidth", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
-	{Name: "borderBottomWidth", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
-	{Name: "borderLeftWidth", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
 	{Name: "radius", Type: TypeNumber, Dirty: DirtyPaint, Default: 0.0, Common: true},
 	// A side radius rounds both corners on that side; a corner radius rounds
 	// that one corner. -1 follows the broader property.
@@ -220,19 +211,6 @@ var common = []Prop{
 	{Name: "radiusBottomRight", Type: TypeNumber, Dirty: DirtyPaint, Default: -1.0, Common: true},
 	{Name: "radiusBottomLeft", Type: TypeNumber, Dirty: DirtyPaint, Default: -1.0, Common: true},
 	// The font family a node draws in; children inherit it.
-	{Name: "fontFamily", Type: TypeString, Dirty: DirtyLayout, Default: "", Common: true},
-	// A side radius rounds both corners on that side, and a corner radius
-	// rounds that one corner; -1 follows the broader property.
-	{Name: "radiusTop", Type: TypeNumber, Dirty: DirtyPaint, Default: -1.0, Common: true},
-	{Name: "radiusRight", Type: TypeNumber, Dirty: DirtyPaint, Default: -1.0, Common: true},
-	{Name: "radiusBottom", Type: TypeNumber, Dirty: DirtyPaint, Default: -1.0, Common: true},
-	{Name: "radiusLeft", Type: TypeNumber, Dirty: DirtyPaint, Default: -1.0, Common: true},
-	{Name: "radiusTopLeft", Type: TypeNumber, Dirty: DirtyPaint, Default: -1.0, Common: true},
-	{Name: "radiusTopRight", Type: TypeNumber, Dirty: DirtyPaint, Default: -1.0, Common: true},
-	{Name: "radiusBottomRight", Type: TypeNumber, Dirty: DirtyPaint, Default: -1.0, Common: true},
-	{Name: "radiusBottomLeft", Type: TypeNumber, Dirty: DirtyPaint, Default: -1.0, Common: true},
-	// A font family the app registered; children inherit it until one sets its
-	// own.
 	{Name: "fontFamily", Type: TypeString, Dirty: DirtyLayout, Default: "", Common: true},
 	// A CSS-style shadow: on Text it shadows the glyphs, everywhere else the
 	// box. It paints outside the layout box, so it never changes layout.

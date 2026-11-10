@@ -57,15 +57,9 @@ func TestSnapRect(t *testing.T) {
 // pack a new one.
 func TestImageAtlasUpdatesInPlace(t *testing.T) {
 	const size = 64
-	at := &imageRenderer{
-		w: size, h: size,
-		pix:     make([]byte, size*size*4),
-		shelf:   img.Shelf{W: size, H: size},
-		regions: map[*img.Data]img.Region{},
-		gens:    map[*img.Data]int{},
-	}
+	at := newTestImageRenderer(size)
 	d := &img.Data{W: 8, H: 8, Pix: make([]byte, 8*8*4)}
-	list := &paint.List{Ops: []paint.Op{{Kind: paint.Bitmap, Src: d}}}
+	list := &paint.List{Ops: []paint.Op{{Kind: paint.Bitmap, Src: d, Rect: [4]float32{0, 0, 8, 8}}}}
 	at.prepare(list)
 	if len(at.regions) != 1 {
 		t.Fatalf("regions after the first frame = %d", len(at.regions))
@@ -80,5 +74,81 @@ func TestImageAtlasUpdatesInPlace(t *testing.T) {
 	}
 	if !at.dirty {
 		t.Fatal("the new frame was not marked for upload")
+	}
+}
+
+// newTestImageRenderer is an atlas with no GPU, at 1x, for the packing logic.
+func newTestImageRenderer(size int) *imageRenderer {
+	return &imageRenderer{
+		w: size, h: size,
+		pix:     make([]byte, size*size*4),
+		shelf:   img.Shelf{W: size, H: size},
+		regions: map[imageKey]imageSlot{},
+		gpu:     &GPU{scale: 1},
+	}
+}
+
+// TestSmallImageIsPackedAtItsDrawnSize is the graininess guard: a 512px picture
+// drawn at 30dp must not be minified 17x by a bilinear sampler, which is what
+// made small images look rough. It is box-filtered down to about twice the drawn
+// size instead.
+func TestSmallImageIsPackedAtItsDrawnSize(t *testing.T) {
+	at := newTestImageRenderer(1024)
+	d := &img.Data{W: 512, H: 512, Pix: make([]byte, 512*512*4)}
+	op := paint.Op{Kind: paint.Bitmap, Src: d, Rect: [4]float32{0, 0, 30, 30}}
+	list := &paint.List{Ops: []paint.Op{op}}
+	at.prepare(list)
+
+	key := at.keyFor(op)
+	if key.w != 64 || key.h != 64 {
+		t.Fatalf("packed at %dx%d, want 64x64 (2x the drawn 30dp)", key.w, key.h)
+	}
+	slot, ok := at.regions[key]
+	if !ok || slot.r.W != 64 {
+		t.Fatalf("region = %+v, ok = %v", slot.r, ok)
+	}
+
+	// A bigger copy of the same picture keeps its own, sharper entry instead of
+	// reusing the small one.
+	big := paint.Op{Kind: paint.Bitmap, Src: d, Rect: [4]float32{0, 0, 256, 256}}
+	at.prepare(&paint.List{Ops: []paint.Op{big}})
+	if got := at.keyFor(big).w; got != 512 {
+		t.Fatalf("large entry packed at %d, want the source's 512", got)
+	}
+	if len(at.regions) != 2 {
+		t.Fatalf("regions = %d, want one per drawn size", len(at.regions))
+	}
+
+	// Twice the device scale halves the logical size, so a 30dp picture at 2x
+	// still packs at 2x its device pixels.
+	at.gpu.scale = 2
+	if got := at.keyFor(op).w; got != 128 {
+		t.Fatalf("at 2x packed at %d, want 128", got)
+	}
+
+	// A picture smaller than its quad is never upscaled: the sampler does that.
+	small := &img.Data{W: 16, H: 16, Pix: make([]byte, 16*16*4)}
+	at.gpu.scale = 1
+	if got := at.keyForSize(small, 100, 100).w; got != 16 {
+		t.Fatalf("small source packed at %d, want its own 16", got)
+	}
+}
+
+// TestPackedImageReusesItsEntry guards a repack every frame: an image that did
+// not fit at its requested size is filed under that request too, so the next
+// frame finds it instead of scaling and copying it again.
+func TestPackedImageReusesItsEntry(t *testing.T) {
+	at := newTestImageRenderer(64)
+	d := &img.Data{W: 200, H: 200, Pix: make([]byte, 200*200*4)}
+	op := paint.Op{Kind: paint.Bitmap, Src: d, Rect: [4]float32{0, 0, 100, 100}}
+	// Ask for a size the tiny atlas cannot hold, so pack shrinks it.
+	key := at.keyFor(op)
+	if _, ok := at.pack(d, key); !ok {
+		t.Fatal("pack failed")
+	}
+	before := len(at.regions)
+	at.prepare(&paint.List{Ops: []paint.Op{op}})
+	if len(at.regions) != before {
+		t.Fatalf("regions grew from %d to %d: the shrunken copy was not reused", before, len(at.regions))
 	}
 }
