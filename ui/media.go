@@ -17,23 +17,31 @@ import (
 
 // Media playback is split in two so the UI never waits for a decoder:
 //
-//   - a pump goroutine owns the ffmpeg process and fills a one-slot mailbox;
-//   - the frame loop drains that mailbox when the clock says a new frame is due,
-//     and drops whatever is stale.
+//   - a pump goroutine owns the ffmpeg process and fills a bounded queue;
+//   - the frame loop takes from that queue when the clock says a frame is due.
 //
-// That is what keeps a video from slowing the window down: decoding happens off
-// the UI goroutine, a late frame is never queued behind the next one, and a
-// paused player leaves the loop free to sleep.
+// The queue is what "buffering" means here, and it is deliberately small: the
+// player stays `buffer` seconds ahead, capped by a byte budget, so a long film
+// never lands in RAM while a slow disk or a slow network still has room to
+// breathe. When the queue is full the pump blocks, which is how backpressure
+// works without a scheduler of our own.
 
 const (
-	// audioLead is how far ahead of the device the decoder runs. One buffer of
-	// headroom absorbs a scheduling hiccup without holding a whole second of
-	// sound in memory.
-	audioLead = 200 * time.Millisecond
 	// audioRate and audioChannels are the format every decoder converts to, so
 	// one device serves an mp3 and a 48 kHz film alike.
 	audioRate     = 48000
 	audioChannels = 2
+	// DefaultBuffer is how far ahead a player decodes when the design does not
+	// say. Long enough to ride out a hiccup, short enough to seek quickly.
+	DefaultBuffer = 1.5
+	// maxBufferSeconds caps the property: a minute of video in RAM is a bug,
+	// not a feature.
+	maxBufferSeconds = 10.0
+	// Video and audio byte budgets. A buffer is measured in seconds, but memory
+	// is what runs out, so the seconds are clamped to these.
+	maxVideoBufferBytes = 64 << 20
+	// minVideoFrames keeps a buffer useful at a low frame rate.
+	minVideoFrames = 2
 )
 
 // mediaPlayer is one running decoder for one node.
@@ -54,13 +62,13 @@ type mediaPlayer struct {
 	// machine has none.
 	audio *platform.AudioStream
 
-	// pump control. drain is closed and replaced whenever the UI takes a frame,
-	// which is how the decoder is held one frame behind the clock instead of
-	// racing through the whole file.
+	// Buffered frames. The pump decodes into a buffer from free and sends it to
+	// frames; the UI takes from frames and hands the buffer back. Sending on a
+	// full channel blocks, which is the whole flow control.
+	frames chan []byte
+	free   chan []byte
+
 	mu      sync.Mutex
-	pending []byte // the newest decoded frame, ready for the UI
-	haveNew bool
-	drain   chan struct{}
 	ended   bool
 	failure error
 	stop    chan struct{}
@@ -68,6 +76,8 @@ type mediaPlayer struct {
 
 	// opened is the offset the decoder started at, which a seek changes.
 	opened time.Duration
+	// buffer is the queue depth in seconds, from the design.
+	buffer float64
 	// volume/muted are applied on the next chunk of audio.
 	volume float64
 	muted  bool
@@ -203,7 +213,7 @@ func (a *App) startPlayer(n tree.Node) (*mediaPlayer, error) {
 		return nil, err
 	}
 	p := &mediaPlayer{node: n, m: m, src: path, volume: 1, muted: m.Muted.Get(),
-		stop: make(chan struct{}), drain: make(chan struct{})}
+		stop: make(chan struct{})}
 	p.volume = clampUnit(m.Volume.Get())
 	p.muted = m.Muted.Get()
 	info := a.mediaInfo[src]
@@ -215,6 +225,7 @@ func (a *App) startPlayer(n tree.Node) (*mediaPlayer, error) {
 		info = probed
 	}
 	p.info = info
+	p.buffer = bufferSeconds(m.Buffer.Get())
 	p.opened = time.Duration(m.StartAt.Get() * float64(time.Second))
 	m.Duration = info.Duration
 
@@ -228,7 +239,7 @@ func (a *App) startPlayer(n tree.Node) (*mediaPlayer, error) {
 			v.Data = &img.Data{W: w, H: h, Pix: make([]byte, w*h*4)}
 		}
 		p.frame = v.Data
-		p.pending = make([]byte, w*h*4)
+		p.openFrames(w * h * 4)
 	}
 
 	if info.HasAudio && !m.Muted.Get() {
@@ -273,7 +284,50 @@ func decodeSize(info media.Info, box tree.Rect) (int, int) {
 	return sw, sh
 }
 
-// start launches the two pumps: video frames into the mailbox, audio into the
+// bufferSeconds clamps the design's buffer to something a machine can hold.
+func bufferSeconds(v float64) float64 {
+	if v <= 0 {
+		return DefaultBuffer
+	}
+	if v > maxBufferSeconds {
+		return maxBufferSeconds
+	}
+	return v
+}
+
+// openFrames sizes the frame queue: `buffer` seconds of video at the file's
+// frame rate, then clamped so the bytes fit the budget.
+func (p *mediaPlayer) openFrames(frameBytes int) {
+	fps := p.info.FPS
+	if fps <= 0 {
+		fps = 30
+	}
+	n := int(p.buffer*fps + 0.5)
+	if n < minVideoFrames {
+		n = minVideoFrames
+	}
+	if limit := maxVideoBufferBytes / max(frameBytes, 1); n > limit {
+		n = limit
+	}
+	if n < 1 {
+		n = 1
+	}
+	p.frames = make(chan []byte, n)
+	p.free = make(chan []byte, n)
+	for i := 0; i < n; i++ {
+		p.free <- make([]byte, frameBytes)
+	}
+}
+
+// buffered is how much video is waiting, in frames.
+func (p *mediaPlayer) buffered() int {
+	if p.frames == nil {
+		return 0
+	}
+	return len(p.frames)
+}
+
+// start launches the two pumps: video frames into the queue, audio into the
 // device.
 func (p *mediaPlayer) start() {
 	p.wg.Add(2)
@@ -286,7 +340,7 @@ func (p *mediaPlayer) start() {
 // the rest is overwritten, never queued.
 func (p *mediaPlayer) pumpVideo() {
 	defer p.wg.Done()
-	if !p.info.HasVideo || p.pending == nil {
+	if !p.info.HasVideo || p.frames == nil {
 		return
 	}
 	dec, err := media.OpenVideo(p.src, p.frame.W, p.frame.H, p.opened)
@@ -295,14 +349,20 @@ func (p *mediaPlayer) pumpVideo() {
 		return
 	}
 	defer dec.Close()
-	buf := make([]byte, p.frame.W*p.frame.H*4)
 	for {
+		// Take a free buffer; a full queue blocks here, which is the
+		// backpressure that keeps memory flat.
+		var buf []byte
 		select {
 		case <-p.stop:
 			return
-		default:
+		case buf = <-p.free:
 		}
 		if _, err := dec.Read(buf); err != nil {
+			select {
+			case p.free <- buf:
+			default:
+			}
 			if err == io.EOF || err == io.ErrUnexpectedEOF {
 				p.mu.Lock()
 				p.ended = true
@@ -312,33 +372,17 @@ func (p *mediaPlayer) pumpVideo() {
 			}
 			return
 		}
-		// Hand the frame over and wait for the UI to take it. Without this the
-		// decoder would sprint through the file and the picture would jump to
-		// the end while the clock was still at the start.
-		p.mu.Lock()
-		for p.haveNew && p.failure == nil {
-			wait := p.drain
-			p.mu.Unlock()
-			select {
-			case <-p.stop:
-				return
-			case <-wait:
-			}
-			p.mu.Lock()
-		}
-		if p.failure != nil {
-			p.mu.Unlock()
+		select {
+		case <-p.stop:
 			return
+		case p.frames <- buf:
 		}
-		copy(p.pending, buf)
-		p.haveNew = true
-		p.mu.Unlock()
 	}
 }
 
-// pumpAudio streams PCM into the device, staying `audioLead` ahead. Sleeping
-// when the queue is full is what keeps a two hour podcast from decoding into
-// memory all at once.
+// pumpAudio streams PCM into the device, staying one buffer ahead. Sleeping
+// while the device's queue is full is what keeps a two hour podcast from
+// decoding into memory all at once.
 func (p *mediaPlayer) pumpAudio() {
 	defer p.wg.Done()
 	if p.audio == nil {
@@ -350,7 +394,7 @@ func (p *mediaPlayer) pumpAudio() {
 	}
 	defer dec.Close()
 	chunk := make([]byte, 16*1024)
-	leadBytes := int(audioLead.Seconds() * float64(audioRate*audioChannels*2))
+	leadBytes := p.audioLead()
 	for {
 		select {
 		case <-p.stop:
@@ -372,6 +416,16 @@ func (p *mediaPlayer) pumpAudio() {
 			return
 		}
 	}
+}
+
+// audioLead is how many bytes of sound the device may hold: the design's buffer
+// in seconds, which the property already clamps to ten seconds of sound.
+func (p *mediaPlayer) audioLead() int {
+	bytes := int(p.buffer * float64(audioRate*audioChannels*2))
+	if min := audioRate * audioChannels * 2 / 10; bytes < min {
+		bytes = min // at least 100ms, or the device runs dry between chunks
+	}
+	return bytes
 }
 
 // volumeScale applies the design's volume to a chunk of 16-bit stereo PCM. It
@@ -402,9 +456,6 @@ func (p *mediaPlayer) fail(err error) {
 	if p.failure == nil {
 		p.failure = err
 	}
-	// A pump waiting for the UI must not wait forever on a dead decoder.
-	close(p.drain)
-	p.drain = make(chan struct{})
 	p.mu.Unlock()
 }
 
@@ -415,6 +466,9 @@ func (p *mediaPlayer) close() {
 	default:
 		close(p.stop)
 	}
+	// A pump blocked on a full queue is released by the stop case, but a pump
+	// blocked handing a frame over is not holding the queue; draining here just
+	// makes the wait prompt.
 	p.wg.Wait()
 	if p.audio != nil {
 		p.audio.Close()
@@ -440,6 +494,14 @@ func (a *App) mediaRequest(n tree.Node, method string, args []any) bool {
 			a.pauseMedia(n)
 		} else {
 			a.playMedia(n)
+		}
+	case "fullscreen":
+		a.setFullscreen(n, true)
+	case "windowed":
+		a.setFullscreen(n, false)
+	case "toggleFullscreen":
+		if v, ok := n.(*tree.Video); ok {
+			a.setFullscreen(n, !v.Fullscreen.Get())
 		}
 	case "seek":
 		if len(args) != 1 {
@@ -576,6 +638,47 @@ func (a *App) seekMedia(n tree.Node, at time.Duration) {
 	}
 }
 
+// setFullscreen puts a video over the whole window. The window itself follows
+// in syncVideoFullscreen, which also covers a design that writes
+// `fullscreen: true` and never calls the method.
+func (a *App) setFullscreen(n tree.Node, on bool) {
+	v, ok := n.(*tree.Video)
+	if !ok {
+		return
+	}
+	if v.Fullscreen.Get() == on {
+		return
+	}
+	v.Fullscreen.Set(on)
+	v.Base().MarkDirty(tree.DirtyLayout)
+	a.markDirty(tree.DirtyLayout)
+}
+
+// syncVideoFullscreen makes the window follow the videos: a fullscreen video
+// needs the platform window fullscreen too, or it fills a smaller box with a
+// title bar over it; leaving the last one restores whatever the design asked
+// for.
+func (a *App) syncVideoFullscreen() {
+	if a.win == nil || a.win.tree == nil {
+		return
+	}
+	on := tree.FullscreenVideo(a.win.tree) != nil
+	if on {
+		if a.fullscreenRestore != nil || a.win.tree.Root.Fullscreen.Get() {
+			return
+		}
+		prev := a.win.tree.Root.Fullscreen.Get()
+		a.fullscreenRestore = &prev
+		a.win.tree.Root.Fullscreen.Set(true)
+		return
+	}
+	if a.fullscreenRestore == nil {
+		return
+	}
+	a.win.tree.Root.Fullscreen.Set(*a.fullscreenRestore)
+	a.fullscreenRestore = nil
+}
+
 // setMediaVolume applies a new volume, clamped to 0..1.
 func (a *App) setMediaVolume(n tree.Node, v float64) {
 	if m, ok := tree.MediaNode(n); ok {
@@ -688,8 +791,8 @@ func (a *App) tickMedia(dt float64) (bool, time.Duration) {
 			continue
 		}
 
-		// A video paints the newest decoded frame when one is due; the rest are
-		// dropped with the mailbox overwrite.
+		// A video paints the next decoded frame when its time comes; whatever
+		// else is queued stays buffered for the frames after it.
 		if v, ok := p.node.(*tree.Video); ok && p.info.HasVideo {
 			due := p.nextFrame.IsZero() || !time.Now().Before(p.nextFrame)
 			if due {
@@ -704,6 +807,16 @@ func (a *App) tickMedia(dt float64) (bool, time.Duration) {
 				}
 				p.nextFrame = time.Now().Add(time.Duration(float64(time.Second) / fps))
 			}
+			// The buffer is what the bar draws behind the position, so the
+			// reader can see how far ahead the file really is.
+			fps := p.info.FPS
+			if fps <= 0 {
+				fps = 30
+			}
+			if got := time.Duration(float64(p.buffered()) / fps * float64(time.Second)); got != m.Buffered {
+				m.Buffered = got
+				m.Base().MarkDirty(tree.DirtyPaint)
+			}
 			if d := time.Until(p.nextFrame); d > 0 && (wait == 0 || d < wait) {
 				wait = d
 			}
@@ -714,6 +827,13 @@ func (a *App) tickMedia(dt float64) (bool, time.Duration) {
 		}
 
 		// An audio player only watches for the end; the device pulls the sound.
+		if p.audio != nil {
+			queued := time.Duration(float64(p.audio.Queued()) / float64(audioRate*audioChannels*2) * float64(time.Second))
+			if queued != m.Buffered {
+				m.Buffered = queued
+				m.Base().MarkDirty(tree.DirtyPaint)
+			}
+		}
 		if p.audio != nil && p.audio.Queued() == 0 && p.reachedEnd() {
 			// The queue emptying after the file ended is the real end of
 			// playback, which is what a listener hears.
@@ -750,17 +870,21 @@ func (a *App) tickMedia(dt float64) (bool, time.Duration) {
 
 // takeFrame moves the newest decoded frame into the node's canvas.
 func (p *mediaPlayer) takeFrame() bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if !p.haveNew || p.frame == nil {
+	if p.frames == nil || p.frame == nil {
 		return false
 	}
-	copy(p.frame.Pix, p.pending)
-	p.haveNew = false
-	// Wake the decoder for the next frame.
-	close(p.drain)
-	p.drain = make(chan struct{})
-	return true
+	select {
+	case buf := <-p.frames:
+		copy(p.frame.Pix, buf)
+		// Hand the buffer straight back, so the pump can refill it.
+		select {
+		case p.free <- buf:
+		default:
+		}
+		return true
+	default:
+		return false
+	}
 }
 
 // ended reports whether the decoder reached the end of the file.

@@ -1297,7 +1297,7 @@ func (v *validator) checkEventCall(e *syntax.Element, ev EventDef, p *syntax.Pro
 		}
 		if !NodeMethod(call.Callee.Prop) {
 			v.add(at, end,
-				fmt.Sprintf("%s.%s: a handler call starts with bridge., or calls play, pause, stop, toggle, seek or volume on an id",
+				fmt.Sprintf("%s.%s: a handler call starts with bridge., or calls play, pause, stop, toggle, seek, volume or fullscreen on an id",
 					e.Name, p.Name),
 				syntax.Suggest(call.Callee.Prop, NodeMethods))
 			return

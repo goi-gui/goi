@@ -700,6 +700,12 @@ func nodeMethodDoc(name string) string {
 		return "**seek(seconds)**\n\nJumps to a position in seconds; the decoder restarts there."
 	case "volume":
 		return "**volume(0..1)**\n\nSets the player's volume."
+	case "fullscreen":
+		return "**fullscreen()**\n\nFills the window with a video and puts the window in fullscreen; Escape leaves."
+	case "windowed":
+		return "**windowed()**\n\nLeaves fullscreen and puts the video back in its box."
+	case "toggleFullscreen":
+		return "**toggleFullscreen()**\n\nFlips between fullscreen and windowed."
 	}
 	return ""
 }

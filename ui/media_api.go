@@ -39,6 +39,19 @@ func (a *App) SeekMedia(n Node, at time.Duration) { a.seekMedia(n, at) }
 // SetMediaVolume sets a player's volume, clamped to 0..1.
 func (a *App) SetMediaVolume(n Node, v float64) { a.setMediaVolume(n, v) }
 
+// SetVideoFullscreen makes a video cover the window, above everything else, and
+// puts the window in fullscreen too. Escape, or calling it with false, puts both
+// back.
+func (a *App) SetVideoFullscreen(n Node, on bool) { a.setFullscreen(n, on) }
+
+// FullscreenVideo returns the video currently filling the window, or nil.
+func FullscreenVideo(w *Window) *tree.Video {
+	if w == nil || w.tree == nil {
+		return nil
+	}
+	return tree.FullscreenVideo(w.tree)
+}
+
 // MediaPosition returns where a player is, and how long its file runs.
 func MediaPosition(n Node) (at, total time.Duration, ok bool) {
 	m, is := tree.MediaNode(n)

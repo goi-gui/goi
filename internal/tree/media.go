@@ -6,6 +6,10 @@ import (
 	"github.com/goi-gui/goi/internal/img"
 )
 
+// DefaultBufferSeconds is how far ahead a player decodes when the design does
+// not say: long enough to ride out a hiccup, short enough to seek quickly.
+const DefaultBufferSeconds = 1.5
+
 // Media is the playback state an Audio or Video element shares: the source, the
 // switches a design sets, and the clock the app reads.
 //
@@ -25,6 +29,13 @@ type Media struct {
 	Volume Prop[float64]
 	// StartAt is where playback begins, in seconds.
 	StartAt Prop[float64]
+	// Buffer is how far ahead the decoder runs, in seconds. It is what makes
+	// playback smooth on a slow disk or network without holding a whole file in
+	// memory.
+	Buffer Prop[float64]
+	// Buffered is how much is decoded and waiting, which the bar shows behind
+	// the position.
+	Buffered time.Duration
 
 	// Runtime state, written by the ui layer.
 	//
@@ -83,6 +94,7 @@ func mediaProps(m *Media) []NamedProp {
 		BoolProp(&m.NodeBase, "muted", DirtyPaint, &m.Muted),
 		NumberProp(&m.NodeBase, "volume", DirtyPaint, &m.Volume),
 		NumberProp(&m.NodeBase, "startAt", DirtyPaint, &m.StartAt),
+		NumberProp(&m.NodeBase, "buffer", DirtyPaint, &m.Buffer),
 	)
 }
 
@@ -100,8 +112,12 @@ func (a *Audio) namedProps() []NamedProp { return mediaProps(&a.Media) }
 type Video struct {
 	Media
 	// Fit is how the frame fills the box: cover, contain or fill, like Image.
-	Fit  Prop[string]
-	Data *img.Data
+	Fit Prop[string]
+	// Fullscreen makes the video cover the whole window, above every other
+	// element, and puts the window itself in fullscreen. It is what a player's
+	// own button and the `fullscreen()` method set.
+	Fullscreen Prop[bool]
+	Data       *img.Data
 	// FrameW and FrameH are the decoded frame's size, which is what the atlas
 	// packs.
 	FrameW, FrameH int
@@ -113,6 +129,7 @@ func (*Video) Kind() string { return "Video" }
 func (v *Video) namedProps() []NamedProp {
 	return append(mediaProps(&v.Media),
 		EnumProp(&v.NodeBase, "fit", DirtyPaint, &v.Fit, "cover", "contain", "fill"),
+		BoolProp(&v.NodeBase, "fullscreen", DirtyLayout, &v.Fullscreen),
 	)
 }
 
@@ -131,7 +148,8 @@ func MediaNode(n Node) (*Media, bool) {
 
 // MediaMethods are the playback methods a design may call on a media element by
 // id. `seek` and `volume` take one argument; the rest take none.
-var MediaMethods = []string{"play", "pause", "stop", "toggle", "seek", "volume"}
+var MediaMethods = []string{"play", "pause", "stop", "toggle", "seek", "volume",
+	"fullscreen", "windowed", "toggleFullscreen"}
 
 // MediaMethod reports whether name is a playback method, and whether it takes an
 // argument.
@@ -151,5 +169,24 @@ func newMedia() Media {
 		Volume:   newProp(nil, "volume", DirtyPaint, 1.0),
 		Controls: newProp(nil, "controls", DirtyLayout, true),
 		StartAt:  newProp(nil, "startAt", DirtyPaint, 0.0),
+		Buffer:   newProp(nil, "buffer", DirtyPaint, DefaultBufferSeconds),
 	}
+}
+
+// FullscreenVideo returns the video that asked to fill the window, or nil. Paint
+// draws it last, over everything else, and the input layer sends it every press.
+func FullscreenVideo(t *Tree) *Video {
+	if t == nil {
+		return nil
+	}
+	var out *Video
+	t.Walk(func(n Node) {
+		if out != nil {
+			return
+		}
+		if v, ok := n.(*Video); ok && v.Fullscreen.Get() && v.Visible() {
+			out = v
+		}
+	})
+	return out
 }

@@ -83,6 +83,17 @@ func (l MediaLayout) MediaSeekFraction(x float64) (float64, bool) {
 // paintMediaContent draws a player's own visuals on top of its box: the video
 // frame, the control bar, and the decoder's message when it could not start.
 func (l *List) paintMediaContent(m *tree.Media, r tree.Rect, clip tree.Rect) {
+	// A fullscreen video covers the window, so Build paints it last instead of
+	// where its own box sits.
+	if v, ok := m.Base().Node().(*tree.Video); ok && v.Fullscreen.Get() {
+		return
+	}
+	l.paintMediaFrame(m, r, clip)
+}
+
+// paintMediaFrame draws a player at a given rect, whatever its fullscreen state.
+// Build uses it for the overlay pass.
+func (l *List) paintMediaFrame(m *tree.Media, r tree.Rect, clip tree.Rect) {
 	if v, ok := m.Base().Node().(*tree.Video); ok {
 		l.paintVideoFrame(v, r, clip)
 	}
@@ -152,6 +163,13 @@ func (l *List) paintMediaBar(m *tree.Media, r tree.Rect, lay MediaLayout, clip t
 	frac := 0.0
 	if m.Duration > 0 {
 		frac = math.Max(0, math.Min(1, float64(m.Position)/float64(m.Duration)))
+	}
+	// The buffered span sits behind the played part, so a reader can see how far
+	// ahead the decoder is before the picture stalls.
+	if m.Buffered > 0 && m.Duration > 0 {
+		end := math.Min(1, frac+float64(m.Buffered)/float64(m.Duration))
+		l.fillRect(tree.Rect{X: lay.Track.X, Y: lay.Track.Y, W: lay.Track.W * end, H: lay.Track.H},
+			withAlpha(col.OnSurface, 0.42), lay.Track.H/2, 0, 0, clip)
 	}
 	if frac > 0 {
 		l.fillRect(tree.Rect{X: lay.Track.X, Y: lay.Track.Y, W: lay.Track.W * frac, H: lay.Track.H},

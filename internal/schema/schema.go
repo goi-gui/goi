@@ -122,7 +122,8 @@ type EventDef struct {
 // NodeMethods are the methods an event can call on an element by id, as in
 // `onClick: spin.pause()`. They are the transport of an animated Image or SVG,
 // and of an Audio or Video player.
-var NodeMethods = []string{"play", "pause", "stop", "toggle", "seek", "volume"}
+var NodeMethods = []string{"play", "pause", "stop", "toggle", "seek", "volume",
+	"fullscreen", "windowed", "toggleFullscreen"}
 
 // NodeMethod reports whether name is a method an event can call on an element.
 func NodeMethod(name string) bool {
@@ -375,6 +376,7 @@ var elements = func() []Element {
 			Prop{Name: "muted", Type: TypeBool, Dirty: DirtyPaint, Default: false},
 			Prop{Name: "volume", Type: TypeNumber, Dirty: DirtyPaint, Default: 1.0},
 			Prop{Name: "startAt", Type: TypeNumber, Dirty: DirtyPaint, Default: 0.0},
+			Prop{Name: "buffer", Type: TypeNumber, Dirty: DirtyPaint, Default: 1.5},
 		)},
 		Element{Name: "Video", Attrs: withCommon(
 			Prop{Name: "src", Type: TypeString, Dirty: DirtyLayout, Default: ""},
@@ -384,7 +386,9 @@ var elements = func() []Element {
 			Prop{Name: "muted", Type: TypeBool, Dirty: DirtyPaint, Default: false},
 			Prop{Name: "volume", Type: TypeNumber, Dirty: DirtyPaint, Default: 1.0},
 			Prop{Name: "startAt", Type: TypeNumber, Dirty: DirtyPaint, Default: 0.0},
+			Prop{Name: "buffer", Type: TypeNumber, Dirty: DirtyPaint, Default: 1.5},
 			Prop{Name: "fit", Type: TypeEnum, Dirty: DirtyPaint, Enum: []string{"cover", "contain", "fill"}, Default: "contain"},
+			Prop{Name: "fullscreen", Type: TypeBool, Dirty: DirtyLayout, Default: false},
 		)},
 	)
 

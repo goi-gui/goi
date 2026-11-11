@@ -493,7 +493,7 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 		}
 	}
 	if button == 0 {
-		if m := mediaAt(hit); m != nil && i.pressMediaBar(m, x, y) {
+		if m := mediaAt(hit); m != nil && (i.pressMediaBar(m, x, y) || i.pressFullscreenMedia(m)) {
 			return
 		}
 	}
@@ -670,6 +670,15 @@ func (i *interactor) activate(n tree.Node, c *tree.Component, x, y float64) {
 	i.markDirty()
 }
 
+// mediaRect is a player's box in window coordinates. A fullscreen video is the
+// whole window rather than its own little box in the tree.
+func (i *interactor) mediaRect(n tree.Node) tree.Rect {
+	if v, ok := n.(*tree.Video); ok && v.Fullscreen.Get() {
+		return tree.Rect{X: 0, Y: 0, W: i.windowW(), H: i.windowH()}
+	}
+	return absoluteRect(n)
+}
+
 // mediaAt returns the Audio or Video at or above n.
 func mediaAt(n tree.Node) tree.Node {
 	for ; n != nil; n = n.Base().Parent() {
@@ -688,7 +697,7 @@ func (i *interactor) pressMediaBar(n tree.Node, x, y float64) bool {
 	if !ok || !m.Controls.Get() {
 		return false
 	}
-	r := absoluteRect(n)
+	r := i.mediaRect(n)
 	lay := paint.MediaLayoutOf(m, r)
 	if lay.Bar.H == 0 || !hitRect(lay.Bar, x, y) {
 		return false
@@ -703,6 +712,17 @@ func (i *interactor) pressMediaBar(n tree.Node, x, y float64) bool {
 	default:
 		return true // the bar swallows the press, it is not the picture
 	}
+	return true
+}
+
+// pressFullscreenMedia handles a press on a fullscreen picture, outside the bar:
+// the way out of a player is the same everywhere, a click toggles it.
+func (i *interactor) pressFullscreenMedia(n tree.Node) bool {
+	v, ok := n.(*tree.Video)
+	if !ok || !v.Fullscreen.Get() {
+		return false
+	}
+	i.toggleMediaPlayback(n, &v.Media)
 	return true
 }
 
@@ -1410,6 +1430,14 @@ func (i *interactor) key(k tree.Key, mods tree.Mods) {
 	if mods.Control() && k == tree.KeyC && i.copyTextSelection() {
 		return
 	}
+	if k == tree.KeyEscape {
+		// Escape is the platform-wide way out of a fullscreen video, the same
+		// as in every other player.
+		if v := tree.FullscreenVideo(i.tree); v != nil {
+			i.app.setFullscreen(v, false)
+			return
+		}
+	}
 	if k == tree.KeyEscape && i.textSel != nil {
 		i.clearTextSelection()
 		return
@@ -1688,6 +1716,11 @@ func (i *interactor) markDirty() {
 func (i *interactor) hit(x, y float64) tree.Node {
 	if i.tree.Root == nil {
 		return nil
+	}
+	// A fullscreen video covers everything, so it owns every press. Its own
+	// control bar still decides what the press does.
+	if v := tree.FullscreenVideo(i.tree); v != nil {
+		return v
 	}
 	var found tree.Node
 	walkHit(i.tree.Root.Base(), 0, 0, x, y, tree.Rect{

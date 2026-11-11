@@ -177,6 +177,14 @@ func (l *List) Build(tr *tree.Tree, w, h float64) {
 	l.Reset()
 	clip := tree.Rect{W: w, H: h}
 	l.walk(tr.Root.Base(), 0, 0, clip)
+	// A fullscreen video covers the window, so it is painted last rather than
+	// where its own box sits; the walk skipped it in place.
+	if v := tree.FullscreenVideo(tr); v != nil {
+		if m, ok := tree.MediaNode(v); ok {
+			l.paintBox(m.Base(), clip, clip)
+			l.paintMediaFrame(m, clip, clip)
+		}
+	}
 	if l.ShowFPS {
 		l.textIn(strconv.Itoa(l.FPS)+" fps", l.style("labelSmall"), l.Theme.Colors.OnSurfaceVariant,
 			tree.Rect{X: 0, Y: 8, W: w - 12, H: 20}, AlignEnd, clip)

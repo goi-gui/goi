@@ -284,6 +284,9 @@ func (a *App) frame() {
 	if a.syncMedia() {
 		a.needsFrame = true
 	}
+	// A fullscreen video takes the window with it, whether the design wrote the
+	// property or a button called the method.
+	a.syncVideoFullscreen()
 	// The window properties can change from Go or an expression, and the
 	// platform has to hear about them before the frame is measured.
 	a.syncChrome()

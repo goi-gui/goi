@@ -102,6 +102,9 @@ type App struct {
 	hasMedia  bool
 	media     []*mediaPlayer
 	mediaInfo map[string]media.Info
+	// fullscreenRestore is the window's fullscreen state before a video took it
+	// over, so leaving the video puts it back.
+	fullscreenRestore *bool
 	// mediaFiles maps a src inside the design's container to the temp file
 	// ffmpeg reads, so one copy serves every player and a reload.
 	mediaFiles map[string]string
