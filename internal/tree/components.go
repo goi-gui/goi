@@ -61,6 +61,9 @@ type Component struct {
 	Edit   Event[string]
 	Submit Event[string]
 	Select Event[int]
+	// HoverPoint fires when the pointer moves onto a different point of a
+	// chart, with that point's index; -1 is "left the chart".
+	HoverPoint Event[int]
 
 	// Runtime interaction state.
 	Hover   bool

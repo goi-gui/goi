@@ -594,6 +594,16 @@ func newM3Component(name string) Node {
 		return &TextArea{Component: newComponent()}
 	case "Code":
 		return &Code{Component: newComponent()}
+	case "LineChart":
+		return &LineChart{Chart: newChart()}
+	case "AreaChart":
+		return &AreaChart{Chart: newChart()}
+	case "BarChart":
+		return &BarChart{Chart: newChart()}
+	case "PieChart":
+		return &PieChart{Chart: newChart()}
+	case "ScatterChart":
+		return &ScatterChart{Chart: newChart()}
 	}
 	return nil
 }

@@ -74,5 +74,9 @@ func (c *Component) OnEdit(fn func(string)) (off func()) { return c.Edit.On(fn) 
 // OnSubmit subscribes to Enter presses in a text field.
 func (c *Component) OnSubmit(fn func(string)) (off func()) { return c.Submit.On(fn) }
 
-// OnSelect subscribes to index selection (tabs, navigation).
+// OnSelect subscribes to index selection (tabs, navigation, a chart point).
 func (c *Component) OnSelect(fn func(int)) (off func()) { return c.Select.On(fn) }
+
+// OnHoverPoint subscribes to a chart point coming under the pointer, with the
+// point's index, or -1 when the pointer leaves the chart.
+func (c *Component) OnHoverPoint(fn func(int)) (off func()) { return c.HoverPoint.On(fn) }

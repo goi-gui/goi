@@ -161,6 +161,12 @@ func (t *Tree) bindEvent(b *NodeBase, name string, v syntax.Value) error {
 			return fmt.Errorf("%s does not have onSelect", b.node.Kind())
 		}
 		c.Select.On(func(i int) { t.fire(b, name, call, i) })
+	case "onHover":
+		c := bridgeComponent(b)
+		if c == nil {
+			return fmt.Errorf("%s does not have onHover", b.node.Kind())
+		}
+		c.HoverPoint.On(func(i int) { t.fire(b, name, call, i) })
 	default:
 		return fmt.Errorf("%s.%s: unknown event", b.node.Kind(), name)
 	}

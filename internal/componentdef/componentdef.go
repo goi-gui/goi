@@ -60,6 +60,11 @@ var Kinds = []Kind{
 	{"Toolbar", true},
 	{"TextArea", false},
 	{"Code", false},
+	{"LineChart", false},
+	{"AreaChart", false},
+	{"BarChart", false},
+	{"PieChart", false},
+	{"ScatterChart", false},
 }
 
 var byName = func() map[string]Kind {
@@ -124,6 +129,21 @@ var props = map[string][]string{
 	"Toolbar":          {"variant", "size"},
 	"TextArea":         {"label", "text", "placeholder", "supporting", "variant", "disabled"},
 	"Code":             {"text", "language", "variant", "showCopy"},
+	"LineChart":        {"grid", "axis", "legend", "values", "smooth", "points", "min", "max"},
+	"AreaChart":        {"grid", "axis", "legend", "values", "smooth", "points", "stacked", "min", "max"},
+	"BarChart":         {"grid", "axis", "legend", "values", "stacked", "horizontal", "min", "max"},
+	"PieChart":         {"grid", "axis", "legend", "values", "innerRadius", "startAngle", "min", "max"},
+	"ScatterChart":     {"grid", "axis", "legend", "values", "points", "min", "max"},
+}
+
+// Chart reports whether kind draws a chart, which is what tells a zero `max`
+// ("follow the data") from a progress bar's 1.
+func Chart(kind string) bool {
+	switch kind {
+	case "LineChart", "AreaChart", "BarChart", "PieChart", "ScatterChart":
+		return true
+	}
+	return false
 }
 
 // Flow lists containers that accept the row/column layout properties.
@@ -165,6 +185,13 @@ const (
 // value. The schema applies them, so the builder and the validator agree on
 // what a property means before the design writes it.
 var defaults = map[string]any{
+	// Charts draw their chrome by default, except the legend and the value
+	// labels, which most panels leave off.
+	"grid":          true,
+	"axis":          true,
+	"points":        true,
+	"legend":        false,
+	"values":        false,
 	"showHeader":    true,
 	"rowHeight":     48.0,
 	"headerHeight":  40.0,
@@ -197,10 +224,12 @@ func TypeOfFor(kind, name string) PropType {
 func TypeOf(name string) PropType {
 	switch name {
 	case "disabled", "checked", "selected", "expanded", "showCopy",
-		"sortable", "numeric", "striped", "showHeader", "stickyHeader", "sortAscending":
+		"sortable", "numeric", "striped", "showHeader", "stickyHeader", "sortAscending",
+		"grid", "axis", "legend", "values", "stacked", "horizontal", "smooth", "points":
 		return Bool
 	case "value", "end", "center", "min", "max", "step", "spacing", "gap",
-		"rowHeight", "headerHeight", "sortColumn", "selectedRow":
+		"rowHeight", "headerHeight", "sortColumn", "selectedRow",
+		"innerRadius", "startAngle":
 		return Number
 	case "variant", "size", "crossAxisAlign", "mainAxisAlign", "align", "selectable":
 		return Enum

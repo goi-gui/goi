@@ -125,7 +125,8 @@ func interactive(n tree.Node) bool {
 	case "Button", "IconButton", "FAB", "FABMenu", "SplitButton", "SegmentedButton",
 		"Chip", "Checkbox", "RadioButton", "Switch", "Slider", "TextField",
 		"SearchBar", "ListItem", "MenuItem", "Tab", "Card", "NavigationItem",
-		"DatePicker", "TimePicker":
+		"DatePicker", "TimePicker",
+		"LineChart", "AreaChart", "BarChart", "PieChart", "ScatterChart":
 		return true
 	}
 	return false
@@ -299,6 +300,9 @@ func (i *interactor) MouseMove(x, y float64) {
 	}
 	hit := i.hit(x, y)
 	i.updateScrollHover(hit)
+	// A chart highlights the point under the pointer, which changes without the
+	// hovered node changing.
+	i.updateChartHover(x, y)
 	if i.selecting && i.textSel != nil {
 		i.pointer(platform.CursorText)
 		a, _ := selRange(i.textSel)
@@ -641,6 +645,8 @@ func (i *interactor) activate(n tree.Node, c *tree.Component, x, y float64) {
 		i.toggleSort(n)
 	case "TableCell":
 		i.selectRow(n)
+	case "LineChart", "AreaChart", "BarChart", "PieChart", "ScatterChart":
+		i.selectChartPoint(n, x, y)
 	case "NavigationItem":
 		i.activateDestination(n, c)
 	case "DatePicker":
@@ -650,6 +656,57 @@ func (i *interactor) activate(n tree.Node, c *tree.Component, x, y float64) {
 	}
 	c.Click.Emit(tree.ClickEvent{X: x, Y: y})
 	i.markDirty()
+}
+
+// chartCore returns the shared chart state behind n, or nil.
+func chartCore(n tree.Node) *tree.Chart {
+	h, ok := n.(interface{ ChartCore() *tree.Chart })
+	if !ok {
+		return nil
+	}
+	return h.ChartCore()
+}
+
+// updateChartHover hands every chart the point under the pointer. It runs on
+// each move, because a chart's hot spot changes while the hovered node stays
+// the same.
+func (i *interactor) updateChartHover(x, y float64) {
+	if i.tree == nil || i.tree.Root == nil {
+		return
+	}
+	i.tree.Walk(func(n tree.Node) {
+		c := chartCore(n)
+		if c == nil {
+			return
+		}
+		r := absoluteRect(n)
+		series, index := -1, -1
+		if hitRect(r, x, y) {
+			series, index = paint.ChartHit(c, r, x, y)
+		}
+		if series == c.HoverSeries && index == c.HoverIndex {
+			return
+		}
+		c.HoverSeries, c.HoverIndex = series, index
+		c.Base().MarkDirty(tree.DirtyPaint)
+		c.HoverPoint.Emit(index)
+		i.markDirty()
+	})
+}
+
+// selectChartPoint records the clicked point and fires onSelect with its index.
+func (i *interactor) selectChartPoint(n tree.Node, x, y float64) {
+	c := chartCore(n)
+	if c == nil {
+		return
+	}
+	series, index := paint.ChartHit(c, absoluteRect(n), x, y)
+	if index < 0 {
+		return
+	}
+	c.SelectedSeries, c.SelectedIndex = series, index
+	c.Select.Emit(index)
+	c.Base().MarkDirty(tree.DirtyPaint)
 }
 
 // pressTextNode places a selectable Text's selection. A second click inside the

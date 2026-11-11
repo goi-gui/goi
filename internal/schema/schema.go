@@ -165,6 +165,7 @@ var eventDefs = []EventDef{
 	{Name: "onEdit", Type: TypeString, HasValue: true, Component: true},
 	{Name: "onSubmit", Type: TypeString, HasValue: true, Component: true},
 	{Name: "onSelect", Type: TypeNumber, HasValue: true, Component: true},
+	{Name: "onHover", Type: TypeNumber, HasValue: true, Component: true},
 }
 
 var common = []Prop{
@@ -378,7 +379,9 @@ var elements = func() []Element {
 				p.Type, p.Dirty, p.Default = TypeBool, DirtyPaint, false
 			case componentdef.Number:
 				p.Type, p.Dirty, p.Default = TypeNumber, DirtyPaint, 0.0
-				if name == "max" {
+				// A progress bar runs 0..1 by default; a chart reads a zero max
+				// as "follow the data".
+				if name == "max" && !componentdef.Chart(k.Name) {
 					p.Default = 1.0
 				}
 			case componentdef.Enum:

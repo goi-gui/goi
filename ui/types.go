@@ -161,6 +161,13 @@ type (
 	DatePicker       = tree.DatePicker
 	TimePicker       = tree.TimePicker
 	TextArea         = tree.TextArea
+	LineChart        = tree.LineChart
+	AreaChart        = tree.AreaChart
+	BarChart         = tree.BarChart
+	PieChart         = tree.PieChart
+	ScatterChart     = tree.ScatterChart
+	ChartData        = tree.ChartData
+	Series           = tree.Series
 	ClipRRect        = tree.ClipRRect
 	Code             = tree.Code
 	Carousel         = tree.Carousel

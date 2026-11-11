@@ -287,11 +287,16 @@ func (e *Engine) linear(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH,
 			if horizontal && mt.FillH || !horizontal && mt.FillW {
 				fill = true
 			}
-			if horizontal && mt.FillW {
-				sz = availW
-			}
-			if !horizontal && mt.FillH {
-				sz = availH
+			// A flex child already took its share of the row, so a component
+			// that fills must not be reset to the whole row: that is what a
+			// chart or a list with `flex: 1` in a Row asks for.
+			if k.Flex() <= 0 && declaredMain(k, horizontal) < 0 {
+				if horizontal && mt.FillW {
+					sz = availW
+				}
+				if !horizontal && mt.FillH {
+					sz = availH
+				}
 			}
 		}
 		if (a == "stretch" || isContainer(k) || fill) && declaredCross(k, horizontal) < 0 {

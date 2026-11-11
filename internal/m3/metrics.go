@@ -184,6 +184,11 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 		return Metrics{W: 0, H: 1, FillW: true}
 	case "List":
 		return Metrics{W: 0, FillW: true}
+	case "LineChart", "AreaChart", "BarChart", "PieChart", "ScatterChart":
+		// A chart fills the width it is given and keeps a readable height,
+		// which a design overrides with an explicit one. The intrinsic width is
+		// what it asks for inside a Row, where `flex` splits the space.
+		return Metrics{W: 240, H: 220, FillW: true}
 	case "ListItem":
 		h := 56.0
 		if c.Supporting != "" {
