@@ -11,6 +11,7 @@ import (
 	"github.com/goi-gui/goi/internal/i18n"
 	"github.com/goi-gui/goi/internal/img"
 	"github.com/goi-gui/goi/internal/m3"
+	"github.com/goi-gui/goi/internal/media"
 	"github.com/goi-gui/goi/internal/svg"
 	"github.com/goi-gui/goi/internal/tree"
 )
@@ -95,6 +96,15 @@ type App struct {
 	loadClock float64
 	// themes are the schemes a `.goi` file may name, keyed by name.
 	themes map[string]*Theme
+	// hasMedia is true while the tree holds an Audio or Video, and media holds
+	// the running players, one per playing node. mediaInfo caches the probe of
+	// each src, so a reload does not run ffmpeg again.
+	hasMedia  bool
+	media     []*mediaPlayer
+	mediaInfo map[string]media.Info
+	// mediaFiles maps a src inside the design's container to the temp file
+	// ffmpeg reads, so one copy serves every player and a reload.
+	mediaFiles map[string]string
 	// fonts holds the families LoadFont registered, so a window created after
 	// the call still finds them.
 	fonts map[string][]byte
@@ -154,7 +164,7 @@ func (a *App) LoadWindow(fsys fs.FS, path string, opts ...Option) (*Window, erro
 		logg().Error(logCtx, "ui: design failed to load", "file", name, "error", err)
 		return nil, err
 	}
-	tr, err := tree.Build(b.File, &tree.Hooks{Marked: a.markDirty, Error: a.reportError})
+	tr, err := tree.Build(b.File, &tree.Hooks{Marked: a.markDirty, Error: a.reportError, Media: a.mediaRequest})
 	if err != nil {
 		return nil, fmt.Errorf("goi: %s: %w", name, err)
 	}
@@ -185,6 +195,7 @@ func (a *App) LoadWindow(fsys fs.FS, path string, opts ...Option) (*Window, erro
 	a.themes = map[string]*Theme{"light": m3.Light(), "dark": m3.Dark()}
 	// Images resolve against the container above, so this runs after it is set.
 	a.loadImages(tr)
+	a.loadMedia(tr)
 	if err := a.initWindow(w); err != nil {
 		return nil, err
 	}
@@ -348,6 +359,9 @@ func (a *App) Run() error {
 // Close releases the file watcher and platform resources. Run calls it on exit;
 // call it yourself only when you never call Run.
 func (a *App) Close() {
+	// The decoders are child processes: leaving them running would keep the
+	// sound playing after the window is gone.
+	a.closeMedia()
 	if a.watcher != nil {
 		a.watcher.Close()
 		a.watcher = nil

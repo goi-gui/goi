@@ -161,6 +161,9 @@ type (
 	DatePicker       = tree.DatePicker
 	TimePicker       = tree.TimePicker
 	TextArea         = tree.TextArea
+	Audio            = tree.Audio
+	Video            = tree.Video
+	Media            = tree.Media
 	LineChart        = tree.LineChart
 	AreaChart        = tree.AreaChart
 	BarChart         = tree.BarChart

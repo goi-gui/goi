@@ -75,12 +75,13 @@ func (a *App) reloadNow() error {
 // reload without touching the file system.
 func (a *App) applyReload(f *syntax.File) error {
 	start := time.Now()
-	tr, err := tree.Build(f, &tree.Hooks{Marked: a.markDirty, Error: a.reportError})
+	tr, err := tree.Build(f, &tree.Hooks{Marked: a.markDirty, Error: a.reportError, Media: a.mediaRequest})
 	if err != nil {
 		logg().Error(logCtx, "ui: hot reload failed", "error", err)
 		return fmt.Errorf("goi: reload: %w", err)
 	}
 	a.loadImages(tr)
+	a.loadMedia(tr)
 	a.swapTree(tr)
 	logg().Info(logCtx, "ui: hot reload", "file", a.path, "took", time.Since(start).String())
 	return nil

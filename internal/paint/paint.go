@@ -331,6 +331,9 @@ func (l *List) paintContent(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
 		// way CSS paints it inside the padding box.
 		l.paintBoxShadows(b, r, clip, true)
 	}
+	if m, ok := tree.MediaNode(b.Node()); ok {
+		l.paintMediaContent(m, r, clip)
+	}
 	if t, ok := b.Node().(*tree.Text); ok {
 		l.paintText(t, r, clip)
 	}

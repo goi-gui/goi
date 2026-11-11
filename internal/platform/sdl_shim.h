@@ -96,4 +96,31 @@ int goiSystemTheme(void);
 // caller frees it with SDL_free.
 char *goiSystemLanguage(void);
 
+// goiAudioScreen is one SDL_AudioSpec, flattened so Go never mirrors SDL's
+// struct. It is the format the audio stream is opened with.
+typedef struct {
+	int   freq;
+	int   channels;
+	int   format; // SDL_AudioFormat; 0 asks for SDL_AUDIO_S16
+} goiAudioScreen;
+
+// goiOpenAudioStream opens the default playback device and returns a stream the
+// caller pushes PCM into. A NULL return means no device: the app runs silent.
+void *goiOpenAudioStream(const goiAudioScreen *spec);
+
+// goiPutAudio copies PCM into the stream. It returns 0 on success.
+int goiPutAudio(void *stream, const void *data, int len);
+
+// goiAudioQueued is how many bytes are waiting in the device: the caller uses it
+// to stay a fixed distance ahead of playback and no further.
+int goiAudioQueued(void *stream);
+
+// goiAudioState pauses or resumes the device and releases the stream.
+void goiPauseAudio(void *stream, int paused);
+void goiCloseAudioStream(void *stream);
+
+// goiAudioAvailable reports whether the audio subsystem came up. It is false on
+// a machine with no sound card, and an app then plays silently.
+int goiAudioAvailable(void);
+
 #endif

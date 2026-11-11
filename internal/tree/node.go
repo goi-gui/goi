@@ -33,6 +33,10 @@ type Hooks struct {
 	// Error receives a problem that only shows up while running, such as a
 	// bridge handler that was never registered. The frame keeps going.
 	Error func(error)
+	// Media runs one playback method a design called on an Audio or Video by id.
+	// The players live in the ui layer, so the tree forwards the request and
+	// reports whether the node handled it.
+	Media func(n Node, method string, args []any) bool
 }
 
 // NodeBase holds the state every node shares: identity, tree links, layout result

@@ -184,6 +184,13 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 		return Metrics{W: 0, H: 1, FillW: true}
 	case "List":
 		return Metrics{W: 0, FillW: true}
+	case "Audio":
+		// A player is one control bar wide and one bar tall.
+		return Metrics{W: 320, H: 48, FillW: true}
+	case "Video":
+		// 16:9 by default, so a design that only sets a width still gets a
+		// sensible box.
+		return Metrics{W: 320, H: 180, FillW: true}
 	case "LineChart", "AreaChart", "BarChart", "PieChart", "ScatterChart":
 		// A chart fills the width it is given and keeps a readable height,
 		// which a design overrides with an explicit one. The intrinsic width is

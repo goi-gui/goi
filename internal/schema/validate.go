@@ -1297,7 +1297,7 @@ func (v *validator) checkEventCall(e *syntax.Element, ev EventDef, p *syntax.Pro
 		}
 		if !NodeMethod(call.Callee.Prop) {
 			v.add(at, end,
-				fmt.Sprintf("%s.%s: a handler call starts with bridge., or calls play, pause or stop on an id",
+				fmt.Sprintf("%s.%s: a handler call starts with bridge., or calls play, pause, stop, toggle, seek or volume on an id",
 					e.Name, p.Name),
 				syntax.Suggest(call.Callee.Prop, NodeMethods))
 			return
@@ -1307,9 +1307,19 @@ func (v *validator) checkEventCall(e *syntax.Element, ev EventDef, p *syntax.Pro
 				fmt.Sprintf("%s.%s: no element with id %q", e.Name, p.Name, call.Callee.ID), "")
 			return
 		}
-		if len(call.Args) > 0 {
-			v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes no arguments",
-				e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+		// A player's seek and volume take one number; the rest take none.
+		wantArgs := 0
+		if call.Callee.Prop == "seek" || call.Callee.Prop == "volume" {
+			wantArgs = 1
+		}
+		if len(call.Args) != wantArgs {
+			if wantArgs == 0 {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes no arguments",
+					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+			} else {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes one number",
+					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+			}
 		}
 		return
 	}

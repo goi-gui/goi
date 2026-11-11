@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"time"
 
 	"github.com/goi-gui/goi/internal/schema"
 	"github.com/goi-gui/goi/internal/syntax"
@@ -161,6 +162,30 @@ func (t *Tree) bindEvent(b *NodeBase, name string, v syntax.Value) error {
 			return fmt.Errorf("%s does not have onSelect", b.node.Kind())
 		}
 		c.Select.On(func(i int) { t.fire(b, name, call, i) })
+	case "onPlay", "onPause", "onEnd":
+		m, ok := MediaNode(b.node)
+		if !ok {
+			return fmt.Errorf("%s does not have %s", b.node.Kind(), name)
+		}
+		// The payload is the position in seconds, which is what a design
+		// reading `event` expects from a clock.
+		secs := func(d time.Duration) float64 { return d.Seconds() }
+		switch name {
+		case "onPlay":
+			m.Playback.On(func(on bool) {
+				if on {
+					t.fire(b, name, call, secs(m.Position))
+				}
+			})
+		case "onPause":
+			m.Playback.On(func(on bool) {
+				if !on {
+					t.fire(b, name, call, secs(m.Position))
+				}
+			})
+		case "onEnd":
+			m.End.On(func(d time.Duration) { t.fire(b, name, call, secs(d)) })
+		}
 	case "onHover":
 		c := bridgeComponent(b)
 		if c == nil {
@@ -200,7 +225,7 @@ func (t *Tree) fire(b *NodeBase, name string, call *syntax.Call, payload any) {
 		args[i] = v
 	}
 	if call.Callee.ID != "bridge" && call.Callee.ID != "data" {
-		t.callNodeMethod(call.Callee.ID, call.Callee.Prop)
+		t.callNodeMethodX(call.Callee.ID, call.Callee.Prop, args)
 		return
 	}
 	if err := t.bridge.Call(call.Callee.Prop, args); err != nil {
@@ -208,11 +233,19 @@ func (t *Tree) fire(b *NodeBase, name string, call *syntax.Call, payload any) {
 	}
 }
 
-// callNodeMethod drives an element's transport from an event: `spin.pause()`.
-func (t *Tree) callNodeMethod(id, method string) {
+// callNodeMethodX drives an element's transport from an event, with the call's
+// arguments: `spin.pause()`, or `clip.seek(12)` on a player.
+func (t *Tree) callNodeMethodX(id, method string, args []any) {
 	n, ok := t.ByID(id)
 	if !ok {
 		t.bridgeErr(fmt.Errorf("goi: no element with id %q", id))
+		return
+	}
+	if _, isMedia := MediaNode(n); isMedia {
+		if h := n.Base().hooks; h != nil && h.Media != nil && h.Media(n, method, args) {
+			return
+		}
+		t.bridgeErr(fmt.Errorf("goi: %s has no %s", n.Kind(), method))
 		return
 	}
 	tr, ok := n.(interface{ Transport(string) bool })

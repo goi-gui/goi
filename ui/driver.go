@@ -235,6 +235,16 @@ func (a *App) frame() {
 	if changed {
 		a.needsFrame = true
 	}
+	// A playing video advances its clock, takes the newest decoded frame and
+	// asks for a paint at its own rate, which is what keeps 30 fps video from
+	// driving the window at 30 fps when nothing else changed.
+	mediaChanged, mediaWait := a.tickMedia(dt)
+	if mediaChanged {
+		a.needsFrame = true
+	}
+	if mediaWait > 0 && (a.animWait == 0 || mediaWait < a.animWait) {
+		a.animWait = mediaWait
+	}
 	if a.tickTweens() {
 		a.needsFrame = true
 	}
@@ -269,6 +279,11 @@ func (a *App) frame() {
 	// An Image src written as an expression, or a row built by a loop, only has
 	// its value once the expression pass above has run.
 	a.syncImages()
+	// A player follows its design: a changed src restarts the decoder, a muted
+	// switch silences it, and autoplay starts on the frame the node appears.
+	if a.syncMedia() {
+		a.needsFrame = true
+	}
 	// The window properties can change from Go or an expression, and the
 	// platform has to hear about them before the frame is measured.
 	a.syncChrome()

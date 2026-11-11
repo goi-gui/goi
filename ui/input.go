@@ -126,7 +126,8 @@ func interactive(n tree.Node) bool {
 		"Chip", "Checkbox", "RadioButton", "Switch", "Slider", "TextField",
 		"SearchBar", "ListItem", "MenuItem", "Tab", "Card", "NavigationItem",
 		"DatePicker", "TimePicker",
-		"LineChart", "AreaChart", "BarChart", "PieChart", "ScatterChart":
+		"LineChart", "AreaChart", "BarChart", "PieChart", "ScatterChart",
+		"Audio", "Video":
 		return true
 	}
 	return false
@@ -431,6 +432,12 @@ func (i *interactor) pointerAt(hit tree.Node) {
 		i.pointer(platform.CursorPointer)
 		return
 	}
+	if n := mediaAt(hit); n != nil {
+		if m, ok := tree.MediaNode(n); ok && m.Controls.Get() {
+			i.pointer(platform.CursorPointer)
+			return
+		}
+	}
 	if codeCopyAt(hit, i.cursorX, i.cursorY) != nil {
 		i.pointer(platform.CursorPointer)
 		return
@@ -482,6 +489,11 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 				i.scrollbarGrab = y - thumb.Y
 			}
 			i.showScrollbar(n)
+			return
+		}
+	}
+	if button == 0 {
+		if m := mediaAt(hit); m != nil && i.pressMediaBar(m, x, y) {
 			return
 		}
 	}
@@ -656,6 +668,60 @@ func (i *interactor) activate(n tree.Node, c *tree.Component, x, y float64) {
 	}
 	c.Click.Emit(tree.ClickEvent{X: x, Y: y})
 	i.markDirty()
+}
+
+// mediaAt returns the Audio or Video at or above n.
+func mediaAt(n tree.Node) tree.Node {
+	for ; n != nil; n = n.Base().Parent() {
+		if _, ok := tree.MediaNode(n); ok {
+			return n
+		}
+	}
+	return nil
+}
+
+// pressMediaBar handles a press inside a player's control bar. It reports
+// whether the press belonged to the bar, so a press on the picture can still
+// toggle playback through onClick.
+func (i *interactor) pressMediaBar(n tree.Node, x, y float64) bool {
+	m, ok := tree.MediaNode(n)
+	if !ok || !m.Controls.Get() {
+		return false
+	}
+	r := absoluteRect(n)
+	lay := paint.MediaLayoutOf(m, r)
+	if lay.Bar.H == 0 || !hitRect(lay.Bar, x, y) {
+		return false
+	}
+	switch {
+	case hitRect(lay.Button, x, y):
+		i.toggleMediaPlayback(n, m)
+	case hitRect(lay.Track, x, y) || hitRect(lay.Thumb, x, y):
+		if f, ok := lay.MediaSeekFraction(x); ok && m.Duration > 0 {
+			i.seekMedia(n, time.Duration(f*float64(m.Duration)))
+		}
+	default:
+		return true // the bar swallows the press, it is not the picture
+	}
+	return true
+}
+
+// toggleMediaPlayback is the play button: it asks the app to start or pause.
+func (i *interactor) toggleMediaPlayback(n tree.Node, m *tree.Media) {
+	if i.app != nil {
+		if m.Playing && !m.Paused {
+			i.app.pauseMedia(n)
+		} else {
+			i.app.playMedia(n)
+		}
+	}
+}
+
+// seekMedia asks the app for a new position, which restarts the decoder.
+func (i *interactor) seekMedia(n tree.Node, at time.Duration) {
+	if i.app != nil {
+		i.app.seekMedia(n, at)
+	}
 }
 
 // chartCore returns the shared chart state behind n, or nil.

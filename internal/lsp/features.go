@@ -677,7 +677,13 @@ func idMemberItems(file *syntax.File, ref string) []completionResult {
 
 // animatedKind reports whether an element plays an animation, so an id of that
 // kind offers the playback methods.
-func animatedKind(kind string) bool { return kind == "Image" || kind == "SVG" }
+func animatedKind(kind string) bool {
+	switch kind {
+	case "Image", "SVG", "Audio", "Video":
+		return true
+	}
+	return false
+}
 
 // nodeMethodDoc explains one playback method, for completion and hover.
 func nodeMethodDoc(name string) string {
@@ -688,6 +694,12 @@ func nodeMethodDoc(name string) string {
 		return "**pause()**\n\nHolds the current frame; `play()` carries on from it."
 	case "stop":
 		return "**stop()**\n\nRewinds to the first frame and pauses there; `play()` starts it again."
+	case "toggle":
+		return "**toggle()**\n\nStarts a paused player and pauses a playing one."
+	case "seek":
+		return "**seek(seconds)**\n\nJumps to a position in seconds; the decoder restarts there."
+	case "volume":
+		return "**volume(0..1)**\n\nSets the player's volume."
 	}
 	return ""
 }

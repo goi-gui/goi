@@ -422,6 +422,13 @@ func newNode(name string) Node {
 		}
 	case "Rectangle":
 		return &Rectangle{NodeBase: b()}
+	case "Audio":
+		return &Audio{Media: newMedia()}
+	case "Video":
+		return &Video{
+			Media: newMedia(),
+			Fit:   newProp(nil, "fit", DirtyPaint, "contain"),
+		}
 	case "Image":
 		return &Image{
 			NodeBase: b(),

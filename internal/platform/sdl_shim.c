@@ -12,6 +12,57 @@ static SDL_HitTestResult goiHitTestTrampoline(SDL_Window *win, const SDL_Point *
 	return (SDL_HitTestResult)goiHitTestXY(area->x, area->y);
 }
 
+// ---------------------------------------------------------------- audio
+
+// goiAudioBegun is the lazy SDL_InitSubSystem(SDL_INIT_AUDIO) result: 1 when the
+// subsystem is up, -1 when it failed once and there is no point retrying.
+static int goiAudioBegun = 0;
+
+int goiAudioAvailable(void) {
+	if (goiAudioBegun == 0) {
+		goiAudioBegun = SDL_InitSubSystem(SDL_INIT_AUDIO) ? 1 : -1;
+	}
+	return goiAudioBegun == 1;
+}
+
+void *goiOpenAudioStream(const goiAudioScreen *spec) {
+	if (!goiAudioAvailable()) {
+		return NULL;
+	}
+	SDL_AudioSpec s;
+	SDL_zero(s);
+	s.freq = spec->freq;
+	s.channels = spec->channels;
+	s.format = spec->format ? (SDL_AudioFormat)spec->format : SDL_AUDIO_S16;
+	// A NULL callback opens the stream in put mode: the device pulls whatever
+	// has been pushed and pads with silence when it runs dry.
+	SDL_AudioStream *stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &s, NULL, NULL);
+	if (stream == NULL) {
+		return NULL;
+	}
+	SDL_ResumeAudioStreamDevice(stream);
+	return stream;
+}
+
+int goiPutAudio(void *stream, const void *data, int len) {
+	return SDL_PutAudioStreamData((SDL_AudioStream *)stream, data, len) ? 0 : -1;
+}
+
+int goiAudioQueued(void *stream) { return SDL_GetAudioStreamQueued((SDL_AudioStream *)stream); }
+
+void goiPauseAudio(void *stream, int paused) {
+	if (paused) {
+		SDL_PauseAudioStreamDevice((SDL_AudioStream *)stream);
+		SDL_FlushAudioStream((SDL_AudioStream *)stream);
+		return;
+	}
+	SDL_ResumeAudioStreamDevice((SDL_AudioStream *)stream);
+}
+
+void goiCloseAudioStream(void *stream) {
+	SDL_DestroyAudioStream((SDL_AudioStream *)stream);
+}
+
 void goiInstallHitTest(SDL_Window *win) {
 	SDL_SetWindowHitTest(win, goiHitTestTrampoline, NULL);
 }

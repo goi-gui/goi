@@ -120,8 +120,9 @@ type EventDef struct {
 }
 
 // NodeMethods are the methods an event can call on an element by id, as in
-// `onClick: spin.pause()`. They are the transport of an animated Image or SVG.
-var NodeMethods = []string{"play", "pause", "stop"}
+// `onClick: spin.pause()`. They are the transport of an animated Image or SVG,
+// and of an Audio or Video player.
+var NodeMethods = []string{"play", "pause", "stop", "toggle", "seek", "volume"}
 
 // NodeMethod reports whether name is a method an event can call on an element.
 func NodeMethod(name string) bool {
@@ -166,6 +167,10 @@ var eventDefs = []EventDef{
 	{Name: "onSubmit", Type: TypeString, HasValue: true, Component: true},
 	{Name: "onSelect", Type: TypeNumber, HasValue: true, Component: true},
 	{Name: "onHover", Type: TypeNumber, HasValue: true, Component: true},
+	// Media: the payload is the position in seconds.
+	{Name: "onPlay", Type: TypeNumber, HasValue: true, Component: true},
+	{Name: "onPause", Type: TypeNumber, HasValue: true, Component: true},
+	{Name: "onEnd", Type: TypeNumber, HasValue: true, Component: true},
 }
 
 var common = []Prop{
@@ -358,6 +363,31 @@ var elements = func() []Element {
 			Prop{Name: "role", Type: TypeEnum, Dirty: DirtyLayout, Enum: textRoles, Default: "bodyMedium"},
 		)},
 	}
+	// Media players. They are not Material components: their chrome is a control
+	// bar, not a shape from the type scale, so the properties are declared here
+	// beside Text and Image.
+	out = append(out,
+		Element{Name: "Audio", Attrs: withCommon(
+			Prop{Name: "src", Type: TypeString, Dirty: DirtyLayout, Default: ""},
+			Prop{Name: "controls", Type: TypeBool, Dirty: DirtyLayout, Default: true},
+			Prop{Name: "autoplay", Type: TypeBool, Dirty: DirtyPaint, Default: false},
+			Prop{Name: "loop", Type: TypeBool, Dirty: DirtyPaint, Default: false},
+			Prop{Name: "muted", Type: TypeBool, Dirty: DirtyPaint, Default: false},
+			Prop{Name: "volume", Type: TypeNumber, Dirty: DirtyPaint, Default: 1.0},
+			Prop{Name: "startAt", Type: TypeNumber, Dirty: DirtyPaint, Default: 0.0},
+		)},
+		Element{Name: "Video", Attrs: withCommon(
+			Prop{Name: "src", Type: TypeString, Dirty: DirtyLayout, Default: ""},
+			Prop{Name: "controls", Type: TypeBool, Dirty: DirtyLayout, Default: true},
+			Prop{Name: "autoplay", Type: TypeBool, Dirty: DirtyPaint, Default: false},
+			Prop{Name: "loop", Type: TypeBool, Dirty: DirtyPaint, Default: false},
+			Prop{Name: "muted", Type: TypeBool, Dirty: DirtyPaint, Default: false},
+			Prop{Name: "volume", Type: TypeNumber, Dirty: DirtyPaint, Default: 1.0},
+			Prop{Name: "startAt", Type: TypeNumber, Dirty: DirtyPaint, Default: 0.0},
+			Prop{Name: "fit", Type: TypeEnum, Dirty: DirtyPaint, Enum: []string{"cover", "contain", "fill"}, Default: "contain"},
+		)},
+	)
+
 	// Every Material 3 component, with the properties componentdef declares.
 	for _, k := range componentdef.Kinds {
 		var attrs []Prop
@@ -403,6 +433,10 @@ var elements = func() []Element {
 	// language server cannot drift apart.
 	for i := range out {
 		out[i].Events = append(out[i].Events, "onClick")
+		if out[i].Name == "Audio" || out[i].Name == "Video" {
+			out[i].Events = append(out[i].Events, "onPlay", "onPause", "onEnd")
+			continue
+		}
 		if _, ok := componentdef.Lookup(out[i].Name); ok {
 			for _, ev := range eventDefs {
 				if ev.Component {
