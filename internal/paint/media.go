@@ -49,6 +49,11 @@ func MediaLayoutOf(m *tree.Media, r tree.Rect) MediaLayout {
 	}
 	l.Time = tree.Rect{X: bar.Right() - mediaBarPad - mediaTimeW, Y: bar.Y,
 		W: mediaTimeW, H: bar.H}
+	if m.Live {
+		// There is no timeline to scrub, so a live bar has no track and the
+		// time box becomes the LIVE badge.
+		return l
+	}
 	trackX := l.Button.Right() + mediaBarPad
 	trackW := l.Time.X - mediaBarPad - trackX
 	if trackW < 40 {
@@ -158,6 +163,17 @@ func (l *List) paintMediaBar(m *tree.Media, r tree.Rect, lay MediaLayout, clip t
 	l.iconIn(icon, size*0.62, col.OnSurface,
 		lay.Button.X+lay.Button.W/2, lay.Button.Y+lay.Button.H/2, clip)
 
+	st := l.style("labelSmall")
+	if m.Live {
+		// A live feed has no timeline: a red dot and the word say it is at the
+		// edge, which is what a scrubber cannot.
+		dot := tree.Rect{X: lay.Time.X, Y: lay.Bar.Y + lay.Bar.H/2 - 4, W: 8, H: 8}
+		l.fillRect(dot, col.Error, 4, 0, 0, clip)
+		l.textIn("LIVE", st, col.OnSurface,
+			tree.Rect{X: lay.Time.X + 12, Y: lay.Time.Y, W: lay.Time.W, H: lay.Time.H},
+			AlignStart, clip)
+		return
+	}
 	track := withAlpha(col.OnSurface, 0.24)
 	l.fillRect(lay.Track, track, lay.Track.H/2, 0, 0, clip)
 	frac := 0.0
@@ -177,7 +193,6 @@ func (l *List) paintMediaBar(m *tree.Media, r tree.Rect, lay MediaLayout, clip t
 	}
 	l.fillRect(lay.Thumb, col.Primary, lay.Thumb.W/2, 0, 0, clip)
 
-	st := l.style("labelSmall")
 	l.textIn(MediaClock(m.Position)+" / "+MediaClock(m.Duration), st, col.OnSurface,
 		lay.Time, AlignEnd, clip)
 }

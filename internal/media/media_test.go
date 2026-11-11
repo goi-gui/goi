@@ -105,3 +105,38 @@ func TestMissingFileReportsTheReason(t *testing.T) {
 		t.Fatal("probing a missing file reported no error")
 	}
 }
+
+// TestLiveDetection checks the one rule that decides a feed is live: a network
+// source whose container reports no length.
+func TestLiveDetection(t *testing.T) {
+	for _, src := range []string{
+		"https://example.com/live.m3u8",
+		"http://example.com/stream.flv",
+		"rtmp://example.com/live/key",
+		"rtsp://camera.local/stream",
+		"srt://host:9000?mode=caller",
+		"udp://239.0.0.1:1234",
+	} {
+		if !IsURL(src) {
+			t.Errorf("IsURL(%q) = false", src)
+		}
+		if !(Info{}).IsLive(src) {
+			t.Errorf("a stream with no duration is not live: %q", src)
+		}
+		// A stream that reports a length is a recording, not a live feed.
+		if (Info{Duration: time.Minute}).IsLive(src) {
+			t.Errorf("%q with a duration is live", src)
+		}
+	}
+	for _, src := range []string{
+		"clip.mp4", "./media/clip.mp4", "/tmp/clip.mp4", `C:\media\clip.mp4`,
+		"file:///tmp/clip.mp4", "goi://media/clip.mp4",
+	} {
+		if IsURL(src) {
+			t.Errorf("IsURL(%q) = true", src)
+		}
+		if (Info{}).IsLive(src) {
+			t.Errorf("a file with no duration is live: %q", src)
+		}
+	}
+}

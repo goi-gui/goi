@@ -42,6 +42,23 @@ type Info struct {
 	HasAudio bool
 }
 
+// IsLive reports whether the source is a live feed: a network stream with no
+// length. A file with no duration is unusual enough that "network and no
+// duration" is the right test for "cannot be seeked, has no end".
+func (i Info) IsLive(src string) bool { return i.Duration <= 0 && IsURL(src) }
+
+// IsURL reports whether src is opened by ffmpeg itself — a network stream or
+// another protocol — rather than read from this machine. `file://` and the
+// design's own `goi://` name local assets and are not streams.
+func IsURL(src string) bool {
+	m := schemeRe.FindStringSubmatch(src)
+	if m == nil {
+		return false
+	}
+	s := strings.ToLower(m[1])
+	return s != "file" && s != "goi"
+}
+
 var (
 	lookOnce sync.Once
 	ffmpegAt string
@@ -79,6 +96,7 @@ const probeTimeout = 10 * time.Second
 var (
 	durationRe = regexp.MustCompile(`Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)`)
 	videoRe    = regexp.MustCompile(`Stream #\d+:\d+(?:\[[^\]]*\])?.*?: Video: .*?(\d{2,5})x(\d{2,5})`)
+	schemeRe   = regexp.MustCompile(`^([a-zA-Z][a-zA-Z0-9+.\-]*)://`)
 	fpsRe      = regexp.MustCompile(`(\d+(?:\.\d+)?)\s*fps`)
 	audioRe    = regexp.MustCompile(`Stream #\d+:\d+(?:\[[^\]]*\])?.*?: Audio: `)
 )
@@ -90,7 +108,16 @@ func Probe(src string) (Info, error) {
 	if err != nil {
 		return Info{}, err
 	}
-	cmd := exec.Command(bin, "-nostdin", "-hide_banner", "-i", src)
+	args := []string{"-nostdin", "-hide_banner"}
+	if IsURL(src) {
+		// A network stream keeps its input open, so without an output ffmpeg
+		// would read until the timeout. Half a second of decoded stream is
+		// enough for the banner, and it makes a live source open in a blink.
+		args = append(args, "-i", src, "-t", "0.5", "-f", "null", "-")
+	} else {
+		args = append(args, "-i", src)
+	}
+	cmd := exec.Command(bin, args...)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	done := make(chan struct{})

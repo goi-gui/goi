@@ -49,7 +49,10 @@ type Media struct {
 	Duration time.Duration
 	// Buffering is true while the decoder has not produced its first frame.
 	Buffering bool
-	LoadErr   error
+	// Live marks a network stream with no length: it cannot be seeked, it never
+	// reaches an end, and its control bar shows LIVE instead of a scrubber.
+	Live    bool
+	LoadErr error
 	// RenderedSrc is the src the current player was opened for.
 	RenderedSrc string
 

@@ -42,6 +42,10 @@ const (
 	maxVideoBufferBytes = 64 << 20
 	// minVideoFrames keeps a buffer useful at a low frame rate.
 	minVideoFrames = 2
+	// liveRetry is how long a dropped live feed is left alone before the
+	// decoder is reopened; short enough to be a blink, long enough not to spin
+	// on a server that is refusing the connection.
+	liveRetry = time.Second
 )
 
 // mediaPlayer is one running decoder for one node.
@@ -78,6 +82,9 @@ type mediaPlayer struct {
 	opened time.Duration
 	// buffer is the queue depth in seconds, from the design.
 	buffer float64
+	// live is a feed with no length: its decoder is retried after a drop, and
+	// the newest frame is preferred over the oldest.
+	live bool
 	// volume/muted are applied on the next chunk of audio.
 	volume float64
 	muted  bool
@@ -114,7 +121,7 @@ func (a *App) resolveMedia(src string) (string, error) {
 	if src == "" {
 		return "", fmt.Errorf("ui: empty src")
 	}
-	if isRemoteSrc(src) || filepath.IsAbs(src) {
+	if media.IsURL(src) || filepath.IsAbs(src) {
 		return src, nil
 	}
 	if a.mediaFiles == nil {
@@ -162,6 +169,7 @@ func (a *App) probeMedia(n tree.Node, m *tree.Media) {
 	}
 	if info, ok := a.mediaInfo[src]; ok {
 		m.Duration = info.Duration
+		m.Live = info.IsLive(src)
 		m.Buffering = false
 		return
 	}
@@ -176,6 +184,7 @@ func (a *App) probeMedia(n tree.Node, m *tree.Media) {
 	}
 	a.mediaInfo[src] = info
 	m.Duration = info.Duration
+	m.Live = info.IsLive(src)
 	m.LoadErr = nil
 	m.Buffering = false
 	if v, ok := n.(*tree.Video); ok && info.HasVideo {
@@ -226,8 +235,13 @@ func (a *App) startPlayer(n tree.Node) (*mediaPlayer, error) {
 	}
 	p.info = info
 	p.buffer = bufferSeconds(m.Buffer.Get())
-	p.opened = time.Duration(m.StartAt.Get() * float64(time.Second))
 	m.Duration = info.Duration
+	m.Live = info.IsLive(src)
+	p.live = m.Live
+	if !p.live {
+		// A live feed has no timeline to start at, so startAt is ignored.
+		p.opened = time.Duration(m.StartAt.Get() * float64(time.Second))
+	}
 
 	// A video needs a canvas to paint into. It is decoded near the size it is
 	// drawn at, so a 4K file in a 480dp box does not decode 8 megapixels a
@@ -335,18 +349,32 @@ func (p *mediaPlayer) start() {
 	go p.pumpAudio()
 }
 
-// pumpVideo decodes frames as fast as ffmpeg produces them and keeps only the
-// newest, which is frame dropping done properly: the UI takes what it wants and
-// the rest is overwritten, never queued.
+// pumpVideo decodes frames and queues them; a live feed that drops is reopened
+// instead of being taken as the end of a file.
 func (p *mediaPlayer) pumpVideo() {
 	defer p.wg.Done()
 	if !p.info.HasVideo || p.frames == nil {
 		return
 	}
+	for {
+		if stopped := p.decodeVideo(); stopped || !p.live {
+			return
+		}
+		select {
+		case <-p.stop:
+			return
+		case <-time.After(liveRetry):
+		}
+	}
+}
+
+// decodeVideo runs one decoder to its end and reports whether the player was
+// closed while it ran.
+func (p *mediaPlayer) decodeVideo() (stopped bool) {
 	dec, err := media.OpenVideo(p.src, p.frame.W, p.frame.H, p.opened)
 	if err != nil {
 		p.fail(err)
-		return
+		return true
 	}
 	defer dec.Close()
 	for {
@@ -363,18 +391,21 @@ func (p *mediaPlayer) pumpVideo() {
 			case p.free <- buf:
 			default:
 			}
-			if err == io.EOF || err == io.ErrUnexpectedEOF {
+			switch {
+			case p.live:
+				// A live feed that drops has not ended; pumpVideo reopens it.
+			case err == io.EOF || err == io.ErrUnexpectedEOF:
 				p.mu.Lock()
 				p.ended = true
 				p.mu.Unlock()
-			} else {
+			default:
 				p.fail(err)
 			}
-			return
+			return false
 		}
 		select {
 		case <-p.stop:
-			return
+			return true
 		case p.frames <- buf:
 		}
 	}
@@ -382,15 +413,31 @@ func (p *mediaPlayer) pumpVideo() {
 
 // pumpAudio streams PCM into the device, staying one buffer ahead. Sleeping
 // while the device's queue is full is what keeps a two hour podcast from
-// decoding into memory all at once.
+// decoding into memory all at once. A live feed is reopened after a drop, the
+// way the video pump is.
 func (p *mediaPlayer) pumpAudio() {
 	defer p.wg.Done()
 	if p.audio == nil {
 		return
 	}
+	for {
+		if stopped := p.decodeAudio(); stopped || !p.live {
+			return
+		}
+		select {
+		case <-p.stop:
+			return
+		case <-time.After(liveRetry):
+		}
+	}
+}
+
+// decodeAudio feeds one decoder's samples into the device, and reports whether
+// the player was closed while it ran.
+func (p *mediaPlayer) decodeAudio() (stopped bool) {
 	dec, err := media.OpenPCM(p.src, audioRate, audioChannels, p.opened)
 	if err != nil {
-		return // a silent file is not a failure
+		return true // a silent file is not a failure
 	}
 	defer dec.Close()
 	chunk := make([]byte, 16*1024)
@@ -398,13 +445,13 @@ func (p *mediaPlayer) pumpAudio() {
 	for {
 		select {
 		case <-p.stop:
-			return
+			return true
 		default:
 		}
 		for p.audio.Queued() > leadBytes {
 			select {
 			case <-p.stop:
-				return
+				return true
 			case <-time.After(5 * time.Millisecond):
 			}
 		}
@@ -413,7 +460,7 @@ func (p *mediaPlayer) pumpAudio() {
 			p.audio.Queue(volumeScale(chunk[:n], p.volume, p.muted))
 		}
 		if err != nil {
-			return
+			return false
 		}
 	}
 }
@@ -610,10 +657,14 @@ func (a *App) stopMedia(n tree.Node) {
 }
 
 // seekMedia restarts the decoders at an offset, which is the only seek ffmpeg
-// offers without a custom protocol handler.
+// offers without a custom protocol handler. A live feed has no offsets, so the
+// request is ignored.
 func (a *App) seekMedia(n tree.Node, at time.Duration) {
 	m, ok := tree.MediaNode(n)
 	if !ok {
+		return
+	}
+	if m.Live {
 		return
 	}
 	if at < 0 {
@@ -735,6 +786,7 @@ func (a *App) syncMedia() bool {
 			}
 			m.RenderedSrc = src
 			m.LoadErr = nil
+			m.Live = false
 			m.Duration = 0
 			m.Position = 0
 			m.Playing, m.Paused, m.Ended = false, false, false
@@ -868,22 +920,43 @@ func (a *App) tickMedia(dt float64) (bool, time.Duration) {
 	return changed, wait
 }
 
-// takeFrame moves the newest decoded frame into the node's canvas.
+// takeFrame moves a decoded frame into the node's canvas.
 func (p *mediaPlayer) takeFrame() bool {
 	if p.frames == nil || p.frame == nil {
 		return false
 	}
-	select {
-	case buf := <-p.frames:
-		copy(p.frame.Pix, buf)
-		// Hand the buffer straight back, so the pump can refill it.
-		select {
-		case p.free <- buf:
-		default:
-		}
-		return true
-	default:
+	buf, ok := p.nextFrameBuf()
+	if !ok {
 		return false
+	}
+	copy(p.frame.Pix, buf)
+	// Hand the buffer straight back, so the pump can refill it.
+	p.free <- buf
+	return true
+}
+
+// nextFrameBuf takes a queued frame: the oldest for a file, the freshest for a
+// live feed, so a hiccup does not leave playback behind the source.
+func (p *mediaPlayer) nextFrameBuf() ([]byte, bool) {
+	var buf []byte
+	select {
+	case buf = <-p.frames:
+	default:
+		return nil, false
+	}
+	if !p.live {
+		return buf, true
+	}
+	for {
+		select {
+		case next := <-p.frames:
+			// Buffers are a fixed set, so none is ever thrown away; handing
+			// this one back blocks only because the pump is waiting for it.
+			p.free <- buf
+			buf = next
+		default:
+			return buf, true
+		}
 	}
 }
 
