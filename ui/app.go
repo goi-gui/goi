@@ -102,6 +102,9 @@ type App struct {
 	hasMedia  bool
 	media     []*mediaPlayer
 	mediaInfo map[string]media.Info
+	// probes holds the srcs with a background ffmpeg probe in flight, so two
+	// nodes with the same src share one process.
+	probes map[string]bool
 	// fullscreenRestore is the window's fullscreen state before a video took it
 	// over, so leaving the video puts it back.
 	fullscreenRestore *bool

@@ -55,6 +55,10 @@ type Media struct {
 	Duration time.Duration
 	// Buffering is true while the decoder has not produced its first frame.
 	Buffering bool
+	// Loading is true while the file is being probed in the background, which
+	// is what the placeholder breathes for; Phase drives that pulse.
+	Loading bool
+	Phase   float64
 	// Cues are the parsed subtitles, empty when the design named none.
 	Cues []subtitle.Cue
 	// SubtitleErr is why the subtitle file could not be read, which a missing

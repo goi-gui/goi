@@ -176,41 +176,94 @@ func (a *App) resolveMedia(src string) (string, error) {
 	return f.Name(), nil
 }
 
-// probeMedia reads the stream properties once per src, so a video knows its
-// size and a control bar knows its length before anything plays.
+// probeMedia starts reading the stream properties, so a video knows its size and
+// a control bar its length. The probe is an ffmpeg process — a remote stream
+// takes a second or more — so it runs in the background and the node shows the
+// loading placeholder meanwhile, exactly as a remote image does. A cached src
+// is applied straight away.
 func (a *App) probeMedia(n tree.Node, m *tree.Media) {
 	src := m.Src.Get()
-	path, err := a.resolveMedia(src)
-	if err != nil {
-		m.LoadErr = err
-		m.Buffering = false
+	if src == "" {
 		return
 	}
 	if info, ok := a.mediaInfo[src]; ok {
-		m.Duration = info.Duration
-		m.AudioTracks = info.AudioTracks
-		m.Live = info.IsLive(src)
-		m.Buffering = false
+		a.applyMediaInfo(n, m, src, info)
 		return
 	}
-	info, err := media.Probe(path)
+	path, err := a.resolveMedia(src)
 	if err != nil {
 		m.LoadErr = err
-		m.Buffering = false
+		m.Loading = false
 		return
 	}
-	if a.mediaInfo == nil {
-		a.mediaInfo = map[string]media.Info{}
+	m.Loading = true
+	m.LoadErr = nil
+	a.pulsing = true
+	if a.probes == nil {
+		a.probes = map[string]bool{}
 	}
-	a.mediaInfo[src] = info
+	if a.probes[src] {
+		return // one probe per src, however many nodes share it
+	}
+	a.probes[src] = true
+	go func() {
+		info, err := media.Probe(path)
+		a.Post(func() { a.finishProbe(src, info, err) })
+	}()
+}
+
+// finishProbe applies a probe that ran in the background to every node still
+// waiting for that src, then starts any player that asked to play early.
+func (a *App) finishProbe(src string, info media.Info, err error) {
+	delete(a.probes, src)
+	if err == nil {
+		if a.mediaInfo == nil {
+			a.mediaInfo = map[string]media.Info{}
+		}
+		a.mediaInfo[src] = info
+	}
+	if a.win == nil || a.win.tree == nil {
+		return
+	}
+	a.win.tree.Walk(func(n tree.Node) {
+		m, ok := tree.MediaNode(n)
+		if !ok || m.Src.Get() != src || !m.Loading {
+			return
+		}
+		m.Loading = false
+		if err != nil {
+			m.LoadErr = err
+			m.Playing, m.Paused = false, false
+			m.Base().MarkDirty(tree.DirtyLayout)
+			return
+		}
+		a.applyMediaInfo(n, m, src, info)
+		// A player that was pressed before the probe landed starts now.
+		if m.Playing && !m.Paused && a.playerFor(n) == nil {
+			if _, perr := a.startPlayer(n); perr != nil {
+				m.LoadErr = perr
+				m.Playing = false
+				m.Base().MarkDirty(tree.DirtyLayout)
+			}
+		}
+	})
+	a.markDirty(tree.DirtyLayout)
+}
+
+// applyMediaInfo hands one node the probe result: the length, the stream count,
+// whether the source is live, and a video's own frame size.
+func (a *App) applyMediaInfo(n tree.Node, m *tree.Media, src string, info media.Info) {
 	m.Duration = info.Duration
 	m.AudioTracks = info.AudioTracks
 	m.Live = info.IsLive(src)
-	m.LoadErr = nil
+	m.Loading = false
 	m.Buffering = false
+	m.LoadErr = nil
 	if v, ok := n.(*tree.Video); ok && info.HasVideo {
+		if v.FrameW != info.Width || v.FrameH != info.Height {
+			v.Base().MarkDirty(tree.DirtyLayout)
+		}
 		v.FrameW, v.FrameH = info.Width, info.Height
-		v.Base().MarkDirty(tree.DirtyLayout)
 	}
 }
 
@@ -704,6 +757,15 @@ func (a *App) playMedia(n tree.Node) {
 	if m.Ended {
 		a.seekMedia(n, 0)
 	}
+	if m.Loading {
+		// The probe is still running; the player starts when it lands, so a
+		// design can autoplay a remote stream without freezing the window.
+		m.Playing, m.Paused, m.Ended = true, false, false
+		m.Base().MarkDirty(tree.DirtyPaint)
+		a.markDirty(tree.DirtyPaint)
+		a.needsFrame = true
+		return
+	}
 	p, err := a.startPlayer(n)
 	if err != nil {
 		m.LoadErr = err
@@ -838,9 +900,9 @@ func (a *App) syncVideoFullscreen() {
 	a.fullscreenRestore = nil
 }
 
-// loadSubtitles reads and parses the design's SRT. Local files are read here
-// because they are small and needed for the first frame; a URL is fetched with
-// the same bounded client an image uses.
+// loadSubtitles reads and parses the design's SRT. A local file is a few
+// kilobytes read here; a URL is fetched in the background with the same bounded
+// client an image uses, so a slow host cannot hold up the window.
 func (a *App) loadSubtitles(m *tree.Media) {
 	src := m.Subtitles.Get()
 	m.RenderedSubtitles = src
@@ -848,20 +910,46 @@ func (a *App) loadSubtitles(m *tree.Media) {
 	if src == "" {
 		return
 	}
-	var b []byte
-	var err error
 	if isRemoteSrc(src) {
-		b, err = fetchRemote(src)
-	} else {
-		b, err = a.readSrc(src)
+		go func() {
+			b, err := fetchRemote(src)
+			a.Post(func() { a.finishSubtitles(src, b, err) })
+		}()
+		return
 	}
+	b, err := a.readSrc(src)
+	a.applySubtitles(m, src, b, err)
+}
+
+// finishSubtitles hands a fetched SRT to every player still waiting for it.
+func (a *App) finishSubtitles(src string, b []byte, err error) {
+	if a.win == nil || a.win.tree == nil {
+		return
+	}
+	a.win.tree.Walk(func(n tree.Node) {
+		m, ok := tree.MediaNode(n)
+		if !ok || m.Subtitles.Get() != src || m.RenderedSubtitles != src {
+			return
+		}
+		a.applySubtitles(m, src, b, err)
+		m.Base().MarkDirty(tree.DirtyPaint)
+	})
+	a.markDirty(tree.DirtyPaint)
+}
+
+// applySubtitles parses one SRT read and stores the result, recording why it
+// failed rather than failing the player.
+func (a *App) applySubtitles(m *tree.Media, src string, b []byte, err error) {
 	if err != nil {
 		m.SubtitleErr = err
 		return
 	}
-	if m.Cues, err = subtitle.Parse(b); err != nil {
-		m.SubtitleErr = fmt.Errorf("%s: %w", src, err)
+	cues, perr := subtitle.Parse(b)
+	if perr != nil {
+		m.SubtitleErr = fmt.Errorf("%s: %w", src, perr)
+		return
 	}
+	m.Cues = cues
 }
 
 // setMediaAudioTrack picks an audio stream and reopens just the sound. The
@@ -944,6 +1032,7 @@ func (a *App) syncMedia() bool {
 			}
 			m.RenderedSrc = src
 			m.LoadErr = nil
+			m.Loading = false
 			m.Live = false
 			m.Duration = 0
 			m.Position = 0
@@ -972,7 +1061,8 @@ func (a *App) syncMedia() bool {
 				changed = true
 			}
 		}
-		if m.Autoplay.Get() && !m.Playing && !m.Paused && src != "" && m.LoadErr == nil {
+		if m.Autoplay.Get() && !m.Playing && !m.Paused && src != "" &&
+			m.LoadErr == nil && !m.Loading {
 			a.playMedia(n)
 			changed = true
 		}

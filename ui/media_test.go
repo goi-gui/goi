@@ -49,6 +49,25 @@ func mediaApp(t *testing.T, src, design string) (*App, *Window, *tree.Media) {
 			a.probeMedia(n, m)
 		}
 	}
+	// The probe runs in the background now, so wait for it the way the frame
+	// loop would: drain what it posted until nothing is loading.
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		a.drainPosted()
+		pending := false
+		for _, n := range win.tree.All() {
+			if m, ok := tree.MediaNode(n); ok && m.Loading {
+				pending = true
+			}
+		}
+		if !pending {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the probe never finished")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 	layout.New(nil).Layout(win.tree.Root, 400, 300)
 	var got *tree.Media
 	for _, n := range win.tree.All() {

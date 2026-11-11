@@ -120,6 +120,13 @@ func (l *List) paintMediaFrame(m *tree.Media, r tree.Rect, clip tree.Rect) {
 // paintVideoFrame draws the current frame of a video into its box.
 func (l *List) paintVideoFrame(v *tree.Video, r tree.Rect, clip tree.Rect) {
 	if v.Data == nil || v.Data.W <= 0 || v.Data.H <= 0 {
+		// A player still waiting for its probe breathes, so the space reads as
+		// loading instead of broken, the same wash a remote image gets.
+		if v.Loading {
+			alpha := 0.06 + 0.10*v.Phase
+			l.fillRect(r, withAlpha(l.Theme.Colors.OnSurface, alpha), v.Base().Radii()[0], 0, 0, clip)
+			return
+		}
 		l.fillRect(r, withAlpha(l.Theme.Colors.SurfaceContainerHighest, 0.5), v.Base().Radii()[0], 0, 0, clip)
 		return
 	}

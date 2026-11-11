@@ -700,6 +700,20 @@ func (a *App) tickImageLoads(dt float64) bool {
 			v.Phase = phase
 			v.Base().MarkDirty(tree.DirtyPaint)
 			still = true
+		case *tree.Audio:
+			if !v.Loading {
+				return
+			}
+			v.Phase = phase
+			v.Base().MarkDirty(tree.DirtyPaint)
+			still = true
+		case *tree.Video:
+			if !v.Loading {
+				return
+			}
+			v.Phase = phase
+			v.Base().MarkDirty(tree.DirtyPaint)
+			still = true
 		}
 	})
 	if !still {
