@@ -39,6 +39,10 @@ func (a *App) SeekMedia(n Node, at time.Duration) { a.seekMedia(n, at) }
 // SetMediaVolume sets a player's volume, clamped to 0..1.
 func (a *App) SetMediaVolume(n Node, v float64) { a.setMediaVolume(n, v) }
 
+// SetMediaAudioTrack picks the audio stream to play, 0 being the first. A film
+// with one language never needs it; the index is clamped to what the file has.
+func (a *App) SetMediaAudioTrack(n Node, track int) { a.setMediaAudioTrack(n, track) }
+
 // SetVideoFullscreen makes a video cover the window, above everything else, and
 // puts the window in fullscreen too. Escape, or calling it with false, puts both
 // back.

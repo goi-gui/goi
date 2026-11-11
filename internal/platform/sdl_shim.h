@@ -117,6 +117,8 @@ int goiAudioQueued(void *stream);
 
 // goiAudioState pauses or resumes the device and releases the stream.
 void goiPauseAudio(void *stream, int paused);
+// goiFlushAudio drops what the device has queued, which a track switch needs.
+void goiFlushAudio(void *stream);
 void goiCloseAudioStream(void *stream);
 
 // goiAudioAvailable reports whether the audio subsystem came up. It is false on

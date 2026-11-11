@@ -40,7 +40,7 @@ func TestProbeAndDecode(t *testing.T) {
 		t.Fatalf("duration = %v", info.Duration)
 	}
 
-	v, err := OpenVideo(path, 80, 44, 0)
+	v, err := OpenVideo(path, 80, 44, 0, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestProbeAndDecode(t *testing.T) {
 
 func TestPCMDecodes(t *testing.T) {
 	path := fixture(t)
-	p, err := OpenPCM(path, 48000, 2, 0)
+	p, err := OpenPCM(path, 48000, 2, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -704,6 +704,8 @@ func nodeMethodDoc(name string) string {
 		return "**fullscreen()**\n\nFills the window with a video and puts the window in fullscreen; Escape leaves."
 	case "windowed":
 		return "**windowed()**\n\nLeaves fullscreen and puts the video back in its box."
+	case "audioTrack":
+		return "**audioTrack(0)**\n\nPicks the audio stream, 0 being the first."
 	case "toggleFullscreen":
 		return "**toggleFullscreen()**\n\nFlips between fullscreen and windowed."
 	}

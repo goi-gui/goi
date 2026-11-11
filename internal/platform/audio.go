@@ -76,6 +76,15 @@ func (a *AudioStream) Resume() {
 	C.goiPauseAudio(a.h, 0)
 }
 
+// Flush drops what the device has queued, so a decoder reopened at another
+// position or another audio track does not play a moment of the old one first.
+func (a *AudioStream) Flush() {
+	if a == nil || a.h == nil {
+		return
+	}
+	C.goiFlushAudio(a.h)
+}
+
 // Close releases the device.
 func (a *AudioStream) Close() {
 	if a == nil || a.h == nil {

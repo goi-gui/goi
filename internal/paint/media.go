@@ -5,6 +5,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/goi-gui/goi/internal/subtitle"
 	"github.com/goi-gui/goi/internal/tree"
 )
 
@@ -30,9 +31,11 @@ type MediaLayout struct {
 	Time tree.Rect
 }
 
-// MediaLayoutOf lays out the controls of an Audio or Video in its box.
+// MediaLayoutOf lays out the controls of an Audio or Video in its box. A bar
+// that auto-hid lays out as empty, so paint and hit-testing agree there is
+// nothing to press until the pointer comes back.
 func MediaLayoutOf(m *tree.Media, r tree.Rect) MediaLayout {
-	if !m.Controls.Get() || r.W < 120 || r.H < 24 {
+	if !m.Controls.Get() || !m.ControlsShown || r.W < 120 || r.H < 24 {
 		return MediaLayout{}
 	}
 	bar := tree.Rect{X: r.X, Y: r.Bottom() - mediaBarH, W: r.W, H: mediaBarH}
@@ -101,6 +104,7 @@ func (l *List) paintMediaContent(m *tree.Media, r tree.Rect, clip tree.Rect) {
 func (l *List) paintMediaFrame(m *tree.Media, r tree.Rect, clip tree.Rect) {
 	if v, ok := m.Base().Node().(*tree.Video); ok {
 		l.paintVideoFrame(v, r, clip)
+		l.paintSubtitle(m, r, clip)
 	}
 	if m.LoadErr != nil {
 		l.paintMediaError(m, r, clip)
@@ -123,6 +127,44 @@ func (l *List) paintVideoFrame(v *tree.Video, r tree.Rect, clip tree.Rect) {
 		return
 	}
 	l.paintBitmap(v.Data, v.Fit.Get(), v.Base(), false, 0, r, clip)
+}
+
+// paintSubtitle draws the caption playing now: centered near the bottom of the
+// picture, just above the control bar when it is showing, each line on a scrim
+// so it reads over a bright frame. The text is white with a dark scrim on every
+// theme, because the picture, not the scheme, is what it sits on.
+func (l *List) paintSubtitle(m *tree.Media, r tree.Rect, clip tree.Rect) {
+	text := subtitle.At(m.Cues, m.Position)
+	if text == "" || r.W <= 0 {
+		return
+	}
+	st := l.style("bodyMedium")
+	boxW := math.Min(r.W*0.86, 760)
+	lines := l.wrapLines(text, boxW, st)
+	if len(lines) == 0 {
+		return
+	}
+	lh := st.Size * 1.3
+	bottom := r.Bottom() - 12
+	if m.Controls.Get() && m.ControlsShown && r.W >= 120 && r.H >= 24 {
+		bottom = r.Bottom() - mediaBarH - 8
+	}
+	const scrim = 0xE6000000 // black at 0.9, enough behind thin glyphs
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := lines[i].Text
+		if line == "" {
+			continue
+		}
+		w := textWidth(l, line, st)
+		y := bottom - float64(len(lines)-i)*lh
+		if y < r.Y {
+			break
+		}
+		box := tree.Rect{X: r.X + (r.W-boxW)/2, Y: y, W: boxW, H: lh}
+		l.fillRect(tree.Rect{X: box.X + (boxW-w)/2 - 8, Y: y, W: w + 16, H: lh},
+			scrim, 4, 0, 0, clip)
+		l.textIn(line, st, 0xFFFFFFFF, box, AlignCenter, clip)
+	}
 }
 
 // paintMediaError writes the decoder's message, which is what a missing ffmpeg

@@ -12,6 +12,7 @@ import (
 	"github.com/goi-gui/goi/internal/img"
 	"github.com/goi-gui/goi/internal/media"
 	"github.com/goi-gui/goi/internal/platform"
+	"github.com/goi-gui/goi/internal/subtitle"
 	"github.com/goi-gui/goi/internal/tree"
 )
 
@@ -46,6 +47,9 @@ const (
 	// decoder is reopened; short enough to be a blink, long enough not to spin
 	// on a server that is refusing the connection.
 	liveRetry = time.Second
+	// controlsHide is how long the control bar stays after the pointer stops
+	// moving over a player, or leaves it.
+	controlsHide = 3 * time.Second
 )
 
 // mediaPlayer is one running decoder for one node.
@@ -65,6 +69,17 @@ type mediaPlayer struct {
 	// audio is the playback device; nil when the file has no sound or the
 	// machine has none.
 	audio *platform.AudioStream
+	// audioStop ends the audio pump alone, which is what a track switch needs:
+	// the picture keeps playing while the sound is reopened elsewhere.
+	audioStop chan struct{}
+	audioWG   sync.WaitGroup
+	// track is the audio stream the pump is decoding. Only the UI goroutine
+	// changes it; the pump is handed its index when it starts.
+	track int
+	// hardware is the decoder mode the running pump last used, published to the
+	// node from the UI goroutine so paint never reads a field another goroutine
+	// writes.
+	hardware bool
 
 	// Buffered frames. The pump decodes into a buffer from free and sends it to
 	// frames; the UI takes from frames and hands the buffer back. Sending on a
@@ -85,6 +100,9 @@ type mediaPlayer struct {
 	// live is a feed with no length: its decoder is retried after a drop, and
 	// the newest frame is preferred over the oldest.
 	live bool
+	// hw is whether to ask ffmpeg for hardware decoding. It drops to false when
+	// the attempt produced no frame, which is the fallback to software.
+	hw bool
 	// volume/muted are applied on the next chunk of audio.
 	volume float64
 	muted  bool
@@ -106,6 +124,7 @@ func (a *App) loadMedia(tr *tree.Tree) {
 		a.hasMedia = true
 		m, _ := tree.MediaNode(n)
 		m.RenderedSrc = m.Src.Get()
+		a.loadSubtitles(m)
 		if m.Src.Get() != "" {
 			// Probe now, so the layout knows the aspect and the duration before
 			// the first frame; the decoder itself starts only when playing.
@@ -169,6 +188,7 @@ func (a *App) probeMedia(n tree.Node, m *tree.Media) {
 	}
 	if info, ok := a.mediaInfo[src]; ok {
 		m.Duration = info.Duration
+		m.AudioTracks = info.AudioTracks
 		m.Live = info.IsLive(src)
 		m.Buffering = false
 		return
@@ -184,6 +204,7 @@ func (a *App) probeMedia(n tree.Node, m *tree.Media) {
 	}
 	a.mediaInfo[src] = info
 	m.Duration = info.Duration
+	m.AudioTracks = info.AudioTracks
 	m.Live = info.IsLive(src)
 	m.LoadErr = nil
 	m.Buffering = false
@@ -222,7 +243,8 @@ func (a *App) startPlayer(n tree.Node) (*mediaPlayer, error) {
 		return nil, err
 	}
 	p := &mediaPlayer{node: n, m: m, src: path, volume: 1, muted: m.Muted.Get(),
-		stop: make(chan struct{})}
+		stop: make(chan struct{}), audioStop: make(chan struct{}), hw: true,
+		track: int(m.AudioTrack.Get())}
 	p.volume = clampUnit(m.Volume.Get())
 	p.muted = m.Muted.Get()
 	info := a.mediaInfo[src]
@@ -236,6 +258,7 @@ func (a *App) startPlayer(n tree.Node) (*mediaPlayer, error) {
 	p.info = info
 	p.buffer = bufferSeconds(m.Buffer.Get())
 	m.Duration = info.Duration
+	m.AudioTracks = info.AudioTracks
 	m.Live = info.IsLive(src)
 	p.live = m.Live
 	if !p.live {
@@ -344,20 +367,42 @@ func (p *mediaPlayer) buffered() int {
 // start launches the two pumps: video frames into the queue, audio into the
 // device.
 func (p *mediaPlayer) start() {
-	p.wg.Add(2)
+	p.wg.Add(1)
 	go p.pumpVideo()
-	go p.pumpAudio()
+	p.startAudio(p.opened)
+}
+
+// startAudio runs the audio pump from at. A track switch reuses this on the
+// same device, so only the sound is reopened.
+func (p *mediaPlayer) startAudio(at time.Duration) {
+	if p.audio == nil || !p.info.HasAudio {
+		return
+	}
+	p.audioStop = make(chan struct{})
+	p.audioWG.Add(1)
+	go p.pumpAudio(at, p.track)
 }
 
 // pumpVideo decodes frames and queues them; a live feed that drops is reopened
-// instead of being taken as the end of a file.
+// instead of being taken as the end of a file, and a hardware decoder that
+// produced nothing is retried in software.
 func (p *mediaPlayer) pumpVideo() {
 	defer p.wg.Done()
 	if !p.info.HasVideo || p.frames == nil {
 		return
 	}
 	for {
-		if stopped := p.decodeVideo(); stopped || !p.live {
+		stopped, frames := p.decodeVideo()
+		if stopped {
+			return
+		}
+		if frames == 0 && p.hw {
+			// The device, the driver or the codec refused: software from here
+			// on, for this file, without asking again.
+			p.hw = false
+			continue
+		}
+		if !p.live {
 			return
 		}
 		select {
@@ -369,12 +414,15 @@ func (p *mediaPlayer) pumpVideo() {
 }
 
 // decodeVideo runs one decoder to its end and reports whether the player was
-// closed while it ran.
-func (p *mediaPlayer) decodeVideo() (stopped bool) {
-	dec, err := media.OpenVideo(p.src, p.frame.W, p.frame.H, p.opened)
+// closed while it ran, plus how many frames it produced.
+func (p *mediaPlayer) decodeVideo() (stopped bool, frames int) {
+	dec, err := media.OpenVideo(p.src, p.frame.W, p.frame.H, p.opened, p.hw)
 	if err != nil {
-		p.fail(err)
-		return true
+		if !p.hw {
+			p.fail(err)
+			return true, 0
+		}
+		return false, 0
 	}
 	defer dec.Close()
 	for {
@@ -398,14 +446,22 @@ func (p *mediaPlayer) decodeVideo() (stopped bool) {
 				p.mu.Lock()
 				p.ended = true
 				p.mu.Unlock()
-			default:
+			case frames > 0:
+				// A decoder that produced frames and then failed is a real
+				// failure, not a hardware one to retry.
 				p.fail(err)
 			}
-			return false
+			return false, frames
 		}
+		if frames == 0 {
+			p.mu.Lock()
+			p.hardware = p.hw
+			p.mu.Unlock()
+		}
+		frames++
 		select {
 		case <-p.stop:
-			return true
+			return true, frames
 		case p.frames <- buf:
 		}
 	}
@@ -415,17 +471,19 @@ func (p *mediaPlayer) decodeVideo() (stopped bool) {
 // while the device's queue is full is what keeps a two hour podcast from
 // decoding into memory all at once. A live feed is reopened after a drop, the
 // way the video pump is.
-func (p *mediaPlayer) pumpAudio() {
-	defer p.wg.Done()
+func (p *mediaPlayer) pumpAudio(at time.Duration, track int) {
+	defer p.audioWG.Done()
 	if p.audio == nil {
 		return
 	}
 	for {
-		if stopped := p.decodeAudio(); stopped || !p.live {
+		if stopped := p.decodeAudio(at, track); stopped || !p.live {
 			return
 		}
 		select {
 		case <-p.stop:
+			return
+		case <-p.audioStop:
 			return
 		case <-time.After(liveRetry):
 		}
@@ -433,9 +491,9 @@ func (p *mediaPlayer) pumpAudio() {
 }
 
 // decodeAudio feeds one decoder's samples into the device, and reports whether
-// the player was closed while it ran.
-func (p *mediaPlayer) decodeAudio() (stopped bool) {
-	dec, err := media.OpenPCM(p.src, audioRate, audioChannels, p.opened)
+// the pump was stopped while it ran.
+func (p *mediaPlayer) decodeAudio(at time.Duration, track int) (stopped bool) {
+	dec, err := media.OpenPCM(p.src, audioRate, audioChannels, at, track)
 	if err != nil {
 		return true // a silent file is not a failure
 	}
@@ -443,14 +501,14 @@ func (p *mediaPlayer) decodeAudio() (stopped bool) {
 	chunk := make([]byte, 16*1024)
 	leadBytes := p.audioLead()
 	for {
-		select {
-		case <-p.stop:
+		if p.haltAudio() {
 			return true
-		default:
 		}
 		for p.audio.Queued() > leadBytes {
 			select {
 			case <-p.stop:
+				return true
+			case <-p.audioStop:
 				return true
 			case <-time.After(5 * time.Millisecond):
 			}
@@ -462,6 +520,19 @@ func (p *mediaPlayer) decodeAudio() (stopped bool) {
 		if err != nil {
 			return false
 		}
+	}
+}
+
+// haltAudio reports whether the pump should stop: the whole player closed, or
+// the audio alone (a track switch, a seek).
+func (p *mediaPlayer) haltAudio() bool {
+	select {
+	case <-p.stop:
+		return true
+	case <-p.audioStop:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -516,11 +587,39 @@ func (p *mediaPlayer) close() {
 	// A pump blocked on a full queue is released by the stop case, but a pump
 	// blocked handing a frame over is not holding the queue; draining here just
 	// makes the wait prompt.
+	p.haltAudioPump()
 	p.wg.Wait()
 	if p.audio != nil {
 		p.audio.Close()
 		p.audio = nil
 	}
+}
+
+// haltAudioPump stops the audio goroutine, waiting for it so the device is not
+// closed underneath a write.
+func (p *mediaPlayer) haltAudioPump() {
+	select {
+	case <-p.audioStop:
+	default:
+		close(p.audioStop)
+	}
+	p.audioWG.Wait()
+}
+
+// switchAudio reopens the sound at another stream, in place: the picture keeps
+// playing and only the decoder changes.
+func (p *mediaPlayer) switchAudio(track int, at time.Duration) {
+	if p.audio == nil {
+		p.track = track
+		return
+	}
+	if track == p.track {
+		return
+	}
+	p.haltAudioPump()
+	p.track = track
+	p.audio.Flush()
+	p.startAudio(at)
 }
 
 // MediaRequest runs one playback method a design called by id.
@@ -568,6 +667,15 @@ func (a *App) mediaRequest(n tree.Node, method string, args []any) bool {
 			return false
 		}
 		a.setMediaVolume(n, sec)
+	case "audioTrack":
+		if len(args) != 1 {
+			return false
+		}
+		idx, ok := toFloat(args[0])
+		if !ok {
+			return false
+		}
+		a.setMediaAudioTrack(n, int(idx))
 	default:
 		return false
 	}
@@ -730,6 +838,56 @@ func (a *App) syncVideoFullscreen() {
 	a.fullscreenRestore = nil
 }
 
+// loadSubtitles reads and parses the design's SRT. Local files are read here
+// because they are small and needed for the first frame; a URL is fetched with
+// the same bounded client an image uses.
+func (a *App) loadSubtitles(m *tree.Media) {
+	src := m.Subtitles.Get()
+	m.RenderedSubtitles = src
+	m.Cues, m.SubtitleErr = nil, nil
+	if src == "" {
+		return
+	}
+	var b []byte
+	var err error
+	if isRemoteSrc(src) {
+		b, err = fetchRemote(src)
+	} else {
+		b, err = a.readSrc(src)
+	}
+	if err != nil {
+		m.SubtitleErr = err
+		return
+	}
+	if m.Cues, err = subtitle.Parse(b); err != nil {
+		m.SubtitleErr = fmt.Errorf("%s: %w", src, err)
+	}
+}
+
+// setMediaAudioTrack picks an audio stream and reopens just the sound. The
+// index is clamped to the streams the file has, so a design that names a track
+// the film lacks keeps playing instead of going silent.
+func (a *App) setMediaAudioTrack(n tree.Node, track int) {
+	m, ok := tree.MediaNode(n)
+	if !ok {
+		return
+	}
+	if track < 0 {
+		track = 0
+	}
+	if m.AudioTracks > 0 && track >= m.AudioTracks {
+		track = m.AudioTracks - 1
+	}
+	m.AudioTrack.Set(float64(track))
+	if p := a.playerFor(n); p != nil && m.Playing && !m.Paused {
+		p.switchAudio(track, m.Position)
+	} else if p != nil {
+		p.track = track
+	}
+	m.Base().MarkDirty(tree.DirtyPaint)
+	a.markDirty(tree.DirtyPaint)
+}
+
 // setMediaVolume applies a new volume, clamped to 0..1.
 func (a *App) setMediaVolume(n tree.Node, v float64) {
 	if m, ok := tree.MediaNode(n); ok {
@@ -789,16 +947,30 @@ func (a *App) syncMedia() bool {
 			m.Live = false
 			m.Duration = 0
 			m.Position = 0
+			m.AudioTracks = 0
+			m.Hardware = false
+			m.AudioTrack.Set(0)
 			m.Playing, m.Paused, m.Ended = false, false, false
 			if src != "" {
 				a.probeMedia(n, m)
 			}
 			changed = true
 		}
+		if m.Subtitles.Get() != m.RenderedSubtitles {
+			a.loadSubtitles(m)
+			m.Base().MarkDirty(tree.DirtyPaint)
+			changed = true
+		}
 		if p := a.playerFor(n); p != nil {
 			p.mu.Lock()
 			p.volume, p.muted = clampUnit(m.Volume.Get()), m.Muted.Get()
 			p.mu.Unlock()
+			// A track the design or Go changed is applied to the running
+			// player, without restarting the picture.
+			if track := int(m.AudioTrack.Get()); track != p.track {
+				a.setMediaAudioTrack(n, track)
+				changed = true
+			}
 		}
 		if m.Autoplay.Get() && !m.Playing && !m.Paused && src != "" && m.LoadErr == nil {
 			a.playMedia(n)
@@ -819,6 +991,28 @@ func (a *App) tickMedia(dt float64) (bool, time.Duration) {
 	for i := 0; i < len(a.media); i++ {
 		p := a.media[i]
 		m := p.m
+		// The control bar follows the pointer: it hides once the pointer has
+		// rested on the picture or left it for controlsHide. The remaining time
+		// is the loop's wake-up, so a paused player still drops its bar without
+		// needing input.
+		if m.ControlsShown {
+			m.ControlsIdle += time.Duration(dt * float64(time.Second))
+			if m.ControlsIdle >= controlsHide {
+				m.ControlsShown = false
+				m.Base().MarkDirty(tree.DirtyPaint)
+				changed = true
+			} else if d := controlsHide - m.ControlsIdle; wait == 0 || d < wait {
+				wait = d
+			}
+		}
+		// The decoder reports its mode from its own goroutine; the node is
+		// written here, on the one goroutine paint reads from.
+		p.mu.Lock()
+		hw := p.hardware
+		p.mu.Unlock()
+		if m.Hardware != hw {
+			m.Hardware = hw
+		}
 		if !m.Playing || m.Paused {
 			continue
 		}

@@ -40,6 +40,9 @@ type Info struct {
 	Duration time.Duration
 	HasVideo bool
 	HasAudio bool
+	// AudioTracks is how many audio streams the file carries, which is what a
+	// player offers as a choice. A file has 1 when it has sound, 0 when not.
+	AudioTracks int
 }
 
 // IsLive reports whether the source is a live feed: a network stream with no
@@ -147,7 +150,8 @@ func Probe(src string) (Info, error) {
 			info.FPS, _ = strconv.ParseFloat(f[1], 64)
 		}
 	}
-	info.HasAudio = audioRe.MatchString(text)
+	info.AudioTracks = len(audioRe.FindAllString(text, -1))
+	info.HasAudio = info.AudioTracks > 0
 	if !info.HasVideo && !info.HasAudio {
 		// ffmpeg writes the reason on the first line of its banner.
 		msg := firstLine(text)
@@ -187,8 +191,9 @@ type Video struct {
 }
 
 // OpenVideo starts decoding src at w by h, from offset. A zero offset starts at
-// the beginning.
-func OpenVideo(src string, w, h int, offset time.Duration) (*Video, error) {
+// the beginning. hw asks ffmpeg for hardware decoding; the caller falls back by
+// opening again without it, because a machine, a driver or a codec may refuse.
+func OpenVideo(src string, w, h int, offset time.Duration, hw bool) (*Video, error) {
 	bin, err := FFmpeg()
 	if err != nil {
 		return nil, err
@@ -199,6 +204,12 @@ func OpenVideo(src string, w, h int, offset time.Duration) (*Video, error) {
 	w &^= 1 // yuv420 wants even dimensions; rgba does not care, but the scaler does
 	h &^= 1
 	args := []string{"-nostdin", "-hide_banner", "-loglevel", "error"}
+	if hw {
+		// "auto" asks for whatever the platform offers (VideoToolbox, D3D11,
+		// VAAPI, NVDEC) and falls back to software when the device cannot be
+		// opened. Frames are downloaded to system memory for the rgba output.
+		args = append(args, "-hwaccel", "auto")
+	}
 	if offset > 0 {
 		args = append(args, "-ss", strconv.FormatFloat(offset.Seconds(), 'f', 3, 64))
 	}
@@ -278,7 +289,9 @@ type PCM struct {
 }
 
 // OpenPCM starts decoding the audio of src at rate and channels, from offset.
-func OpenPCM(src string, rate, channels int, offset time.Duration) (*PCM, error) {
+// track selects the audio stream, 0 being the first, which is how a film's
+// language tracks are offered.
+func OpenPCM(src string, rate, channels int, offset time.Duration, track int) (*PCM, error) {
 	bin, err := FFmpeg()
 	if err != nil {
 		return nil, err
@@ -293,9 +306,14 @@ func OpenPCM(src string, rate, channels int, offset time.Duration) (*PCM, error)
 	if offset > 0 {
 		args = append(args, "-ss", strconv.FormatFloat(offset.Seconds(), 'f', 3, 64))
 	}
+	mapArg := "0:a:0"
+	if track > 0 {
+		mapArg = "0:a:" + strconv.Itoa(track)
+	}
 	args = append(args,
 		"-i", src,
 		"-vn",
+		"-map", mapArg,
 		"-f", "s16le",
 		"-acodec", "pcm_s16le",
 		"-ar", strconv.Itoa(rate),

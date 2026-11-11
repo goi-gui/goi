@@ -300,6 +300,9 @@ func (i *interactor) MouseMove(x, y float64) {
 		return
 	}
 	hit := i.hit(x, y)
+	// Any movement over a player brings its bar back and restarts the clock
+	// that hides it again.
+	i.showMediaControls(mediaAt(hit))
 	i.updateScrollHover(hit)
 	// A chart highlights the point under the pointer, which changes without the
 	// hovered node changing.
@@ -493,8 +496,13 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 		}
 	}
 	if button == 0 {
-		if m := mediaAt(hit); m != nil && (i.pressMediaBar(m, x, y) || i.pressFullscreenMedia(m)) {
-			return
+		if m := mediaAt(hit); m != nil {
+			// A press is intent, so the bar comes back even if the pointer has
+			// not moved since it hid.
+			i.showMediaControls(m)
+			if i.pressMediaBar(m, x, y) || i.pressFullscreenMedia(m) {
+				return
+			}
 		}
 	}
 	field := fieldAt(hit)
@@ -687,6 +695,25 @@ func mediaAt(n tree.Node) tree.Node {
 		}
 	}
 	return nil
+}
+
+// showMediaControls brings a player's bar back and restarts the idle clock that
+// hides it again. The ui layer advances that clock and hides the bar, so the
+// bar disappears whether the pointer rested on the picture or left it.
+func (i *interactor) showMediaControls(n tree.Node) {
+	if n == nil {
+		return
+	}
+	m, ok := tree.MediaNode(n)
+	if !ok {
+		return
+	}
+	m.ControlsIdle = 0
+	if !m.ControlsShown {
+		m.ControlsShown = true
+		m.Base().MarkDirty(tree.DirtyPaint)
+		i.markDirty()
+	}
 }
 
 // pressMediaBar handles a press inside a player's control bar. It reports

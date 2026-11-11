@@ -59,6 +59,8 @@ void goiPauseAudio(void *stream, int paused) {
 	SDL_ResumeAudioStreamDevice((SDL_AudioStream *)stream);
 }
 
+void goiFlushAudio(void *stream) { SDL_FlushAudioStream((SDL_AudioStream *)stream); }
+
 void goiCloseAudioStream(void *stream) {
 	SDL_DestroyAudioStream((SDL_AudioStream *)stream);
 }

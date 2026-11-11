@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/goi-gui/goi/internal/img"
+	"github.com/goi-gui/goi/internal/subtitle"
 )
 
 // DefaultBufferSeconds is how far ahead a player decodes when the design does
@@ -33,6 +34,11 @@ type Media struct {
 	// playback smooth on a slow disk or network without holding a whole file in
 	// memory.
 	Buffer Prop[float64]
+	// Subtitles is the src of an SRT file to show with the player.
+	Subtitles Prop[string]
+	// AudioTrack picks the audio stream to play, 0 being the first. A film with
+	// one language never changes it.
+	AudioTrack Prop[float64]
 	// Buffered is how much is decoded and waiting, which the bar shows behind
 	// the position.
 	Buffered time.Duration
@@ -49,6 +55,23 @@ type Media struct {
 	Duration time.Duration
 	// Buffering is true while the decoder has not produced its first frame.
 	Buffering bool
+	// Cues are the parsed subtitles, empty when the design named none.
+	Cues []subtitle.Cue
+	// SubtitleErr is why the subtitle file could not be read, which a missing
+	// or damaged file makes visible instead of silently showing nothing.
+	SubtitleErr error
+	// RenderedSubtitles is the subtitles src the loaded cues came from.
+	RenderedSubtitles string
+	// AudioTracks is how many audio streams the file carries, from the probe.
+	AudioTracks int
+	// Hardware is true while the decoder that produced the picture runs on the
+	// GPU, which is what the app reports when it wants to know.
+	Hardware bool
+	// ControlsShown is the auto-hide state of the control bar, and ControlsIdle
+	// is how long the pointer has been away from it. The ui layer advances the
+	// clock and hides the bar, so paint and hit-testing only read the result.
+	ControlsShown bool
+	ControlsIdle  time.Duration
 	// Live marks a network stream with no length: it cannot be seeked, it never
 	// reaches an end, and its control bar shows LIVE instead of a scrubber.
 	Live    bool
@@ -98,6 +121,8 @@ func mediaProps(m *Media) []NamedProp {
 		NumberProp(&m.NodeBase, "volume", DirtyPaint, &m.Volume),
 		NumberProp(&m.NodeBase, "startAt", DirtyPaint, &m.StartAt),
 		NumberProp(&m.NodeBase, "buffer", DirtyPaint, &m.Buffer),
+		StringProp(&m.NodeBase, "subtitles", &m.Subtitles),
+		NumberProp(&m.NodeBase, "audioTrack", DirtyPaint, &m.AudioTrack),
 	)
 }
 
@@ -152,14 +177,14 @@ func MediaNode(n Node) (*Media, bool) {
 // MediaMethods are the playback methods a design may call on a media element by
 // id. `seek` and `volume` take one argument; the rest take none.
 var MediaMethods = []string{"play", "pause", "stop", "toggle", "seek", "volume",
-	"fullscreen", "windowed", "toggleFullscreen"}
+	"fullscreen", "windowed", "toggleFullscreen", "audioTrack"}
 
 // MediaMethod reports whether name is a playback method, and whether it takes an
 // argument.
 func MediaMethod(name string) (takesArg, ok bool) {
 	for _, m := range MediaMethods {
 		if m == name {
-			return m == "seek" || m == "volume", true
+			return m == "seek" || m == "volume" || m == "audioTrack", true
 		}
 	}
 	return false, false
@@ -173,6 +198,8 @@ func newMedia() Media {
 		Controls: newProp(nil, "controls", DirtyLayout, true),
 		StartAt:  newProp(nil, "startAt", DirtyPaint, 0.0),
 		Buffer:   newProp(nil, "buffer", DirtyPaint, DefaultBufferSeconds),
+		// The bar starts visible and hides on its own after the pointer rests.
+		ControlsShown: true,
 	}
 }
 
