@@ -40,7 +40,7 @@ func TestProbeAndDecode(t *testing.T) {
 		t.Fatalf("duration = %v", info.Duration)
 	}
 
-	v, err := OpenVideo(path, 80, 44, 0, false)
+	v, err := OpenVideo(path, 80, 44, 0, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}

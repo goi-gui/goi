@@ -62,6 +62,30 @@ func IsURL(src string) bool {
 	return s != "file" && s != "goi"
 }
 
+// IsHLS reports whether src is an HLS playlist, which is the only live format
+// that accepts the start-index option.
+func IsHLS(src string) bool {
+	u := strings.ToLower(src)
+	if i := strings.IndexByte(u, '?'); i >= 0 {
+		u = u[:i]
+	}
+	return strings.HasSuffix(u, ".m3u8") || strings.HasSuffix(u, ".m3u")
+}
+
+// netArgs are the options an http(s) source needs to survive a flaky network.
+// They are http-protocol options, so they are only added for such a URL; every
+// other protocol rejects them.
+func netArgs(src string) []string {
+	if !strings.HasPrefix(strings.ToLower(src), "http") {
+		return nil
+	}
+	return []string{
+		"-reconnect", "1",
+		"-reconnect_streamed", "1",
+		"-reconnect_delay_max", "5",
+	}
+}
+
 var (
 	lookOnce sync.Once
 	ffmpegAt string
@@ -93,8 +117,13 @@ func Available() bool {
 	return err == nil
 }
 
-// probeTimeout bounds the banner read, which ffmpeg prints and then exits.
-const probeTimeout = 10 * time.Second
+// probeTimeout bounds the banner read, which ffmpeg prints and then exits. A
+// network stream may need a few seconds before it says anything, so it gets a
+// longer grace than a file, whose banner is instant.
+const (
+	probeTimeout     = 10 * time.Second
+	streamProbeLimit = 30 * time.Second
+)
 
 var (
 	durationRe = regexp.MustCompile(`Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)`)
@@ -123,14 +152,20 @@ func Probe(src string) (Info, error) {
 	cmd := exec.Command(bin, args...)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
+	limit := probeTimeout
+	if IsURL(src) {
+		limit = streamProbeLimit
+	}
 	done := make(chan struct{})
 	go func() {
 		_ = cmd.Run()
 		close(done)
 	}()
+	timedOut := false
 	select {
 	case <-done:
-	case <-time.After(probeTimeout):
+	case <-time.After(limit):
+		timedOut = true
 		_ = cmd.Process.Kill()
 		<-done
 	}
@@ -153,7 +188,10 @@ func Probe(src string) (Info, error) {
 	info.AudioTracks = len(audioRe.FindAllString(text, -1))
 	info.HasAudio = info.AudioTracks > 0
 	if !info.HasVideo && !info.HasAudio {
-		// ffmpeg writes the reason on the first line of its banner.
+		if timedOut {
+			return Info{}, fmt.Errorf("media: %s: no answer after %s", filepath.Base(src), limit)
+		}
+		// ffmpeg writes the reason in its banner.
 		msg := firstLine(text)
 		if msg == "" {
 			msg = "no audio or video stream"
@@ -164,13 +202,22 @@ func Probe(src string) (Info, error) {
 }
 
 // firstLine returns the banner line that explains a failure ("No such file…").
+// Progress chatter — a network source prints every playlist it opens — is not a
+// failure, so those lines are skipped.
 func firstLine(s string) string {
 	for _, line := range strings.Split(s, "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "ffmpeg version") ||
-			strings.HasPrefix(line, "built with") ||
-			strings.HasPrefix(line, "configuration:") ||
-			strings.HasPrefix(line, "lib") {
+		switch {
+		case line == "",
+			strings.HasPrefix(line, "ffmpeg version"),
+			strings.HasPrefix(line, "built with"),
+			strings.HasPrefix(line, "configuration:"),
+			strings.HasPrefix(line, "lib"),
+			strings.Contains(line, "] Opening '"),
+			strings.HasPrefix(line, "Input #"),
+			strings.HasPrefix(line, "Output #"),
+			strings.HasPrefix(line, "Metadata:"),
+			strings.HasPrefix(line, "Stream #"):
 			continue
 		}
 		return line
@@ -193,7 +240,9 @@ type Video struct {
 // OpenVideo starts decoding src at w by h, from offset. A zero offset starts at
 // the beginning. hw asks ffmpeg for hardware decoding; the caller falls back by
 // opening again without it, because a machine, a driver or a codec may refuse.
-func OpenVideo(src string, w, h int, offset time.Duration, hw bool) (*Video, error) {
+// behind asks an HLS feed to start a few segments back from the live edge, which
+// is what gives the player a backlog to play through.
+func OpenVideo(src string, w, h int, offset time.Duration, hw, behind bool) (*Video, error) {
 	bin, err := FFmpeg()
 	if err != nil {
 		return nil, err
@@ -204,6 +253,15 @@ func OpenVideo(src string, w, h int, offset time.Duration, hw bool) (*Video, err
 	w &^= 1 // yuv420 wants even dimensions; rgba does not care, but the scaler does
 	h &^= 1
 	args := []string{"-nostdin", "-hide_banner", "-loglevel", "error"}
+	// A network source that drops should reconnect itself: without this a dead
+	// socket freezes the picture until the player is reopened.
+	args = append(args, netArgs(src)...)
+	if behind && IsHLS(src) {
+		// Without this ffmpeg stays pinned to the live edge and can only deliver
+		// what the playlist has published, so the picture is always one segment
+		// away from a freeze. Starting a few segments back gives it a backlog.
+		args = append(args, "-live_start_index", "-3")
+	}
 	if hw {
 		// "auto" asks for whatever the platform offers (VideoToolbox, D3D11,
 		// VAAPI, NVDEC) and falls back to software when the device cannot be

@@ -41,8 +41,23 @@ const (
 	// Video and audio byte budgets. A buffer is measured in seconds, but memory
 	// is what runs out, so the seconds are clamped to these.
 	maxVideoBufferBytes = 64 << 20
+	// maxLiveBufferBytes is the same budget for a live feed. A feed arrives in
+	// segments with gaps between them, so the seconds the design asks for only
+	// help if the bytes are allowed; a live buffer is also short-lived, because
+	// it never holds more than the seconds it names.
+	maxLiveBufferBytes = 96 << 20
 	// minVideoFrames keeps a buffer useful at a low frame rate.
 	minVideoFrames = 2
+	// reserveSeconds is the cushion a live player keeps: how much it gathers
+	// before the first frame, and the depth it steers back to when the feed hands
+	// over segments with gaps between them.
+	reserveSeconds = 3.0
+	// liveDefaultBuffer is the default for a live feed. An HLS or DASH source
+	// hands over a whole segment at a time and then waits, so 1.5 seconds cannot
+	// cover the gap between two segments: the picture drains its queue and
+	// freezes until the next one lands. Three seconds spans a segment plus the
+	// playlist refresh, which is what makes the picture continuous.
+	liveDefaultBuffer = 4.0
 	// liveRetry is how long a dropped live feed is left alone before the
 	// decoder is reopened; short enough to be a blink, long enough not to spin
 	// on a server that is refusing the connection.
@@ -50,6 +65,9 @@ const (
 	// controlsHide is how long the control bar stays after the pointer stops
 	// moving over a player, or leaves it.
 	controlsHide = 3 * time.Second
+	// frameRetry is how often the loop looks again while a video is due a frame
+	// its decoder has not produced yet.
+	frameRetry = 8 * time.Millisecond
 )
 
 // mediaPlayer is one running decoder for one node.
@@ -100,12 +118,26 @@ type mediaPlayer struct {
 	// live is a feed with no length: its decoder is retried after a drop, and
 	// the newest frame is preferred over the oldest.
 	live bool
+	// behind is whether to ask an HLS feed to start behind the live edge; it
+	// drops to false when the demuxer refuses the option.
+	behind bool
 	// hw is whether to ask ffmpeg for hardware decoding. It drops to false when
 	// the attempt produced no frame, which is the fallback to software.
 	hw bool
 	// volume/muted are applied on the next chunk of audio.
 	volume float64
 	muted  bool
+
+	// startAt is when the player began, shown is whether it has painted a frame
+	// yet, and lastFrameAt is when the decoder last delivered one. Together they
+	// time the live prefill without giving up on a thin stream.
+	startAt     time.Time
+	shown       bool
+	lastFrameAt time.Time
+	// wake asks the frame loop to look again. The pump calls it when a frame
+	// lands in an empty queue, so a player waiting for a frame resumes on that
+	// frame instead of on the next scheduled tick.
+	wake func()
 }
 
 // loadMedia starts a player for every Audio and Video in a freshly built tree,
@@ -296,8 +328,8 @@ func (a *App) startPlayer(n tree.Node) (*mediaPlayer, error) {
 		return nil, err
 	}
 	p := &mediaPlayer{node: n, m: m, src: path, volume: 1, muted: m.Muted.Get(),
-		stop: make(chan struct{}), audioStop: make(chan struct{}), hw: true,
-		track: int(m.AudioTrack.Get())}
+		stop: make(chan struct{}), audioStop: make(chan struct{}),
+		track: int(m.AudioTrack.Get()), wake: a.wakeFrames}
 	p.volume = clampUnit(m.Volume.Get())
 	p.muted = m.Muted.Get()
 	info := a.mediaInfo[src]
@@ -309,11 +341,23 @@ func (a *App) startPlayer(n tree.Node) (*mediaPlayer, error) {
 		info = probed
 	}
 	p.info = info
+	live := info.IsLive(src) || m.Live
 	p.buffer = bufferSeconds(m.Buffer.Get())
+	if live && p.buffer == DefaultBuffer {
+		// The design did not ask for a depth, so give a live feed the one its
+		// segments need.
+		p.buffer = liveDefaultBuffer
+	}
 	m.Duration = info.Duration
 	m.AudioTracks = info.AudioTracks
-	m.Live = info.IsLive(src)
-	p.live = m.Live
+	m.Live = live
+	p.live = live
+	p.startAt = time.Now()
+	p.behind = p.live
+	// A live feed decodes in software: asking for a hardware device costs a
+	// driver round trip before the first frame (measured at several seconds with
+	// VAAPI) and a live player has no frames to spare. A file can wait.
+	p.hw = !p.live
 	if !p.live {
 		// A live feed has no timeline to start at, so startAt is ignored.
 		p.opened = time.Duration(m.StartAt.Get() * float64(time.Second))
@@ -323,13 +367,16 @@ func (a *App) startPlayer(n tree.Node) (*mediaPlayer, error) {
 	// drawn at, so a 4K file in a 480dp box does not decode 8 megapixels a
 	// frame.
 	if v, ok := n.(*tree.Video); ok && info.HasVideo {
-		w, h := decodeSize(info, v.Base().Bounds())
+		w, h := decodeSize(info, v.Base().Bounds(), p.live)
 		v.FrameW, v.FrameH = w, h
 		if v.Data == nil || v.Data.W != w || v.Data.H != h {
 			v.Data = &img.Data{W: w, H: h, Pix: make([]byte, w*h*4)}
 		}
 		p.frame = v.Data
 		p.openFrames(w * h * 4)
+		// The decoder needs a moment before its first frame; until then the box
+		// breathes instead of showing a black rectangle.
+		m.Buffering = true
 	}
 
 	if info.HasAudio && !m.Muted.Get() {
@@ -345,18 +392,27 @@ func (a *App) startPlayer(n tree.Node) (*mediaPlayer, error) {
 // decodeSize picks the frame size a video decodes at: the file's own size,
 // shrunk to what the box can actually show, and capped so a huge file cannot
 // spend the whole frame budget on one picture.
-func decodeSize(info media.Info, box tree.Rect) (int, int) {
+//
+// A live feed decodes at the drawn size rather than twice it. Its frames are
+// what the buffer is made of, so halving each one doubles how many fit a fixed
+// byte budget — and that buffer is the difference between riding out a segment
+// gap and freezing.
+func decodeSize(info media.Info, box tree.Rect, live bool) (int, int) {
 	w, h := info.Width, info.Height
 	if w <= 0 || h <= 0 {
 		return 16, 16
 	}
 	// Twice the drawn size is enough for a sharp picture at any scale factor.
+	detail := 2.0
+	if live {
+		detail = 1
+	}
 	maxW, maxH := 1280.0, 1280.0
 	if box.W > 0 && box.H > 0 {
-		if v := box.W * 2; v < maxW {
+		if v := box.W * detail; v < maxW {
 			maxW = max(max(v, 64), 2)
 		}
-		if v := box.H * 2; v < maxH {
+		if v := box.H * detail; v < maxH {
 			maxH = max(max(v, 64), 2)
 		}
 	}
@@ -396,7 +452,11 @@ func (p *mediaPlayer) openFrames(frameBytes int) {
 	if n < minVideoFrames {
 		n = minVideoFrames
 	}
-	if limit := maxVideoBufferBytes / max(frameBytes, 1); n > limit {
+	budget := maxVideoBufferBytes
+	if p.live {
+		budget = maxLiveBufferBytes
+	}
+	if limit := budget / max(frameBytes, 1); n > limit {
 		n = limit
 	}
 	if n < 1 {
@@ -449,6 +509,12 @@ func (p *mediaPlayer) pumpVideo() {
 		if stopped {
 			return
 		}
+		if frames == 0 && p.behind {
+			// The demuxer refused the start-index option (a non-HLS live format,
+			// or an older ffmpeg): play at the edge instead.
+			p.behind = false
+			continue
+		}
 		if frames == 0 && p.hw {
 			// The device, the driver or the codec refused: software from here
 			// on, for this file, without asking again.
@@ -469,7 +535,7 @@ func (p *mediaPlayer) pumpVideo() {
 // decodeVideo runs one decoder to its end and reports whether the player was
 // closed while it ran, plus how many frames it produced.
 func (p *mediaPlayer) decodeVideo() (stopped bool, frames int) {
-	dec, err := media.OpenVideo(p.src, p.frame.W, p.frame.H, p.opened, p.hw)
+	dec, err := media.OpenVideo(p.src, p.frame.W, p.frame.H, p.opened, p.hw, p.behind)
 	if err != nil {
 		if !p.hw {
 			p.fail(err)
@@ -512,10 +578,16 @@ func (p *mediaPlayer) decodeVideo() (stopped bool, frames int) {
 			p.mu.Unlock()
 		}
 		frames++
+		p.mu.Lock()
+		p.lastFrameAt = time.Now()
+		p.mu.Unlock()
 		select {
 		case <-p.stop:
 			return true, frames
 		case p.frames <- buf:
+		}
+		if len(p.frames) == 1 && p.wake != nil {
+			p.wake()
 		}
 	}
 }
@@ -814,6 +886,7 @@ func (a *App) stopMedia(n tree.Node) {
 	m.Playing, m.Paused, m.Ended = false, false, false
 	m.Position = 0
 	if v, ok := n.(*tree.Video); ok {
+		m.Buffering = false
 		if v.Data != nil && len(v.Data.Pix) > 0 {
 			for i := range v.Data.Pix {
 				v.Data.Pix[i] = 0
@@ -1130,18 +1203,100 @@ func (a *App) tickMedia(dt float64) (bool, time.Duration) {
 		// A video paints the next decoded frame when its time comes; whatever
 		// else is queued stays buffered for the frames after it.
 		if v, ok := p.node.(*tree.Video); ok && p.info.HasVideo {
-			due := p.nextFrame.IsZero() || !time.Now().Before(p.nextFrame)
-			if due {
+			if p.live {
+				// A live feed is paced by the rate it actually delivers, not by
+				// the container's claim and not by "as fast as frames arrive":
+				// the first drains the buffer (24 fps reported as 25), the second
+				// shows a segment in half its duration and then freezes. The
+				// deadline is absolute for the same reason a file's is.
+				now := time.Now()
+				period := p.livePeriod()
+				if p.nextFrame.IsZero() {
+					if p.waitingForReserve() {
+						if wait == 0 || wait > frameRetry {
+							wait = frameRetry
+						}
+						continue
+					}
+					if p.takeFrame() {
+						v.Data.Gen++
+						m.Buffering = false
+						p.shown = true
+						v.Base().MarkDirty(tree.DirtyPaint)
+						changed = true
+						p.nextFrame = now.Add(period)
+					}
+				} else if !now.Before(p.nextFrame) {
+					if p.takeFrame() {
+						v.Data.Gen++
+						m.Buffering = false
+						p.shown = true
+						v.Base().MarkDirty(tree.DirtyPaint)
+						changed = true
+						next := p.nextFrame.Add(period)
+						if next.Before(now.Add(-2 * period)) {
+							next = now.Add(period)
+						}
+						p.nextFrame = next
+					}
+				}
+				if d := time.Until(p.nextFrame); d > 0 {
+					if wait == 0 || d < wait {
+						wait = d
+					}
+				} else if wait == 0 || wait > frameRetry {
+					// Due but nothing decoded: the pump wakes the loop when a
+					// frame lands; this is the fallback for a lost wake-up.
+					wait = frameRetry
+				}
+				if got := time.Duration(float64(p.buffered()) * float64(p.framePeriod())); got != m.Buffered {
+					m.Buffered = got
+					m.Base().MarkDirty(tree.DirtyPaint)
+				}
+				continue
+			}
+			period := p.framePeriod()
+			now := time.Now()
+			if p.live && !p.shown && p.waitingForReserve() {
+				// A feed delivering a segment at a time arrives in bursts. Playing
+				// the first frame as soon as it lands leaves no reserve, so every
+				// pause between segments shows as a freeze; wait for a cushion
+				// first, which is what makes the picture continuous afterwards.
+				if wait == 0 || wait > frameRetry {
+					wait = frameRetry
+				}
+				continue
+			}
+			if p.nextFrame.IsZero() {
+				// The first frame is shown as soon as one exists, which is what
+				// makes a stall recover without a waiting period.
 				if p.takeFrame() {
 					v.Data.Gen++
+					m.Buffering = false
+					p.shown = true
 					v.Base().MarkDirty(tree.DirtyPaint)
 					changed = true
+					p.nextFrame = now.Add(period)
 				}
-				fps := p.info.FPS
-				if fps <= 0 {
-					fps = 30
+			} else if !now.Before(p.nextFrame) {
+				if p.takeFrame() {
+					v.Data.Gen++
+					m.Buffering = false
+					p.shown = true
+					v.Base().MarkDirty(tree.DirtyPaint)
+					changed = true
+					// The deadline moves by exactly one period, not by "one
+					// period from now": counting from the tick lets the display
+					// rate quantize the stream rate, which is what played a
+					// 25 fps film at 21 fps. A deadline more than a period late
+					// is a real stall, so the cadence restarts from now instead
+					// of sprinting through the frames that were missed.
+					next := p.nextFrame.Add(period)
+					if next.Before(now.Add(-period)) {
+						next = now.Add(period)
+					}
+					p.nextFrame = next
 				}
-				p.nextFrame = time.Now().Add(time.Duration(float64(time.Second) / fps))
 			}
 			// The buffer is what the bar draws behind the position, so the
 			// reader can see how far ahead the file really is.
@@ -1153,12 +1308,17 @@ func (a *App) tickMedia(dt float64) (bool, time.Duration) {
 				m.Buffered = got
 				m.Base().MarkDirty(tree.DirtyPaint)
 			}
-			if d := time.Until(p.nextFrame); d > 0 && (wait == 0 || d < wait) {
-				wait = d
-			}
-			if m.Buffering {
-				m.Buffering = false
-				changed = true
+			if d := time.Until(p.nextFrame); d > 0 {
+				if wait == 0 || d < wait {
+					wait = d
+				}
+			} else if p.nextFrame.IsZero() || !time.Now().Before(p.nextFrame) {
+				// The frame is due but has not decoded yet. The pump wakes the
+				// loop the moment it lands; the short fallback keeps a dropped
+				// wake-up from freezing the picture.
+				if wait == 0 || wait > frameRetry {
+					wait = frameRetry
+				}
 			}
 		}
 
@@ -1204,6 +1364,74 @@ func (a *App) tickMedia(dt float64) (bool, time.Duration) {
 	return changed, wait
 }
 
+// wakeFrames asks for the frame that will draw a decoded picture. It runs on the
+// UI goroutine, posted by the pump, and only needs to flag a repaint.
+func (a *App) wakeFrames() {
+	a.Post(func() {
+		a.needsFrame = true
+		a.markDirty(tree.DirtyPaint)
+	})
+}
+
+// waitingForReserve reports whether a live player should keep filling before it
+// shows its first frame. Playing the first frame that lands spends the cushion
+// the first segment gap would have needed, so the player waits for a couple of
+// seconds of picture — unless the feed stalls with something already in hand, in
+// which case a thin stream is better than a loading pulse forever.
+func (p *mediaPlayer) waitingForReserve() bool {
+	if p.frames == nil {
+		return false
+	}
+	want := int(reserveSeconds / p.framePeriod().Seconds())
+	if limit := cap(p.frames) / 2; want > limit {
+		want = limit
+	}
+	if want < 1 || len(p.frames) >= want {
+		return false
+	}
+	p.mu.Lock()
+	stalled := !p.lastFrameAt.IsZero() && time.Since(p.lastFrameAt) > 2*time.Second
+	p.mu.Unlock()
+	return !stalled
+}
+
+// livePeriod is the frame period a live feed is paced at. The container's rate
+// is a starting point, not the truth: a stream that runs a little faster than
+// it claims would drain the buffer a frame at a time, and one that runs slower
+// would fill it until the picture lagged forever. So the queue depth is the
+// feedback — above half means the player is behind and plays faster, below half
+// means it is ahead and slows down — which settles the picture at the source's
+// real rate without measuring it.
+func (p *mediaPlayer) livePeriod() time.Duration {
+	period := p.framePeriod()
+	if p.frames == nil {
+		return period
+	}
+	// The queue depth is the whole clock. Measuring the decoder's arrival rate
+	// cannot work here: the pump is flow-controlled by this very queue, so once
+	// it is full the "arrival rate" is the display rate and the measurement
+	// chases its own tail. A proportional trim on the depth instead settles at
+	// whatever rate keeps the cushion: the container's nominal rate is the
+	// starting point (this stream claims 25 and delivers 23.5), and the trim
+	// settles a little above it with the queue a little below target, without
+	// either drifting.
+	target := reserveSeconds / p.framePeriod().Seconds()
+	if target < 1 {
+		target = 1
+	}
+	trim := min(max(1+0.8*(target-float64(len(p.frames)))/target, 0.85), 1.5)
+	return time.Duration(float64(period) * trim)
+}
+
+// framePeriod is how long one frame of the stream stays on screen.
+func (p *mediaPlayer) framePeriod() time.Duration {
+	fps := p.info.FPS
+	if fps <= 0 {
+		fps = 30
+	}
+	return time.Duration(float64(time.Second) / fps)
+}
+
 // takeFrame moves a decoded frame into the node's canvas.
 func (p *mediaPlayer) takeFrame() bool {
 	if p.frames == nil || p.frame == nil {
@@ -1221,8 +1449,11 @@ func (p *mediaPlayer) takeFrame() bool {
 	return true
 }
 
-// nextFrameBuf takes a queued frame: the oldest for a file, the freshest for a
-// live feed, so a hiccup does not leave playback behind the source.
+// nextFrameBuf takes the next frame in order. A live feed plays the queue the
+// same way a file does and only skips ahead when the queue is nearly full, which
+// is what separates a burst from a backlog: an HLS server hands over a whole
+// segment at once, and jumping to its last frame turned every burst into a jump
+// and every gap into a freeze.
 func (p *mediaPlayer) nextFrameBuf() ([]byte, bool) {
 	var buf []byte
 	select {
@@ -1233,17 +1464,24 @@ func (p *mediaPlayer) nextFrameBuf() ([]byte, bool) {
 	if !p.live {
 		return buf, true
 	}
-	for {
-		select {
-		case next := <-p.frames:
-			// Buffers are a fixed set, so none is ever thrown away; handing
-			// this one back blocks only because the pump is waiting for it.
-			p.free <- buf
-			buf = next
-		default:
-			return buf, true
+	// A queue above the cushion is lag the player should shed near the live
+	// edge rather than drift away with. Shedding it in eighths of the excess, one
+	// take at a time, is a one-frame skip here and there instead of a jump of a
+	// second when the queue hits a threshold.
+	target := int(reserveSeconds / p.framePeriod().Seconds())
+	if n := len(p.frames); n > target+8 {
+		drop := (n - target + 7) / 8
+		for i := 0; i < drop; i++ {
+			select {
+			case next := <-p.frames:
+				p.free <- buf
+				buf = next
+			default:
+				return buf, true
+			}
 		}
 	}
+	return buf, true
 }
 
 // ended reports whether the decoder reached the end of the file.
