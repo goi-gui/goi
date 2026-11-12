@@ -91,6 +91,9 @@ type NodeBase struct {
 	scrollShadowColor Prop[uint32]
 	// opacity fades the node and everything under it.
 	opacity Prop[float64]
+	// backdropBlur softens what is already painted behind this node, the way
+	// CSS backdrop-filter does. 0 paints nothing.
+	backdropBlur Prop[float64]
 	// zIndex orders this node among its siblings when painting, like CSS: a
 	// higher value paints later, so it lands on top. Layout ignores it.
 	zIndex Prop[float64]
@@ -484,6 +487,13 @@ func (b *NodeBase) Opacity() float64 {
 // SetOpacity changes the opacity. Like every Prop.Set it marks the node dirty,
 // so a tween can fade a subtree in or out.
 func (b *NodeBase) SetOpacity(v float64) { b.opacity.Set(v) }
+
+// BackdropBlur returns the radius, in logical pixels, of the blur applied to
+// everything painted behind the node. 0 is no blur.
+func (b *NodeBase) BackdropBlur() float64 { return b.backdropBlur.Get() }
+
+// SetBackdropBlur sets that radius.
+func (b *NodeBase) SetBackdropBlur(v float64) { b.backdropBlur.Set(v) }
 
 // HideScrollbar reports whether the design removed the scrollbar.
 func (b *NodeBase) HideScrollbar() bool { return b.hideScrollbar.Get() }

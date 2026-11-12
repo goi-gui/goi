@@ -49,8 +49,7 @@ type Row {
 }
 
 /* a block comment */
-Window {
-	// root
+Window { // root
 	Column {
 		gap:     10
 		padding: 10 // the key and value align

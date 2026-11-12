@@ -81,6 +81,7 @@ func commonProps(b *NodeBase) []NamedProp {
 		BoolProp(b, "scrollShadow", DirtyPaint, &b.scrollShadow),
 		ColorProp(b, "scrollShadowColor", DirtyPaint, &b.scrollShadowColor),
 		NumberProp(b, "opacity", DirtyPaint, &b.opacity),
+		NumberProp(b, "backdropBlur", DirtyPaint, &b.backdropBlur),
 		NumberProp(b, "zIndex", DirtyPaint, &b.zIndex),
 		EnumProp(b, "cursor", DirtyPaint, &b.cursor, schema.CursorValues...),
 		NumberProp(b, "flex", DirtyLayout, &b.flex),

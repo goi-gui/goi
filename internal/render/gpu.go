@@ -27,6 +27,8 @@ import (
 //	kind 4: glyph quad sampling the atlas (text and icons), optionally blurred
 //	kind 5: bitmap
 //	kind 6: inset shadow (a soft band inside a rounded rect)
+//	kind 11: backdrop composite, sampling the scene texture by position
+//	kind 12: one separable blur pass of that scene
 const shaderWGSL = `
 struct Instance {
 	rect: vec4f,    // x, y, w, h in logical pixels
@@ -51,6 +53,9 @@ struct Viewport {
 @group(0) @binding(4) var images: texture_2d<f32>;
 @group(0) @binding(5) var imgSamp: sampler;
 @group(0) @binding(6) var<storage, read> gradients: array<vec4f>;
+// segment is the first instance this pass draws. The backdrop splits a frame
+// into several passes over one instance buffer, so each pass names its start.
+@group(0) @binding(7) var<uniform> segment: vec4f;
 
 struct VSOut {
 	@builtin(position) pos: vec4f,
@@ -73,7 +78,7 @@ fn vs_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
 		vec2f(0.0, 0.0), vec2f(1.0, 0.0), vec2f(0.0, 1.0),
 		vec2f(0.0, 1.0), vec2f(1.0, 0.0), vec2f(1.0, 1.0),
 	);
-	let inst = instances[ii];
+	let inst = instances[u32(segment.x) + ii];
 	let c = corners[vi];
 	let p = inst.rect.xy + c * inst.rect.zw;
 	var out: VSOut;
@@ -188,6 +193,37 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 
 	let aa = 0.5 / max(viewport.size.z, 1.0);
 	let kind = in.params.x;
+
+	if (kind > 11.5) {
+		// One separable blur pass of the backdrop. params.y is the radius in
+		// logical pixels and misc.x the axis: 1 horizontal, 2 vertical. The
+		// two passes run before the panel samples the result, so the blur is
+		// a quadratic kernel at the cost of two 9-tap draws.
+		let radius = max(in.params.y, 0.001);
+		let uv0 = in.pos2 / viewport.size.xy;
+		var sum = vec4f(0.0);
+		for (var i = -4; i <= 4; i = i + 1) {
+			let o = f32(i) * 0.25 * radius;
+			var uv = uv0;
+			if (in.misc.x < 1.5) { uv.x = uv.x + o / viewport.size.x; }
+			else { uv.y = uv.y + o / viewport.size.y; }
+			sum = sum + textureSample(images, imgSamp, uv);
+		}
+		return sum * 0.1111111;
+	}
+
+	if (kind > 10.5) {
+		// Backdrop composite: the scene texture blurred by the passes above,
+		// masked to the panel's rounded box. The element's own background then
+		// paints over it, which is what makes a translucent background read as
+		// tinted glass.
+		let r = clamp(corner_radius(in.radius, in.local, in.size), 0.0, min(in.size.x, in.size.y) * 0.5);
+		let d = sd_round_rect(in.local, in.size, r);
+		let cov = 1.0 - smoothstep(-aa, aa, d);
+		let c = textureSample(images, imgSamp, in.pos2 / viewport.size.xy);
+		if (cov <= 0.0 || c.a <= 0.0) { discard; }
+		return vec4f(c.rgb, c.a * cov * in.color.a);
+	}
 
 	if (kind > 8.5) {
 		// CSS gradient fill, linear or radial, with the shape's own rounded
@@ -412,6 +448,18 @@ type GPU struct {
 
 	textLayout *wgpu.BindGroupLayout
 
+	// backdrop holds the offscreen scene the backdrop passes render into. It is
+	// nil until a design asks for a blur, so a frame without one never pays for
+	// an extra render target.
+	backdrop *backdropTarget
+	// segZero is the "draw from instance 0" uniform a normal frame binds.
+	segZero *wgpu.Buffer
+	// shapeLayout is shared by the pipeline and every per-pass bind group.
+	shapeLayout *wgpu.BindGroupLayout
+	// passBinds are a blurred frame's per-pass bind groups, freed once the
+	// command buffer that uses them is submitted.
+	passBinds []*wgpu.BindGroup
+
 	closed bool
 }
 
@@ -529,6 +577,14 @@ func (g *GPU) initPipeline() error {
 	if err != nil {
 		return fmt.Errorf("storage buffer: %w", err)
 	}
+	g.segZero, err = g.device.CreateBuffer(&wgpu.BufferDescriptor{
+		Label: "segment-zero",
+		Usage: gputypes.BufferUsageUniform | gputypes.BufferUsageCopyDst,
+		Size:  segUniformSize,
+	})
+	if err != nil {
+		return fmt.Errorf("segment buffer: %w", err)
+	}
 	g.gradData = make([]float32, maxGradients*gradRecordFloats)
 	g.gradBuf, err = g.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Label: "gradients",
@@ -539,21 +595,20 @@ func (g *GPU) initPipeline() error {
 		return fmt.Errorf("gradient buffer: %w", err)
 	}
 
-	layout, err := g.device.CreateBindGroupLayout(&wgpu.BindGroupLayoutDescriptor{
+	g.shapeLayout, err = g.device.CreateBindGroupLayout(&wgpu.BindGroupLayoutDescriptor{
 		Label:   "shapes-layout",
 		Entries: shapeLayoutEntries(),
 	})
 	if err != nil {
 		return fmt.Errorf("bind group layout: %w", err)
 	}
-	defer layout.Release()
 	if err := g.rebind(); err != nil {
 		return fmt.Errorf("bind group: %w", err)
 	}
 
 	pl, err := g.device.CreatePipelineLayout(&wgpu.PipelineLayoutDescriptor{
 		Label:            "shapes-pipeline-layout",
-		BindGroupLayouts: []*wgpu.BindGroupLayout{layout},
+		BindGroupLayouts: []*wgpu.BindGroupLayout{g.shapeLayout},
 	})
 	if err != nil {
 		return fmt.Errorf("pipeline layout: %w", err)
@@ -628,6 +683,10 @@ func shapeLayoutEntries() []gputypes.BindGroupLayoutEntry {
 		{
 			Binding: 6, Visibility: gputypes.ShaderStageFragment,
 			Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeReadOnlyStorage},
+		},
+		{
+			Binding: 7, Visibility: gputypes.ShaderStageVertex,
+			Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeUniform},
 		},
 	}
 }
@@ -812,8 +871,25 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 	if g.images != nil {
 		g.images.prepare(list)
 	}
+	var panels []backdropPanel
 	for i, op := range list.Ops {
 		switch op.Kind {
+		case paint.Backdrop:
+			panel := backdropPanel{
+				at:         len(g.instances),
+				rect:       op.Rect,
+				radius:     op.Radius,
+				clip:       op.Clip,
+				blur:       op.Blur,
+				alpha:      float32(op.Color&0xFF) / 255,
+				clipRadius: op.ClipRadius,
+				clipBox:    op.ClipBox,
+				rot:        op.Rotate,
+				pivotX:     op.PivotX,
+				pivotY:     op.PivotY,
+			}
+			panels = append(panels, panel)
+			g.instances = append(g.instances, backdropInstances(panel, float32(width)/g.scale, float32(height)/g.scale)...)
 		case paint.Fill:
 			params := [4]float32{shapeKind(op.Shape), 0, op.StartAngle, op.EndAngle}
 			if op.Gradient != nil {
@@ -858,6 +934,17 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 			g.images.addOp(op)
 		}
 	}
+	if len(panels) > 0 {
+		// The last instance copies the finished scene onto the surface, so a
+		// frame with a backdrop renders through the offscreen texture only.
+		lw, lh := float32(width)/g.scale, float32(height)/g.scale
+		g.instances = append(g.instances, gpuInstance{
+			Rect:   [4]float32{0, 0, lw, lh},
+			Color:  [4]float32{1, 1, 1, 1},
+			Clip:   clipVec([4]float32{0, 0, lw, lh}),
+			Params: [4]float32{11, 0, 0, 0},
+		})
+	}
 	if len(g.instances) > g.capacity {
 		if err := g.grow(len(g.instances)); err != nil {
 			return err
@@ -898,6 +985,10 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 		if err := g.images.upload(g); err != nil {
 			return err
 		}
+	}
+
+	if len(panels) > 0 {
+		return g.renderBackdrop(list, width, height, panels)
 	}
 
 	tex, _, err := g.surface.GetCurrentTexture()
@@ -969,17 +1060,9 @@ func (g *GPU) grow(n int) error {
 // rebind rebuilds the bind group from the current buffers and textures. A
 // recreated atlas texture (growth) changes the view, so the group must follow.
 func (g *GPU) rebind() error {
-	layout, err := g.device.CreateBindGroupLayout(&wgpu.BindGroupLayoutDescriptor{
-		Label:   "shapes-layout",
-		Entries: shapeLayoutEntries(),
-	})
-	if err != nil {
-		return err
-	}
-	defer layout.Release()
 	bg, err := g.device.CreateBindGroup(&wgpu.BindGroupDescriptor{
 		Label:  "shapes-bindings",
-		Layout: layout,
+		Layout: g.shapeLayout,
 		Entries: []wgpu.BindGroupEntry{
 			{Binding: 0, Buffer: g.uniform, Size: 16},
 			{Binding: 1, Buffer: g.storage, Size: g.storageSize(g.capacity)},
@@ -988,6 +1071,7 @@ func (g *GPU) rebind() error {
 			{Binding: 4, TextureView: g.imageView()},
 			{Binding: 5, Sampler: g.imageSampler()},
 			{Binding: 6, Buffer: g.gradBuf, Size: gradBufferSize()},
+			{Binding: 7, Buffer: g.segZero, Size: segUniformSize},
 		},
 	})
 	if err != nil {
@@ -1045,6 +1129,10 @@ func (g *GPU) Release() {
 	if g.textLayout != nil {
 		g.textLayout.Release()
 	}
+	if g.backdrop != nil {
+		g.backdrop.release()
+		g.backdrop = nil
+	}
 	if g.pipeline != nil {
 		g.pipeline.Release()
 	}
@@ -1056,6 +1144,15 @@ func (g *GPU) Release() {
 	}
 	if g.gradBuf != nil {
 		g.gradBuf.Release()
+	}
+	for _, bg := range g.passBinds {
+		bg.Release()
+	}
+	if g.segZero != nil {
+		g.segZero.Release()
+	}
+	if g.shapeLayout != nil {
+		g.shapeLayout.Release()
 	}
 	if g.uniform != nil {
 		g.uniform.Release()

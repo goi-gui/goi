@@ -237,6 +237,9 @@ var common = []Prop{
 	{Name: "scrollShadowColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
 	// opacity fades the node and its subtree. It also accepts a percentage.
 	{Name: "opacity", Type: TypeNumber, Dirty: DirtyPaint, Default: 1.0, Common: true},
+	// backdropBlur blurs what is already painted behind the element, like CSS
+	// backdrop-filter. It is a radius in logical pixels; 0 is no blur.
+	{Name: "backdropBlur", Type: TypeNumber, Dirty: DirtyPaint, Default: 0.0, Common: true},
 	// zIndex orders a node among its siblings when painting; layout ignores it.
 	{Name: "zIndex", Type: TypeNumber, Dirty: DirtyPaint, Default: 0.0, Common: true},
 	// cursor is the pointer shape, named the way CSS names it.

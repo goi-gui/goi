@@ -30,6 +30,10 @@ const (
 	Text
 	// Bitmap samples a decoded image.
 	Bitmap
+	// Backdrop is the scene painted so far, blurred and masked to the op's
+	// rounded box: CSS backdrop-filter. The renderer reads it as a request, not
+	// as a draw, because it needs the frame in a texture first.
+	Backdrop
 )
 
 // Shape is the geometry a Fill draws.
@@ -327,6 +331,9 @@ func (l *List) paintContent(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
 	if !isText {
 		l.paintBoxShadows(b, r, clip, false)
 	}
+	if blur := b.BackdropBlur(); blur > 0 {
+		l.paintBackdrop(b, r, clip, blur)
+	}
 	if c, ok := b.Node().(componentNode); ok {
 		l.suppressElev = b.ShadowSet()
 		l.paintComponent(c.M3(), r, clip)
@@ -351,6 +358,22 @@ func (l *List) paintContent(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
 	if s, ok := b.Node().(*tree.SVG); ok {
 		l.paintSVG(s, r, clip)
 	}
+}
+
+// paintBackdrop asks for a blurred copy of everything painted so far, masked to
+// the element's rounded box. The element's own background then paints over it,
+// so `background: #00000044` reads as tinted glass. A rotated element keeps an
+// axis-aligned blur, because the blur samples the frame before the rotation.
+func (l *List) paintBackdrop(b *tree.NodeBase, r tree.Rect, clip tree.Rect, blur float64) {
+	radii := b.Radii()
+	l.Ops = append(l.Ops, Op{
+		Kind:   Backdrop,
+		Rect:   rectArr(r),
+		Radius: [4]float32{float32(radii[0]), float32(radii[1]), float32(radii[2]), float32(radii[3])},
+		Color:  0xFFFFFFFF,
+		Blur:   float32(blur),
+		Clip:   clipArr(clip),
+	})
 }
 
 // paintBox draws the common box of an element: its background (a solid colour
@@ -717,6 +740,10 @@ func (l *List) Dump() string {
 		case Shadow:
 			fmt.Fprintf(&b, "shadow %g,%g %gx%g r=%g blur=%g color=#%08x",
 				op.Rect[0], op.Rect[1], op.Rect[2], op.Rect[3], op.Radius[0], op.Blur, op.Color)
+		case Backdrop:
+			fmt.Fprintf(&b, "backdrop %g,%g %gx%g r=%g blur=%g alpha=%g",
+				op.Rect[0], op.Rect[1], op.Rect[2], op.Rect[3], op.Radius[0], op.Blur,
+				float32(op.Color&0xFF)/255)
 		case Text:
 			kind := "text"
 			if op.Icon {

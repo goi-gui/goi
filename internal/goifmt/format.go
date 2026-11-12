@@ -13,7 +13,6 @@
 package goifmt
 
 import (
-	"sort"
 	"strconv"
 	"strings"
 
@@ -27,7 +26,7 @@ func Source(src []byte) []byte {
 	if !diag.Empty() || f == nil || f.Root == nil {
 		return src
 	}
-	p := &printer{src: src, file: f, lines: newLineIndex(src)}
+	p := &printer{src: src, file: f, end: syntax.Pos(len(src))}
 	p.document()
 	return []byte(p.b.String())
 }
@@ -38,17 +37,18 @@ func File(f *syntax.File, src []byte) []byte {
 	if f == nil || f.Root == nil {
 		return src
 	}
-	p := &printer{src: src, file: f, lines: newLineIndex(src)}
+	p := &printer{src: src, file: f, end: syntax.Pos(len(src))}
 	p.document()
 	return []byte(p.b.String())
 }
 
 type printer struct {
-	src   []byte
-	file  *syntax.File
-	lines []int // byte offset of each line start
-	b     strings.Builder
-	ci    int // next comment to place, into file.Comments
+	src  []byte
+	file *syntax.File
+	b    strings.Builder
+	ci   int // next comment to place, into file.Comments
+	// end is one past the source, the bound for a comment after the last token.
+	end   syntax.Pos
 	depth int
 }
 
@@ -112,7 +112,7 @@ func (p *printer) document() {
 	if wrote {
 		p.b.WriteString("\n")
 	}
-	p.element(p.file.Root)
+	p.element(p.file.Root, p.end)
 }
 
 // headerComments writes the comments before the first declaration, then one
@@ -145,46 +145,47 @@ func (p *printer) fieldLines(fields []syntax.Field) {
 			width = n
 		}
 	}
-	for _, f := range fields {
+	for i, f := range fields {
+		stop := p.end
+		if i+1 < len(fields) {
+			stop = fields[i+1].NameAt
+		}
 		p.commentsBefore(f.NameAt)
 		p.indent()
 		p.b.WriteString(f.Name)
 		p.b.WriteString(strings.Repeat(" ", width-len(f.Name)+1))
 		p.b.WriteString(f.Type.String())
 		p.b.WriteString("\n")
-		p.trailing(f.At)
+		p.trailing(stop)
 	}
 }
 
 // -------------------------------------------------------------------- elements
 
-func (p *printer) element(e *syntax.Element) {
+func (p *printer) element(e *syntax.Element, stop syntax.Pos) {
 	p.commentsBefore(e.NameAt)
 	p.indent()
 	p.b.WriteString(e.Name)
 	if len(e.Members) == 0 {
 		p.b.WriteString(" {}\n")
 		p.commentsTo(e.Close)
-		if e == p.file.Root {
-			p.trailing(e.Close)
-		}
+		p.trailing(stop)
 		return
 	}
 	p.b.WriteString(" {\n")
+	p.trailing(memberPos(e.Members[0]))
 	p.depth++
-	p.members(e.Members)
+	p.members(e.Members, e.Close)
+	p.commentsTo(e.Close)
 	p.depth--
 	p.indent()
 	p.b.WriteString("}\n")
-	if e == p.file.Root {
-		p.commentsTo(e.Close)
-		p.trailing(e.Close)
-	}
+	p.trailing(stop)
 }
 
 // members lays out one body: properties first, then children, with a blank line
 // between the two groups and between two children.
-func (p *printer) members(members []syntax.Member) {
+func (p *printer) members(members []syntax.Member, close syntax.Pos) {
 	var props []*syntax.Property
 	var kids []syntax.Member
 	for _, m := range members {
@@ -202,14 +203,21 @@ func (p *printer) members(members []syntax.Member) {
 			width = n
 		}
 	}
-	for _, pr := range props {
+	for i, pr := range props {
+		stop := close
+		switch {
+		case i+1 < len(props):
+			stop = props[i+1].NameAt
+		case len(kids) > 0:
+			stop = memberPos(kids[0])
+		}
 		p.commentsBefore(pr.NameAt)
 		p.indent()
 		p.b.WriteString(pr.Name + ":")
 		p.b.WriteString(strings.Repeat(" ", width-len(pr.Name)))
 		p.b.WriteString(printProperty(pr.Name, pr.Value, p.depth))
 		p.b.WriteString("\n")
-		p.trailing(pr.Value.Pos() + syntax.Pos(len(printValue(pr.Value))))
+		p.trailing(stop)
 	}
 
 	if len(props) > 0 && len(kids) > 0 {
@@ -219,16 +227,20 @@ func (p *printer) members(members []syntax.Member) {
 		if i > 0 {
 			p.b.WriteString("\n")
 		}
+		stop := close
+		if i+1 < len(kids) {
+			stop = memberPos(kids[i+1])
+		}
 		switch x := m.(type) {
 		case *syntax.Element:
-			p.element(x)
+			p.element(x, stop)
 		case *syntax.Block:
-			p.block(x)
+			p.block(x, stop)
 		}
 	}
 }
 
-func (p *printer) block(b *syntax.Block) {
+func (p *printer) block(b *syntax.Block, stop syntax.Pos) {
 	if b.Kind == syntax.BlockFor {
 		p.commentsBefore(b.At)
 		p.indent()
@@ -240,20 +252,29 @@ func (p *printer) block(b *syntax.Block) {
 			p.b.WriteString(b.KeyVar + " := ")
 		}
 		p.b.WriteString("range " + printValue(b.Range) + " {\n")
+		if len(b.Branches) > 0 && len(b.Branches[0].Members) > 0 {
+			p.trailing(memberPos(b.Branches[0].Members[0]))
+		}
 		p.depth++
 		if len(b.Branches) > 0 {
-			p.members(b.Branches[0].Members)
+			p.members(b.Branches[0].Members, b.Close)
 		}
+		p.commentsTo(b.Close)
 		p.depth--
 		p.indent()
 		p.b.WriteString("}\n")
+		p.trailing(stop)
 		return
 	}
 	if b.Kind == syntax.BlockSwitch {
 		p.commentsBefore(b.At)
 		p.indent()
 		p.b.WriteString("switch " + printValue(b.Subject) + " {\n")
-		for _, br := range b.Branches {
+		if len(b.Branches) > 0 {
+			p.trailing(b.Branches[0].At)
+		}
+		for i, br := range b.Branches {
+			p.commentsBefore(br.At)
 			p.indent()
 			if len(br.Vals) == 0 {
 				p.b.WriteString("default:\n")
@@ -264,12 +285,19 @@ func (p *printer) block(b *syntax.Block) {
 				}
 				p.b.WriteString("case " + strings.Join(vals, ", ") + ":\n")
 			}
+			if len(br.Members) > 0 {
+				p.trailing(memberPos(br.Members[0]))
+			}
 			p.depth++
-			p.members(br.Members)
+			p.members(br.Members, b.Close)
+			if i == len(b.Branches)-1 {
+				p.commentsTo(b.Close)
+			}
 			p.depth--
 		}
 		p.indent()
 		p.b.WriteString("}\n")
+		p.trailing(stop)
 		return
 	}
 	for i, br := range b.Branches {
@@ -282,12 +310,19 @@ func (p *printer) block(b *syntax.Block) {
 		default:
 			p.b.WriteString("} else {\n")
 		}
+		if len(br.Members) > 0 {
+			p.trailing(memberPos(br.Members[0]))
+		}
 		p.depth++
-		p.members(br.Members)
+		p.members(br.Members, b.Close)
+		if i == len(b.Branches)-1 {
+			p.commentsTo(b.Close)
+		}
 		p.depth--
 	}
 	p.indent()
 	p.b.WriteString("}\n")
+	p.trailing(stop)
 }
 
 // -------------------------------------------------------------------- comments
@@ -328,16 +363,13 @@ func (p *printer) commentsTo(pos syntax.Pos) {
 	}
 }
 
-// trailing appends a comment that sat on the same line as the member that ends
-// at pos.
-func (p *printer) trailing(end syntax.Pos) {
+// trailing appends a comment that sat on the same line as the text just
+// written. stop is where the next member begins: a comment past it belongs to
+// that member, even when the whole element was written on one line.
+func (p *printer) trailing(stop syntax.Pos) {
 	for p.ci < len(p.file.Comments) {
 		c := p.file.Comments[p.ci]
-		if c.At < end {
-			p.ci++
-			continue
-		}
-		if p.lineOf(c.At) != p.lineOf(end) {
+		if c.At >= stop || p.aloneOnLine(c.At) {
 			return
 		}
 		p.ci++
@@ -359,22 +391,32 @@ func (p *printer) writeComment(c syntax.Comment) {
 	p.b.WriteString(strings.TrimRight(c.Text, " \t"))
 }
 
-// ---------------------------------------------------------------------- lines
-
-func (p *printer) lineOf(pos syntax.Pos) int {
-	i := sort.SearchInts(p.lines, int(pos)+1) - 1
-	if i < 0 {
-		return 0
-	}
-	return i
-}
-
-func newLineIndex(src []byte) []int {
-	out := []int{0}
-	for i, c := range src {
-		if c == '\n' {
-			out = append(out, i+1)
+// aloneOnLine reports whether only whitespace precedes pos on its source line,
+// which makes the comment there a comment above what follows rather than a
+// trailing one.
+func (p *printer) aloneOnLine(pos syntax.Pos) bool {
+	for i := int(pos) - 1; i >= 0; i-- {
+		switch p.src[i] {
+		case '\n':
+			return true
+		case ' ', '\t', '\r':
+		default:
+			return false
 		}
 	}
-	return out
+	return true
+}
+
+// memberPos is where a member starts, which is what a comment before it has to
+// respect.
+func memberPos(m syntax.Member) syntax.Pos {
+	switch x := m.(type) {
+	case *syntax.Property:
+		return x.NameAt
+	case *syntax.Element:
+		return x.NameAt
+	case *syntax.Block:
+		return x.At
+	}
+	return 0
 }
