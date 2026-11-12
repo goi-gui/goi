@@ -1936,6 +1936,57 @@ func TestColourReferenceCompletion(t *testing.T) {
 	if labels["width"] {
 		t.Fatal("element properties leaked into theme members")
 	}
+	// Picking one replaces the `theme.` the design typed instead of appending to
+	// it, which is what produced `theme.theme.primary`.
+	for _, it := range list.Items {
+		if it.Label != "theme.primary" {
+			continue
+		}
+		if it.TextEdit == nil {
+			t.Fatal("theme.primary has no textEdit, so the client appends after the dot")
+		}
+		if it.TextEdit.NewText != "theme.primary" {
+			t.Fatalf("textEdit inserts %q", it.TextEdit.NewText)
+		}
+		// The edit starts where the reference starts, not after the dot.
+		if it.TextEdit.Range.Start.Character != len("\t\tcolor: ") {
+			t.Fatalf("textEdit starts at column %d, want %d",
+				it.TextEdit.Range.Start.Character, len("\t\tcolor: "))
+		}
+	}
+}
+
+// TestThemeMemberCompletionFiltersOnTheMember checks a half-typed member: after
+// `theme.pr` only the matching roles come back, and each still replaces the
+// whole reference.
+func TestThemeMemberCompletionFiltersOnTheMember(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tText {\n\t\ttext: \"x\"\n\t\tcolor: theme.pr\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+	res := c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "color: theme.pr", len("color: theme.pr")),
+	})
+	var list completionList
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Items) == 0 {
+		t.Fatal("nothing completed after theme.pr")
+	}
+	for _, it := range list.Items {
+		if !strings.HasPrefix(it.Label, "theme.pr") {
+			t.Fatalf("%q does not match the typed member", it.Label)
+		}
+		if it.TextEdit == nil || it.TextEdit.NewText != it.Label {
+			t.Fatalf("%q would be inserted on top of the typed reference", it.Label)
+		}
+		if it.TextEdit.Range.Start.Character != len("\t\tcolor: ") {
+			t.Fatalf("%q replaces from column %d", it.Label, it.TextEdit.Range.Start.Character)
+		}
+	}
 }
 
 // TestHoverExplainsColourReference explains both halves of theme.primary and a

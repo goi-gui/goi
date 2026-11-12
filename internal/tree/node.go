@@ -67,6 +67,9 @@ type NodeBase struct {
 	// declaration can set one edge without repeating the others.
 	marginTop, marginRight, marginBottom, marginLeft     Prop[float64]
 	paddingTop, paddingRight, paddingBottom, paddingLeft Prop[float64]
+	// Axis shorthands: left and right follow paddingX, top and bottom follow
+	// paddingY, which follow padding in turn.
+	paddingX, paddingY                                   Prop[float64]
 	borderW                                              Prop[float64]
 	borderTopW, borderRightW, borderBottomW, borderLeftW Prop[float64]
 	borderTopColor, borderRightColor                     Prop[uint32]
@@ -226,14 +229,17 @@ func (b *NodeBase) MarginEdges() Edges {
 	}
 }
 
-// PaddingEdges returns the inner spacing per side, with the same fallback.
+// PaddingEdges returns the inner spacing per side. A side wins over its axis
+// (`paddingX`/`paddingY`), which wins over `padding`, so a design can set a
+// vertical rhythm once and still override one edge.
 func (b *NodeBase) PaddingEdges() Edges {
 	v := b.padding.Get()
+	x, y := edgeOr(b.paddingX.Get(), v), edgeOr(b.paddingY.Get(), v)
 	return Edges{
-		Top:    edgeOr(b.paddingTop.Get(), v),
-		Right:  edgeOr(b.paddingRight.Get(), v),
-		Bottom: edgeOr(b.paddingBottom.Get(), v),
-		Left:   edgeOr(b.paddingLeft.Get(), v),
+		Top:    edgeOr(b.paddingTop.Get(), y),
+		Right:  edgeOr(b.paddingRight.Get(), x),
+		Bottom: edgeOr(b.paddingBottom.Get(), y),
+		Left:   edgeOr(b.paddingLeft.Get(), x),
 	}
 }
 

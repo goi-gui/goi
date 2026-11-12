@@ -39,6 +39,22 @@ type Media struct {
 	// AudioTrack picks the audio stream to play, 0 being the first. A film with
 	// one language never changes it.
 	AudioTrack Prop[float64]
+
+	// Subtitle styling. A zero size or colour means "the player's default", so a
+	// design that only sets one of them keeps the rest.
+	SubtitleFontSize   Prop[float64]
+	SubtitleColor      Prop[uint32]
+	SubtitleFontWeight Prop[float64]
+	// SubtitleBackground is the plate behind each caption line; 0 keeps none.
+	SubtitleBackground Prop[uint32]
+	// subtitleShadow is the caption's text shadow, drawn behind the glyphs.
+	subtitleShadow ShadowProp
+
+	// Control bar colours. A zero value keeps the theme's own colour, so a
+	// design can recolour one part and leave the others alone.
+	ControlsIconColor  Prop[uint32]
+	ControlsTextColor  Prop[uint32]
+	ControlsTrackColor Prop[uint32]
 	// Buffered is how much is decoded and waiting, which the bar shows behind
 	// the position.
 	Buffered time.Duration
@@ -127,6 +143,14 @@ func mediaProps(m *Media) []NamedProp {
 		NumberProp(&m.NodeBase, "buffer", DirtyPaint, &m.Buffer),
 		StringProp(&m.NodeBase, "subtitles", &m.Subtitles),
 		NumberProp(&m.NodeBase, "audioTrack", DirtyPaint, &m.AudioTrack),
+		NumberProp(&m.NodeBase, "subtitleFontSize", DirtyLayout, &m.SubtitleFontSize),
+		ColorProp(&m.NodeBase, "subtitleColor", DirtyPaint, &m.SubtitleColor),
+		NumberProp(&m.NodeBase, "subtitleFontWeight", DirtyLayout, &m.SubtitleFontWeight),
+		NamedShadow(&m.NodeBase, "subtitleShadow", &m.subtitleShadow),
+		ColorProp(&m.NodeBase, "subtitleBackground", DirtyPaint, &m.SubtitleBackground),
+		ColorProp(&m.NodeBase, "controlsIconColor", DirtyPaint, &m.ControlsIconColor),
+		ColorProp(&m.NodeBase, "controlsTextColor", DirtyPaint, &m.ControlsTextColor),
+		ColorProp(&m.NodeBase, "controlsTrackColor", DirtyPaint, &m.ControlsTrackColor),
 	)
 }
 
@@ -177,6 +201,9 @@ func MediaNode(n Node) (*Media, bool) {
 	}
 	return nil, false
 }
+
+// SubtitleShadow returns the caption's shadow layers.
+func (m *Media) SubtitleShadow() []ShadowLayer { return m.subtitleShadow.layers }
 
 // MediaMethods are the playback methods a design may call on a media element by
 // id. `seek` and `volume` take one argument; the rest take none.

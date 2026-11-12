@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/goi-gui/goi/internal/subtitle"
+	"github.com/goi-gui/goi/internal/text"
 	"github.com/goi-gui/goi/internal/tree"
 )
 
@@ -137,26 +138,37 @@ func (l *List) paintVideoFrame(v *tree.Video, r tree.Rect, clip tree.Rect) {
 }
 
 // paintSubtitle draws the caption playing now: centered near the bottom of the
-// picture, just above the control bar when it is showing, each line on a scrim
-// so it reads over a bright frame. The text is white with a dark scrim on every
-// theme, because the picture, not the scheme, is what it sits on.
+// picture, just above the control bar when it is showing. The defaults are white
+// on a dark scrim in every theme, because the picture, not the scheme, is what
+// the text sits on; a design can recolour both, resize the text, thicken it and
+// give it a shadow.
 func (l *List) paintSubtitle(m *tree.Media, r tree.Rect, clip tree.Rect) {
 	text := subtitle.At(m.Cues, m.Position)
 	if text == "" || r.W <= 0 {
 		return
 	}
 	st := l.style("bodyMedium")
+	if v := m.SubtitleFontSize.Get(); v > 0 {
+		st.Size = v
+		st.LineHeight = v * 1.2
+	}
+	st.Weight = subtitleWeight(m, st.Weight)
 	boxW := math.Min(r.W*0.86, 760)
 	lines := l.wrapLines(text, boxW, st)
 	if len(lines) == 0 {
 		return
 	}
+	color := m.SubtitleColor.Get()
+	if color == 0 {
+		color = 0xFFFFFFFF
+	}
+	plate := m.SubtitleBackground.Get()
+	shadow := l.subtitleShadow(m)
 	lh := st.Size * 1.3
 	bottom := r.Bottom() - 12
 	if m.Controls.Get() && m.ControlsShown && r.W >= 120 && r.H >= 24 {
 		bottom = r.Bottom() - mediaBarH - 8
 	}
-	const scrim = 0xE6000000 // black at 0.9, enough behind thin glyphs
 	for i := len(lines) - 1; i >= 0; i-- {
 		line := lines[i].Text
 		if line == "" {
@@ -168,10 +180,52 @@ func (l *List) paintSubtitle(m *tree.Media, r tree.Rect, clip tree.Rect) {
 			break
 		}
 		box := tree.Rect{X: r.X + (r.W-boxW)/2, Y: y, W: boxW, H: lh}
-		l.fillRect(tree.Rect{X: box.X + (boxW-w)/2 - 8, Y: y, W: w + 16, H: lh},
-			scrim, 4, 0, 0, clip)
-		l.textIn(line, st, 0xFFFFFFFF, box, AlignCenter, clip)
+		if plate != 0 {
+			l.fillRect(tree.Rect{X: box.X + (boxW-w)/2 - 8, Y: y, W: w + 16, H: lh},
+				plate, 4, 0, 0, clip)
+		}
+		before := len(l.Ops)
+		l.textIn(line, st, color, box, AlignCenter, clip)
+		if len(shadow) > 0 && len(l.Ops) > before {
+			l.Ops[len(l.Ops)-1].TextShadows = shadow
+		}
 	}
+}
+
+// subtitleWeight resolves subtitleFontWeight against the role's weight, so the
+// CSS keywords (`bold`, `bolder`, `lighter`) work here the way they do on Text.
+func subtitleWeight(m *tree.Media, role int) int {
+	switch w := int(m.SubtitleFontWeight.Get()); {
+	case w == 0:
+		return role
+	case w < 0:
+		// bolder and lighter are relative: -1 steps the role up, -2 down.
+		return text.StepWeight(role, w == -1)
+	}
+	return int(m.SubtitleFontWeight.Get())
+}
+
+// subtitleShadow turns the caption's shadow layers into paint layers, resolving
+// a role colour against the scheme.
+func (l *List) subtitleShadow(m *tree.Media) []tree.ShadowLayer {
+	all := m.SubtitleShadow()
+	if len(all) == 0 {
+		return nil
+	}
+	out := make([]tree.ShadowLayer, 0, len(all))
+	for _, s := range all {
+		if s.Inset {
+			continue
+		}
+		if s.Color == 0 && s.Role != "" && l.Theme != nil {
+			if c, ok := l.Theme.Colors.Role(s.Role); ok {
+				s.Color = c
+			}
+		}
+		s.Color = shadowColor(s, l.Theme)
+		out = append(out, s)
+	}
+	return out
 }
 
 // paintMediaError writes the decoder's message, which is what a missing ffmpeg
@@ -197,6 +251,21 @@ func (l *List) paintMediaBar(m *tree.Media, r tree.Rect, lay MediaLayout, clip t
 		l.fillRect(lay.Bar, withAlpha(col.SurfaceContainerHighest, 0.7), 0, 0, 0,
 			intersect(intersect(clip, r), lay.Bar))
 	}
+	// A recoloured bar keeps its shape: the text, the icons and the scrubber each
+	// fall back to the theme's own colour when the design left them at 0.
+	textColor := m.ControlsTextColor.Get()
+	if textColor == 0 {
+		textColor = col.OnSurface
+	}
+	iconColor := m.ControlsIconColor.Get()
+	if iconColor == 0 {
+		iconColor = col.OnSurface
+	}
+	trackColor := m.ControlsTrackColor.Get()
+	playedColor := col.Primary
+	if trackColor != 0 {
+		playedColor = trackColor
+	}
 	icon := "play_arrow"
 	if m.Playing && !m.Paused {
 		icon = "pause"
@@ -209,7 +278,7 @@ func (l *List) paintMediaBar(m *tree.Media, r tree.Rect, lay MediaLayout, clip t
 		Rect:  rectArr(lay.Button),
 		Color: withAlpha(col.Primary, 0.18), Clip: clipArr(clip),
 	})
-	l.iconIn(icon, size*0.62, col.OnSurface,
+	l.iconIn(icon, size*0.62, iconColor,
 		lay.Button.X+lay.Button.W/2, lay.Button.Y+lay.Button.H/2, clip)
 
 	st := l.style("labelSmall")
@@ -218,12 +287,15 @@ func (l *List) paintMediaBar(m *tree.Media, r tree.Rect, lay MediaLayout, clip t
 		// edge, which is what a scrubber cannot.
 		dot := tree.Rect{X: lay.Time.X, Y: lay.Bar.Y + lay.Bar.H/2 - 4, W: 8, H: 8}
 		l.fillRect(dot, col.Error, 4, 0, 0, clip)
-		l.textIn("LIVE", st, col.OnSurface,
+		l.textIn("LIVE", st, textColor,
 			tree.Rect{X: lay.Time.X + 12, Y: lay.Time.Y, W: lay.Time.W, H: lay.Time.H},
 			AlignStart, clip)
 		return
 	}
 	track := withAlpha(col.OnSurface, 0.24)
+	if trackColor != 0 {
+		track = withAlpha(trackColor, 0.32)
+	}
 	l.fillRect(lay.Track, track, lay.Track.H/2, 0, 0, clip)
 	frac := 0.0
 	if m.Duration > 0 {
@@ -233,16 +305,20 @@ func (l *List) paintMediaBar(m *tree.Media, r tree.Rect, lay MediaLayout, clip t
 	// ahead the decoder is before the picture stalls.
 	if m.Buffered > 0 && m.Duration > 0 {
 		end := math.Min(1, frac+float64(m.Buffered)/float64(m.Duration))
+		buffered := withAlpha(col.OnSurface, 0.42)
+		if trackColor != 0 {
+			buffered = withAlpha(trackColor, 0.55)
+		}
 		l.fillRect(tree.Rect{X: lay.Track.X, Y: lay.Track.Y, W: lay.Track.W * end, H: lay.Track.H},
-			withAlpha(col.OnSurface, 0.42), lay.Track.H/2, 0, 0, clip)
+			buffered, lay.Track.H/2, 0, 0, clip)
 	}
 	if frac > 0 {
 		l.fillRect(tree.Rect{X: lay.Track.X, Y: lay.Track.Y, W: lay.Track.W * frac, H: lay.Track.H},
-			col.Primary, lay.Track.H/2, 0, 0, clip)
+			playedColor, lay.Track.H/2, 0, 0, clip)
 	}
-	l.fillRect(lay.Thumb, col.Primary, lay.Thumb.W/2, 0, 0, clip)
+	l.fillRect(lay.Thumb, playedColor, lay.Thumb.W/2, 0, 0, clip)
 
-	l.textIn(MediaClock(m.Position)+" / "+MediaClock(m.Duration), st, col.OnSurface,
+	l.textIn(MediaClock(m.Position)+" / "+MediaClock(m.Duration), st, textColor,
 		lay.Time, AlignEnd, clip)
 }
 

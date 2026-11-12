@@ -814,9 +814,9 @@ func (p *parser) parseProperty() (*Property, bool) {
 	var v Value
 	var ok bool
 	switch name.text {
-	case "shadow":
+	case "shadow", "subtitleShadow":
 		v, ok = p.parseShadowValue()
-	case "fontWeight":
+	case "fontWeight", "subtitleFontWeight":
 		v, ok = p.parseFontWeight()
 	case "decoration":
 		v, ok = p.parseDecorationValue()

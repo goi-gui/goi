@@ -333,6 +333,8 @@ func newNode(name string) Node {
 			template:          newProp(nil, "template", DirtyLayout, false),
 			margin:            newProp(nil, "margin", DirtyLayout, 0.0),
 			padding:           newProp(nil, "padding", DirtyLayout, 0.0),
+			paddingX:          newProp(nil, "paddingX", DirtyLayout, -1.0),
+			paddingY:          newProp(nil, "paddingY", DirtyLayout, -1.0),
 			marginTop:         newProp(nil, "marginTop", DirtyLayout, -1.0),
 			marginRight:       newProp(nil, "marginRight", DirtyLayout, -1.0),
 			marginBottom:      newProp(nil, "marginBottom", DirtyLayout, -1.0),

@@ -31,6 +31,8 @@ func commonProps(b *NodeBase) []NamedProp {
 		NumberProp(b, "maxHeight", DirtyLayout, &b.maxHeight),
 		NumberProp(b, "margin", DirtyLayout, &b.margin),
 		NumberProp(b, "padding", DirtyLayout, &b.padding),
+		NumberProp(b, "paddingX", DirtyLayout, &b.paddingX),
+		NumberProp(b, "paddingY", DirtyLayout, &b.paddingY),
 		NumberProp(b, "marginTop", DirtyLayout, &b.marginTop),
 		NumberProp(b, "marginRight", DirtyLayout, &b.marginRight),
 		NumberProp(b, "marginBottom", DirtyLayout, &b.marginBottom),

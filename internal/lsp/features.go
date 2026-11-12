@@ -142,6 +142,18 @@ type completionResult struct {
 	// InsertText differs from Label only when the label cannot be typed bare,
 	// such as an icon name that starts with a digit (`"10k"`).
 	InsertText string `json:"insertText,omitempty"`
+	// TextEdit replaces the text the client would otherwise substitute. A member
+	// of a typed reference needs it: after `theme.` the word under the cursor is
+	// empty, so a bare insert of `theme.primary` would leave
+	// `theme.theme.primary`.
+	TextEdit *completionTextEdit `json:"textEdit,omitempty"`
+}
+
+// completionTextEdit is a single replacement range, the shape LSP completion
+// items use for `textEdit`.
+type completionTextEdit struct {
+	Range   rng    `json:"range"`
+	NewText string `json:"newText"`
 }
 
 type doc struct {
@@ -190,6 +202,13 @@ func (s *Server) completion(raw json.RawMessage) any {
 	incomplete := false
 	file, _ := syntax.Parse(d.text)
 	prop, inMap := enclosingProperty(file, d.text, off)
+	ref := enclosingRef(before)
+	// refStart is where the whole reference begins, so an item can replace
+	// `theme.pr` instead of inserting after it.
+	refStart := off - len(prefix)
+	if ref != "" {
+		refStart -= len(ref) + 1
+	}
 
 	// A responsive map key, a prop declaration inside the `props` block, the
 	// value of a property, or a member of a reserved namespace (`app.`,
@@ -204,7 +223,7 @@ func (s *Server) completion(raw json.RawMessage) any {
 		items = append(items, values...)
 		incomplete = cut
 	}
-	if ref := enclosingRef(before); ref != "" {
+	if ref != "" {
 		items = append(items, refItems(file, d.text, off, ref)...)
 	}
 
@@ -234,7 +253,25 @@ func (s *Server) completion(raw json.RawMessage) any {
 	case prop == "" && !inMap:
 		items = append(items, elementItems(file)...)
 	}
-	return completionList{Items: dedupe(items, prefix), IsIncomplete: incomplete}
+	// A member item that carries the whole reference as its text needs an edit
+	// covering the reference the design already typed: the client replaces the
+	// word under the cursor, which is empty right after the dot.
+	if ref != "" {
+		for i := range items {
+			it := &items[i]
+			text := it.InsertText
+			if text == "" {
+				text = it.Label
+			}
+			// `theme` typed, then `theme` again: the item inserts itself only by
+			// replacing what is there.
+			if !strings.HasPrefix(text, ref+".") {
+				continue
+			}
+			it.TextEdit = &completionTextEdit{Range: idx.at(refStart, off), NewText: text}
+		}
+	}
+	return completionList{Items: dedupe(items, prefix, ref), IsIncomplete: incomplete}
 }
 
 // inDeclBlock reports whether off sits inside a top-level declaration block
@@ -1094,14 +1131,21 @@ func breakpointItems() []completionResult {
 }
 
 // dedupe drops items that do not match the prefix being typed.
-func dedupe(items []completionResult, prefix string) []completionResult {
+func dedupe(items []completionResult, prefix, ref string) []completionResult {
 	seen := map[string]bool{}
 	out := make([]completionResult, 0, len(items))
 	for _, it := range items {
 		if seen[it.Label] {
 			continue
 		}
-		if prefix != "" && !strings.HasPrefix(strings.ToLower(it.Label), strings.ToLower(prefix)) {
+		// A member item may label itself with the whole reference
+		// (`theme.primary`), so the filter compares the member half once a
+		// reference is already typed.
+		label := it.Label
+		if ref != "" {
+			label = strings.TrimPrefix(label, ref+".")
+		}
+		if prefix != "" && !strings.HasPrefix(strings.ToLower(label), strings.ToLower(prefix)) {
 			continue
 		}
 		seen[it.Label] = true

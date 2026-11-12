@@ -65,3 +65,36 @@ func TestResponsiveModifierMatchesMap(t *testing.T) {
 		t.Fatalf("padding = %v, want the base 8", got)
 	}
 }
+
+// TestPaddingAxisShorthands covers paddingX/paddingY in a real build: an axis
+// sets both of its edges and a single edge still wins, so a design can set a
+// vertical rhythm once and override one side.
+func TestPaddingAxisShorthands(t *testing.T) {
+	tr := buildResponsive(t, `Window {
+		Column {
+			id: box
+			padding: 4
+			paddingX: 16
+			paddingY: 2
+			paddingLeft: 30
+		}
+	}`)
+	box, _ := tr.ByID("box")
+	want := Edges{Top: 2, Right: 16, Bottom: 2, Left: 30}
+	if got := box.Base().PaddingEdges(); got != want {
+		t.Fatalf("padding edges = %+v, want %+v", got, want)
+	}
+	// An axis left out follows padding, which is what a design that only wrote
+	// paddingX expects on the vertical sides.
+	tr = buildResponsive(t, `Window {
+		Column {
+			id: box
+			padding: 6
+			paddingX: 20
+		}
+	}`)
+	box, _ = tr.ByID("box")
+	if got := box.Base().PaddingEdges(); got != (Edges{Top: 6, Right: 20, Bottom: 6, Left: 20}) {
+		t.Fatalf("paddingX alone = %+v", got)
+	}
+}

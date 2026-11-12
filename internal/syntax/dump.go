@@ -106,7 +106,7 @@ func dumpProperty(name string, v Value) string {
 		}
 		return "{ " + strings.Join(parts, ", ") + " }"
 	}
-	if n, ok := v.(*Number); ok && name == "fontWeight" {
+	if n, ok := v.(*Number); ok && (name == "fontWeight" || name == "subtitleFontWeight") {
 		switch n.Val {
 		case 400:
 			return "normal"

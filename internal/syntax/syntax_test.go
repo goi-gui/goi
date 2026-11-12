@@ -993,3 +993,24 @@ func TestParseModifiers(t *testing.T) {
 		t.Fatalf("dump:\n%s", got)
 	}
 }
+
+// TestParseSubtitleStyleLiterals covers the player's caption properties: they
+// take the same CSS spellings as Text, so a design writes `bold` and a shadow
+// the way it writes one on a Text.
+func TestParseSubtitleStyleLiterals(t *testing.T) {
+	src := `Video {
+		subtitleFontWeight: bold
+		subtitleShadow: 0 3 6 #00ff00
+	}`
+	f, diag := Parse([]byte(src))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	want := `Video
+  subtitleFontWeight = bold
+  subtitleShadow = 0 3 6 #00ff00ff
+`
+	if got := Dump(f); got != want {
+		t.Fatalf("dump mismatch\n--- got ---\n%s--- want ---\n%s", got, want)
+	}
+}

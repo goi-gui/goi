@@ -40,7 +40,7 @@ func printProperty(name string, v syntax.Value, depth int) string {
 		return printModifier(m, depth)
 	}
 	switch name {
-	case "fontWeight":
+	case "fontWeight", "subtitleFontWeight":
 		if n, ok := v.(*syntax.Number); ok {
 			switch n.Val {
 			case 400:
