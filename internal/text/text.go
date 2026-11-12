@@ -39,6 +39,10 @@ type Face struct {
 	// an unchanged page would otherwise pay milliseconds per frame just to
 	// re-shape the same strings. The results are read-only to every caller.
 	shaped map[string]shaping.Output
+	// runs caches ShapeRuns, which is what a repaint asks for every text op.
+	// Without it every frame re-shapes every visible line: Shape's cache never
+	// sees the call, because the renderer needs the per-face split.
+	runs map[string][]ShapedRun
 	// emoji marks a colour-emoji face, whose glyphs are bitmaps rather than
 	// outlines; lib is the library that owns the fallback chain.
 	emoji bool
@@ -330,6 +334,9 @@ type ShapedRun struct {
 // has no glyph for fall back to the colour font. Widths are the same as Shape
 // measures, so layout and paint always agree.
 func (f *Face) ShapeRuns(s string) []ShapedRun {
+	if out, ok := f.runs[s]; ok {
+		return out
+	}
 	var out []ShapedRun
 	for _, seg := range f.splitFont(s) {
 		face := f
@@ -341,6 +348,12 @@ func (f *Face) ShapeRuns(s string) []ShapedRun {
 		}
 		out = append(out, ShapedRun{Face: face, Output: face.shapeBidi(seg.text)})
 	}
+	if f.runs == nil || len(f.runs) >= maxShapedRuns {
+		f.runs = make(map[string][]ShapedRun)
+	}
+	// The slice and its glyphs are read-only to every caller, the same contract
+	// f.shaped has.
+	f.runs[s] = out
 	return out
 }
 

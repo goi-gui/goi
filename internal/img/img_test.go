@@ -59,3 +59,23 @@ func TestShelfWrapsRows(t *testing.T) {
 		t.Fatal("placed an image wider than the atlas")
 	}
 }
+
+// BenchmarkScaleVsScaleInto is the video frame's per-frame cost: the allocating
+// form re-sizes a 1280x720 frame to its packed 640x360 copy, and the scratch
+// form writes into the buffer the renderer already has.
+func BenchmarkScaleVsScaleInto(b *testing.B) {
+	src := &Data{W: 1280, H: 720, Pix: make([]byte, 1280*720*4)}
+	b.Run("Scale", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			_ = Scale(src, 640, 360)
+		}
+	})
+	dst := &Data{W: 640, H: 360, Pix: make([]byte, 640*360*4)}
+	b.Run("ScaleInto", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			ScaleInto(src, dst)
+		}
+	})
+}

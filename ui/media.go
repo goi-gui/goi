@@ -1210,11 +1210,13 @@ func (p *mediaPlayer) takeFrame() bool {
 		return false
 	}
 	buf, ok := p.nextFrameBuf()
-	if !ok {
+	if !ok || len(buf) != len(p.frame.Pix) {
 		return false
 	}
-	copy(p.frame.Pix, buf)
-	// Hand the buffer straight back, so the pump can refill it.
+	// Swap instead of copying: the decoded buffer becomes the canvas and the
+	// old canvas goes back to the pump. Every buffer in the pool is the same
+	// size, so this moves a frame with two pointer writes.
+	p.frame.Pix, buf = buf, p.frame.Pix
 	p.free <- buf
 	return true
 }

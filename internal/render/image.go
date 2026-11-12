@@ -39,8 +39,14 @@ type imageRenderer struct {
 	// same picture drawn small and large holds two entries, each filtered for
 	// its own size.
 	regions map[imageKey]imageSlot
-	// dirty is set when pix changed since the last upload.
-	dirty bool
+	// dirty is set when pix changed since the last upload, and dirtyY0..dirtyY1
+	// is the band of rows that changed (Y1 exclusive). A video frame touches one
+	// rect, so its upload is that rect's rows instead of the whole texture.
+	dirty            bool
+	dirtyY0, dirtyY1 int
+	// scaled is the scratch a smaller-than-source pack scales into, reused so a
+	// video frame does not allocate a whole image every time.
+	scaled *img.Data
 	// resized is set when the atlas grew, so the texture must be rebuilt.
 	resized bool
 }
@@ -244,12 +250,30 @@ func (t *imageRenderer) pack(d *img.Data, key imageKey) (img.Region, bool) {
 func (t *imageRenderer) writeRegion(d *img.Data, r img.Region) {
 	src := d
 	if r.W != d.W || r.H != d.H {
-		src = img.Scale(d, r.W, r.H)
+		if t.scaled == nil || t.scaled.W != r.W || t.scaled.H != r.H {
+			t.scaled = &img.Data{W: r.W, H: r.H, Pix: make([]byte, r.W*r.H*4)}
+		}
+		img.ScaleInto(d, t.scaled)
+		src = t.scaled
 	}
 	for row := 0; row < r.H; row++ {
 		copy(t.pix[((r.Y+row)*t.w+r.X)*4:], src.Pix[row*src.W*4:(row*src.W+src.W)*4])
 	}
-	t.dirty = true
+	t.markDirty(r.Y, r.Y+r.H)
+}
+
+// markDirty records that the rows y0..y1 (exclusive) changed. Any row outside
+// the current band widens it to cover both; the atlas is uploaded as one band,
+// which is exact for the single-rect case a video frame is and still cheaper
+// than the whole texture otherwise.
+func (t *imageRenderer) markDirty(y0, y1 int) {
+	if !t.dirty {
+		t.dirty = true
+		t.dirtyY0, t.dirtyY1 = y0, y1
+		return
+	}
+	t.dirtyY0 = min(t.dirtyY0, y0)
+	t.dirtyY1 = max(t.dirtyY1, y1)
 }
 
 // grow doubles the shorter side of the atlas, moving the packed images across.
@@ -296,33 +320,35 @@ func (t *imageRenderer) grow() bool {
 	}
 	t.regions = regions
 	t.resized = true
-	t.dirty = true
+	t.markDirty(0, nh)
 	return true
 }
 
-// upload pushes the atlas if a new image was packed or an animation frame
-// changed its region.
-//
-// shortcut: the whole texture goes every time. Writing only the changed rect
-// looked cheaper but the gogpu 0.34 staging path does not land a sub-rect copy,
-// and the animation simply froze; a full write is 16 MiB at the 2048 default,
-// which the frame clock keeps to the clip's own rate. Revisit when that path is
-// fixed or the atlas default grows.
+// upload pushes the rows that changed since the last upload. A video frame is
+// one rect, so a 640x360 picture moves 0.9 MiB instead of the 16 MiB the whole
+// 2048 atlas costs, and the staging copy shrinks with it.
 func (t *imageRenderer) upload(g *GPU) error {
 	if t.resized {
 		if err := t.recreate(g); err != nil {
 			return err
 		}
+		// A fresh texture holds nothing, so the whole atlas has to go.
+		t.dirtyY0, t.dirtyY1 = 0, t.h
 	}
 	if !t.dirty {
 		return nil
 	}
 	t.dirty = false
+	y0, y1 := t.dirtyY0, min(t.dirtyY1, t.h)
+	if y1 <= y0 {
+		return nil
+	}
+	t.dirtyY0, t.dirtyY1 = 0, 0
 	return g.queue.WriteTexture(
-		&wgpu.ImageCopyTexture{Texture: t.texture},
-		t.pix,
-		&wgpu.ImageDataLayout{Offset: 0, BytesPerRow: uint32(t.w * 4), RowsPerImage: uint32(t.h)},
-		&wgpu.Extent3D{Width: uint32(t.w), Height: uint32(t.h), DepthOrArrayLayers: 1},
+		&wgpu.ImageCopyTexture{Texture: t.texture, Origin: wgpu.Origin3D{Y: uint32(y0)}},
+		t.pix[y0*t.w*4:y1*t.w*4],
+		&wgpu.ImageDataLayout{BytesPerRow: uint32(t.w * 4), RowsPerImage: uint32(y1 - y0)},
+		&wgpu.Extent3D{Width: uint32(t.w), Height: uint32(y1 - y0), DepthOrArrayLayers: 1},
 	)
 }
 

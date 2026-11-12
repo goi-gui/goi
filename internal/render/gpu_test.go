@@ -152,3 +152,83 @@ func TestPackedImageReusesItsEntry(t *testing.T) {
 		t.Fatalf("regions grew from %d to %d: the shrunken copy was not reused", before, len(at.regions))
 	}
 }
+
+// TestAtlasUploadsOnlyTheChangedBand is the video path's cost guard: a frame
+// that touches one rect must mark that band, not the whole 2048-row atlas.
+func TestAtlasUploadsOnlyTheChangedBand(t *testing.T) {
+	at := newTestImageRenderer(256)
+	d := &img.Data{W: 64, H: 64, Pix: make([]byte, 64*64*4)}
+	op := paint.Op{Kind: paint.Bitmap, Src: d, Rect: [4]float32{0, 0, 64, 64}}
+	at.prepare(&paint.List{Ops: []paint.Op{op}})
+	slot := at.regions[at.keyFor(op)]
+	if !at.dirty {
+		t.Fatal("the first pack did not mark the atlas dirty")
+	}
+	if at.dirtyY0 != slot.r.Y || at.dirtyY1 != slot.r.Y+slot.r.H {
+		t.Fatalf("dirty band = %d..%d, want the packed rect %d..%d",
+			at.dirtyY0, at.dirtyY1, slot.r.Y, slot.r.Y+slot.r.H)
+	}
+	if at.dirtyY1-at.dirtyY0 >= at.h {
+		t.Fatal("a single 64px image marked the whole atlas")
+	}
+
+	// A later frame reuses the rect and marks the same band again, never more.
+	at.dirtyY0, at.dirtyY1 = 0, 0
+	at.dirty = false
+	for i := 0; i < 5; i++ {
+		d.Pix[0] = byte(i)
+		d.Gen++
+		at.prepare(&paint.List{Ops: []paint.Op{op}})
+	}
+	if at.dirtyY0 != slot.r.Y || at.dirtyY1 != slot.r.Y+slot.r.H {
+		t.Fatalf("after 5 frames the band = %d..%d, want %d..%d",
+			at.dirtyY0, at.dirtyY1, slot.r.Y, slot.r.Y+slot.r.H)
+	}
+}
+
+// TestAtlasScratchIsReused guards the per-frame allocation: a frame that has to
+// be scaled down must scale into the same buffer every time.
+func TestAtlasScratchIsReused(t *testing.T) {
+	// A picture far larger than the atlas cap is packed down, which is the path
+	// a big video frame takes when the atlas is small.
+	at := newTestImageRenderer(128)
+	d := &img.Data{W: 400, H: 400, Pix: make([]byte, 400*400*4)}
+	// Drawn small, so the atlas key shrinks the copy and every later frame is
+	// written through the scaled path — exactly what a video does.
+	op := paint.Op{Kind: paint.Bitmap, Src: d, Rect: [4]float32{0, 0, 20, 20}}
+	list := &paint.List{Ops: []paint.Op{op}}
+	at.prepare(list)
+	// The first pack scales into a fresh copy; every frame after it goes through
+	// writeRegion, which is the path a video takes.
+	d.Gen++
+	at.prepare(list)
+	first := at.scaled
+	if first == nil {
+		t.Skip("the atlas kept the source size, nothing to scale")
+	}
+	for i := 0; i < 5; i++ {
+		d.Gen++
+		at.prepare(list)
+	}
+	if at.scaled != first {
+		t.Fatal("the scale scratch was reallocated on a later frame")
+	}
+}
+
+// BenchmarkVideoFrameWrite is the per-frame cost of one decoded video frame
+// landing in the atlas: the scale into the scratch and the row copy.
+func BenchmarkVideoFrameWrite(b *testing.B) {
+	at := newTestImageRenderer(2048)
+	src := &img.Data{W: 1280, H: 720, Pix: make([]byte, 1280*720*4)}
+	// Drawn at 550dp, which is where the atlas key halves the copy twice.
+	op := paint.Op{Kind: paint.Bitmap, Src: src, Rect: [4]float32{0, 0, 550, 310}}
+	list := &paint.List{Ops: []paint.Op{op}}
+	at.prepare(list)
+	slot := at.regions[at.keyFor(op)]
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		src.Gen++
+		at.writeRegion(src, slot.r)
+	}
+}

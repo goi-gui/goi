@@ -65,3 +65,48 @@ func TestShapeIsCachedAndStable(t *testing.T) {
 		t.Fatalf("cached shape differs from a fresh one")
 	}
 }
+
+func BenchmarkShapeRunsDistinct(b *testing.B) {
+	lib := NewLibrary()
+	f := lib.Face(14, WeightRegular)
+	strs := shapeStrings(maxShapedRuns + 1)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		s := strs[i%len(strs)]
+		f.runs = nil
+		f.ShapeRuns(s)
+	}
+}
+
+func BenchmarkShapeRunsCached(b *testing.B) {
+	lib := NewLibrary()
+	f := lib.Face(14, WeightRegular)
+	strs := shapeStrings(maxShapedRuns)
+	for _, s := range strs {
+		f.ShapeRuns(s)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		f.ShapeRuns(strs[i%len(strs)])
+	}
+}
+
+// TestShapeRunsIsCached guards the repaint path: the renderer asks for the same
+// run every frame, and a second ask must not shape again.
+func TestShapeRunsIsCached(t *testing.T) {
+	lib := NewLibrary()
+	f := lib.Face(14, WeightRegular)
+	first := f.ShapeRuns("Hello world")
+	second := f.ShapeRuns("Hello world")
+	if len(first) != len(second) || &first[0].Output.Glyphs[0] != &second[0].Output.Glyphs[0] {
+		t.Fatal("ShapeRuns shaped the same line twice")
+	}
+	// A different face keeps its own cache, so a different size cannot draw the
+	// wrong glyphs.
+	other := lib.Face(20, WeightRegular)
+	if got := other.ShapeRuns("Hello world"); &got[0].Output.Glyphs[0] == &first[0].Output.Glyphs[0] {
+		t.Fatal("two faces shared one shaping result")
+	}
+}

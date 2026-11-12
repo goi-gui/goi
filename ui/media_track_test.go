@@ -244,3 +244,50 @@ func TestPausedPlayerStillHidesItsBar(t *testing.T) {
 		t.Fatalf("a paused player asked the loop to wait %v", wait)
 	}
 }
+
+// TestTakeFrameSwapsInsteadOfCopying guards the per-frame copy: the decoded
+// buffer becomes the canvas and the old one goes back to the pump, which is one
+// pointer swap instead of a full-frame memcpy.
+func TestTakeFrameSwapsInsteadOfCopying(t *testing.T) {
+	clip := mediaClip(t)
+	a, _, m := mediaApp(t, clip, `Window { Video { id: v width: 320 height: 180 } }`)
+	v, _ := m.Base().Node().(*tree.Video)
+	if _, err := a.startPlayer(m.Base().Node()); err != nil {
+		t.Fatal(err)
+	}
+	defer a.closeMedia()
+	p := a.playerFor(m.Base().Node())
+	if p == nil {
+		t.Fatal("no player")
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for p.buffered() == 0 && p.err() == nil && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if p.buffered() == 0 {
+		t.Fatalf("no decoded frame (err %v)", p.err())
+	}
+	canvas := v.Data.Pix
+	if !p.takeFrame() {
+		t.Fatal("takeFrame found nothing although the queue had a frame")
+	}
+	if &v.Data.Pix[0] == &canvas[0] {
+		t.Fatal("the frame was copied into the old canvas instead of swapped")
+	}
+	if len(v.Data.Pix) != len(canvas) {
+		t.Fatalf("the swapped canvas is %d bytes, want %d", len(v.Data.Pix), len(canvas))
+	}
+	// The old canvas went back to the pool instead of being dropped, so the
+	// pump can refill it: a later frame still arrives and the pool keeps its
+	// fixed size.
+	if got := cap(p.free) + cap(p.frames); got != 2*cap(p.frames) {
+		t.Fatalf("pool shrank to %d slots", got)
+	}
+	deadline = time.Now().Add(5 * time.Second)
+	for p.buffered() == 0 && p.err() == nil && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if p.buffered() == 0 {
+		t.Fatal("the pump did not refill after the swap")
+	}
+}

@@ -87,6 +87,19 @@ type Region struct{ X, Y, W, H int }
 // a photo, and this only runs when an image is too large for the atlas.
 func Scale(d *Data, w, h int) *Data {
 	out := &Data{W: w, H: h, Pix: make([]byte, w*h*4)}
+	ScaleInto(d, out)
+	return out
+}
+
+// ScaleInto writes d into out, which must already be w by h. It is the same box
+// filter Scale uses without the allocation, so a video frame can be scaled into
+// a reused scratch buffer on every frame.
+func ScaleInto(d, out *Data) {
+	w, h := out.W, out.H
+	if w <= 0 || h <= 0 || d.W <= 0 || d.H <= 0 ||
+		len(d.Pix) < d.W*d.H*4 || len(out.Pix) < w*h*4 {
+		return
+	}
 	sx, sy := float64(d.W)/float64(w), float64(d.H)/float64(h)
 	for y := 0; y < h; y++ {
 		y0, y1 := int(float64(y)*sy), int(float64(y+1)*sy)
@@ -120,5 +133,4 @@ func Scale(d *Data, w, h int) *Data {
 			out.Pix[i+3] = uint8(a / n)
 		}
 	}
-	return out
 }
