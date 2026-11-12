@@ -104,3 +104,57 @@ func TestChartClickWorksOnAPie(t *testing.T) {
 		t.Fatalf("pie pick = %d, want the third wedge", picked)
 	}
 }
+
+// TestChartLegendClickHidesASeries checks the legend as a switch: a press on an
+// entry turns its series off, the value scale drops it, and a second press puts
+// it back. The last visible entry cannot be turned off, so the plot never goes
+// blank with no way home.
+func TestChartLegendClickHidesASeries(t *testing.T) {
+	_, win, in := inputFixture(t, `Window { LineChart {
+		id:     c
+		width:  400
+		height: 240
+		legend: true
+	} }`, 400, 240)
+	c := MustByID[*LineChart](win, "c").ChartCore()
+	c.SetData(tree.ChartData{
+		Categories: []string{"Jan", "Feb", "Mar"},
+		Series: []tree.Series{
+			{Label: "2026", Values: []float64{10, 40, 20}},
+			{Label: "2025", Values: []float64{5, 15, 10}},
+		},
+	})
+	// Paint is what records where each legend entry sits.
+	list := &paint.List{Measure: in.measure}
+	list.Build(win.tree, 400, 240)
+	if len(c.LegendHits) != 2 {
+		t.Fatalf("legend hits = %d, want one per series", len(c.LegendHits))
+	}
+	hit := c.LegendHits[0]
+	in.MouseDown(hit.X+4, hit.Y+4, 0, false)
+	in.MouseUp(hit.X+4, hit.Y+4, 0)
+	if !c.SeriesHidden(0) || c.SeriesHidden(1) {
+		t.Fatalf("hidden = %v, want only the first series off", c.Hidden)
+	}
+	// Hiding the higher series lowers the scale's top.
+	lay := paint.ChartLayoutOf(c, absoluteRect(c.Node()))
+	if lay.Max > 20 {
+		t.Fatalf("scale max = %v, want it to follow the visible series", lay.Max)
+	}
+
+	list = &paint.List{Measure: in.measure}
+	list.Build(win.tree, 400, 240)
+	hit = c.LegendHits[0]
+	in.MouseDown(hit.X+4, hit.Y+4, 0, false)
+	in.MouseUp(hit.X+4, hit.Y+4, 0)
+	if c.SeriesHidden(0) {
+		t.Fatal("a second press did not bring the series back")
+	}
+
+	// Hide one, then try to hide the other: the last one stays.
+	c.ToggleHidden(0)
+	c.ToggleHidden(1)
+	if c.SeriesHidden(1) {
+		t.Fatal("the legend turned off the last visible series")
+	}
+}

@@ -126,8 +126,8 @@ func interactive(n tree.Node) bool {
 		"Chip", "Checkbox", "RadioButton", "Switch", "Slider", "TextField",
 		"SearchBar", "ListItem", "MenuItem", "Tab", "Card", "NavigationItem",
 		"DatePicker", "TimePicker",
-		"LineChart", "AreaChart", "BarChart", "PieChart", "ScatterChart",
-		"Audio", "Video":
+		"LineChart", "AreaChart", "BarChart", "PieChart", "ScatterChart", "RadarChart",
+		"GaugeChart", "Audio", "Video":
 		return true
 	}
 	return false
@@ -665,7 +665,7 @@ func (i *interactor) activate(n tree.Node, c *tree.Component, x, y float64) {
 		i.toggleSort(n)
 	case "TableCell":
 		i.selectRow(n)
-	case "LineChart", "AreaChart", "BarChart", "PieChart", "ScatterChart":
+	case "LineChart", "AreaChart", "BarChart", "PieChart", "ScatterChart", "RadarChart", "GaugeChart":
 		i.selectChartPoint(n, x, y)
 	case "NavigationItem":
 		i.activateDestination(n, c)
@@ -812,6 +812,14 @@ func (i *interactor) selectChartPoint(n tree.Node, x, y float64) {
 	c := chartCore(n)
 	if c == nil {
 		return
+	}
+	// A click on the legend turns that entry off, which is the way a reader
+	// asks a chart to drop a line; only a click on the plot selects a point.
+	for i, r := range c.LegendHits {
+		if hitRect(r, x, y) {
+			c.ToggleHidden(i)
+			return
+		}
 	}
 	series, index := paint.ChartHit(c, absoluteRect(n), x, y)
 	if index < 0 {

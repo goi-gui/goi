@@ -48,6 +48,21 @@ type ChartLayout struct {
 	Slices []ChartSlice
 	// Horizontal is a bar chart that runs left to right.
 	Horizontal bool
+
+	// Radar is the centre and radius of a radar chart, and Spokes the outer
+	// end of each category axis.
+	CX, CY, Radius float64
+	Spokes         []chartPoint
+	// Gauge is the arc of a gauge: its box, sweep and the value it shows.
+	Gauge GaugeGeometry
+}
+
+// GaugeGeometry is where a GaugeChart draws: a ring arc around a centre, with
+// the number inside.
+type GaugeGeometry struct {
+	CX, CY, Radius, Thickness float64
+	Start, End                float64
+	Value, Min, Max           float64
 }
 
 // ChartTick is one value label and the grid line it sits on.
@@ -84,8 +99,15 @@ func ChartLayoutOf(c *tree.Chart, r tree.Rect) ChartLayout {
 		inner.Y += l.Legend.H
 		inner.H = maxf(inner.H-l.Legend.H, 0)
 	}
-	if c.Node().Kind() == "PieChart" {
+	switch c.Node().Kind() {
+	case "PieChart":
 		l.LayoutPie(c, inner)
+		return l
+	case "GaugeChart":
+		l.LayoutGauge(c, inner)
+		return l
+	case "RadarChart":
+		l.LayoutRadar(c, inner)
 		return l
 	}
 	l.Plot = tree.Rect{X: inner.X, Y: inner.Y, W: inner.W, H: inner.H}
@@ -144,8 +166,8 @@ func (l *ChartLayout) LayoutPie(c *tree.Chart, inner tree.Rect) {
 	}
 	values := c.Data.Series[0].Values
 	total := 0.0
-	for _, v := range values {
-		if v > 0 {
+	for i, v := range values {
+		if v > 0 && !c.SeriesHidden(i) {
 			total += v
 		}
 	}
@@ -159,7 +181,7 @@ func (l *ChartLayout) LayoutPie(c *tree.Chart, inner tree.Rect) {
 	l.Slices = make([]ChartSlice, len(values))
 	for i, v := range values {
 		frac := 0.0
-		if v > 0 {
+		if v > 0 && !c.SeriesHidden(i) {
 			frac = v / total
 		}
 		end := angle + frac*2*math.Pi
@@ -170,6 +192,81 @@ func (l *ChartLayout) LayoutPie(c *tree.Chart, inner tree.Rect) {
 		angle = end
 	}
 	l.Min, l.Max = 0, total
+}
+
+// LayoutRadar places one spoke per category and each series' point along it.
+// The spokes start at 12 o'clock and run clockwise, the way the other charts
+// read their angles.
+func (l *ChartLayout) LayoutRadar(c *tree.Chart, inner tree.Rect) {
+	l.Plot = inner
+	n := c.CategoryCount()
+	if n == 0 {
+		return
+	}
+	l.CX, l.CY = inner.X+inner.W/2, inner.Y+inner.H/2
+	// Leave room for the category labels at the end of each spoke.
+	l.Radius = minf(inner.W, inner.H)/2 - 26
+	if l.Radius <= 8 {
+		return
+	}
+	l.Spokes = make([]chartPoint, n)
+	for i := range l.Spokes {
+		a := -math.Pi/2 + 2*math.Pi*float64(i)/float64(n)
+		l.Spokes[i] = chartPoint{
+			X: l.CX + math.Cos(a)*l.Radius,
+			Y: l.CY + math.Sin(a)*l.Radius,
+		}
+	}
+	l.Min, l.Max, l.Baseline = chartRange(c, l.Plot)
+	l.Ticks, l.Min, l.Max = chartScale(l.Min, l.Max,
+		tree.Rect{X: l.CX - l.Radius, Y: l.CY - l.Radius, W: 2 * l.Radius, H: 2 * l.Radius}, false)
+	l.Points = make([][]chartPoint, len(c.Data.Series))
+	for s := range c.Data.Series {
+		pts := make([]chartPoint, n)
+		for i := 0; i < n; i++ {
+			v, _ := c.DataAt(s, i)
+			frac := 0.0
+			if l.Max > l.Min {
+				frac = clampf((v-l.Min)/(l.Max-l.Min), 0, 1)
+			}
+			pts[i] = chartPoint{
+				X: l.CX + (l.Spokes[i].X-l.CX)*frac,
+				Y: l.CY + (l.Spokes[i].Y-l.CY)*frac,
+			}
+		}
+		l.Points[s] = pts
+	}
+}
+
+// gaugeSweep is how far a gauge arc runs: 240 degrees, leaving the gap at the
+// bottom so the ends read as a scale rather than a ring.
+const gaugeSweep = 240.0 * math.Pi / 180
+
+// LayoutGauge places the arc and reads the single value it shows.
+func (l *ChartLayout) LayoutGauge(c *tree.Chart, inner tree.Rect) {
+	l.Plot = inner
+	l.CX, l.CY = inner.X+inner.W/2, inner.Y+inner.H/2
+	l.Radius = minf(inner.W, inner.H) / 2
+	if l.Radius <= 0 {
+		return
+	}
+	l.Gauge = GaugeGeometry{
+		CX: l.CX, CY: l.CY,
+		Radius:    l.Radius,
+		Thickness: clampf(l.Radius*0.18, 6, 24),
+		Start:     c.StartAngle.Get()*math.Pi/180 - gaugeSweep/2,
+	}
+	l.Gauge.End = l.Gauge.Start + gaugeSweep
+	v, _ := c.DataAt(0, 0)
+	lo, hi := c.Min.Get(), c.Max.Get()
+	if lo == 0 && hi == 0 {
+		lo, hi = 0, math.Max(v, 1)
+	}
+	if hi <= lo {
+		hi = lo + 1
+	}
+	l.Gauge.Value, l.Gauge.Min, l.Gauge.Max = v, lo, hi
+	l.Min, l.Max = lo, hi
 }
 
 // layoutBars places grouped or stacked bars, vertical or horizontal.
@@ -226,6 +323,9 @@ func valueAt(c *tree.Chart, s, i int, stacked bool) float64 {
 	}
 	sum := 0.0
 	for k := 0; k <= s; k++ {
+		if c.SeriesHidden(k) {
+			continue
+		}
 		v, _ := c.DataAt(k, i)
 		sum += v
 	}
@@ -243,6 +343,9 @@ func chartRange(c *tree.Chart, plot tree.Rect) (lo, hi, baseline float64) {
 		if stacked {
 			sum := 0.0
 			for s := range c.Data.Series {
+				if c.SeriesHidden(s) {
+					continue
+				}
 				v, _ := c.DataAt(s, i)
 				sum += v
 			}
@@ -250,6 +353,9 @@ func chartRange(c *tree.Chart, plot tree.Rect) (lo, hi, baseline float64) {
 			continue
 		}
 		for s := range c.Data.Series {
+			if c.SeriesHidden(s) {
+				continue
+			}
 			v, _ := c.DataAt(s, i)
 			lo, hi = math.Min(lo, v), math.Max(hi, v)
 		}
@@ -270,6 +376,11 @@ func chartRange(c *tree.Chart, plot tree.Rect) (lo, hi, baseline float64) {
 		case "BarChart", "AreaChart":
 			lo, hi = math.Min(lo, 0), math.Max(hi, 0)
 		}
+	}
+	if kind == "RadarChart" && c.Min.Get() == 0 {
+		// A radar's shape is its distance from the centre, so zero belongs on
+		// the scale even when a `max` pins the other end.
+		lo = math.Min(lo, 0)
 	}
 	if hi <= lo {
 		hi = lo + 1
@@ -364,6 +475,16 @@ func chartHit(c *tree.Chart, r tree.Rect, x, y float64) (series, index int) {
 	if c.Node().Kind() == "PieChart" {
 		return pieHit(l, x, y)
 	}
+	switch c.Node().Kind() {
+	case "RadarChart":
+		return radarHit(l, c, x, y)
+	case "GaugeChart":
+		// One value, so any press on the dial picks it.
+		if l.Plot.Contains(x, y) {
+			return 0, 0
+		}
+		return -1, -1
+	}
 	if len(l.CatPos) == 0 {
 		return -1, -1
 	}
@@ -397,7 +518,7 @@ func chartHit(c *tree.Chart, r tree.Rect, x, y float64) (series, index int) {
 	// A line, area or scatter chart: the series whose point is closest.
 	bs, bd := 0, math.Inf(1)
 	for s := range l.Points {
-		if best >= len(l.Points[s]) {
+		if best >= len(l.Points[s]) || c.SeriesHidden(s) {
 			continue
 		}
 		p := l.Points[s][best]
@@ -408,6 +529,35 @@ func chartHit(c *tree.Chart, r tree.Rect, x, y float64) (series, index int) {
 	}
 	if !l.Plot.Contains(x, y) {
 		return -1, -1
+	}
+	return bs, best
+}
+
+// radarHit picks the spoke the pointer is nearest in angle, then the series'
+// point closest to it.
+func radarHit(l ChartLayout, c *tree.Chart, x, y float64) (series, index int) {
+	if len(l.Spokes) == 0 {
+		return -1, -1
+	}
+	best, bestD := -1, math.Inf(1)
+	for i, sp := range l.Spokes {
+		d := math.Hypot(sp.X-x, sp.Y-y)
+		if d < bestD {
+			best, bestD = i, d
+		}
+	}
+	if best < 0 || !l.Plot.Contains(x, y) {
+		return -1, -1
+	}
+	bs, bd := 0, math.Inf(1)
+	for s := range l.Points {
+		if best >= len(l.Points[s]) || c.SeriesHidden(s) {
+			continue
+		}
+		p := l.Points[s][best]
+		if d := math.Hypot(p.X-x, p.Y-y); d < bd {
+			bs, bd = s, d
+		}
 	}
 	return bs, best
 }
@@ -479,9 +629,18 @@ func (l *List) paintChart(c *tree.Chart, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
 	axisStyle := l.style("labelSmall")
 
-	if c.Node().Kind() == "PieChart" {
+	switch c.Node().Kind() {
+	case "PieChart":
 		l.paintPie(c, lay, cl)
 		l.paintLegend(c, lay, cl, axisStyle, pieColors(c, *l.Theme))
+		l.paintChartTooltip(c, lay, cl, axisStyle)
+		return
+	case "GaugeChart":
+		l.paintGauge(c, lay, cl)
+		return
+	case "RadarChart":
+		l.paintRadar(c, lay, cl, axisStyle)
+		l.paintLegend(c, lay, cl, axisStyle, seriesPalette(*l.Theme))
 		l.paintChartTooltip(c, lay, cl, axisStyle)
 		return
 	}
@@ -603,10 +762,154 @@ func pieColors(c *tree.Chart, t m3.Theme) []uint32 {
 	return out
 }
 
+// paintRadar draws the rings, the spokes, and one polygon per series.
+func (l *List) paintRadar(c *tree.Chart, lay ChartLayout, clip tree.Rect, style m3.TextStyle) {
+	if len(lay.Spokes) < 3 || lay.Radius <= 0 {
+		return
+	}
+	col := l.Theme.Colors
+	if c.Grid.Get() {
+		// A ring per tick, drawn as a closed polygon through the spokes: on a
+		// radar the scale is a shape, not a line.
+		for _, t := range lay.Ticks {
+			frac := 0.0
+			if lay.Max > lay.Min {
+				frac = (t.Value - lay.Min) / (lay.Max - lay.Min)
+			}
+			if frac <= 0 {
+				continue
+			}
+			ring := make([]chartPoint, len(lay.Spokes))
+			for i, sp := range lay.Spokes {
+				ring[i] = chartPoint{X: lay.CX + (sp.X-lay.CX)*frac, Y: lay.CY + (sp.Y-lay.CY)*frac}
+			}
+			for i := range ring {
+				l.chartSegment(ring[i], ring[(i+1)%len(ring)], withAlpha(col.OutlineVariant, 0.45), 1, clip)
+			}
+		}
+	}
+	if c.Axis.Get() {
+		for i, sp := range lay.Spokes {
+			l.chartSegment(chartPoint{X: lay.CX, Y: lay.CY}, sp, withAlpha(col.OutlineVariant, 0.45), 1, clip)
+			dx, dy := sp.X-lay.CX, sp.Y-lay.CY
+			d := math.Hypot(dx, dy)
+			if d == 0 {
+				continue
+			}
+			bx := sp.X + dx/d*22 - 40
+			by := sp.Y + dy/d*12 - 8
+			box := tree.Rect{X: bx, Y: by, W: 80, H: 16}
+			l.textIn(c.CategoryLabel(i), style, col.OnSurfaceVariant, box, AlignCenter, clip)
+		}
+	}
+	pal := seriesPalette(*l.Theme)
+	for s, pts := range lay.Points {
+		if c.SeriesHidden(s) || len(pts) < 2 {
+			continue
+		}
+		color := seriesColor(c, pal, s)
+		// The wash inside the polygon is what makes two series read apart.
+		for i := range pts {
+			l.fillTriangle(chartPoint{X: lay.CX, Y: lay.CY}, pts[i], pts[(i+1)%len(pts)],
+				withAlpha(color, 0.16), clip)
+		}
+		for i := range pts {
+			l.chartSegment(pts[i], pts[(i+1)%len(pts)], color, chartLineW, clip)
+		}
+		if c.Points.Get() {
+			for i, p := range pts {
+				radius := chartDotR
+				if c.HoverIndex == i && c.HoverSeries == s {
+					radius = chartDotR + 2
+				}
+				l.chartDot(p, radius, color, clip)
+			}
+		}
+		if c.Values.Get() {
+			for i, p := range pts {
+				v, _ := c.DataAt(s, i)
+				box := tree.Rect{X: p.X - 20, Y: p.Y - 18, W: 40, H: 16}
+				l.textIn(chartValueLabel(v), style, col.OnSurfaceVariant, box, AlignCenter, clip)
+			}
+		}
+	}
+}
+
+// paintGauge draws the track, the filled part and the number in the middle.
+func (l *List) paintGauge(c *tree.Chart, lay ChartLayout, clip tree.Rect) {
+	g := lay.Gauge
+	if g.Radius <= 0 {
+		return
+	}
+	col := l.Theme.Colors
+	box := [4]float32{float32(g.CX - g.Radius), float32(g.CY - g.Radius), float32(2 * g.Radius), float32(2 * g.Radius)}
+	l.Ops = append(l.Ops, Op{
+		Kind: Fill, Shape: Arc, Rect: box,
+		Color:      withAlpha(col.SurfaceVariant, 1),
+		Thickness:  float32(g.Thickness),
+		StartAngle: float32(g.Start),
+		EndAngle:   float32(g.End),
+		Clip:       clipArr(clip),
+	})
+	frac := clampf((g.Value-g.Min)/(g.Max-g.Min), 0, 1)
+	color := pointColor(c, seriesPalette(*l.Theme), 0, 0)
+	if frac > 0 {
+		l.Ops = append(l.Ops, Op{
+			Kind: Fill, Shape: Arc, Rect: box,
+			Color:      color,
+			Thickness:  float32(g.Thickness),
+			StartAngle: float32(g.Start),
+			EndAngle:   float32(g.Start + (g.End-g.Start)*frac),
+			Clip:       clipArr(clip),
+		})
+	}
+	// The number is the point of a gauge, so it is always written.
+	style := l.style("headlineSmall")
+	label := chartValueLabel(g.Value)
+	tw := textWidth(l, label, style)
+	nbox := tree.Rect{X: g.CX - tw/2 - 4, Y: g.CY - style.Size*0.8, W: tw + 8, H: style.Size * 1.6}
+	l.textIn(label, style, col.OnSurface, nbox, AlignCenter, clip)
+}
+
+// fillTriangle fills a triangle with the same rounded-rect pipeline, by
+// drawing a thin column per device column: a radar's wash needs a polygon no
+// shape kind offers.
+func (l *List) fillTriangle(a, b, c chartPoint, color uint32, clip tree.Rect) {
+	minX := math.Min(a.X, math.Min(b.X, c.X))
+	maxX := math.Max(a.X, math.Max(b.X, c.X))
+	if maxX-minX < 1 {
+		return
+	}
+	edges := [][2]chartPoint{{a, b}, {b, c}, {c, a}}
+	for x := minX; x < maxX; x += 1 {
+		lo, hi := math.Inf(1), math.Inf(-1)
+		for _, e := range edges {
+			p, q := e[0], e[1]
+			if (p.X <= x) == (q.X <= x) {
+				continue
+			}
+			t := (x - p.X) / (q.X - p.X)
+			y := p.Y + (q.Y-p.Y)*t
+			lo, hi = math.Min(lo, y), math.Max(hi, y)
+		}
+		if hi <= lo {
+			continue
+		}
+		l.Ops = append(l.Ops, Op{
+			Kind: Fill, Shape: RoundedRect,
+			Rect:  [4]float32{float32(x), float32(lo), 1.2, float32(hi - lo)},
+			Color: color, Clip: clipArr(clip),
+		})
+	}
+}
+
 // paintBars draws every bar, the hovered one lighter.
 func (l *List) paintBars(c *tree.Chart, lay ChartLayout, clip tree.Rect, pal []uint32) {
 	rad := c.Base().Radii()[0]
 	for s := range lay.Bars {
+		if c.SeriesHidden(s) {
+			continue
+		}
 		color := seriesColor(c, pal, s)
 		for i, r := range lay.Bars[s] {
 			if r.W <= 0 || r.H <= 0 {
@@ -631,6 +934,9 @@ func (l *List) paintBars(c *tree.Chart, lay ChartLayout, clip tree.Rect, pal []u
 // paintLines draws the line of each series, its points, and the hovered point.
 func (l *List) paintLines(c *tree.Chart, lay ChartLayout, clip tree.Rect, pal []uint32) {
 	for s, pts := range lay.Points {
+		if c.SeriesHidden(s) {
+			continue
+		}
 		color := seriesColor(c, pal, s)
 		if c.Node().Kind() != "ScatterChart" {
 			if c.Smooth.Get() {
@@ -670,7 +976,10 @@ func (l *List) paintSmooth(pts []chartPoint, color uint32, clip tree.Rect) {
 	if len(pts) < 2 {
 		return
 	}
-	const steps = 8
+	// Two segments per device pixel is past the point where a shorter one
+	// changes the drawn curve, so the joins stop showing as a staircase without
+	// flooding the display list.
+	const steps = 16
 	for i := 0; i < len(pts)-1; i++ {
 		p0 := pts[max(i-1, 0)]
 		p1, p2 := pts[i], pts[i+1]
@@ -692,7 +1001,7 @@ func (l *List) paintSmooth(pts []chartPoint, color uint32, clip tree.Rect) {
 // area a trapezoid would cover at every x.
 func (l *List) paintAreas(c *tree.Chart, lay ChartLayout, clip tree.Rect, pal []uint32) {
 	for s, pts := range lay.Points {
-		if len(pts) < 2 {
+		if len(pts) < 2 || c.SeriesHidden(s) {
 			continue
 		}
 		color := withAlpha(seriesColor(c, pal, s), 0.22)
@@ -735,10 +1044,14 @@ func (l *List) chartSegment(a, b chartPoint, color uint32, width float64, clip t
 		return
 	}
 	angle := math.Atan2(dy, dx)
+	// The quad reaches half a width past both ends, so the rounded caps of two
+	// neighbouring segments overlap by a full width. Without it the anti-aliased
+	// caps of a curve add up as a bright seam at every join.
+	half := width / 2
 	l.Ops = append(l.Ops, Op{
 		Kind: Fill, Shape: RoundedRect,
-		Rect:   [4]float32{float32(a.X), float32(a.Y - width/2), float32(length), float32(width)},
-		Radius: [4]float32{float32(width / 2), float32(width / 2), float32(width / 2), float32(width / 2)},
+		Rect:   [4]float32{float32(a.X - half), float32(a.Y - half), float32(length + width), float32(width)},
+		Radius: [4]float32{float32(half), float32(half), float32(half), float32(half)},
 		Color:  color, Clip: clipArr(clip),
 		Rotate: float32(angle), PivotX: float32(a.X), PivotY: float32(a.Y),
 	})
@@ -788,6 +1101,9 @@ func (l *List) paintPie(c *tree.Chart, lay ChartLayout, clip tree.Rect) {
 	if c.Values.Get() {
 		style := l.style("labelSmall")
 		for i, s := range lay.Slices {
+			if c.SeriesHidden(i) {
+				continue
+			}
 			v, _ := c.DataAt(s.Series, i)
 			mid := (s.Start + s.End) / 2
 			rr := (s.Outer + s.In) / 2
@@ -822,7 +1138,7 @@ func (l *List) paintChartValues(c *tree.Chart, lay ChartLayout, clip tree.Rect, 
 			var top tree.Rect
 			label, at := 0.0, 0
 			for s := range lay.Bars {
-				if i >= len(lay.Bars[s]) {
+				if i >= len(lay.Bars[s]) || c.SeriesHidden(s) {
 					continue
 				}
 				r := lay.Bars[s][i]
@@ -848,6 +1164,9 @@ func (l *List) paintChartValues(c *tree.Chart, lay ChartLayout, clip tree.Rect, 
 		return
 	}
 	for s, pts := range lay.Points {
+		if c.SeriesHidden(s) {
+			continue
+		}
 		for i, p := range pts {
 			v, _ := c.DataAt(s, i)
 			r := tree.Rect{X: p.X - 8, Y: p.Y - 4, W: 16, H: 8}
@@ -859,6 +1178,9 @@ func (l *List) paintChartValues(c *tree.Chart, lay ChartLayout, clip tree.Rect, 
 
 // paintLegend draws the series key along the top strip.
 func (l *List) paintLegend(c *tree.Chart, lay ChartLayout, clip tree.Rect, style m3.TextStyle, colors []uint32) {
+	// Recorded every frame: a chart whose legend was turned off must not keep
+	// the clickable boxes of the last frame that had one.
+	c.LegendHits = c.LegendHits[:0]
 	if lay.Legend.H == 0 {
 		return
 	}
@@ -880,11 +1202,18 @@ func (l *List) paintLegend(c *tree.Chart, lay ChartLayout, clip tree.Rect, style
 		if x > lay.Legend.Right() {
 			break
 		}
-		l.fillRect(tree.Rect{X: x, Y: y - 5, W: 10, H: 10}, colors[i], 3, 0, 0, clip)
-		x += 14
+		// A hidden entry stays in place, dimmed, so the click can be undone.
+		dim := c.SeriesHidden(i)
+		swatch, text := colors[i], col
+		if dim {
+			swatch, text = withAlpha(swatch, 0.3), withAlpha(col, 0.45)
+		}
 		tw := textWidth(l, label, style)
+		c.LegendHits = append(c.LegendHits, tree.Rect{X: x, Y: y - 10, W: 14 + tw, H: 20})
+		l.fillRect(tree.Rect{X: x, Y: y - 5, W: 10, H: 10}, swatch, 3, 0, 0, clip)
+		x += 14
 		box := tree.Rect{X: x, Y: y - 8, W: tw + 4, H: 16}
-		l.textIn(label, style, col, box, AlignStart, clip)
+		l.textIn(label, style, text, box, AlignStart, clip)
 		x += tw + 18
 	}
 }

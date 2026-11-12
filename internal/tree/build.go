@@ -614,6 +614,10 @@ func newM3Component(name string) Node {
 		return &PieChart{Chart: newChart()}
 	case "ScatterChart":
 		return &ScatterChart{Chart: newChart()}
+	case "RadarChart":
+		return &RadarChart{Chart: newChart()}
+	case "GaugeChart":
+		return &GaugeChart{Chart: newChart()}
 	}
 	return nil
 }

@@ -325,7 +325,7 @@ func (l *List) paintComponent(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		if t, ok := c.Node().(*tree.Table); ok {
 			l.paintTable(t, r, clip)
 		}
-	case "LineChart", "AreaChart", "BarChart", "PieChart", "ScatterChart":
+	case "LineChart", "AreaChart", "BarChart", "PieChart", "ScatterChart", "RadarChart", "GaugeChart":
 		if ch, ok := c.Node().(interface{ ChartCore() *tree.Chart }); ok {
 			l.paintChart(ch.ChartCore(), r, clip)
 		}

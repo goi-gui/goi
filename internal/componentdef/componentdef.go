@@ -65,6 +65,8 @@ var Kinds = []Kind{
 	{"BarChart", false},
 	{"PieChart", false},
 	{"ScatterChart", false},
+	{"RadarChart", false},
+	{"GaugeChart", false},
 }
 
 var byName = func() map[string]Kind {
@@ -134,13 +136,15 @@ var props = map[string][]string{
 	"BarChart":         {"grid", "axis", "legend", "values", "stacked", "horizontal", "min", "max"},
 	"PieChart":         {"grid", "axis", "legend", "values", "innerRadius", "startAngle", "min", "max"},
 	"ScatterChart":     {"grid", "axis", "legend", "values", "points", "min", "max"},
+	"RadarChart":       {"grid", "axis", "legend", "values", "points", "min", "max"},
+	"GaugeChart":       {"min", "max", "startAngle"},
 }
 
 // Chart reports whether kind draws a chart, which is what tells a zero `max`
 // ("follow the data") from a progress bar's 1.
 func Chart(kind string) bool {
 	switch kind {
-	case "LineChart", "AreaChart", "BarChart", "PieChart", "ScatterChart":
+	case "LineChart", "AreaChart", "BarChart", "PieChart", "ScatterChart", "RadarChart", "GaugeChart":
 		return true
 	}
 	return false

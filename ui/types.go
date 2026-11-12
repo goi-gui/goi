@@ -169,6 +169,8 @@ type (
 	BarChart         = tree.BarChart
 	PieChart         = tree.PieChart
 	ScatterChart     = tree.ScatterChart
+	RadarChart       = tree.RadarChart
+	GaugeChart       = tree.GaugeChart
 	ChartData        = tree.ChartData
 	Series           = tree.Series
 	ClipRRect        = tree.ClipRRect

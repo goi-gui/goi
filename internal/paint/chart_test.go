@@ -249,3 +249,82 @@ func TestChartAreaAndScatterPaint(t *testing.T) {
 		t.Fatalf("scatter dots = %d, want one per point", dots)
 	}
 }
+
+// TestRadarChartGeometry pins the spokes and the series points: a category
+// sits at 12 o'clock, the rest run clockwise, and a value at the top of the
+// scale reaches the spoke's end.
+func TestRadarChartGeometry(t *testing.T) {
+	data := tree.ChartData{
+		Categories: []string{"a", "b", "c", "d"},
+		Series:     []tree.Series{{Label: "s", Values: []float64{10, 10, 10, 10}}},
+	}
+	tr, _ := chartNode(t, "RadarChart", "min: 0 max: 10", data, 300, 300)
+	c := core(t, tr)
+	lay := ChartLayoutOf(c, c.Base().Bounds())
+	if len(lay.Spokes) != 4 {
+		t.Fatalf("spokes = %d, want one per category", len(lay.Spokes))
+	}
+	first := lay.Spokes[0]
+	if math.Abs(first.X-lay.CX) > 0.01 || first.Y >= lay.CY {
+		t.Fatalf("first spoke = %+v, want straight up from the centre", first)
+	}
+	if lay.Spokes[1].X <= lay.CX {
+		t.Fatalf("second spoke = %+v, want it clockwise to the right", lay.Spokes[1])
+	}
+	// Every value is at the top of the scale, so each point reaches its spoke.
+	for i, p := range lay.Points[0] {
+		if math.Hypot(p.X-lay.Spokes[i].X, p.Y-lay.Spokes[i].Y) > 0.01 {
+			t.Fatalf("point %d = %+v, want it at the spoke %+v", i, p, lay.Spokes[i])
+		}
+	}
+	if s, i := ChartHit(c, c.Base().Bounds(), lay.Spokes[2].X-4, lay.Spokes[2].Y-4); s != 0 || i != 2 {
+		t.Fatalf("radar hit = (%d, %d), want the third spoke's point", s, i)
+	}
+}
+
+// TestGaugeChartGeometry covers the arc: a value fills its share of the sweep,
+// and the number is written inside.
+func TestGaugeChartGeometry(t *testing.T) {
+	data := tree.ChartData{Categories: []string{"up"}, Series: []tree.Series{{Values: []float64{25}}}}
+	tr, l := chartNode(t, "GaugeChart", "min: 0 max: 100", data, 300, 300)
+	lay := ChartLayoutOf(core(t, tr), core(t, tr).Base().Bounds())
+	g := lay.Gauge
+	if g.Radius <= 0 || g.End <= g.Start {
+		t.Fatalf("gauge = %+v, want a positive arc", g)
+	}
+	if math.Abs((g.End-g.Start)-gaugeSweep) > 0.01 {
+		t.Fatalf("sweep = %v, want %v", g.End-g.Start, gaugeSweep)
+	}
+	found := false
+	for _, op := range l.Ops {
+		if op.Kind == Text && op.Text == "25" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("the gauge did not write its value")
+	}
+}
+
+// TestHiddenSeriesLeavesTheScale checks that a legend-hidden series stops
+// painting and no longer widens the value scale.
+func TestHiddenSeriesLeavesTheScale(t *testing.T) {
+	data := tree.ChartData{
+		Categories: []string{"a", "b"},
+		Series: []tree.Series{
+			{Label: "big", Values: []float64{100, 100}},
+			{Label: "small", Values: []float64{2, 4}},
+		},
+	}
+	tr, _ := chartNode(t, "LineChart", "", data, 300, 200)
+	c := core(t, tr)
+	before := ChartLayoutOf(c, c.Base().Bounds()).Max
+	c.ToggleHidden(0)
+	after := ChartLayoutOf(c, c.Base().Bounds())
+	if after.Max >= before {
+		t.Fatalf("scale max = %v after hiding the big series, want below %v", after.Max, before)
+	}
+	if len(after.Points) != 2 || len(after.Points[0]) == 0 {
+		t.Fatal("hiding a series threw the layout away")
+	}
+}

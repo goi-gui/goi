@@ -191,7 +191,7 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 		// 16:9 by default, so a design that only sets a width still gets a
 		// sensible box.
 		return Metrics{W: 320, H: 180, FillW: true}
-	case "LineChart", "AreaChart", "BarChart", "PieChart", "ScatterChart":
+	case "LineChart", "AreaChart", "BarChart", "PieChart", "ScatterChart", "RadarChart", "GaugeChart":
 		// A chart fills the width it is given and keeps a readable height,
 		// which a design overrides with an explicit one. The intrinsic width is
 		// what it asks for inside a Row, where `flex` splits the space.

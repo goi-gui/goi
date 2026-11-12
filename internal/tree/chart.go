@@ -57,6 +57,14 @@ type Chart struct {
 	HoverSeries, HoverIndex int
 	// SelectedSeries and SelectedIndex are the last clicked point.
 	SelectedSeries, SelectedIndex int
+	// Hidden turns a series off from its legend entry. A pie hides a slice,
+	// every other kind a series. Paint skips it and the value scale follows
+	// what is left.
+	Hidden []bool
+	// LegendHits is the clickable box of each legend entry, in window
+	// coordinates. Paint writes it and input reads it, the same way a text
+	// field's scroll is shared.
+	LegendHits []Rect
 }
 
 // ChartCore exposes the shared state to paint, which cannot type-assert five
@@ -66,6 +74,40 @@ func (c *Chart) ChartCore() *Chart { return c }
 // SetData replaces the chart's data. It is safe to call from Bind.
 func (c *Chart) SetData(d ChartData) {
 	c.Data = d
+	c.HoverSeries, c.HoverIndex = -1, -1
+	c.Hidden = nil
+	c.Base().MarkDirty(DirtyLayout)
+}
+
+// SeriesHidden reports whether the legend turned an entry off.
+func (c *Chart) SeriesHidden(i int) bool {
+	return i >= 0 && i < len(c.Hidden) && c.Hidden[i]
+}
+
+// ToggleHidden flips one entry, resizing the slice the first time. A chart
+// whose every entry is hidden keeps the last one on, so a click can never
+// leave an empty plot with no way back.
+func (c *Chart) ToggleHidden(i int) {
+	n := len(c.Data.Series)
+	if c.Node().Kind() == "PieChart" {
+		n = len(c.Data.Categories)
+	}
+	if i < 0 || i >= n {
+		return
+	}
+	for len(c.Hidden) < n {
+		c.Hidden = append(c.Hidden, false)
+	}
+	c.Hidden[i] = !c.Hidden[i]
+	shown := 0
+	for _, h := range c.Hidden[:n] {
+		if !h {
+			shown++
+		}
+	}
+	if shown == 0 {
+		c.Hidden[i] = false
+	}
 	c.HoverSeries, c.HoverIndex = -1, -1
 	c.Base().MarkDirty(DirtyLayout)
 }
@@ -187,6 +229,33 @@ func (c *ScatterChart) namedProps() []NamedProp {
 		append(gridProps(&c.Chart),
 			BoolProp(&c.NodeBase, "points", DirtyPaint, &c.Points),
 		)...)
+}
+
+// RadarChart draws every series as a polygon over one spoke per category.
+type RadarChart struct{ Chart }
+
+func (*RadarChart) Kind() string     { return "RadarChart" }
+func (c *RadarChart) M3() *Component { return &c.Component }
+func (c *RadarChart) namedProps() []NamedProp {
+	return chartProps(&c.Chart, "RadarChart",
+		append(gridProps(&c.Chart),
+			BoolProp(&c.NodeBase, "points", DirtyPaint, &c.Points),
+		)...)
+}
+
+// GaugeChart shows one value as an arc against its range, with the number in
+// the middle.
+type GaugeChart struct{ Chart }
+
+func (*GaugeChart) Kind() string     { return "GaugeChart" }
+func (c *GaugeChart) M3() *Component { return &c.Component }
+func (c *GaugeChart) namedProps() []NamedProp {
+	// A gauge has no axes or legend to speak of: one arc, one number.
+	return chartProps(&c.Chart, "GaugeChart",
+		NumberProp(&c.NodeBase, "min", DirtyPaint, &c.Min),
+		NumberProp(&c.NodeBase, "max", DirtyPaint, &c.Max),
+		NumberProp(&c.NodeBase, "startAngle", DirtyPaint, &c.StartAngle),
+	)
 }
 
 // newChart is the zero value of a chart: the props a design may write, and the

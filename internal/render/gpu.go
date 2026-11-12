@@ -80,10 +80,17 @@ fn vs_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
 	);
 	let inst = instances[u32(segment.x) + ii];
 	let c = corners[vi];
-	let p = inst.rect.xy + c * inst.rect.zw;
+	// A turned quad grows by a pixel on every side: the coverage fade at its
+	// edge needs somewhere to land, and a fragment outside the quad never runs.
+	// So every segment of a curve keeps its soft edge instead of a staircase.
+	var pad = 0.0;
+	if (inst.rot.x != 0.0) { pad = 1.0; }
+	let grow = inst.rect.zw + vec2f(2.0 * pad);
+	let origin = inst.rect.xy - vec2f(pad);
+	let p = origin + c * grow;
 	var out: VSOut;
 	out.pos = vec4f(p.x / viewport.size.x * 2.0 - 1.0, 1.0 - p.y / viewport.size.y * 2.0, 0.0, 1.0);
-	out.local = c * inst.rect.zw;
+	out.local = c * grow - vec2f(pad);
 	out.size = inst.rect.zw;
 	out.radius = inst.radius;
 	out.color = inst.color;
@@ -358,16 +365,12 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 		let start = in.params.z;
 		let end = in.params.w;
 		if (kind > 1.5 && end - start < 2.0 * PI - 0.01) {
-			var a0 = start;
-			var a1 = end;
-			if (a1 < a0) { a1 = a1 + 2.0 * PI; }
-			var a = ang;
-			if (a < a0) { a = a + 2.0 * PI; }
-			if (a > a0 + 0.001 && a < a1) {
-				// inside the sweep
-			} else {
-				discard;
-			}
+			// Where the fragment falls in the sweep. Measuring the offset from
+			// the start rather than comparing absolute angles keeps a slice
+			// that begins before 12 o'clock (a gauge's left shoulder) whole.
+			let span = end - start;
+			let rel = fract((ang - start) / (2.0 * PI)) * 2.0 * PI;
+			if (rel > span) { discard; }
 		}
 		return vec4f(in.color.rgb, in.color.a * cov);
 	}
