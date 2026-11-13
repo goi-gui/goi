@@ -1021,17 +1021,27 @@ func (l *List) paintSmooth(pts []chartPoint, color uint32, clip tree.Rect) {
 	if len(pts) < 2 {
 		return
 	}
-	// Two segments per device pixel is past the point where a shorter one
-	// changes the drawn curve, so the joins stop showing as a staircase without
-	// flooding the display list.
-	const steps = 16
+	// The step follows the curve's own length: two device pixels of chord is
+	// past the point where a shorter one changes the drawn shape, so a short
+	// segment does not flood the display list and a long one does not read as a
+	// polygon. That is what keeps a spline smooth on a HiDPI panel and on a big
+	// chart alike.
+	scale := l.deviceScale()
 	for i := 0; i < len(pts)-1; i++ {
 		p0 := pts[max(i-1, 0)]
 		p1, p2 := pts[i], pts[i+1]
 		p3 := pts[min(i+2, len(pts)-1)]
+		chord := math.Hypot(p2.X-p1.X, p2.Y-p1.Y) * scale
+		steps := int(math.Ceil(chord / 2))
+		if steps < 4 {
+			steps = 4
+		}
+		if steps > 512 {
+			steps = 512
+		}
 		prev := p1
 		for k := 1; k <= steps; k++ {
-			t := float64(k) / steps
+			t := float64(k) / float64(steps)
 			t2, t3 := t*t, t*t*t
 			x := 0.5 * ((2 * p1.X) + (-p0.X+p2.X)*t + (2*p0.X-5*p1.X+4*p2.X-p3.X)*t2 + (-p0.X+3*p1.X-3*p2.X+p3.X)*t3)
 			y := 0.5 * ((2 * p1.Y) + (-p0.Y+p2.Y)*t + (2*p0.Y-5*p1.Y+4*p2.Y-p3.Y)*t2 + (-p0.Y+3*p1.Y-3*p2.Y+p3.Y)*t3)

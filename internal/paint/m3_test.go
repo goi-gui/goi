@@ -951,3 +951,56 @@ func TestProgressGapNeverCloses(t *testing.T) {
 		}
 	}
 }
+
+// TestRadiusClampsToHalfTheBox is the circle case: a radius past half the box is
+// a circle in CSS, and the shader's distance field turns everything outside when
+// it is not clamped. The op carries the clamped value so no renderer has to guess.
+func TestRadiusClampsToHalfTheBox(t *testing.T) {
+	l := m3list(t, `Window { Column {
+		Rectangle { width: 12 height: 12 radius: 999 background: #ff0000ff }
+		Rectangle { width: 40 height: 20 radius: 999 background: #00ff00ff }
+	} }`)
+	var radii [][4]float32
+	for _, op := range l.Ops {
+		if op.Kind == Fill && op.Shape == RoundedRect && op.Rect[3] <= 40 && op.Rect[3] > 5 {
+			radii = append(radii, op.Radius)
+		}
+	}
+	if len(radii) != 2 {
+		t.Fatalf("drew %d boxes, want 2\n%s", len(radii), l.Dump())
+	}
+	// 12x12 → 6, 40x20 → 10: half the shorter side, never more.
+	if radii[0][0] != 6 || radii[1][0] != 10 {
+		t.Fatalf("radii = %v, want 6 and 10", radii)
+	}
+}
+
+// TestCurveStepFollowsTheScale is the adaptive sampling: the same spline is
+// sampled finer on a HiDPI panel, because the step is measured in device pixels.
+func TestCurveStepFollowsTheScale(t *testing.T) {
+	build := func(scale float32) *List {
+		tr, diag := tree.BuildSource([]byte(`Window { Column { LineChart { width: 220 height: 240 smooth: true
+			categories: ["a", "b", "c", "d"]
+			ChartSeries { values: [10, 40, 15, 45] } } } }`), nil)
+		if !diag.Empty() {
+			t.Fatalf("%v", diag)
+		}
+		layout.New(nil).Layout(tr.Root, 600, 400)
+		l := &List{Scale: scale}
+		l.Build(tr, 600, 400)
+		return l
+	}
+	count := func(l *List) int {
+		n := 0
+		for _, op := range l.Ops {
+			if op.Kind == Fill && op.Shape == RoundedRect && op.Rotate != 0 && op.Rect[2] > 2 {
+				n++
+			}
+		}
+		return n
+	}
+	one, two := count(build(1)), count(build(2))
+	if one == 0 || two <= one {
+		t.Fatalf("segments at 1x = %d, at 2x = %d; want more at 2x", one, two)
+	}
+}

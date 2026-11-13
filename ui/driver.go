@@ -328,6 +328,7 @@ func (a *App) frame() {
 	d.list.ShowFPS = a.showFPS
 	d.list.FPS = d.fps
 	d.list.Clock = a.clock
+	d.list.Scale = maxScale(d.pendingScale)
 	if a.showFPS {
 		// The overlay measures paint rate, so it keeps painting to have
 		// something to measure. Only a debug build pays this.

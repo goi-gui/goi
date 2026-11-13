@@ -175,6 +175,9 @@ type List struct {
 	// Clock is how long the window has been drawing, which is what moves a wave
 	// on a wavy progress bar. A test sets it to look at a frame of its choosing.
 	Clock time.Duration
+	// Scale is the device pixel ratio, so a curve can be sampled finely enough
+	// for the pixels it lands on. 0 and 1 mean one device pixel per unit.
+	Scale float32
 	// Animating reports whether this list drew something that moves on its own,
 	// so the frame loop knows to draw the next one.
 	Animating bool
@@ -432,7 +435,7 @@ func (l *List) fillShape(r tree.Rect, color uint32, g *tree.Gradient, radii [4]f
 		Shape:       shape,
 		Gradient:    g,
 		Rect:        rectArr(r),
-		Radius:      [4]float32{float32(radii[0]), float32(radii[1]), float32(radii[2]), float32(radii[3])},
+		Radius:      radiusArr(radii, r),
 		Color:       color,
 		BorderColor: borderColor,
 		BorderWidth: float32(borderWidth),
@@ -684,7 +687,7 @@ func (l *List) fillRect(r tree.Rect, color uint32, radius float64, borderColor u
 	if color == 0 && (borderColor == 0 || borderWidth <= 0) {
 		return
 	}
-	rad := float32(radius)
+	rad := float32(clampRadius(radius, r))
 	l.Ops = append(l.Ops, Op{
 		Kind:        Fill,
 		Shape:       RoundedRect,
@@ -695,6 +698,34 @@ func (l *List) fillRect(r tree.Rect, color uint32, radius float64, borderColor u
 		BorderWidth: float32(borderWidth),
 		Clip:        clipArr(clip),
 	})
+}
+
+// radiusArr clamps a four-corner radius to the shape, the way CSS treats a
+// radius larger than the box: a 999dp radius on a 12dp square is a circle. The
+// distance field cannot answer for a radius that large, so the clamp belongs
+// here as well as in the shader.
+func radiusArr(radii [4]float64, r tree.Rect) [4]float32 {
+	if r.W > r.H {
+		r.W = r.H
+	}
+	return [4]float32{
+		float32(clampRadius(radii[0], r)),
+		float32(clampRadius(radii[1], r)),
+		float32(clampRadius(radii[2], r)),
+		float32(clampRadius(radii[3], r)),
+	}
+}
+
+// clampRadius limits one corner radius to half the shorter side.
+func clampRadius(radius float64, r tree.Rect) float64 {
+	limit := math.Min(r.W, r.H) / 2
+	if radius < 0 {
+		return 0
+	}
+	if radius > limit {
+		return limit
+	}
+	return radius
 }
 
 // clipArr and rectArr are tiny converters used everywhere below.
@@ -718,6 +749,14 @@ func intersect(a, b tree.Rect) tree.Rect {
 		y1 = y0
 	}
 	return tree.Rect{X: x0, Y: y0, W: x1 - x0, H: y1 - y0}
+}
+
+// deviceScale is the list's device pixel ratio, never below one.
+func (l *List) deviceScale() float64 {
+	if l.Scale > 1 {
+		return float64(l.Scale)
+	}
+	return 1
 }
 
 // strokeOr is a stroke width with the component's own fallback.

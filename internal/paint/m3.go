@@ -1670,7 +1670,7 @@ func (l *List) paintWavyBar(tr tree.Rect, frac, stroke float64, clip tree.Rect) 
 		l.chartDot(point(w/2), stroke/2, col.Primary, clip)
 		return
 	}
-	step := 2.0
+	step := math.Max(0.75, 2.0/l.deviceScale())
 	var prev chartPoint
 	for x := 0.0; ; x += step {
 		p := point(x)
@@ -1775,7 +1775,9 @@ func (l *List) paintWavyRing(r tree.Rect, frac, thickness float64, clip tree.Rec
 		rad := rr + amplitude*math.Sin(t*waves-phase)
 		return chartPoint{X: cx + rad*math.Sin(t), Y: cy - rad*math.Cos(t)}
 	}
-	step := 2 * math.Pi / 120
+	// A step of about two device pixels of arc keeps the ribbon smooth whatever
+	// the ring's size and the panel's ratio.
+	step := math.Max(2*math.Pi/240, (2.0/l.deviceScale())/rr)
 	var prev chartPoint
 	for t := 0.0; ; t += step {
 		p := point(t)
