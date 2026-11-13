@@ -3,6 +3,8 @@ package goifmt
 import (
 	"strings"
 	"testing"
+
+	"github.com/goi-gui/goi/internal/syntax"
 )
 
 func TestFormatLayout(t *testing.T) {
@@ -316,4 +318,59 @@ func TestFormatLists(t *testing.T) {
 	if got := string(Source([]byte(src))); got != want {
 		t.Fatalf("format =\n%s\nwant\n%s", got, want)
 	}
+}
+
+// TestFormatMultilineString is the round trip that matters: a document is
+// written one line per source line, indented under its property, and reading
+// the result back gives the same value. Nested indentation and blank lines are
+// part of the value and must survive.
+func TestFormatMultilineString(t *testing.T) {
+	src := "Window {\n" +
+		"\tMarkdown {\n" +
+		"\t\ttext: !\"# Title\n" +
+		"\n" +
+		"\t\ta paragraph\n" +
+		"\t\t- one\n" +
+		"\t\t\t- nested\n" +
+		"\t\t\"!\n" +
+		"\t}\n" +
+		"}\n"
+	got := string(Source([]byte(src)))
+	want := "Window {\n" +
+		"\tMarkdown {\n" +
+		"\t\ttext: !\"# Title\n" +
+		"\n" +
+		"\t\t\ta paragraph\n" +
+		"\t\t\t- one\n" +
+		"\t\t\t\t- nested\n" +
+		"\t\t\t\"!\n" +
+		"\t}\n" +
+		"}\n"
+	if got != want {
+		t.Fatalf("format =\n%s\nwant\n%s", got, want)
+	}
+	// The formatted source parses back to the same string.
+	first := parseText(t, src)
+	second := parseText(t, got)
+	if first != second {
+		t.Fatalf("round trip changed the value: %q -> %q", first, second)
+	}
+}
+
+// parseText returns the Markdown text of a design, for the round-trip check.
+func parseText(t *testing.T, src string) string {
+	t.Helper()
+	f, diag := syntax.Parse([]byte(src))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	var out string
+	syntax.WalkElements(f.Root, func(e *syntax.Element) {
+		if e.Name == "Markdown" {
+			if p := e.Prop("text"); p != nil {
+				out = p.Value.(*syntax.String).Val
+			}
+		}
+	})
+	return out
 }

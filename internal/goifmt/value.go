@@ -38,6 +38,12 @@ func printProperty(name string, v syntax.Value, depth int) string {
 		return printResponsive(m, depth)
 	case *syntax.Modifier:
 		return printModifier(m, depth)
+	case *syntax.String:
+		// A string with a line break goes back out in the form it was written
+		// in: one line per source line, indented under the property.
+		if strings.Contains(m.Val, "\n") {
+			return printMultiline(m.Val, depth)
+		}
 	}
 	switch name {
 	case "fontWeight", "subtitleFontWeight":
@@ -59,6 +65,30 @@ func printProperty(name string, v syntax.Value, depth int) string {
 		}
 	}
 	return printValue(v)
+}
+
+// printMultiline writes a string that spans lines as `!"…"!`, one line per
+// source line. Every line but the first is indented one level under the
+// property, and the closing delimiter rides on the last line, so reading the
+// file back strips exactly the indentation this added. A blank line is written
+// blank, except the last one: it carries the indentation the reader needs to
+// find the block's base.
+func printMultiline(val string, depth int) string {
+	pad := strings.Repeat("\t", depth+1)
+	lines := strings.Split(val, "\n")
+	var b strings.Builder
+	b.WriteString(`!"`)
+	b.WriteString(lines[0])
+	for i, line := range lines[1:] {
+		b.WriteString("\n")
+		if line == "" && i < len(lines)-2 {
+			continue // a blank line inside the block stays blank
+		}
+		b.WriteString(pad)
+		b.WriteString(line)
+	}
+	b.WriteString(`"!`)
+	return b.String()
 }
 
 // printResponsive writes the old brace map in the modifier spelling, one entry

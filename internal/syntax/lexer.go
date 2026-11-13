@@ -117,6 +117,12 @@ func (l *lexer) run() ([]token, Diagnostics) {
 			// A lone '=' is a prop default; a comparison is '=='.
 			l.emit(token{kind: tokAssign, pos: Pos(start), end: Pos(l.off)})
 		case c == '!':
+			// `!"` opens a multi-line string; `!=` is a comparison and a lone
+			// `!` is negation.
+			if l.off+1 < len(l.src) && l.src[l.off+1] == '"' {
+				l.lexMultiline(start)
+				continue
+			}
 			l.off++
 			if l.off < len(l.src) && l.src[l.off] == '=' {
 				l.off++
@@ -312,6 +318,65 @@ func (l *lexer) lexNumber(start int) {
 		return
 	}
 	l.emit(token{kind: tokNumber, pos: Pos(start), end: Pos(l.off), num: f, text: text})
+}
+
+// lexMultiline reads `!"…"!`, a string that spans lines. The text is kept as
+// written, except for the indentation of the block: the whitespace that starts
+// the line the closing `"!` sits on is removed from every line after the first,
+// so a design indents the whole block once and the value comes out flush. No
+// escape is interpreted, because the point of the form is to hold a document.
+func (l *lexer) lexMultiline(start int) {
+	l.off += 2 // !"
+	content := l.off
+	lineStart := content
+	for {
+		if l.off >= len(l.src) {
+			l.fail(start, l.off, `unterminated multi-line string: close it with "!`)
+			l.emit(token{kind: tokError, pos: Pos(start), end: Pos(l.off)})
+			return
+		}
+		c := l.src[l.off]
+		if c == '"' && l.off+1 < len(l.src) && l.src[l.off+1] == '!' {
+			raw := string(l.src[content:l.off])
+			base := leadingSpace(string(l.src[lineStart:l.off]))
+			l.off += 2
+			l.emit(token{kind: tokString, pos: Pos(start), end: Pos(l.off), text: dedentBlock(raw, base)})
+			return
+		}
+		if c == '\n' {
+			l.off++
+			lineStart = l.off
+			continue
+		}
+		l.off++
+	}
+}
+
+// leadingSpace is the run of spaces and tabs at the start of s.
+func leadingSpace(s string) string {
+	i := 0
+	for i < len(s) && (s[i] == ' ' || s[i] == '\t') {
+		i++
+	}
+	return s[:i]
+}
+
+// dedentBlock removes base from the start of every line but the first, as far
+// as the line actually starts with it: a line indented further keeps the extra
+// indentation, which is how a nested markdown list survives.
+func dedentBlock(raw, base string) string {
+	if base == "" || !strings.Contains(raw, "\n") {
+		return raw
+	}
+	lines := strings.Split(raw, "\n")
+	for i := 1; i < len(lines); i++ {
+		j := 0
+		for j < len(base) && j < len(lines[i]) && lines[i][j] == base[j] {
+			j++
+		}
+		lines[i] = lines[i][j:]
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (l *lexer) lexString(start int) {

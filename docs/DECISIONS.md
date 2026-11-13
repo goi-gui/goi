@@ -1840,3 +1840,13 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   over the picture with a dark scrim in both schemes, and the light theme's
   `onSurface` is near-black: white is the only default that reads on any frame.
   An audio player's bar is a surface of its own, so it keeps the scheme's ink.
+- **A multi-line string is `!"…"!`, dedented by the closing line's indent.** A
+  document in a `.goi` file needs real line breaks, and escapes make a paragraph
+  unreadable. The delimiters cannot collide with a one-line string, and the
+  dedent rule uses the whitespace the closing delimiter's line starts with,
+  rather than the smallest indent of the block: the first line follows `!"` on
+  the property's own line, so it has no indent to take part in a minimum, and a
+  line indented deeper keeps its extra indent, which is what a nested markdown
+  list is. Nothing is unescaped in the form, because a document is not source
+  code; goifmt writes any value with a line break back this way and puts its own
+  indentation in front of each line, so a re-read strips exactly that.

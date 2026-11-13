@@ -1065,3 +1065,44 @@ func TestParseListDiagnostics(t *testing.T) {
 		}
 	}
 }
+
+// TestParseMultilineString covers `!"…"!`: the text spans lines, the block's
+// own indentation is removed, extra indentation survives (a nested markdown
+// list), and nothing is unescaped because the form holds a document.
+func TestParseMultilineString(t *testing.T) {
+	src := "A {\n" +
+		"\ttext: !\"# Title\n" +
+		"\n" +
+		"\t\ta paragraph\n" +
+		"\t\t- one\n" +
+		"\t\t\t- nested\n" +
+		"\t\t\"!\n" +
+		"}\n"
+	f, diag := Parse([]byte(src))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	want := "# Title\n\na paragraph\n- one\n\t- nested\n"
+	if got := f.Root.Prop("text").Value.(*String).Val; got != want {
+		t.Fatalf("text = %q, want %q", got, want)
+	}
+	// Backslashes are text here, not escapes.
+	f, diag = Parse([]byte("A { text: !\"a\\nb\"! }"))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	if got := f.Root.Prop("text").Value.(*String).Val; got != `a\nb` {
+		t.Fatalf("raw value = %q", got)
+	}
+}
+
+// TestMultilineStringDiagnostics keeps an unclosed block a parse error.
+func TestMultilineStringDiagnostics(t *testing.T) {
+	_, diag := Parse([]byte("A { text: !\"one\ntwo }"))
+	if diag.Empty() {
+		t.Fatal("an unclosed multi-line string parsed")
+	}
+	if !strings.Contains(diag.Error(), "multi-line string") {
+		t.Fatalf("diagnostic = %v", diag)
+	}
+}
