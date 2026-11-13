@@ -192,6 +192,7 @@ func TestRichTextChildrenBecomeSpans(t *testing.T) {
 			Text { text: "under" decoration: underline }
 			Text { text: "gone" decoration: line-through color: #ff0000ff }
 			Text { text: "role" color: tertiary }
+			Text { text: "docs" link: "https://goi.dev/docs" }
 		}
 	}`), nil)
 	if !diag.Empty() {
@@ -203,7 +204,7 @@ func TestRichTextChildrenBecomeSpans(t *testing.T) {
 	}
 	rt := n.(*RichText)
 	spans := rt.Spans()
-	if len(spans) != 6 {
+	if len(spans) != 7 {
 		t.Fatalf("spans = %v", spans)
 	}
 	want := []Span{
@@ -214,6 +215,8 @@ func TestRichTextChildrenBecomeSpans(t *testing.T) {
 		{Text: "gone", Strike: true, Color: 0xFF0000FF},
 		// A role stays a role, so the run follows a theme change.
 		{Text: "role", ColorRole: "tertiary"},
+		// link is the run's target, which is what a click opens.
+		{Text: "docs", Link: "https://goi.dev/docs"},
 	}
 	for i := range want {
 		if spans[i] != want[i] {

@@ -1763,3 +1763,21 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   expression, and squeezing it into one would have made `90deg` a lexer special
   case. `parseRotate` runs before the generic value reader and stores degrees, so
   the tree, formatter and renderer agree on one unit.
+- **A clicked link goes through the OS opener, not the app.** A link target is a
+  URL, a deep link or a path, and the system already knows what to do with all
+  three: `xdg-open`/`open`/`rundll32` reach the registered handler for a scheme
+  and the file manager for a folder. goi does not parse URLs to guess. The
+  decision that stays in the framework is "URL or path": a target with a scheme
+  is never `stat`ed, so `https://goi.dev/a` cannot be mistaken for a file, and a
+  path that exists is revealed rather than opened by its owning program. Finder
+  and Explorer select the item; the freedesktop opener has no such call without
+  the `org.freedesktop.FileManager1` interface, so Linux shows the folder.
+  `Text.OnLink` is the escape hatch for a target the app owns, and goi opens
+  nothing when it is set.
+- **A link is a run, so its hit test recomputes the wrap.** Paint does not write
+  geometry back onto nodes, and a paragraph's click needs the same lines the
+  painter drew. `RichText.Lines` is the one wrap function layout, paint and
+  `richLinkAt` call, each with its own measure callback, so the box a click lands
+  in is the box that was drawn. The cost is one wrap per pointer move over a
+  paragraph that has a link; `HasLink` makes that cost zero for the ones that do
+  not.

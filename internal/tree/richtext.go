@@ -18,8 +18,7 @@ type Span struct {
 	// Code draws the run as inline code: a tinted background, no markup.
 	Code bool
 	// Link is the destination a link span points at. A link draws in the
-	// theme's primary colour and is underlined. goi has no URL opener of its
-	// own, so a design handles taps and calls the platform itself.
+	// theme's primary colour and is underlined; a click opens it.
 	Link string
 	// Color overrides the run's colour; 0 keeps the RichText's own.
 	Color uint32
@@ -90,6 +89,27 @@ func (r *RichText) Inlines() []text.Inline {
 	return out
 }
 
+// Lines wraps the runs at width, measuring each one through measure with the
+// weight that run draws in. Layout, paint and the hit test of a click all go
+// through it, so the lines they see are one answer.
+func (r *RichText) Lines(width float64, role int, measure func(weight int, s string) float64) [][]text.InlineRun {
+	spans := r.Spans()
+	return text.WrapInline(r.Inlines(), width, func(style int, s string) float64 {
+		return measure(r.SpanWeight(spans[style], role), s)
+	})
+}
+
+// HasLink reports whether any run points somewhere, which is what makes the
+// paragraph a hit area. A paragraph without one costs nothing on hover.
+func (r *RichText) HasLink() bool {
+	for _, s := range r.Spans() {
+		if s.Link != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // adopt turns the Text children a design declared into the runs they describe
 // and detaches them. The children are only a way to author the runs: a span is
 // data, not a node, because a run may break across lines.
@@ -116,7 +136,7 @@ func (r *RichText) adopt(t *Tree) error {
 // italic style slants, the decoration's strokes carry over, and a colour
 // override does too. The size and family stay the RichText's own.
 func spanOf(tx *Text) Span {
-	s := Span{Text: tx.Text.Get(), Color: tx.Color.Get()}
+	s := Span{Text: tx.Text.Get(), Color: tx.Color.Get(), Link: tx.Link.Get()}
 	// A role keeps following the scheme after the child is gone; only a theme
 	// role can be resolved by the painter, so a custom one falls back.
 	if role := tx.colorRoleFor("color"); role != "" && !strings.HasPrefix(role, "custom:") {

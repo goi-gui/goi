@@ -98,7 +98,7 @@ func (a *App) initWindow(w *Window) error {
 	d.list.Theme = themeFor(w)
 	d.lastTick = time.Now()
 	d.fpsAt = time.Now()
-	d.input = &interactor{app: a, tree: w.tree, measure: d.list.Measure, setCursor: pw.SetCursor}
+	d.input = &interactor{app: a, tree: w.tree, measure: d.list.Measure, setCursor: pw.SetCursor, open: OpenLink}
 	// A design that draws its own title bar also owns the window edges, so the
 	// platform asks us what each press means: drag, resize or a normal click.
 	if w.tree.Root.TitleBar.Get() == "custom" {

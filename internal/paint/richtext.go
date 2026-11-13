@@ -27,10 +27,9 @@ func (l *List) richLines(r *tree.RichText, width float64, st m3.TextStyle) [][]t
 	if got, ok := l.rich[key]; ok {
 		return got
 	}
-	spans := r.Spans()
-	lines := text.WrapInline(r.Inlines(), width, func(style int, s string) float64 {
+	lines := r.Lines(width, st.Weight, func(weight int, s string) float64 {
 		m := st
-		m.Weight = r.SpanWeight(spans[style], st.Weight)
+		m.Weight = weight
 		return textWidth(l, s, m)
 	})
 	if l.rich == nil || len(l.rich) >= maxWrapEntries {

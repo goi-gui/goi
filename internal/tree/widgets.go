@@ -542,9 +542,22 @@ type Text struct {
 	DecorationThickness Prop[float64]
 	DecorationColor     Prop[uint32]
 	Selectable          Prop[bool]
+	// Link is the URL, deep link or path this text points at. A text with one is
+	// a link: it draws in the primary colour, and a click opens it unless a
+	// LinkClick handler says otherwise. Inside a RichText it is the run's link.
+	Link Prop[string]
+	// LinkClick is the handler slot for a clicked link. With a handler goi does
+	// not open anything, so an app can route `goi://settings` itself.
+	LinkClick Event[string]
 	// SelA and SelB are the selection in byte offsets; equal values mean none.
 	SelA, SelB int
 }
+
+// OnLink subscribes to a clicked link, which is the text's own or the run of a
+// RichText under the pointer. Without a handler goi hands the target to the
+// desktop: the user's browser for a URL or a deep link, the file manager for a
+// path that exists.
+func (t *Text) OnLink(fn func(link string)) (off func()) { return t.LinkClick.On(fn) }
 
 // Relative font weights, the values `fontWeight: bolder` and `lighter` keep
 // until Text.WeightFor resolves them against the role's weight.
@@ -591,6 +604,7 @@ func (t *Text) namedProps() []NamedProp {
 		NumberProp(&t.NodeBase, "decorationThickness", DirtyPaint, &t.DecorationThickness),
 		ColorProp(&t.NodeBase, "decorationColor", DirtyPaint, &t.DecorationColor),
 		BoolProp(&t.NodeBase, "selectable", DirtyPaint, &t.Selectable),
+		StringProp(&t.NodeBase, "link", &t.Link),
 	)
 }
 

@@ -1672,6 +1672,12 @@ func (l *List) paintText(t *tree.Text, r tree.Rect, clip tree.Rect) {
 	if color == 0 {
 		color = l.Theme.Colors.OnSurface
 	}
+	// A text that is a link draws the way a link run does: primary and
+	// underlined, whatever colour the design gave it.
+	link := t.Link.Get()
+	if link != "" {
+		color = l.Theme.Colors.Primary
+	}
 	align := AlignStart
 	switch t.Align.Get() {
 	case "center":
@@ -1737,7 +1743,13 @@ func (l *List) paintText(t *tree.Text, r tree.Rect, clip tree.Rect) {
 			}
 		}
 		if line.Text != "" {
-			l.textDecoration(t, box, textWidth(l, line.Text, st), align, color, st.Size, clip)
+			lineW := textWidth(l, line.Text, st)
+			if link != "" {
+				l.decorationLine(box.X+alignOffset(box.W, lineW, align),
+					box.Y+box.H/2+st.Size*textBaseline+st.Size*0.12,
+					lineW, math.Max(1, math.Round(st.Size/14)), "solid", color, clip)
+			}
+			l.textDecoration(t, box, lineW, align, color, st.Size, clip)
 		}
 	}
 }

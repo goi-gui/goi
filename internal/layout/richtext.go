@@ -2,7 +2,6 @@ package layout
 
 import (
 	"github.com/goi-gui/goi/internal/m3"
-	"github.com/goi-gui/goi/internal/text"
 	"github.com/goi-gui/goi/internal/tree"
 )
 
@@ -38,6 +37,9 @@ func (e *Engine) richTextSize(r *tree.RichText, availW float64) (float64, float6
 	if limit <= 0 {
 		return width(), lh
 	}
-	lines := text.WrapInline(r.Inlines(), limit, measure)
+	lines := r.Lines(limit, st.Weight, func(weight int, s string) float64 {
+		w, _ := e.measureFamily(s, size, weight, family)
+		return w
+	})
 	return limit, float64(len(lines)) * lh
 }

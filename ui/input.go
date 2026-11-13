@@ -76,6 +76,10 @@ type interactor struct {
 	// it to the same measurer the painter uses; nil falls back to an estimate.
 	measure func(s string, size float64, weight int) float64
 
+	// open hands a clicked link to the desktop. The driver sets it; a headless
+	// test leaves it nil, so a click opens nothing.
+	open func(string) error
+
 	// setCursor changes the native pointer shape; nil in headless tests.
 	setCursor func(platform.Cursor)
 
@@ -133,10 +137,10 @@ func interactive(n tree.Node) bool {
 	return false
 }
 
-// clickable reports whether a press on n activates it: an interactive
-// component, a sortable header or a table cell, or any node the app attached a
-// click handler to.
-func clickable(n tree.Node) bool {
+// clickable reports whether a press at x,y on n activates it: an interactive
+// component, a sortable header or a table cell, any node the app attached a
+// click handler to, or a link under the pointer.
+func (i *interactor) clickable(n tree.Node, x, y float64) bool {
 	if c := comp(n); c != nil {
 		if c.Disabled.Get() {
 			return false
@@ -145,7 +149,11 @@ func clickable(n tree.Node) bool {
 			return true
 		}
 	}
-	return n.Base().Click.Len() > 0
+	if n.Base().Click.Len() > 0 {
+		return true
+	}
+	_, ok := i.linkAt(n, x, y)
+	return ok
 }
 
 // tableTarget reports whether a table part reacts to a press: a sortable header
@@ -240,7 +248,7 @@ func (i *interactor) chromeHitTest(x, y float64) platform.HitTest {
 	hit := i.hit(x, y)
 	// A real control wins over the frame: a window button parked in the corner
 	// is still a button.
-	if hit != nil && (clickable(hit) || fieldAt(hit) != nil || selectableAt(hit) != nil) {
+	if hit != nil && (i.clickable(hit, x, y) || fieldAt(hit) != nil || selectableAt(hit) != nil) {
 		return platform.HitTestNormal
 	}
 	if i.resizeEdges {
@@ -457,7 +465,7 @@ func (i *interactor) pointerAt(hit tree.Node) {
 		i.pointer(platform.CursorArrow)
 		return
 	}
-	if clickable(hit) {
+	if i.clickable(hit, i.cursorX, i.cursorY) {
 		i.pointer(platform.CursorPointer)
 		return
 	}
@@ -559,7 +567,7 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 	// A press inside a table cell selects its row; a control in the cell keeps
 	// its own click.
 	hit = pressTarget(hit)
-	if clickable(hit) {
+	if i.clickable(hit, x, y) {
 		i.setKbd(hit)
 		i.pressed = hit
 		if c := comp(hit); c != nil {
@@ -622,6 +630,13 @@ func (i *interactor) MouseUp(x, y float64, button int) {
 
 // activate runs the component's click behaviour.
 func (i *interactor) activate(n tree.Node, c *tree.Component, x, y float64) {
+	// A link takes the click before the node's own handler: a run is what the
+	// reader pointed at, and the paragraph around it is not the target.
+	if link, ok := i.linkAt(n, x, y); ok {
+		i.clickLink(n, link)
+		i.markDirty()
+		return
+	}
 	if c == nil {
 		// A plain node with a click handler (a scrim, a custom hit area).
 		n.Base().Click.Emit(tree.ClickEvent{X: x, Y: y, Button: 0})

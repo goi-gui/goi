@@ -363,6 +363,9 @@ var elements = func() []Element {
 			Prop{Name: "decorationThickness", Type: TypeNumber, Dirty: DirtyPaint, Default: 0.0},
 			Prop{Name: "decorationColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0)},
 			Prop{Name: "selectable", Type: TypeBool, Dirty: DirtyPaint, Default: false},
+			// link makes the text a link: it draws in primary, and a click opens
+			// it. Inside a RichText it is the run's link.
+			Prop{Name: "link", Type: TypeString, Dirty: DirtyPaint, Default: ""},
 			Prop{Name: "color", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0)},
 			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end"}, Default: "start"},
 			Prop{Name: "wrap", Type: TypeBool, Dirty: DirtyLayout, Default: false},
