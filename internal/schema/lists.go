@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/goi-gui/goi/internal/csscolor"
 )
 
 // NumberList reads a comma-separated list of numbers, which is how a design
@@ -43,4 +45,36 @@ func LabelList(s string) []string {
 		out[i] = strings.TrimSpace(part)
 	}
 	return out
+}
+
+// ColorList reads a comma-separated list of colours, which is how a design
+// colours each slice or point: `colors: "primary, tertiary, #c62828"`. Each item
+// is a CSS colour or a theme role, the same two forms a colour property takes.
+// Literals come back in colors, roles in roles at the same index (empty where
+// the item is a literal), so the painter can resolve a role against the scheme
+// it draws with.
+func ColorList(s string) (colors []uint32, roles []string, err error) {
+	if strings.TrimSpace(s) == "" {
+		return nil, nil, nil
+	}
+	parts := strings.Split(s, ",")
+	colors = make([]uint32, len(parts))
+	roles = make([]string, len(parts))
+	for i, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return nil, nil, fmt.Errorf("entry %d is empty", i+1)
+		}
+		if rgba, ok := csscolor.Parse(part); ok {
+			colors[i] = rgba
+			continue
+		}
+		// A word that is not a colour can only be a role. A malformed literal
+		// is caught here rather than drawn as the scheme's default.
+		if strings.HasPrefix(part, "#") || strings.ContainsAny(part, "()") {
+			return nil, nil, fmt.Errorf("%q is not a colour", part)
+		}
+		roles[i] = part
+	}
+	return colors, roles, nil
 }

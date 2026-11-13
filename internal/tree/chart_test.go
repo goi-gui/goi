@@ -78,3 +78,70 @@ func TestChartSetDataReplacesDesignData(t *testing.T) {
 		t.Fatal("a chart with no categories property still has labels")
 	}
 }
+
+// TestChartColorsFromDesign covers the two chart colours a design sets and the
+// per-slice list: a role stays a role, a literal is fixed.
+func TestChartColorsFromDesign(t *testing.T) {
+	tr, diag := BuildSource([]byte(`Window {
+		PieChart {
+			id:         channels
+			textColor:  onSurfaceVariant
+			gridColor:  #808080ff
+			categories: "Direct, Search, Social"
+
+			ChartSeries {
+				values: "42, 27, 18"
+				colors: "primary, tertiary, #c62828"
+			}
+		}
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	n, _ := tr.ByID("channels")
+	chart := n.(*PieChart).ChartCore()
+	// A role cell is not resolved at build time: the tree's colour pass writes
+	// it from the scheme, which is what keeps a theme change working.
+	if role := chart.Base().colorRoleFor("textColor"); role != "onSurfaceVariant" {
+		t.Fatalf("textColor role = %q", role)
+	}
+	if got := chart.GridColor.Get(); got != 0x808080FF {
+		t.Fatalf("gridColor = %#08x", got)
+	}
+	s := chart.Data.Series[0]
+	if len(s.Colors) != 3 || s.Colors[2] != 0xC62828FF {
+		t.Fatalf("colors = %#v", s.Colors)
+	}
+	if len(s.ColorRoles) != 3 || s.ColorRoles[0] != "primary" || s.ColorRoles[2] != "" {
+		t.Fatalf("color roles = %#v", s.ColorRoles)
+	}
+}
+
+// TestChartColorRoleFollowsTheScheme is what makes `textColor: onSurface` worth
+// writing: the role is resolved by the tree's colour pass, so switching the
+// theme repaints the labels.
+func TestChartColorRoleFollowsTheScheme(t *testing.T) {
+	tr, diag := BuildSource([]byte(`Window {
+		BarChart { id: bars textColor: primary gridColor: #808080ff }
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	n, _ := tr.ByID("bars")
+	chart := n.(*BarChart).ChartCore()
+	role := func(name string) (uint32, bool) {
+		if name == "primary" {
+			return 0x6750A4FF, true
+		}
+		return 0, false
+	}
+	if !tr.ResolveColors(role) {
+		t.Fatal("the colour pass changed nothing")
+	}
+	if got, want := chart.TextColor.Get(), uint32(0x6750A4FF); got != want {
+		t.Fatalf("textColor = %#08x, want %#08x", got, want)
+	}
+	if got := chart.GridColor.Get(); got != 0x808080FF {
+		t.Fatalf("a literal gridColor was overwritten: %#08x", got)
+	}
+}

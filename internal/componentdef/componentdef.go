@@ -133,13 +133,13 @@ var props = map[string][]string{
 	"TextArea":         {"label", "text", "placeholder", "supporting", "variant", "disabled"},
 	"Code":             {"text", "language", "variant", "showCopy"},
 	"Markdown":         {"text"},
-	"LineChart":        {"grid", "axis", "legend", "categories", "values", "smooth", "points", "min", "max"},
-	"AreaChart":        {"grid", "axis", "legend", "categories", "values", "smooth", "points", "stacked", "min", "max"},
-	"BarChart":         {"grid", "axis", "legend", "categories", "values", "stacked", "horizontal", "min", "max"},
-	"PieChart":         {"grid", "axis", "legend", "categories", "values", "innerRadius", "startAngle", "min", "max"},
-	"ScatterChart":     {"grid", "axis", "legend", "categories", "values", "points", "min", "max"},
-	"RadarChart":       {"grid", "axis", "legend", "categories", "values", "points", "min", "max"},
-	"GaugeChart":       {"min", "max", "startAngle"},
+	"LineChart":        {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "smooth", "points", "min", "max"},
+	"AreaChart":        {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "smooth", "points", "stacked", "min", "max"},
+	"BarChart":         {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "stacked", "horizontal", "min", "max"},
+	"PieChart":         {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "innerRadius", "startAngle", "min", "max"},
+	"ScatterChart":     {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "points", "min", "max"},
+	"RadarChart":       {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "points", "min", "max"},
+	"GaugeChart":       {"textColor", "gridColor", "min", "max", "startAngle"},
 }
 
 // Chart reports whether kind draws a chart, which is what tells a zero `max`
@@ -185,6 +185,9 @@ const (
 	Number
 	// Scalar is a value that may be written as a string, number or bool.
 	Scalar
+	// Color is a theme role or a CSS colour, which is what a chart's text and
+	// grid take.
+	Color
 )
 
 // defaults are the component properties whose initial value is not the Go zero
@@ -239,6 +242,8 @@ func TypeOf(name string) PropType {
 		return Number
 	case "variant", "size", "crossAxisAlign", "mainAxisAlign", "align", "selectable":
 		return Enum
+	case "textColor", "gridColor":
+		return Color
 	}
 	return String
 }

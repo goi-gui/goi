@@ -349,3 +349,58 @@ func TestChartSeriesColorRole(t *testing.T) {
 		t.Fatal("no op took the series' role colour")
 	}
 }
+
+// TestChartColorsFromDesign checks that the chart's own colours reach the ops:
+// every label takes textColor, the value lines take gridColor, and a pie's
+// per-slice role is resolved from the scheme.
+func TestChartColorsFromDesign(t *testing.T) {
+	data := tree.ChartData{
+		Categories: []string{"Direct", "Search", "Social"},
+		Series:     []tree.Series{{Values: []float64{42, 27, 18}}},
+	}
+	// A per-slice list is what a pie reads, one entry per wedge.
+	data.Series[0].ColorRoles = []string{"", "tertiary", ""}
+	tr, _ := tree.BuildSource([]byte(`Window {
+		BarChart { id: bars width: 240 height: 160 axis: true grid: true textColor: #00ff00ff gridColor: #ff00ffff }
+		PieChart { id: slices width: 240 height: 160 }
+	}`), nil)
+	for _, n := range tr.All() {
+		if c, ok := n.(interface{ ChartCore() *tree.Chart }); ok {
+			c.ChartCore().SetData(data)
+		}
+	}
+	layout.New(nil).Layout(tr.Root, 280, 200)
+	l := &List{}
+	l.Build(tr, 280, 200)
+	texts, grids := 0, 0
+	for _, op := range l.Ops {
+		switch op.Kind {
+		case Text:
+			if op.Color == 0x00FF00FF {
+				texts++
+			}
+		case Fill:
+			// A grid line is the colour at a lower alpha, so compare the RGB.
+			if op.Color&0xFFFFFF00 == 0xFF00FF00 {
+				grids++
+			}
+		}
+	}
+	if texts == 0 {
+		t.Fatal("no label took textColor")
+	}
+	if grids == 0 {
+		t.Fatal("no value line took gridColor")
+	}
+	// The middle bar's role is resolved from the scheme, not from the palette.
+	want := l.Theme.Colors.Tertiary
+	found := false
+	for _, op := range l.Ops {
+		if op.Kind == Fill && op.Color == want {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("no bar took the slice's role colour")
+	}
+}

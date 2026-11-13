@@ -812,6 +812,16 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 					}
 				}
 			}
+			// A per-slice colour list is a list of colours and roles, so a
+			// malformed literal is a diagnostic here, not a defaulted slice.
+			if pd.Name == "colors" && e.Name == "ChartSeries" {
+				if txt, ok := literalText(val); ok {
+					if _, _, err := ColorList(txt); err != nil {
+						v.add(at, end, fmt.Sprintf("colors: %v", err),
+							"write colours separated by commas: colors: \"primary, tertiary, #c62828\"")
+					}
+				}
+			}
 		default:
 			fail("a string")
 		}

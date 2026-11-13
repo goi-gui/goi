@@ -67,6 +67,7 @@ func setAny(p NamedProp, name string) bool {
 		&syntax.Number{Val: 3.25},
 		&syntax.Bool{Val: true},
 		&syntax.String{Val: "zz-" + name},
+		&syntax.Color{RGBA: 0x112233FF},
 	}
 	for _, v := range componentdef.EnumValues(name) {
 		values = append(values, &syntax.Ident{Val: v})

@@ -649,9 +649,9 @@ func (l *List) paintChart(c *tree.Chart, r tree.Rect, clip tree.Rect) {
 	if c.Grid.Get() {
 		for _, t := range lay.Ticks {
 			if lay.Horizontal {
-				l.vLine(t.Pos, lay.Plot.Y, lay.Plot.H, withAlpha(col.OutlineVariant, 0.45), cl)
+				l.vLine(t.Pos, lay.Plot.Y, lay.Plot.H, withAlpha(chartGrid(c, col.OutlineVariant), 0.45), cl)
 			} else {
-				l.hLine(lay.Plot.X, t.Pos, lay.Plot.W, withAlpha(col.OutlineVariant, 0.45), cl)
+				l.hLine(lay.Plot.X, t.Pos, lay.Plot.W, withAlpha(chartGrid(c, col.OutlineVariant), 0.45), cl)
 			}
 		}
 	}
@@ -659,23 +659,23 @@ func (l *List) paintChart(c *tree.Chart, r tree.Rect, clip tree.Rect) {
 		for _, t := range lay.Ticks {
 			if lay.Horizontal {
 				box := tree.Rect{X: t.Pos - 28, Y: lay.Plot.Bottom() + 2, W: 56, H: 16}
-				l.textIn(t.Label, axisStyle, col.OnSurfaceVariant, box, AlignCenter, cl)
+				l.textIn(t.Label, axisStyle, chartText(c, col.OnSurfaceVariant), box, AlignCenter, cl)
 			} else {
 				// Keep the top and bottom labels inside the plot, so the legend
 				// above it does not overwrite one.
 				y := clampf(t.Pos-8, lay.Plot.Y, lay.Plot.Bottom()-16)
 				box := tree.Rect{X: lay.Plot.X - chartAxisL + 2, Y: y, W: chartAxisL - 10, H: 16}
-				l.textIn(t.Label, axisStyle, col.OnSurfaceVariant, box, AlignEnd, cl)
+				l.textIn(t.Label, axisStyle, chartText(c, col.OnSurfaceVariant), box, AlignEnd, cl)
 			}
 		}
 		for i, p := range lay.CatPos {
 			label := c.CategoryLabel(i)
 			if lay.Horizontal {
 				box := tree.Rect{X: lay.Plot.X - chartCatL + 4, Y: p - 8, W: chartCatL - 10, H: 16}
-				l.textIn(label, axisStyle, col.OnSurfaceVariant, box, AlignEnd, cl)
+				l.textIn(label, axisStyle, chartText(c, col.OnSurfaceVariant), box, AlignEnd, cl)
 			} else {
 				box := tree.Rect{X: p - 40, Y: lay.Plot.Bottom() + 2, W: 80, H: 16}
-				l.textIn(label, axisStyle, col.OnSurfaceVariant, box, AlignCenter, cl)
+				l.textIn(label, axisStyle, chartText(c, col.OnSurfaceVariant), box, AlignCenter, cl)
 			}
 		}
 	}
@@ -727,6 +727,24 @@ func seriesPalette(t m3.Theme) []uint32 {
 	return []uint32{c.Primary, c.Tertiary, c.Secondary, c.Error, c.PrimaryContainer, c.TertiaryContainer}
 }
 
+// chartText is the colour of every label a chart writes, or the scheme's own
+// role when the design named none.
+func chartText(c *tree.Chart, fallback uint32) uint32 {
+	if v := c.TextColor.Get(); v != 0 {
+		return v
+	}
+	return fallback
+}
+
+// chartGrid is the colour of the value lines, a radar's rings and spokes, and a
+// gauge's track.
+func chartGrid(c *tree.Chart, fallback uint32) uint32 {
+	if v := c.GridColor.Get(); v != 0 {
+		return v
+	}
+	return fallback
+}
+
 // seriesColor is the colour of one series, or the palette's turn. A role
 // written in the design is resolved here, so the series follows the scheme.
 func seriesColor(c *tree.Chart, t m3.Theme, pal []uint32, s int) uint32 {
@@ -747,8 +765,14 @@ func seriesColor(c *tree.Chart, t m3.Theme, pal []uint32, s int) uint32 {
 // palette; an explicit series colour or a per-slice colour wins.
 func pointColor(c *tree.Chart, t m3.Theme, pal []uint32, s, i int) uint32 {
 	if s < len(c.Data.Series) {
-		if cols := c.Data.Series[s].Colors; i < len(cols) && cols[i] != 0 {
-			return cols[i]
+		ser := c.Data.Series[s]
+		if i < len(ser.ColorRoles) && ser.ColorRoles[i] != "" {
+			if col, ok := t.Colors.Role(ser.ColorRoles[i]); ok {
+				return col
+			}
+		}
+		if i < len(ser.Colors) && ser.Colors[i] != 0 {
+			return ser.Colors[i]
 		}
 	}
 	if c.Node().Kind() == "PieChart" {
@@ -792,13 +816,13 @@ func (l *List) paintRadar(c *tree.Chart, lay ChartLayout, clip tree.Rect, style 
 				ring[i] = chartPoint{X: lay.CX + (sp.X-lay.CX)*frac, Y: lay.CY + (sp.Y-lay.CY)*frac}
 			}
 			for i := range ring {
-				l.chartSegment(ring[i], ring[(i+1)%len(ring)], withAlpha(col.OutlineVariant, 0.45), 1, clip)
+				l.chartSegment(ring[i], ring[(i+1)%len(ring)], withAlpha(chartGrid(c, col.OutlineVariant), 0.45), 1, clip)
 			}
 		}
 	}
 	if c.Axis.Get() {
 		for i, sp := range lay.Spokes {
-			l.chartSegment(chartPoint{X: lay.CX, Y: lay.CY}, sp, withAlpha(col.OutlineVariant, 0.45), 1, clip)
+			l.chartSegment(chartPoint{X: lay.CX, Y: lay.CY}, sp, withAlpha(chartGrid(c, col.OutlineVariant), 0.45), 1, clip)
 			dx, dy := sp.X-lay.CX, sp.Y-lay.CY
 			d := math.Hypot(dx, dy)
 			if d == 0 {
@@ -807,7 +831,7 @@ func (l *List) paintRadar(c *tree.Chart, lay ChartLayout, clip tree.Rect, style 
 			bx := sp.X + dx/d*22 - 40
 			by := sp.Y + dy/d*12 - 8
 			box := tree.Rect{X: bx, Y: by, W: 80, H: 16}
-			l.textIn(c.CategoryLabel(i), style, col.OnSurfaceVariant, box, AlignCenter, clip)
+			l.textIn(c.CategoryLabel(i), style, chartText(c, col.OnSurfaceVariant), box, AlignCenter, clip)
 		}
 	}
 	pal := seriesPalette(*l.Theme)
@@ -837,7 +861,7 @@ func (l *List) paintRadar(c *tree.Chart, lay ChartLayout, clip tree.Rect, style 
 			for i, p := range pts {
 				v, _ := c.DataAt(s, i)
 				box := tree.Rect{X: p.X - 20, Y: p.Y - 18, W: 40, H: 16}
-				l.textIn(chartValueLabel(v), style, col.OnSurfaceVariant, box, AlignCenter, clip)
+				l.textIn(chartValueLabel(v), style, chartText(c, col.OnSurfaceVariant), box, AlignCenter, clip)
 			}
 		}
 	}
@@ -853,7 +877,7 @@ func (l *List) paintGauge(c *tree.Chart, lay ChartLayout, clip tree.Rect) {
 	box := [4]float32{float32(g.CX - g.Radius), float32(g.CY - g.Radius), float32(2 * g.Radius), float32(2 * g.Radius)}
 	l.Ops = append(l.Ops, Op{
 		Kind: Fill, Shape: Arc, Rect: box,
-		Color:      withAlpha(col.SurfaceVariant, 1),
+		Color:      withAlpha(chartGrid(c, col.SurfaceVariant), 1),
 		Thickness:  float32(g.Thickness),
 		StartAngle: float32(g.Start),
 		EndAngle:   float32(g.End),
@@ -876,7 +900,7 @@ func (l *List) paintGauge(c *tree.Chart, lay ChartLayout, clip tree.Rect) {
 	label := chartValueLabel(g.Value)
 	tw := textWidth(l, label, style)
 	nbox := tree.Rect{X: g.CX - tw/2 - 4, Y: g.CY - style.Size*0.8, W: tw + 8, H: style.Size * 1.6}
-	l.textIn(label, style, col.OnSurface, nbox, AlignCenter, clip)
+	l.textIn(label, style, chartText(c, col.OnSurface), nbox, AlignCenter, clip)
 }
 
 // fillTriangle fills a triangle with the same rounded-rect pipeline, by
@@ -1119,14 +1143,14 @@ func (l *List) paintPie(c *tree.Chart, lay ChartLayout, clip tree.Rect) {
 			x := s.CX + math.Sin(mid)*rr
 			y := s.CY - math.Cos(mid)*rr
 			box := tree.Rect{X: x - 24, Y: y - 8, W: 48, H: 16}
-			l.textIn(label, style, l.Theme.Colors.OnSurface, box, AlignCenter, clip)
+			l.textIn(label, style, chartText(c, l.Theme.Colors.OnSurface), box, AlignCenter, clip)
 		}
 	}
 }
 
 // paintChartValues writes the value beside each bar or point.
 func (l *List) paintChartValues(c *tree.Chart, lay ChartLayout, clip tree.Rect, style m3.TextStyle, pal []uint32) {
-	col := l.Theme.Colors.OnSurfaceVariant
+	col := chartText(c, l.Theme.Colors.OnSurfaceVariant)
 	write := func(v float64, r tree.Rect, horizontal bool) {
 		label := chartValueLabel(v)
 		box := tree.Rect{X: r.X - 20, Y: r.Y - 16, W: 80, H: 16}
@@ -1192,7 +1216,7 @@ func (l *List) paintLegend(c *tree.Chart, lay ChartLayout, clip tree.Rect, style
 	if lay.Legend.H == 0 {
 		return
 	}
-	col := l.Theme.Colors.OnSurfaceVariant
+	col := chartText(c, l.Theme.Colors.OnSurfaceVariant)
 	x := lay.Legend.X
 	y := lay.Legend.Y + lay.Legend.H/2
 	for i := range colors {

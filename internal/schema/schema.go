@@ -388,6 +388,7 @@ var elements = func() []Element {
 		{Name: "ChartSeries", Attrs: withCommon(
 			Prop{Name: "label", Type: TypeString, Dirty: DirtyPaint, Default: ""},
 			Prop{Name: "values", Type: TypeString, Dirty: DirtyPaint, Default: ""},
+			Prop{Name: "colors", Type: TypeString, Dirty: DirtyPaint, Default: ""},
 			Prop{Name: "color", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0)},
 		)},
 	}
@@ -469,6 +470,8 @@ var elements = func() []Element {
 				p.Type, p.Dirty, p.Enum = TypeEnum, DirtyLayout, componentdef.EnumValuesFor(k.Name, name)
 			case componentdef.Scalar:
 				p.Type, p.Dirty, p.Default = TypeScalar, DirtyLayout, ""
+			case componentdef.Color:
+				p.Type, p.Dirty, p.Default = TypeColor, DirtyPaint, uint32(0)
 			default:
 				p.Type, p.Dirty, p.Default = TypeString, DirtyLayout, ""
 			}

@@ -17,6 +17,10 @@ type Series struct {
 	// how a pie colours each slice.
 	Color  uint32
 	Colors []uint32
+	// ColorRoles is Colors with a theme role per index, where a design named
+	// one, so a per-slice colour follows the scheme. An empty entry means the
+	// point takes Colors at that index.
+	ColorRoles []string
 	// ColorRole names a theme role for the series, such as "primary". It wins
 	// over Color and follows the scheme, so a role written on a ChartSeries
 	// keeps changing colour with the theme.
@@ -63,6 +67,13 @@ type Chart struct {
 	Axis   Prop[bool] // value and category labels
 	Legend Prop[bool] // a key for the series
 	Values Prop[bool] // the value written next to each point, bar or slice
+	// TextColor paints every label the chart writes: the axis ticks, the
+	// categories, the value labels, the legend and the gauge's number. 0 keeps
+	// the scheme's own role, which is what an untouched chart draws.
+	TextColor Prop[uint32]
+	// GridColor paints the value lines, a radar's rings and spokes, and a
+	// gauge's track. 0 keeps the scheme's own role.
+	GridColor Prop[uint32]
 
 	// Shape.
 	Stacked     Prop[bool]    // area and bar: add the series instead of grouping
@@ -109,6 +120,9 @@ type ChartSeries struct {
 	Label  Prop[string]
 	Values Prop[string]
 	Color  Prop[uint32]
+	// Colors is the per-slice list, comma-separated: `"primary, tertiary, #c62828"`.
+	// A pie colours one slice per entry; every other kind colours one point.
+	Colors Prop[string]
 }
 
 // Kind implements Node.
@@ -118,6 +132,7 @@ func (s *ChartSeries) namedProps() []NamedProp {
 	return append(commonProps(&s.NodeBase),
 		StringProp(&s.NodeBase, "label", &s.Label),
 		StringProp(&s.NodeBase, "values", &s.Values),
+		StringProp(&s.NodeBase, "colors", &s.Colors),
 		ColorProp(&s.NodeBase, "color", DirtyPaint, &s.Color),
 	)
 }
@@ -136,6 +151,11 @@ func (c *Chart) adopt(t *Tree) error {
 			return fmt.Errorf("%s values: %w", c.Node().Kind(), err)
 		}
 		s := Series{Label: cs.Label.Get(), Values: values, Color: cs.Color.Get()}
+		colors, roles, err := schema.ColorList(cs.Colors.Get())
+		if err != nil {
+			return fmt.Errorf("%s colors: %w", c.Node().Kind(), err)
+		}
+		s.Colors, s.ColorRoles = colors, roles
 		// A role outlives the child: the painter resolves it from the current
 		// scheme, which a colour copied now could not do.
 		if role := cs.colorRoleFor("color"); role != "" && !strings.HasPrefix(role, "custom:") {
@@ -223,7 +243,7 @@ func (c *Chart) DataAt(series, i int) (float64, bool) {
 // kind draws, plus the common ones every element has.
 func chartProps(c *Chart, kind string, own ...NamedProp) []NamedProp {
 	return append(c.propsExcept(kind,
-		"grid", "axis", "legend", "values", "categories",
+		"grid", "axis", "legend", "values", "categories", "textColor", "gridColor",
 		"stacked", "horizontal", "smooth", "points",
 		"innerRadius", "startAngle", "min", "max",
 	), own...)
@@ -237,6 +257,8 @@ func gridProps(c *Chart) []NamedProp {
 		BoolProp(&c.NodeBase, "legend", DirtyLayout, &c.Legend),
 		BoolProp(&c.NodeBase, "values", DirtyPaint, &c.Values),
 		StringProp(&c.NodeBase, "categories", &c.Categories),
+		ColorProp(&c.NodeBase, "textColor", DirtyPaint, &c.TextColor),
+		ColorProp(&c.NodeBase, "gridColor", DirtyPaint, &c.GridColor),
 		NumberProp(&c.NodeBase, "min", DirtyPaint, &c.Min),
 		NumberProp(&c.NodeBase, "max", DirtyPaint, &c.Max),
 	}
@@ -328,6 +350,8 @@ func (c *GaugeChart) M3() *Component { return &c.Component }
 func (c *GaugeChart) namedProps() []NamedProp {
 	// A gauge has no axes or legend to speak of: one arc, one number.
 	return chartProps(&c.Chart, "GaugeChart",
+		ColorProp(&c.NodeBase, "textColor", DirtyPaint, &c.TextColor),
+		ColorProp(&c.NodeBase, "gridColor", DirtyPaint, &c.GridColor),
 		NumberProp(&c.NodeBase, "min", DirtyPaint, &c.Min),
 		NumberProp(&c.NodeBase, "max", DirtyPaint, &c.Max),
 		NumberProp(&c.NodeBase, "startAngle", DirtyPaint, &c.StartAngle),
@@ -340,6 +364,8 @@ func newChart() Chart {
 	return Chart{
 		Component:      newComponent(),
 		Categories:     newProp(nil, "categories", DirtyLayout, ""),
+		TextColor:      newProp(nil, "textColor", DirtyPaint, uint32(0)),
+		GridColor:      newProp(nil, "gridColor", DirtyPaint, uint32(0)),
 		Grid:           newProp(nil, "grid", DirtyPaint, true),
 		Axis:           newProp(nil, "axis", DirtyPaint, true),
 		Legend:         newProp(nil, "legend", DirtyLayout, false),

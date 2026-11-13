@@ -1796,3 +1796,12 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   series is drawn, and a colour copied then would not follow a theme change. The
   painter asks the scheme, so `color: tertiary` on a series reads like any other
   role.
+- **A chart's colours are two properties and a list, not five.** Every label a
+  chart writes shares one role, so `textColor` covers the ticks, categories,
+  values, legend and the gauge's number; the lines and rings share `gridColor`.
+  Splitting them per part would be five cells a design almost never sets
+  differently. Both are ordinary colour cells, so a role follows the scheme
+  through the tree's own colour pass. A per-slice list is a string of colours and
+  roles (`colors: "primary, #c62828"`), parsed by the checker and stored as a
+  literal slice beside a role slice, because the colour pass resolves one cell
+  and a list has no cell of its own; the painter asks the scheme per entry.
