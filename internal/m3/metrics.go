@@ -229,7 +229,7 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 		// A wavy bar is a ribbon, so it needs the room the wave's own height
 		// takes; the paint pass scales it down if a design pins a smaller box.
 		if c.Variant == "wavy" {
-			return Metrics{W: 0, H: waveHeight(c.Thickness, 8), FillW: true}
+			return Metrics{W: 0, H: waveHeight(c.Thickness, 6), FillW: true}
 		}
 		return Metrics{W: 0, H: strokeOr(c.Thickness, 4), FillW: true}
 	case "CircularProgress":

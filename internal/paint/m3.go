@@ -1628,9 +1628,9 @@ func (l *List) paintLinearProgress(c *tree.Component, r tree.Rect, clip tree.Rec
 func gapFor(stroke float64) float64 { return math.Max(3, stroke) }
 
 // waveStroke is a wave's stroke width: the property's thickness, or the
-// component's own 8dp, scaled down when the box is shorter than the ribbon.
+// component's own 6dp, scaled down when the box is shorter than the ribbon.
 func waveStroke(thickness, boxH float64) float64 {
-	stroke := strokeOr(thickness, 8)
+	stroke := strokeOr(thickness, 6)
 	// The ribbon is the stroke plus a quarter of it above and below.
 	if boxH > 0 && boxH < stroke*1.75 {
 		stroke = boxH / 1.75
@@ -1759,7 +1759,7 @@ func (l *List) paintWavyRing(r tree.Rect, frac, thickness float64, clip tree.Rec
 	l.Animating = true
 	cx, cy := r.X+r.W/2, r.Y+r.H/2
 	const waves = 7.0
-	stroke := strokeOr(thickness, 7)
+	stroke := strokeOr(thickness, 5)
 	// The ring carries its wave inward, so the box caps the stroke.
 	if limit := size / 2.5; stroke > limit {
 		stroke = limit

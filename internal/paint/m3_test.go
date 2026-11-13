@@ -899,8 +899,8 @@ func TestProgressHeightFollowsThickness(t *testing.T) {
 	if got := height(`Window { Column { LinearProgress { width: 300 thickness: 10 } } }`); math.Abs(got-10) > 0.01 {
 		t.Fatalf("a 10dp bar is %.1f tall", got)
 	}
-	if got := height(`Window { Column { LinearProgress { width: 300 variant: wavy } } }`); math.Abs(got-14) > 0.01 {
-		t.Fatalf("a wavy bar is %.1f tall, want 14 (8dp ribbon)", got)
+	if got := height(`Window { Column { LinearProgress { width: 300 variant: wavy } } }`); math.Abs(got-10.5) > 0.01 {
+		t.Fatalf("a wavy bar is %.1f tall, want 10.5 (6dp ribbon)", got)
 	}
 	if got := height(`Window { Column { LinearProgress { width: 300 variant: wavy thickness: 12 } } }`); math.Abs(got-21) > 0.01 {
 		t.Fatalf("a 12dp wavy bar is %.1f tall, want 21", got)
