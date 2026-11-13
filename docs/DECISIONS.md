@@ -1878,3 +1878,12 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   the next frame from that rather than from a walk over the tree. A hidden wavy
   bar paints nothing, so an idle page still sleeps — the animation costs what it
   shows.
+- **The track is the part that is left, not a line under the progress.** A
+  progress bar that painted a full track first and the value over it showed the
+  light colour through the gap between the rounded ends of the filled part, and a
+  ring showed it under the arc. Both now draw the track only where the value is
+  not, with a gap the width of the stroke at each end, so the two never touch and
+  nothing runs under the arc. An arc's sweep is a straight radial cut in the
+  shader, so its soft ends are round caps drawn at the band's centreline; without
+  them a ring end read as a corner. The stop indicator keeps its own small gap
+  from the track's end.
