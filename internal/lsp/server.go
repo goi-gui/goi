@@ -23,6 +23,10 @@ type Server struct {
 	// published records which URIs have diagnostics on the client, so a fixed
 	// file gets an empty list instead of keeping a stale squiggle.
 	published map[string]bool
+	// snippets records whether the client asked for snippet insertions. Without
+	// it a completion inserts a plain name, which is what an editor that only
+	// edits text can do.
+	snippets bool
 
 	shutdown bool
 }
@@ -134,7 +138,23 @@ func (s *Server) notify(method string, params any) error {
 
 // ---------------------------------------------------------------- lifecycle
 
-func (s *Server) initialize(json.RawMessage) any {
+func (s *Server) initialize(raw json.RawMessage) any {
+	// A client that supports snippets gets a body with its braces and a caret
+	// inside; one that does not gets a plain name.
+	var p struct {
+		Capabilities struct {
+			TextDocument struct {
+				Completion struct {
+					CompletionItem struct {
+						SnippetSupport bool `json:"snippetSupport"`
+					} `json:"completionItem"`
+				} `json:"completion"`
+			} `json:"textDocument"`
+		} `json:"capabilities"`
+	}
+	if json.Unmarshal(raw, &p) == nil {
+		s.snippets = p.Capabilities.TextDocument.Completion.CompletionItem.SnippetSupport
+	}
 	return map[string]any{
 		"capabilities": map[string]any{
 			"textDocumentSync": map[string]any{

@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -148,6 +149,13 @@ type completionResult struct {
 	// empty, so a bare insert of `theme.primary` would leave
 	// `theme.theme.primary`.
 	TextEdit *completionTextEdit `json:"textEdit,omitempty"`
+	// Snippet is the insertion written when the client supports snippets: an
+	// element opens its braces, a property its colon, and `$0` says where the
+	// caret lands. It is not sent as written; completion() indents it and moves
+	// it into InsertText.
+	Snippet string `json:"-"`
+	// InsertTextFormat is 1 (plain) or 2 (snippet), per the LSP.
+	InsertTextFormat int `json:"insertTextFormat,omitempty"`
 }
 
 // completionTextEdit is a single replacement range, the shape LSP completion
@@ -228,8 +236,9 @@ func (s *Server) completion(raw json.RawMessage) any {
 		items = append(items, refItems(file, d.text, off, ref)...)
 	}
 
-	// Member position: the line so far is only whitespace, or we are right
-	// after an opening brace.
+	// Member position: the line so far is only whitespace, we are right after an
+	// opening brace, or the word being typed is the first thing on it (typing
+	// `te` should offer `text:` beside `Text`).
 	trimmed := strings.TrimSpace(string(line))
 	switch {
 	case prop == "" && !inMap && strings.HasPrefix(prefix, "{"):
@@ -241,7 +250,13 @@ func (s *Server) completion(raw json.RawMessage) any {
 	case prop == "" && !inMap && strings.HasPrefix(prefix, "$"):
 		// `$` starts a slot here: a slot is an element, a prop is a value.
 		items = append(items, slotItems(file, d.text, off)...)
-	case prop == "" && !inMap && (trimmed == "" || strings.HasSuffix(trimmed, "{")):
+	case prop == "" && !inMap && beforeRoot(file, off):
+		// Before the root element only the file's own declarations are legal.
+		items = append(items, declItems()...)
+	case prop == "" && !inMap && braceWord(d.text, off) == "switch":
+		// A switch body holds arms, not elements.
+		items = append(items, switchArmItems()...)
+	case prop == "" && !inMap && (trimmed == "" || strings.HasSuffix(trimmed, "{") || trimmed == prefix):
 		if imp, ok := s.fragmentAt(d, file, d.text, off); ok {
 			// A fragment instance body: its props, the root's overridable
 			// properties and the slots it fills.
@@ -254,6 +269,11 @@ func (s *Server) completion(raw json.RawMessage) any {
 	case prop == "" && !inMap:
 		items = append(items, elementItems(file)...)
 	}
+
+	// A snippet lands with the caret where the entry wants it, indented one
+	// level under the line the completion started on. A client without snippet
+	// support gets the plain insertion, which at least opens the colon.
+	s.applySnippets(items, line)
 	// A member item that carries the whole reference as its text needs an edit
 	// covering the reference the design already typed: the client replaces the
 	// word under the cursor, which is empty right after the dot.
@@ -273,6 +293,42 @@ func (s *Server) completion(raw json.RawMessage) any {
 		}
 	}
 	return completionList{Items: dedupe(items, prefix, ref), IsIncomplete: incomplete}
+}
+
+// applySnippets moves each item's Snippet into the insertion, re-indented, when
+// the client can take one.
+func (s *Server) applySnippets(items []completionResult, line []byte) {
+	if !s.snippets {
+		return
+	}
+	indent := string(line[:len(line)-len(bytes.TrimLeft(line, " \t"))])
+	for i := range items {
+		it := &items[i]
+		if it.Snippet == "" {
+			continue
+		}
+		it.InsertText = indentSnippet(it.Snippet, indent)
+		it.InsertTextFormat = 2
+		if it.TextEdit != nil {
+			it.TextEdit.NewText = it.InsertText
+		}
+	}
+}
+
+// indentSnippet puts the line's indentation in front of every line a snippet
+// starts, so a body opens under the element it belongs to whatever the client's
+// own indentation rules are.
+func indentSnippet(snippet, indent string) string {
+	if indent == "" {
+		return snippet
+	}
+	lines := strings.Split(snippet, "\n")
+	for i := 1; i < len(lines); i++ {
+		if lines[i] != "" {
+			lines[i] = indent + lines[i]
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // inDeclBlock reports whether off sits inside a top-level declaration block
@@ -379,20 +435,23 @@ var propTypes = []string{
 // builtinItems lists the Go builtins a value can call, with the signature and
 // one line that explains it.
 func builtinItems() []completionResult {
-	type entry struct{ name, insert, doc string }
+	type entry struct{ name, insert, snippet, doc string }
+	// The plain insertion is what a client without snippets gets; the snippet
+	// puts the caret inside the call's first argument.
 	entries := []entry{
-		{"formatf", `formatf("", )`, `formatf("%d items", bridge.Count) — build a string with Go's fmt verbs: ` + "`%d`" + ` counts, ` + "`%s`" + ` text, ` + "`%v`" + ` any value, ` + "`%0.2f`" + ` money.`},
-		{"t", `t("")`, `t("settings.theme") — a translation from the design's i18n folder. A nested key uses dots, and later arguments fill the entry's verbs: ` + "`t(\"welcome_with_name\", \"Kaan\")`" + `.`},
-		{"len", "len()", "len(x) — the length of a string, a list or a map. A list is a value here, unlike anywhere else."},
-		{"cap", "cap()", "cap(x) — a design list has no spare capacity, so this is its length."},
-		{"min", "min()", "min(a, b, …) — the smallest number or string."},
-		{"max", "max()", "max(a, b, …) — the largest number or string."},
+		{"formatf", `formatf("")`, `formatf("$0")`, `formatf("%d items", bridge.Count) — build a string with Go's fmt verbs: ` + "`%d`" + ` counts, ` + "`%s`" + ` text, ` + "`%v`" + ` any value, ` + "`%0.2f`" + ` money.`},
+		{"t", `t("")`, `t("$0")`, `t("settings.theme") — a translation from the design's i18n folder. A nested key uses dots, and later arguments fill the entry's verbs: ` + "`t(\"welcome_with_name\", \"Kaan\")`" + `.`},
+		{"len", "len()", "len($0)", "len(x) — the length of a string, a list or a map. A list is a value here, unlike anywhere else."},
+		{"cap", "cap()", "cap($0)", "cap(x) — a design list has no spare capacity, so this is its length."},
+		{"min", "min()", "min($0)", "min(a, b, …) — the smallest number or string."},
+		{"max", "max()", "max($0)", "max(a, b, …) — the largest number or string."},
 	}
 	out := make([]completionResult, 0, len(entries))
 	for _, e := range entries {
 		out = append(out, completionResult{
 			Label:         e.name,
 			InsertText:    e.insert,
+			Snippet:       e.snippet,
 			Kind:          kindFunction,
 			Detail:        "builtin",
 			Documentation: &doc{Kind: "markdown", Value: e.doc},
@@ -412,13 +471,15 @@ func blockItems(file *syntax.File) []completionResult {
 		{
 			Label: "if", Kind: kindKeyword, Detail: "control",
 			InsertText: "if ",
+			Snippet:    "if $0 {\n}",
 			Documentation: &doc{Kind: "markdown", Value: "**if cond { … } else if cond { … } else { … }**\n\n" +
 				"Shows the first arm whose condition holds. The arms are ordinary children of the " +
 				"enclosing element, so a block adds no box of its own."},
 		},
 		{
 			Label: "for", Kind: kindKeyword, Detail: "control",
-			InsertText: "for i, row := range " + list,
+			InsertText: "for i, row := range " + list + " ",
+			Snippet:    "for i, row := range " + list + " {\n\t$0\n}",
 			Documentation: &doc{Kind: "markdown", Value: "**for i, row := range " + list + " { … }**\n\n" +
 				"A range loop, with Go's rules: a slice gives index and element, a map gives key and " +
 				"value, and a number counts from zero. `_` ignores a name you do not need."},
@@ -426,6 +487,7 @@ func blockItems(file *syntax.File) []completionResult {
 		{
 			Label: "switch", Kind: kindKeyword, Detail: "control",
 			InsertText: "switch ",
+			Snippet:    "switch $0 {\n}",
 			Documentation: &doc{Kind: "markdown", Value: "**switch value { case a, b: … default: … }**\n\n" +
 				"Shows the first arm holding a value equal to the subject. Arms take a comma-separated " +
 				"list of values; `default` shows when none matches. A block adds no box of its own."},
@@ -433,6 +495,7 @@ func blockItems(file *syntax.File) []completionResult {
 		{
 			Label: "t", Kind: kindFunction, Detail: "builtin",
 			InsertText: `t("")`,
+			Snippet:    `t("$0")`,
 			Documentation: &doc{Kind: "markdown", Value: "**t(\"settings.theme\")**\n\n" +
 				"Reads a translation from the design's `i18n/<language>.json` files. A nested " +
 				"key uses dots, and later arguments fill the entry's verbs: " +
@@ -441,7 +504,8 @@ func blockItems(file *syntax.File) []completionResult {
 		},
 		{
 			Label: "formatf", Kind: kindFunction, Detail: "builtin",
-			InsertText: `formatf("", )`,
+			InsertText: `formatf("")`,
+			Snippet:    `formatf("$0")`,
 			Documentation: &doc{Kind: "markdown", Value: "**formatf(\"Count is %d\", bridge.count)**\n\n" +
 				"Builds a string with Go's `fmt` verbs: `%d` counts, `%s` text, `%v` any value, " +
 				"`%0.2f` money. The format string comes first; every later argument fills one verb."},
@@ -501,6 +565,7 @@ func slotItems(file *syntax.File, src []byte, off int) []completionResult {
 		Label:         "$children",
 		Kind:          kindKeyword,
 		Detail:        "slot",
+		Snippet:       "$children {\n\t$0\n}",
 		Documentation: &doc{Kind: "markdown", Value: slotDoc},
 	}}
 }
@@ -881,8 +946,25 @@ func valueItems(file *syntax.File, prop string, src []byte, off int, prefix stri
 			Documentation: &doc{Kind: "markdown", Value: "**" + id.name + "**\n\n`" + id.kind + "` element declared with `id: " + id.name + "`.\n\nRead its properties with `" + id.name + ".width`, `" + id.name + ".visible`, and so on."},
 		})
 	}
-	if pd := el.Prop(prop); !isIconProp(prop) && (pd == nil || pd.Type == schema.TypeString || pd.Type == schema.TypeEnum) {
+	pd := el.Prop(prop)
+	if !isIconProp(prop) && (pd == nil || pd.Type == schema.TypeString || pd.Type == schema.TypeEnum) {
 		out = append(out, builtinItems()...)
+	}
+	// Any value may open one of the two modifier blocks, and a string value may
+	// open a block string. An icon list stays the plain names it is: the whole
+	// point of it is to be short.
+	if !isIconProp(prop) {
+		out = append(out, modifierItems()...)
+	}
+	if pd != nil && (pd.Type == schema.TypeString || pd.Type == schema.TypeScalar) && !inString && !isIconProp(prop) {
+		out = append(out, completionResult{
+			Label: `!"…"!`, Kind: kindKeyword, Detail: "multi-line string",
+			InsertText: `!""!`,
+			Snippet:    `!"$0"!`,
+			Documentation: &doc{Kind: "markdown", Value: "**!\"line one\nline two\"!**\n\n" +
+				"A string that spans lines, with no escapes. The block's indentation is stripped, so " +
+				"a document can be indented with the element around it."},
+		})
 	}
 	if _, ok := schema.Event(prop); ok && el.HasEvent(prop) {
 		for _, f := range file.Props {
@@ -1065,6 +1147,8 @@ func memberItems(file *syntax.File, src []byte, off int) []completionResult {
 			Label:         p.Name,
 			Kind:          kindProperty,
 			Detail:        propDetail(el.Name, p),
+			InsertText:    p.Name + ": ",
+			Snippet:       p.Name + ": $0",
 			Documentation: &doc{Kind: "markdown", Value: propDoc(el.Name, p)},
 		})
 	}
@@ -1073,6 +1157,8 @@ func memberItems(file *syntax.File, src []byte, off int) []completionResult {
 			Label:         name,
 			Kind:          kindEvent,
 			Detail:        name + " · handler call",
+			InsertText:    name + ": ",
+			Snippet:       name + ": $0",
 			Documentation: &doc{Kind: "markdown", Value: "**" + name + "** on `" + el.Name + "`\n\nBridge handler call, for example `" + name + ": bridge.onOpen(...)`. It runs only when the event fires."},
 		})
 	}
@@ -1107,6 +1193,7 @@ func elementItems(file *syntax.File) []completionResult {
 				Label:         imp.Alias,
 				Kind:          kindClass,
 				Detail:        "fragment",
+				Snippet:       imp.Alias + " {\n\t$0\n}",
 				Documentation: &doc{Kind: "markdown", Value: "**" + imp.Alias + "** — fragment\n\nImported from `" + imp.Path + "`. Its props are properties on the call; `$name { ... }` fills a named slot and plain children fill `$children`."},
 			})
 		}
@@ -1120,10 +1207,17 @@ func elementItems(file *syntax.File) []completionResult {
 		if el.Children {
 			detail = "container"
 		}
+		// A container opens a body with the caret in it; a leaf opens its
+		// braces on one line, where its properties go.
+		body := " { $0 }"
+		if el.Children {
+			body = " {\n\t$0\n}"
+		}
 		out = append(out, completionResult{
 			Label:         n,
 			Kind:          kindClass,
 			Detail:        detail,
+			Snippet:       n + body,
 			Documentation: &doc{Kind: "markdown", Value: elementDoc(el)},
 		})
 	}
@@ -1758,6 +1852,45 @@ func enclosingElementName(file *syntax.File, src []byte, off int) string {
 		return el.Name
 	}
 	return braceElementName(src, off)
+}
+
+// beforeRoot reports whether off sits before the file's root element, which is
+// the only place an import, a declaration block or a type may go.
+func beforeRoot(file *syntax.File, off int) bool {
+	if file == nil || file.Root == nil {
+		return true
+	}
+	return off < int(file.Root.NameAt)
+}
+
+// braceWord reads the keyword that opened the brace body holding off, lowercase:
+// `switch app.os {` reports "switch" and `Column {` reports "Column". It is what
+// tells a switch's arm body from an element's children.
+func braceWord(src []byte, off int) string {
+	depth := 0
+	for i := off - 1; i >= 0; i-- {
+		switch src[i] {
+		case '}':
+			depth++
+		case '{':
+			if depth > 0 {
+				depth--
+				continue
+			}
+			// The keyword is the first word of the line that opened the body,
+			// so the subject of a switch does not hide it.
+			start := i
+			for start > 0 && src[start-1] != '\n' {
+				start--
+			}
+			fields := strings.Fields(string(src[start:i]))
+			if len(fields) == 0 {
+				return ""
+			}
+			return fields[0]
+		}
+	}
+	return ""
 }
 
 // braceElementName reads the identifier before the `{` that encloses off.
@@ -2759,4 +2892,90 @@ func childElement(parent string) string {
 		return "ChartSeries"
 	}
 	return ""
+}
+
+// declItems lists what a .goi file may declare before its window: an import, a
+// props or bridge block, a row type. They are the only words legal outside an
+// element, so they complete there and nowhere else.
+func declItems() []completionResult {
+	return []completionResult{
+		{
+			Label: "import", Kind: kindKeyword, Detail: "fragment",
+			Snippet: "import ${1:Alias} \"./${2:File}.goi\"$0",
+			Documentation: &doc{Kind: "markdown", Value: "**import Alias \"./File.goi\"**\n\n" +
+				"Pulls a fragment into this file. The alias is the element name the file uses for it, " +
+				"so `import Card \"./Card.goi\"` lets the design write `Card { … }`."},
+		},
+		{
+			Label: "props", Kind: kindKeyword, Detail: "declaration",
+			Snippet: "props {\n\t$0\n}",
+			Documentation: &doc{Kind: "markdown", Value: "**props { Name string }**\n\n" +
+				"Declares the values a fragment expects from the file that instantiates it. Go reads " +
+				"one as `props.Name` in a value, and an event reads a handler here."},
+		},
+		{
+			Label: "bridge", Kind: kindKeyword, Detail: "declaration",
+			Snippet: "bridge {\n\t$0\n}",
+			Documentation: &doc{Kind: "markdown", Value: "**bridge { count int }**\n\n" +
+				"Declares the values and handlers the app fills from Go with `ui.SetData` and " +
+				"`ui.SetHandler`. A design reads one as `bridge.count`."},
+		},
+		{
+			Label: "data", Kind: kindKeyword, Detail: "declaration",
+			Snippet: "data {\n\t$0\n}",
+			Documentation: &doc{Kind: "markdown", Value: "**data { rows []Row }**\n\n" +
+				"The older spelling of a `bridge` block; both declare the same variables."},
+		},
+		{
+			Label: "type", Kind: kindKeyword, Detail: "declaration",
+			Snippet: "type ${1:Name} {\n\t$0\n}",
+			Documentation: &doc{Kind: "markdown", Value: "**type Row { title string }**\n\n" +
+				"Declares the shape of one row a `for … range` loop walks. A `bridge` slice of this " +
+				"type becomes `[]Row`."},
+		},
+	}
+}
+
+// modifierItems lists the two blocks any value may open. Their keys are the
+// breakpoints for `responsive` and an ordinary value for `conditional`, so the
+// snippet writes the first entry of each.
+func modifierItems() []completionResult {
+	return []completionResult{
+		{
+			Label: "responsive", Kind: kindKeyword, Detail: "modifier",
+			InsertText: "responsive ",
+			Snippet:    "responsive {\n\tbase: $0\n}",
+			Documentation: &doc{Kind: "markdown", Value: "**responsive { base: 8 md: 16 }**\n\n" +
+				"One value per window size class: `base`, `sm`, `md`, `lg`, `xl`. The layout picks " +
+				"the entry for the current width and falls back to `base`."},
+		},
+		{
+			Label: "conditional", Kind: kindKeyword, Detail: "modifier",
+			InsertText: "conditional ",
+			Snippet:    "conditional {\n\t$0: true\n}",
+			Documentation: &doc{Kind: "markdown", Value: "**conditional { 10: bridge.isWide, 4 }**\n\n" +
+				"The first true condition picks the value, so one property can read differently per " +
+				"state. Write entries as `value: condition`."},
+		},
+	}
+}
+
+// switchArmItems lists what a switch body holds. An arm is a keyword, not an
+// element, so a body that completes elements would offer nothing legal.
+func switchArmItems() []completionResult {
+	return []completionResult{
+		{
+			Label: "case", Kind: kindKeyword, Detail: "switch arm",
+			Snippet: "case $0:",
+			Documentation: &doc{Kind: "markdown", Value: "**case a, b: …**\n\n" +
+				"Shows the arm when the subject equals one of the values. A comma separates them, " +
+				"and the arm holds elements and blocks, not properties."},
+		},
+		{
+			Label: "default", Kind: kindKeyword, Detail: "switch arm",
+			Snippet: "default:",
+			Documentation: &doc{Kind: "markdown", Value: "**default: …**\n\n" +
+				"Shows when no case matches. A switch has at most one, and it is written last."},
+		},
+	}
 }

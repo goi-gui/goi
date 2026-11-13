@@ -2175,3 +2175,177 @@ func TestThemeHoverExplainsRegistration(t *testing.T) {
 		}
 	}
 }
+
+// initializeWithSnippets performs the handshake, so the server knows whether the
+// editor can take a snippet.
+func (c *client) initializeWithSnippets(support bool) {
+	c.request("initialize", map[string]any{
+		"capabilities": map[string]any{
+			"textDocument": map[string]any{
+				"completion": map[string]any{
+					"completionItem": map[string]any{"snippetSupport": support},
+				},
+			},
+		},
+	})
+}
+
+// completionAt asks for completions at the end of marker in src.
+func completionAt(t *testing.T, c *client, uri, src, marker string) completionList {
+	t.Helper()
+	res := c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, marker, len(marker)),
+	})
+	var list completionList
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	return list
+}
+
+// TestCompletionInsertsBraces is the whole point of the snippet support: picking
+// an element writes its body and parks the caret inside, indented under the
+// element that holds it, and picking a property writes its colon.
+func TestCompletionInsertsBraces(t *testing.T) {
+	c := newClient(t)
+	c.initializeWithSnippets(true)
+	dir := t.TempDir()
+	src := "Window {\n\tColumn {\n\t\tTe\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	byLabel := map[string]completionResult{}
+	for _, it := range completionAt(t, c, uri, src, "\t\tTe").Items {
+		byLabel[it.Label] = it
+	}
+	// A leaf opens its braces on one line, where its properties go.
+	if got := byLabel["Text"]; got.InsertText != "Text { $0 }" || got.InsertTextFormat != 2 {
+		t.Fatalf("Text inserts %q (format %d)", got.InsertText, got.InsertTextFormat)
+	}
+
+	// A container opens a body, one level under the element that holds it.
+	src2 := "Window {\n\tCol\n}\n"
+	uri2 := writeDesign(t, dir, "b.goi", src2)
+	c.openDoc(uri2, src2)
+	byLabel = map[string]completionResult{}
+	for _, it := range completionAt(t, c, uri2, src2, "\tCol").Items {
+		byLabel[it.Label] = it
+	}
+	if want := "Column {\n\t\t$0\n\t}"; byLabel["Column"].InsertText != want {
+		t.Fatalf("Column inserts %q, want %q", byLabel["Column"].InsertText, want)
+	}
+
+	// The word being typed is also a member: `padding:` completes beside a
+	// prefixed element.
+	src3 := "Window {\n\tColumn {\n\t\tpa\n\t}\n}\n"
+	uri3 := writeDesign(t, dir, "c.goi", src3)
+	c.openDoc(uri3, src3)
+	byLabel = map[string]completionResult{}
+	for _, it := range completionAt(t, c, uri3, src3, "\t\tpa").Items {
+		byLabel[it.Label] = it
+	}
+	if want := "padding: $0"; byLabel["padding"].InsertText != want || byLabel["padding"].InsertTextFormat != 2 {
+		t.Fatalf("padding inserts %q", byLabel["padding"].InsertText)
+	}
+}
+
+// TestCompletionWithoutSnippets keeps a text-only client working: the element
+// is still its name, and a property still gets its colon.
+func TestCompletionWithoutSnippets(t *testing.T) {
+	c := newClient(t)
+	c.initializeWithSnippets(false)
+	dir := t.TempDir()
+	src := "Window {\n\tColumn {\n\t\t\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	byLabel := map[string]completionResult{}
+	for _, it := range completionAt(t, c, uri, src, "\t\t\n").Items {
+		byLabel[it.Label] = it
+	}
+	if got := byLabel["Text"]; got.InsertText != "" || got.InsertTextFormat != 0 {
+		t.Fatalf("Text inserts %q (format %d) without snippet support", got.InsertText, got.InsertTextFormat)
+	}
+	if got := byLabel["padding"]; got.InsertText != "padding: " {
+		t.Fatalf("padding inserts %q", got.InsertText)
+	}
+}
+
+// TestCompletionOffersDeclarations is the top level: outside every element only
+// import, props, bridge, data and type are legal, so those are what completes.
+func TestCompletionOffersDeclarations(t *testing.T) {
+	c := newClient(t)
+	c.initializeWithSnippets(true)
+	dir := t.TempDir()
+	src := "im\nWindow {\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	byLabel := map[string]completionResult{}
+	for _, it := range completionAt(t, c, uri, src, "im").Items {
+		byLabel[it.Label] = it
+	}
+	if len(byLabel) != 1 {
+		t.Fatalf("top-level items = %v, want only the declarations", byLabel)
+	}
+	imp, ok := byLabel["import"]
+	if !ok {
+		t.Fatalf("import missing at the top level: %v", byLabel)
+	}
+	if !strings.HasPrefix(imp.InsertText, `import `) || imp.InsertTextFormat != 2 {
+		t.Fatalf("import inserts %q", imp.InsertText)
+	}
+	// A declaration block opens its braces too.
+	src2 := "pro\nWindow {\n}\n"
+	uri2 := writeDesign(t, dir, "b.goi", src2)
+	c.openDoc(uri2, src2)
+	byLabel = map[string]completionResult{}
+	for _, it := range completionAt(t, c, uri2, src2, "pro").Items {
+		byLabel[it.Label] = it
+	}
+	if props, ok := byLabel["props"]; !ok || props.InsertText != "props {\n\t$0\n}" {
+		t.Fatalf("props inserts %q", props.InsertText)
+	}
+}
+
+// TestCompletionOffersModifierSnippets covers the two blocks any value may open.
+func TestCompletionOffersModifierSnippets(t *testing.T) {
+	c := newClient(t)
+	c.initializeWithSnippets(true)
+	dir := t.TempDir()
+	src := "Window {\n\tColumn {\n\t\tpadding: res\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	byLabel := map[string]completionResult{}
+	for _, it := range completionAt(t, c, uri, src, "padding: res").Items {
+		byLabel[it.Label] = it
+	}
+	if got := byLabel["responsive"]; got.InsertText != "responsive {\n\t\t\tbase: $0\n\t\t}" {
+		t.Fatalf("responsive inserts %q", got.InsertText)
+	}
+}
+
+// TestCompletionOffersSwitchArms keeps a switch body from completing elements:
+// only a case or a default is legal there.
+func TestCompletionOffersSwitchArms(t *testing.T) {
+	c := newClient(t)
+	c.initializeWithSnippets(true)
+	dir := t.TempDir()
+	src := "Window {\n\tColumn {\n\t\tswitch app.os {\n\t\t\tca\n\t\t}\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	items := completionAt(t, c, uri, src, "switch app.os {\n\t\t\tca").Items
+	byLabel := map[string]completionResult{}
+	for _, it := range items {
+		byLabel[it.Label] = it
+	}
+	if len(byLabel) != 1 {
+		t.Fatalf("switch body items = %v, want only the arms", byLabel)
+	}
+	if got := byLabel["case"].InsertText; got != "case $0:" {
+		t.Fatalf("case inserts %q", got)
+	}
+}
