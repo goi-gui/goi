@@ -1887,3 +1887,21 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   shader, so its soft ends are round caps drawn at the band's centreline; without
   them a ring end read as a corner. The stop indicator keeps its own small gap
   from the track's end.
+- **Multisampling is a frame target, not a shader trick.** Every shape is a quad
+  with a signed distance, so its own edge is already faded over a pixel; MSAA
+  takes the last stair-step off the corners the distance cannot round, such as
+  the join of two quads. Four samples is the default because WebGPU guarantees it
+  for a renderable format, and a count the device refuses falls back to four and
+  then to none. A blurred backdrop's offscreen scene stays single-sample: it is
+  blurred before it is sampled, and a multi-pass target that resolves between
+  passes is where the backend proved fragile.
+- **A curve is sampled for the pixels it lands on.** The step is a device-pixel
+  length, not a count: two device pixels of chord for a spline and two of arc for
+  a ribbon, with a floor so a short span still bends smoothly and a cap so one
+  huge chart cannot flood the display list. paint learns the device scale from
+  the driver, the way it learns the clock, so the same design is smooth at 1x and
+  2x instead of being twice as coarse on the sharper panel.
+- **An over-large radius is clamped where the shape is built.** CSS treats a
+  radius past half the box as a circle; the distance field does not, and returned
+  "outside" for every fragment. Both the op and the shader clamp, so a design's
+  `radius: 999` circle draws and a tool reading the list sees the real radius.
