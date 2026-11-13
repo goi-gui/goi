@@ -1859,3 +1859,12 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   the first line's text does. The alignment is plain spaces after the tabs, which
   matters because the reader strips the closing line's indentation and only
   whitespace can be stripped.
+- **A wavy progress is a ribbon, and the layout knows it.** `variant: wavy` draws
+  the active part as a sine sampled into the same rounded segments the charts use,
+  because the renderer has no path op: a ribbon is a polyline with round caps, and
+  a ring's ribbon is the same polyline bent around the centre, its radius pulsing
+  with the angle. The bar needs height the flat 4dp line did not, so
+  `m3.MetricsFor` reads the variant and reserves 16dp; a design that pins its own
+  height keeps it, and the wave scales down to fit rather than drawing outside the
+  box. The stop indicator dot is drawn in both variants: it is what says where a
+  determinate bar's scale ends.

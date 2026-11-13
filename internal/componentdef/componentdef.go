@@ -261,8 +261,10 @@ func ListElem(name string) PropType { return String }
 // a few styles, so completion and the checker do not offer a word the painter
 // would ignore.
 var variantValues = map[string][]string{
-	"Table":  {"outlined", "filled", "plain"},
-	"Slider": {"standard", "centered", "range"},
+	"Table":            {"outlined", "filled", "plain"},
+	"Slider":           {"standard", "centered", "range"},
+	"LinearProgress":   {"normal", "wavy"},
+	"CircularProgress": {"normal", "wavy"},
 }
 
 // EnumValuesFor is EnumValues narrowed to the values one component implements.

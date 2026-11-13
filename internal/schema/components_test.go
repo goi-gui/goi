@@ -179,3 +179,20 @@ func TestRotateValues(t *testing.T) {
 		}
 	}
 }
+
+// TestProgressNarrowsVariants keeps the two progress kinds to the styles they
+// paint: a plain bar and a wavy ribbon.
+func TestProgressNarrowsVariants(t *testing.T) {
+	for _, kind := range []string{"LinearProgress", "CircularProgress"} {
+		for _, v := range []string{"normal", "wavy"} {
+			src := fmt.Sprintf("Window { %s { variant: %s } }", kind, v)
+			if _, diag := validate(t, src); !diag.Empty() {
+				t.Errorf("%s.variant %q: %v", kind, v, diag)
+			}
+		}
+		src := fmt.Sprintf("Window { %s { variant: filled } }", kind)
+		if _, diag := validate(t, src); diag.Empty() {
+			t.Errorf("%s accepted a style it does not paint", kind)
+		}
+	}
+}

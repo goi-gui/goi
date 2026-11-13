@@ -1,6 +1,7 @@
 package paint
 
 import (
+	"math"
 	"testing"
 
 	"github.com/goi-gui/goi/internal/layout"
@@ -757,4 +758,55 @@ func TestSliderRangePaintsTwoHandles(t *testing.T) {
 	if active[0] < 41 || active[0] > 50 || active[0]+active[2] > 140 {
 		t.Fatalf("range fill = %v, want it between the handles", active)
 	}
+}
+
+// TestProgressVariants covers the two looks: a normal bar is two rounded rects
+// and the stop dot, while the wavy one is a ribbon of joined segments that
+// starts and ends with a round cap. The wavy ring is a ribbon too.
+func TestProgressVariants(t *testing.T) {
+	col := m3.Light().Colors
+	count := func(l *List, pred func(Op) bool) int {
+		n := 0
+		for _, op := range l.Ops {
+			if pred(op) {
+				n++
+			}
+		}
+		return n
+	}
+	rotated := func(op Op) bool { return op.Kind == Fill && op.Rotate != 0 }
+	caps := func(op Op) bool { return op.Kind == Fill && op.Shape == Circle }
+	stop := func(op Op) bool {
+		return op.Kind == Fill && math.Abs(float64(op.Rect[2])-4) < 0.01 && math.Abs(float64(op.Rect[3])-4) < 0.01
+	}
+
+	normal := m3list(t, `Window { LinearProgress { value: 0.6 width: 300 } }`)
+	if got := count(normal, rotated); got != 0 {
+		t.Fatalf("a normal bar drew %d wave segments", got)
+	}
+	if got := count(normal, stop); got != 1 {
+		t.Fatalf("a normal bar drew %d stop dots, want 1", got)
+	}
+
+	wavy := m3list(t, `Window { LinearProgress { variant: wavy value: 0.6 width: 300 } }`)
+	if got := count(wavy, rotated); got < 40 {
+		t.Fatalf("a wavy bar drew %d wave segments", got)
+	}
+	if got := count(wavy, caps); got != 2 {
+		t.Fatalf("a wavy bar drew %d caps, want 2", got)
+	}
+	if got := count(wavy, stop); got != 1 {
+		t.Fatalf("a wavy bar drew %d stop dots, want 1", got)
+	}
+
+	ring := m3list(t, `Window { CircularProgress { variant: wavy value: 0.6 } }`)
+	if got := count(ring, rotated); got < 20 {
+		t.Fatalf("a wavy ring drew %d wave segments", got)
+	}
+	for _, op := range ring.Ops {
+		if op.Kind == Fill && op.Color == col.SecondaryContainer {
+			return // the plain track is still drawn under the ribbon
+		}
+	}
+	t.Fatal("a wavy ring lost its track")
 }

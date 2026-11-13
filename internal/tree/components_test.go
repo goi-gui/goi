@@ -38,7 +38,7 @@ func TestEveryComponentPropHasItsOwnCell(t *testing.T) {
 				continue
 			}
 			before := snapshot(props)
-			if !setAny(target, want) {
+			if !setAny(target, want, k.Name) {
 				t.Errorf("%s: %q rejected every literal", k.Name, want)
 				continue
 			}
@@ -62,7 +62,7 @@ func paired(a, b string) bool {
 }
 
 // setAny writes a distinctive value of whichever type the property takes.
-func setAny(p NamedProp, name string) bool {
+func setAny(p NamedProp, name, kind string) bool {
 	values := []syntax.Value{
 		&syntax.Number{Val: 3.25},
 		&syntax.Bool{Val: true},
@@ -72,6 +72,11 @@ func setAny(p NamedProp, name string) bool {
 		&syntax.List{Items: []syntax.Value{&syntax.String{Val: "zz-" + name}}},
 		&syntax.List{Items: []syntax.Value{&syntax.Number{Val: 3.25}}},
 		&syntax.List{Items: []syntax.Value{&syntax.Color{RGBA: 0x112233FF}}},
+	}
+	// The narrowed list first: a progress bar's `variant` is `normal` or `wavy`,
+	// neither of which is in the union the other components share.
+	for _, v := range componentdef.EnumValuesFor(kind, name) {
+		values = append(values, &syntax.Ident{Val: v})
 	}
 	for _, v := range componentdef.EnumValues(name) {
 		values = append(values, &syntax.Ident{Val: v})
