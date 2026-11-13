@@ -55,6 +55,12 @@ type Tree struct {
 	conds []*condBranch
 	// vars holds the `data` values an app set with SetData.
 	vars map[string]any
+	// roleCharts lists the charts whose series colours name a role, so the
+	// colour pass can resolve them; a list has no cell of its own.
+	roleCharts []*Chart
+	// dynamicCharts lists the charts whose data reads a bridge variable or an
+	// expression, so the frame loop can rebuild them once those are resolved.
+	dynamicCharts []*Chart
 	// eachs lists the {#each} blocks, so setting a list rebuilds the blocks
 	// that walk it.
 	eachs []*eachBlock

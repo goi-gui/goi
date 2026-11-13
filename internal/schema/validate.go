@@ -762,6 +762,18 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 			return
 		}
 		for _, item := range list.Items {
+			// An expression is only typed when it runs, so the checker leaves
+			// it alone. A colour role is known now, which is why the one thing
+			// it can still get wrong is asking a number list for a colour.
+			if isColorRefValue(item) && pd.Elem != TypeColor {
+				at := item.Pos()
+				v.add(at, at+syntax.Pos(listItemLen(item)),
+					fmt.Sprintf("%s: a colour role does not belong in a %s list", pd.Name, pd.Elem), "")
+				continue
+			}
+			if dynamicValue(item) {
+				continue
+			}
 			if _, err := ListItem(pd.Elem, item); err != nil {
 				at := item.Pos()
 				v.add(at, at+syntax.Pos(listItemLen(item)), fmt.Sprintf("%s: %v", pd.Name, err), "")

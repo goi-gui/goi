@@ -12,7 +12,10 @@ import (
 
 // Media control bar metrics, in dp.
 const (
-	mediaBarH    = 48.0
+	mediaBarH = 48.0
+	// videoBarInk is the default colour of a video's controls: white, because
+	// the bar is drawn over the picture and the scrim is dark in both schemes.
+	videoBarInk  = 0xFFFFFFFF
 	mediaBarPad  = 12.0
 	mediaButtonR = 16.0
 	mediaTimeW   = 46.0
@@ -252,14 +255,21 @@ func (l *List) paintMediaBar(m *tree.Media, r tree.Rect, lay MediaLayout, clip t
 			intersect(intersect(clip, r), lay.Bar))
 	}
 	// A recoloured bar keeps its shape: the text, the icons and the scrubber each
-	// fall back to the theme's own colour when the design left them at 0.
+	// fall back to the theme's own colour when the design left them at 0. A
+	// video's bar sits over its own picture, so its default is white: the
+	// scheme's onSurface is near-black in the light theme and would vanish into
+	// the scrim.
+	fallback := col.OnSurface
+	if _, isVideo := m.Base().Node().(*tree.Video); isVideo {
+		fallback = videoBarInk
+	}
 	textColor := m.ControlsTextColor.Get()
 	if textColor == 0 {
-		textColor = col.OnSurface
+		textColor = fallback
 	}
 	iconColor := m.ControlsIconColor.Get()
 	if iconColor == 0 {
-		iconColor = col.OnSurface
+		iconColor = fallback
 	}
 	trackColor := m.ControlsTrackColor.Get()
 	playedColor := col.Primary
@@ -292,7 +302,7 @@ func (l *List) paintMediaBar(m *tree.Media, r tree.Rect, lay MediaLayout, clip t
 			AlignStart, clip)
 		return
 	}
-	track := withAlpha(col.OnSurface, 0.24)
+	track := withAlpha(fallback, 0.24)
 	if trackColor != 0 {
 		track = withAlpha(trackColor, 0.32)
 	}
@@ -305,7 +315,7 @@ func (l *List) paintMediaBar(m *tree.Media, r tree.Rect, lay MediaLayout, clip t
 	// ahead the decoder is before the picture stalls.
 	if m.Buffered > 0 && m.Duration > 0 {
 		end := math.Min(1, frac+float64(m.Buffered)/float64(m.Duration))
-		buffered := withAlpha(col.OnSurface, 0.42)
+		buffered := withAlpha(fallback, 0.42)
 		if trackColor != 0 {
 			buffered = withAlpha(trackColor, 0.55)
 		}

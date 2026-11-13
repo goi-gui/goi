@@ -38,7 +38,9 @@ func ListItem(elem ValueType, v syntax.Value) (any, error) {
 			case "theme":
 				return ListColor{Role: c.Prop}, nil
 			case "customColor":
-				return ListColor{Role: c.ID + ":" + c.Prop}, nil
+				// The resolver's namespace, so the colour pass can ask the
+				// same lookup a colour property does.
+				return ListColor{Role: "custom:" + c.Prop}, nil
 			}
 			return nil, fmt.Errorf("%s.%s is not a colour", c.ID, c.Prop)
 		case *syntax.String:
@@ -63,4 +65,21 @@ func ListItem(elem ValueType, v syntax.Value) (any, error) {
 		}
 		return nil, fmt.Errorf("expected a string")
 	}
+}
+
+// isColorRefValue reports whether a value names a colour role, which a colour
+// list keeps as a role and no other list accepts.
+func isColorRefValue(v syntax.Value) bool {
+	r, ok := v.(*syntax.Ref)
+	return ok && (r.ID == "theme" || r.ID == "customColor")
+}
+
+// dynamicValue reports whether a list item is an expression: its type is only
+// known once it runs, so the checker cannot judge the item itself.
+func dynamicValue(v syntax.Value) bool {
+	switch v.(type) {
+	case *syntax.Ref, *syntax.Call, *syntax.Binary, *syntax.Unary, *syntax.Ternary:
+		return true
+	}
+	return false
 }

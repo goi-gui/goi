@@ -145,3 +145,76 @@ func TestChartColorRoleFollowsTheScheme(t *testing.T) {
 		t.Fatalf("a literal gridColor was overwritten: %#08x", got)
 	}
 }
+
+// TestChartListItemsReadVariables is the point of an expression list: a series
+// value or a slice colour may be a bridge variable, and the chart follows it
+// without a SetData call.
+func TestChartListItemsReadVariables(t *testing.T) {
+	tr, diag := BuildSource([]byte(`Window {
+		PieChart {
+			id:         channels
+			categories: ["Direct", "Search"]
+			ChartSeries {
+				values: [bridge.a, 2]
+				colors: [theme.primary, bridge.ink]
+			}
+		}
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	n, _ := tr.ByID("channels")
+	chart := n.(*PieChart).ChartCore()
+	tr.SetData("a", 5)
+	tr.SetData("ink", uint32(0x00FF00FF))
+	tr.ApplyExpressions()
+	got := chart.Data.Series
+	if len(got) != 1 || len(got[0].Values) != 2 || got[0].Values[0] != 5 || got[0].Values[1] != 2 {
+		t.Fatalf("values = %+v", got)
+	}
+	if len(got[0].Colors) != 2 || got[0].Colors[1] != 0x00FF00FF {
+		t.Fatalf("colors = %#+v", got[0].Colors)
+	}
+	if len(got[0].ColorRoles) != 2 || got[0].ColorRoles[0] != "primary" {
+		t.Fatalf("roles = %v", got[0].ColorRoles)
+	}
+	// A second read follows the variable, and an unchanged one costs nothing.
+	tr.SetData("a", 9)
+	tr.ApplyExpressions()
+	if chart.Data.Series[0].Values[0] != 9 {
+		t.Fatalf("values after the second set = %v", chart.Data.Series[0].Values)
+	}
+}
+
+// TestChartCustomColourInAList guards the one role the painter cannot resolve:
+// the colour pass writes it into the series, so a list keeps following
+// SetCustomColor.
+func TestChartCustomColourInAList(t *testing.T) {
+	tr, diag := BuildSource([]byte(`Window {
+		PieChart {
+			id:         channels
+			categories: ["a", "b"]
+			ChartSeries {
+				values: [1, 1]
+				colors: [theme.primary, customColor.brand]
+			}
+		}
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	n, _ := tr.ByID("channels")
+	chart := n.(*PieChart).ChartCore()
+	tr.ResolveColors(func(name string) (uint32, bool) {
+		if name == "custom:brand" {
+			return 0x123456FF, true
+		}
+		return 0, false
+	})
+	if got := chart.Data.Series[0].Colors[1]; got != 0x123456FF {
+		t.Fatalf("custom colour = %#08x", got)
+	}
+	if role := chart.Data.Series[0].ColorRoles[1]; role != "custom:brand" {
+		t.Fatalf("role = %q", role)
+	}
+}

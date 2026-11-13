@@ -101,5 +101,14 @@ func (t *Tree) ResolveColors(lookup func(string) (uint32, bool)) bool {
 			changed = true
 		}
 	}
+	// A chart's series colours are a list, so they have no cell the loop above
+	// could write. A role in one is resolved into the series it belongs to,
+	// which is what makes a custom colour follow SetCustomColor like the rest.
+	for _, c := range t.roleCharts {
+		if c.resolveListRoles(lookup) {
+			c.Base().mark(DirtyPaint)
+			changed = true
+		}
+	}
 	return changed
 }

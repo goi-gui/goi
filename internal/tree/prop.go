@@ -469,6 +469,9 @@ type ListProp[T comparable] struct {
 	dirty DirtyKind
 	val   []T
 	parse func([]syntax.Value) ([]T, error)
+	// onChange runs after a write that changed the items, which is how a chart
+	// whose series reads a bridge variable rebuilds its data.
+	onChange func()
 }
 
 // listCell is what a NamedProp of a list property talks to, so the builder does
@@ -490,6 +493,7 @@ func (p *ListProp[T]) Set(v []T) {
 	if p.base != nil {
 		p.base.mark(p.dirty)
 	}
+	p.changed()
 }
 
 func (p *ListProp[T]) setList(items []syntax.Value) bool {
@@ -497,8 +501,18 @@ func (p *ListProp[T]) setList(items []syntax.Value) bool {
 	if err != nil {
 		return false
 	}
+	if slices.Equal(p.val, v) {
+		return true
+	}
 	p.val = v
+	p.changed()
 	return true
+}
+
+func (p *ListProp[T]) changed() {
+	if p.onChange != nil {
+		p.onChange()
+	}
 }
 
 func (p *ListProp[T]) listValue() any { return p.val }

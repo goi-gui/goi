@@ -2,6 +2,7 @@ package tree
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -62,6 +63,12 @@ type Chart struct {
 	// Categories is the design's category labels. The builder copies it into
 	// Data, so a chart written in the file needs no Go.
 	Categories ListProp[string]
+
+	// sources are the ChartSeries children the design declared, detached from
+	// the tree but kept alive: their cells may read a bridge variable, and
+	// syncData is what turns a changed cell into data. A chart filled from Go
+	// has none.
+	sources []*ChartSeries
 
 	// Appearance.
 	Grid   Prop[bool] // value grid lines
@@ -147,18 +154,75 @@ func (s *ChartSeries) namedProps() []NamedProp {
 }
 
 // adopt turns the ChartSeries children a design declared into the chart's data
-// and detaches them, so layout, paint and lookups never see them.
+// and detaches them, so layout, paint and lookups never see them. The children
+// stay reachable through sources, because an item may be a bridge variable that
+// changes after the build.
 func (c *Chart) adopt(t *Tree) error {
-	series := make([]Series, 0, len(c.kids))
 	for _, k := range c.kids {
 		cs, ok := k.Node().(*ChartSeries)
 		if !ok {
 			return fmt.Errorf("chart children must be ChartSeries, not %s", k.Node().Kind())
 		}
+		cs.Values.onChange = c.syncData
+		cs.Colors.onChange = c.syncData
+		c.sources = append(c.sources, cs)
+	}
+	c.Categories.onChange = c.syncData
+	for _, k := range append([]*NodeBase(nil), c.kids...) {
+		t.Remove(k.node)
+	}
+	c.syncData()
+	if t != nil {
+		if c.dynamic() {
+			t.dynamicCharts = append(t.dynamicCharts, c)
+		}
+		if c.hasListRoles() {
+			t.roleCharts = append(t.roleCharts, c)
+		}
+	}
+	return nil
+}
+
+// hasListRoles reports whether a series colour list names a role, which the
+// colour pass has to resolve.
+func (c *Chart) hasListRoles() bool {
+	for _, cs := range c.sources {
+		for _, col := range cs.Colors.Get() {
+			if col.Role != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// dynamic reports whether any cell the data reads is an expression, so the
+// chart has to rebuild its data as the frame loop resolves it.
+func (c *Chart) dynamic() bool {
+	if _, ok := c.Base().exprSpecFor("categories"); ok {
+		return true
+	}
+	for _, cs := range c.sources {
+		for _, name := range []string{"label", "values", "colors"} {
+			if _, ok := cs.Base().exprSpecFor(name); ok {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// syncData rebuilds Data from the series children and the category list. It is
+// called when a cell changed and once per frame for a chart whose cells are
+// expressions; an unchanged rebuild costs one comparison and no relayout.
+func (c *Chart) syncData() {
+	cats := c.Categories.Get()
+	series := make([]Series, 0, len(c.sources))
+	for _, cs := range c.sources {
 		s := Series{Label: cs.Label.Get(), Values: cs.Values.Get(), Color: cs.Color.Get()}
-		for _, c := range cs.Colors.Get() {
-			s.Colors = append(s.Colors, c.Color)
-			s.ColorRoles = append(s.ColorRoles, c.Role)
+		for _, col := range cs.Colors.Get() {
+			s.Colors = append(s.Colors, col.Color)
+			s.ColorRoles = append(s.ColorRoles, col.Role)
 		}
 		// A role outlives the child: the painter resolves it from the current
 		// scheme, which a colour copied now could not do.
@@ -167,15 +231,36 @@ func (c *Chart) adopt(t *Tree) error {
 		}
 		series = append(series, s)
 	}
-	for _, k := range append([]*NodeBase(nil), c.kids...) {
-		t.Remove(k.node)
-	}
-	cats := c.Categories.Get()
 	if len(series) == 0 && len(cats) == 0 {
-		return nil
+		return
+	}
+	if sameChartData(c.Data, cats, series) {
+		return
 	}
 	c.SetData(ChartData{Categories: cats, Series: series})
-	return nil
+}
+
+// sameChartData reports whether a rebuilt data set matches what the chart
+// already draws, which is what keeps a per-frame expression pass free.
+func sameChartData(cur ChartData, cats []string, series []Series) bool {
+	if len(cur.Categories) != len(cats) || len(cur.Series) != len(series) {
+		return false
+	}
+	for i := range cats {
+		if cur.Categories[i] != cats[i] {
+			return false
+		}
+	}
+	for i := range series {
+		a, b := cur.Series[i], series[i]
+		if a.Label != b.Label || a.Color != b.Color || a.ColorRole != b.ColorRole {
+			return false
+		}
+		if !slices.Equal(a.Values, b.Values) || !slices.Equal(a.Colors, b.Colors) || !slices.Equal(a.ColorRoles, b.ColorRoles) {
+			return false
+		}
+	}
+	return true
 }
 
 // SeriesHidden reports whether the legend turned an entry off.
@@ -387,4 +472,36 @@ func newChart() Chart {
 		SelectedSeries: -1,
 		SelectedIndex:  -1,
 	}
+}
+
+// resolveListRoles writes the colours a series list named as roles, and reports
+// whether one changed. A theme role is resolved here as well as in paint, so a
+// custom colour, which paint cannot reach, lands in the same place.
+func (c *Chart) resolveListRoles(lookup func(string) (uint32, bool)) bool {
+	changed := false
+	for si := range c.Data.Series {
+		s := &c.Data.Series[si]
+		for i, role := range s.ColorRoles {
+			if role == "" {
+				continue
+			}
+			name := role
+			if !strings.Contains(name, ":") {
+				name = "theme:" + name
+			}
+			rgba, ok := lookup(name)
+			if !ok {
+				continue
+			}
+			for len(s.Colors) <= i {
+				s.Colors = append(s.Colors, 0)
+			}
+			if s.Colors[i] == rgba {
+				continue
+			}
+			s.Colors[i] = rgba
+			changed = true
+		}
+	}
+	return changed
 }

@@ -158,3 +158,37 @@ func TestUnstyledBarKeepsTheTheme(t *testing.T) {
 		}
 	}
 }
+
+// TestVideoBarInkDefaultsToWhite is the look of a video's controls: the bar is
+// drawn over the picture, so its icons, clock and scrubber default to white
+// rather than the scheme's near-black onSurface, which the light theme would
+// bury in the scrim.
+func TestVideoBarInkDefaultsToWhite(t *testing.T) {
+	_, l := captionPlayer(t, "")
+	icon, clock := false, false
+	for _, op := range l.Ops {
+		switch {
+		case op.Kind == Text && op.Text == "play_arrow":
+			icon = op.Color == 0xFFFFFFFF
+		case op.Kind == Text && op.Text == "0:00 / 0:00":
+			clock = op.Color == 0xFFFFFFFF
+		}
+	}
+	if !icon || !clock {
+		t.Fatalf("a video bar defaults to white (icon %v clock %v)", icon, clock)
+	}
+	// An audio bar is a surface of its own, so it keeps the scheme's ink.
+	src := `Window { Audio { id: a width: 640 height: 64 } }`
+	tr, diag := tree.BuildSource([]byte(src), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 700, 200)
+	al := &List{}
+	al.Build(tr, 700, 200)
+	for _, op := range al.Ops {
+		if op.Kind == Text && op.Text == "play_arrow" && op.Color == 0xFFFFFFFF {
+			t.Fatal("an audio bar took the video's white default")
+		}
+	}
+}

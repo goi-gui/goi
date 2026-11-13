@@ -1818,3 +1818,25 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   bare word is a CSS colour name (`red`, `rebeccapurple`), so `[primary]` would
   be ambiguous; the checker rejects it with the form to write instead of guessing
   between two meanings.
+- **A list item may be an expression, so the cell is re-read rather than
+  written once.** `colors: [bridge.brand, #c62828]` names a value the app sets,
+  and a list is only as static as its items: one item that is an expression makes
+  the whole property an expression, which the frame loop resolves and the chart
+  rebuilds its data from. A list of literals never enters that path, so the
+  common case costs what it did. An unchanged rebuild is compared and dropped, so
+  a per-frame pass does not relayout a chart that did not move.
+- **A chart keeps its series children after the build.** They were detached,
+  which is what makes them data rather than nodes, but a cell that reads a bridge
+  variable has to be readable later. `Chart.sources` holds them, and
+  `syncData` is the one reader, so the build path and the frame path produce the
+  same data. `SetData` still replaces the copy for an app whose numbers come from
+  Go.
+- **A role in a list is resolved by the colour pass, not by paint.** Paint has
+  the scheme and can resolve `theme.`, but a custom colour lives on the window, so
+  the pass that already resolves every other role writes the list's roles into
+  the series as well. That is what makes `customColor.brand` in a slice list
+  follow `SetCustomColor` like a colour property does.
+- **A video's bar defaults to white, an audio's to the scheme.** The bar is drawn
+  over the picture with a dark scrim in both schemes, and the light theme's
+  `onSurface` is near-black: white is the only default that reads on any frame.
+  An audio player's bar is a surface of its own, so it keeps the scheme's ink.

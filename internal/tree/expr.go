@@ -29,8 +29,23 @@ func isExpression(v syntax.Value) bool {
 		// A builtin call such as formatf is a value; a handler call is only
 		// legal as an event property and is bound there, not here.
 		return x.Name != ""
+	case *syntax.List:
+		// A list is dynamic only when an item is: a literal item, and a
+		// `theme.` role, are what the list cell takes directly.
+		for _, it := range x.Items {
+			if isExpression(it) && !isColorRef(it) {
+				return true
+			}
+		}
 	}
 	return false
+}
+
+// isColorRef reports whether a value names a colour role, which a list item
+// keeps as a role rather than evaluating to a value.
+func isColorRef(v syntax.Value) bool {
+	r, ok := v.(*syntax.Ref)
+	return ok && (r.ID == "theme" || r.ID == "customColor")
 }
 
 // applyValue writes a property value from the .goi file, which may be an
@@ -136,35 +151,56 @@ func (b *NodeBase) writeExpr(name string, v any) {
 	if b.sameExprValue(name, v) {
 		return
 	}
-	var lit syntax.Value
-	switch x := v.(type) {
-	case float64:
-		lit = &syntax.Number{Val: x}
-	case string:
-		// A gradient or a CSS colour keyword has to stay a string: the colour
-		// writer reads those from the string form, and an Ident would turn
-		// "linear-gradient(...)" into a role name.
-		if csscolor.IsGradient(x) {
-			lit = &syntax.String{Val: x}
-			break
-		}
-		if _, ok := csscolor.Parse(x); ok {
-			lit = &syntax.String{Val: x}
-			break
-		}
-		// Ident, not String: a string expression can feed an enum, a text
-		// property or a color role, and all three accept an identifier.
-		lit = &syntax.Ident{Val: x}
-	case bool:
-		lit = &syntax.Bool{Val: x}
-	case uint32:
-		lit = &syntax.Color{RGBA: x}
-	default:
+	lit, ok := exprLiteral(v)
+	if !ok {
 		return
 	}
 	if b.SetPropLiteral(name, lit) {
 		b.mark(b.PropDirty(name))
 	}
+}
+
+// exprLiteral turns a resolved value back into the literal the property writer
+// reads: a number, a string, a bool, a colour, a colour role, or a list of them.
+func exprLiteral(v any) (syntax.Value, bool) {
+	switch x := v.(type) {
+	case float64:
+		return &syntax.Number{Val: x}, true
+	case string:
+		// A gradient or a CSS colour keyword has to stay a string: the colour
+		// writer reads those from the string form, and an Ident would turn
+		// "linear-gradient(...)" into a role name.
+		if csscolor.IsGradient(x) {
+			return &syntax.String{Val: x}, true
+		}
+		if _, ok := csscolor.Parse(x); ok {
+			return &syntax.String{Val: x}, true
+		}
+		// Ident, not String: a string expression can feed an enum, a text
+		// property or a color role, and all three accept an identifier.
+		return &syntax.Ident{Val: x}, true
+	case bool:
+		return &syntax.Bool{Val: x}, true
+	case uint32:
+		return &syntax.Color{RGBA: x}, true
+	case colorRef:
+		id := "theme"
+		if x.ns == "custom" {
+			id = "customColor"
+		}
+		return &syntax.Ref{ID: id, Prop: x.role}, true
+	case []any:
+		items := make([]syntax.Value, len(x))
+		for i, it := range x {
+			lit, ok := exprLiteral(it)
+			if !ok {
+				return nil, false
+			}
+			items[i] = lit
+		}
+		return &syntax.List{Items: items}, true
+	}
+	return nil, false
 }
 
 func (b *NodeBase) sameExprValue(name string, v any) bool {
@@ -190,6 +226,11 @@ func (t *Tree) ApplyExpressions() {
 	t.evalSeen = t.evalSeen[:0]
 	for _, b := range t.exprNodes {
 		b.applyExpressions()
+	}
+	// A chart's data is a copy of its series cells, so a cell that just changed
+	// has to reach the copy before the frame is laid out.
+	for _, c := range t.dynamicCharts {
+		c.syncData()
 	}
 	// Block conditions may read the same properties; both passes use the
 	// values as they are now, so they run together.
@@ -494,6 +535,18 @@ func (c *evalCtx) eval(v syntax.Value, percent float64) (any, bool) {
 		return c.evalRef(x)
 	case *syntax.Call:
 		return c.evalBuiltin(x, percent)
+	case *syntax.List:
+		// Each item is an ordinary value, so a list can mix a bridge variable
+		// with a literal and a colour role.
+		out := make([]any, len(x.Items))
+		for i, it := range x.Items {
+			v, ok := c.eval(it, percent)
+			if !ok {
+				return nil, false
+			}
+			out[i] = v
+		}
+		return out, true
 	}
 	return nil, false
 }
