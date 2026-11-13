@@ -72,6 +72,11 @@ func (a *App) initWindow(w *Window) error {
 			a.reportError(err)
 		}
 	}
+	if a.msaa > 0 {
+		if err := gpu.SetSamples(a.msaa); err != nil {
+			a.reportError(err)
+		}
+	}
 	// Families the app loaded before this window existed.
 	if lib, ok := render.FontLibrary(gpu); ok {
 		for name, data := range a.fonts {

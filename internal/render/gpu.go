@@ -239,7 +239,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 		// corners and border drawn on top.
 		let head = gradients[u32(in.params.y) * 6u];
 		let g = gradient_color(in.params.y, gradient_t(head, in.params.y, in.local, in.size));
-		let r = corner_radius(in.radius, in.local, in.size);
+		let r = clamp(corner_radius(in.radius, in.local, in.size), 0.0, min(in.size.x, in.size.y) * 0.5);
 		let d = sd_round_rect(in.local, in.size, r);
 		let cov = 1.0 - smoothstep(-aa, aa, d);
 		if (cov <= 0.0) { discard; }
@@ -351,9 +351,10 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 		let c = in.size * 0.5;
 		let r = min(in.size.x, in.size.y) * 0.5;
 		var d = length(in.local - c) - r;
+		var thick = 0.5;
 		if (kind > 1.5) {
 			// A ring: keep only the band of the given thickness.
-			let thick = max(in.misc.x, 0.5);
+			thick = max(in.misc.x, 0.5);
 			d = abs(length(in.local - c) - (r - thick * 0.5)) - thick * 0.5;
 		}
 		let cov = 1.0 - smoothstep(-aa, aa, d);
@@ -378,7 +379,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 	}
 
 	// Rounded rectangle with an optional border.
-	let r = corner_radius(in.radius, in.local, in.size);
+	let r = clamp(corner_radius(in.radius, in.local, in.size), 0.0, min(in.size.x, in.size.y) * 0.5);
 	let d = sd_round_rect(in.local, in.size, r);
 	let cov = 1.0 - smoothstep(-aa, aa, d);
 	if (cov <= 0.0) { discard; }
@@ -420,12 +421,26 @@ type gpuInstance struct {
 
 // GPU is the WebGPU renderer.
 type GPU struct {
-	instance       *wgpu.Instance
-	adapter        *wgpu.Adapter
-	device         *wgpu.Device
-	queue          *wgpu.Queue
-	surface        *wgpu.Surface
-	pipeline       *wgpu.RenderPipeline
+	instance *wgpu.Instance
+	adapter  *wgpu.Adapter
+	device   *wgpu.Device
+	queue    *wgpu.Queue
+	surface  *wgpu.Surface
+	pipeline *wgpu.RenderPipeline
+	// pipeline1 draws into a single-sample target. The blur passes of a blurred
+	// backdrop render into offscreen textures that have no multisampling, so
+	// they need a pipeline whose count matches.
+	pipeline1 *wgpu.RenderPipeline
+	// samples is the multisample count the surface target is drawn with; 1
+	// turns it off. shapeLayout and shader are kept so a new count can rebuild
+	// the pipelines without recreating the device.
+	samples int
+	shader  *wgpu.ShaderModule
+	// msaa is the multisampled colour target a frame resolves from.
+	msaa           *wgpu.Texture
+	msaaView       *wgpu.TextureView
+	msaaW          int
+	msaaH          int
 	uniform        *wgpu.Buffer
 	uniformWritten [4]float32
 	storage        *wgpu.Buffer
@@ -461,6 +476,10 @@ type GPU struct {
 	segZero *wgpu.Buffer
 	// shapeLayout is shared by the pipeline and every per-pass bind group.
 	shapeLayout *wgpu.BindGroupLayout
+	// blend and attrs are what a pipeline rebuild needs, kept so a multisample
+	// count change does not have to recreate them.
+	blend *gputypes.BlendState
+	attrs []gputypes.VertexAttribute
 	// passBinds are a blurred frame's per-pass bind groups, freed once the
 	// command buffer that uses them is submitted.
 	passBinds []*wgpu.BindGroup
@@ -493,7 +512,7 @@ func NewGPU(display, window uintptr, kind TargetKind) (*GPU, error) {
 	if err != nil {
 		return nil, fmt.Errorf("wgpu instance: %w", err)
 	}
-	g := &GPU{instance: inst, scale: 1, vsync: true, capacity: 256}
+	g := &GPU{instance: inst, scale: 1, vsync: true, capacity: 256, samples: DefaultSamples}
 
 	surface, err := createSurface(inst, display, window, kind)
 	if err != nil {
@@ -541,6 +560,138 @@ func NewGPU(display, window uintptr, kind TargetKind) (*GPU, error) {
 	return g, nil
 }
 
+// DefaultSamples is the multisample count a renderer starts with. Four is the
+// count WebGPU guarantees for every renderable format, and it is enough to take
+// the last stair-step off a curve that the signed-distance fade rounds.
+const DefaultSamples = 4
+
+// samplesTryOrder is the order a requested count falls back through: the ask
+// itself, then four, then off. A device that refuses 8 still draws at 4 rather
+// than failing the frame.
+func samplesTryOrder(n int) []int {
+	out := []int{n}
+	if n > 4 {
+		out = append(out, 4)
+	}
+	if n > 1 {
+		out = append(out, 1)
+	}
+	return out
+}
+
+// Samples reports the multisample count the renderer is drawing with.
+func (g *GPU) Samples() int { return g.samples }
+
+// SetSamples chooses the multisample count: 1, 2, 4 or 8. A device that cannot
+// draw the surface at that count falls back to 4 and then to 1, so the call
+// reports what it settled on in Samples rather than failing the app.
+func (g *GPU) SetSamples(n int) error {
+	if g.closed {
+		return nil
+	}
+	if n != 1 && n != 2 && n != 4 && n != 8 {
+		return fmt.Errorf("render: %d samples is not 1, 2, 4 or 8", n)
+	}
+	if n == g.samples && g.pipeline != nil {
+		return nil
+	}
+	prev := g.samples
+	for _, want := range samplesTryOrder(n) {
+		if err := g.probeSamples(want); err != nil {
+			continue
+		}
+		g.samples = want
+		if err := g.rebuildPipelines(); err != nil {
+			g.samples = prev
+			return err
+		}
+		g.releaseMSAA()
+		if g.backdrop != nil {
+			g.backdrop.release()
+			g.backdrop = nil
+		}
+		return nil
+	}
+	g.samples = prev
+	if prev != 1 {
+		g.samples = 1
+		if err := g.rebuildPipelines(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// probeSamples asks the device for a texture at that count without keeping it,
+// which is how an unsupported count is found before the pipelines are rebuilt.
+func (g *GPU) probeSamples(n int) error {
+	tex, err := g.device.CreateTexture(&wgpu.TextureDescriptor{
+		Label:         "msaa-probe",
+		Size:          wgpu.Extent3D{Width: 1, Height: 1, DepthOrArrayLayers: 1},
+		MipLevelCount: 1,
+		SampleCount:   uint32(n),
+		Dimension:     gputypes.TextureDimension2D,
+		Format:        g.format,
+		Usage:         gputypes.TextureUsageRenderAttachment,
+	})
+	if err != nil {
+		return err
+	}
+	tex.Release()
+	return nil
+}
+
+// releaseMSAA drops the multisampled target, so the next frame builds one for
+// the count and size it needs.
+func (g *GPU) releaseMSAA() {
+	if g.msaaView != nil {
+		g.msaaView.Release()
+		g.msaaView = nil
+	}
+	if g.msaa != nil {
+		g.msaa.Release()
+		g.msaa = nil
+	}
+	g.msaaW, g.msaaH = 0, 0
+}
+
+// ensureMSAA returns the multisampled colour target for this frame, creating it
+// on the first frame and after a resize.
+func (g *GPU) ensureMSAA(w, h int) (*wgpu.TextureView, error) {
+	if g.samples <= 1 {
+		return nil, nil
+	}
+	if g.msaaView != nil && g.msaaW == w && g.msaaH == h {
+		return g.msaaView, nil
+	}
+	g.releaseMSAA()
+	tex, err := g.device.CreateTexture(&wgpu.TextureDescriptor{
+		Label:         "msaa-colour",
+		Size:          wgpu.Extent3D{Width: uint32(w), Height: uint32(h), DepthOrArrayLayers: 1},
+		MipLevelCount: 1,
+		SampleCount:   uint32(g.samples),
+		Dimension:     gputypes.TextureDimension2D,
+		Format:        g.format,
+		Usage:         gputypes.TextureUsageRenderAttachment,
+	})
+	if err != nil {
+		// The count the device accepted for a probe can still be refused at
+		// this size; drawing without multisampling beats not drawing.
+		g.samples = 1
+		if rerr := g.rebuildPipelines(); rerr != nil {
+			return nil, rerr
+		}
+		return nil, nil
+	}
+	view, err := g.device.CreateTextureView(tex, nil)
+	if err != nil {
+		tex.Release()
+		return nil, err
+	}
+	g.msaa, g.msaaView, g.msaaW, g.msaaH = tex, view, w, h
+	return view, nil
+}
+
 // pickFormat prefers a non-sRGB unorm format so literal hex colors stay exact.
 func pickFormat(formats []gputypes.TextureFormat) gputypes.TextureFormat {
 	for _, want := range []gputypes.TextureFormat{gputypes.TextureFormatBGRA8Unorm, gputypes.TextureFormatRGBA8Unorm} {
@@ -558,7 +709,9 @@ func (g *GPU) initPipeline() error {
 	if err != nil {
 		return fmt.Errorf("shader: %w", err)
 	}
-	defer shader.Release()
+	// The module outlives the first pipeline: a multisample count change builds
+	// both pipelines again from it.
+	g.shader = shader
 
 	g.uniform, err = g.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Label: "viewport",
@@ -607,15 +760,6 @@ func (g *GPU) initPipeline() error {
 		return fmt.Errorf("bind group: %w", err)
 	}
 
-	pl, err := g.device.CreatePipelineLayout(&wgpu.PipelineLayoutDescriptor{
-		Label:            "shapes-pipeline-layout",
-		BindGroupLayouts: []*wgpu.BindGroupLayout{g.shapeLayout},
-	})
-	if err != nil {
-		return fmt.Errorf("pipeline layout: %w", err)
-	}
-	defer pl.Release()
-
 	blend := &gputypes.BlendState{
 		Color: gputypes.BlendComponent{SrcFactor: gputypes.BlendFactorSrcAlpha, DstFactor: gputypes.BlendFactorOneMinusSrcAlpha, Operation: gputypes.BlendOperationAdd},
 		Alpha: gputypes.BlendComponent{SrcFactor: gputypes.BlendFactorOne, DstFactor: gputypes.BlendFactorOneMinusSrcAlpha, Operation: gputypes.BlendOperationAdd},
@@ -629,29 +773,65 @@ func (g *GPU) initPipeline() error {
 		{Format: gputypes.VertexFormatFloat32x4, Offset: 80, ShaderLocation: 5},
 		{Format: gputypes.VertexFormatFloat32x4, Offset: 96, ShaderLocation: 6},
 	}
-	g.pipeline, err = g.device.CreateRenderPipeline(&wgpu.RenderPipelineDescriptor{
-		Label:  "shapes",
-		Layout: pl,
-		Vertex: wgpu.VertexState{
-			Module:     shader,
-			EntryPoint: "vs_main",
-			Buffers: []gputypes.VertexBufferLayout{{
-				ArrayStride: uint64(unsafe.Sizeof(gpuInstance{})),
-				StepMode:    gputypes.VertexStepModeInstance,
-				Attributes:  attrs,
-			}},
-		},
-		Fragment: &wgpu.FragmentState{
-			Module:     shader,
-			EntryPoint: "fs_main",
-			Targets:    []gputypes.ColorTargetState{{Format: g.format, Blend: blend, WriteMask: gputypes.ColorWriteMaskAll}},
-		},
-		Primitive:   gputypes.PrimitiveState{Topology: gputypes.PrimitiveTopologyTriangleList, FrontFace: gputypes.FrontFaceCCW, CullMode: gputypes.CullModeNone},
-		Multisample: gputypes.MultisampleState{Count: 1, Mask: 0xFFFFFFFF},
+	g.blend = blend
+	g.attrs = attrs
+	return g.rebuildPipelines()
+}
+
+// rebuildPipelines builds the multisampled pipeline and the single-sample one
+// the offscreen blur passes need. Both come from one shader and one layout, so
+// a shape looks the same whichever target it lands in.
+func (g *GPU) rebuildPipelines() error {
+	if g.shader == nil || g.shapeLayout == nil {
+		return nil
+	}
+	pl, err := g.device.CreatePipelineLayout(&wgpu.PipelineLayoutDescriptor{
+		Label:            "shapes-pipeline-layout",
+		BindGroupLayouts: []*wgpu.BindGroupLayout{g.shapeLayout},
 	})
+	if err != nil {
+		return fmt.Errorf("pipeline layout: %w", err)
+	}
+	defer pl.Release()
+
+	build := func(count int) (*wgpu.RenderPipeline, error) {
+		return g.device.CreateRenderPipeline(&wgpu.RenderPipelineDescriptor{
+			Label:  "shapes",
+			Layout: pl,
+			Vertex: wgpu.VertexState{
+				Module:     g.shader,
+				EntryPoint: "vs_main",
+				Buffers: []gputypes.VertexBufferLayout{{
+					ArrayStride: uint64(unsafe.Sizeof(gpuInstance{})),
+					StepMode:    gputypes.VertexStepModeInstance,
+					Attributes:  g.attrs,
+				}},
+			},
+			Fragment: &wgpu.FragmentState{
+				Module:     g.shader,
+				EntryPoint: "fs_main",
+				Targets:    []gputypes.ColorTargetState{{Format: g.format, Blend: g.blend, WriteMask: gputypes.ColorWriteMaskAll}},
+			},
+			Primitive:   gputypes.PrimitiveState{Topology: gputypes.PrimitiveTopologyTriangleList, FrontFace: gputypes.FrontFaceCCW, CullMode: gputypes.CullModeNone},
+			Multisample: gputypes.MultisampleState{Count: uint32(count), Mask: 0xFFFFFFFF},
+		})
+	}
+	multi, err := build(g.samples)
 	if err != nil {
 		return fmt.Errorf("pipeline: %w", err)
 	}
+	single, err := build(1)
+	if err != nil {
+		multi.Release()
+		return fmt.Errorf("pipeline: %w", err)
+	}
+	if g.pipeline != nil {
+		g.pipeline.Release()
+	}
+	if g.pipeline1 != nil {
+		g.pipeline1.Release()
+	}
+	g.pipeline, g.pipeline1 = multi, single
 	return nil
 }
 
@@ -1006,13 +1186,24 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 	if err != nil {
 		return err
 	}
+	// A multisampled frame draws into its own colour target and resolves into
+	// the swapchain image at the end of the pass, which is where the samples
+	// become the smooth edge the window shows.
+	msaa, err := g.ensureMSAA(width, height)
+	if err != nil {
+		return err
+	}
+	att := wgpu.RenderPassColorAttachment{
+		View:       view,
+		LoadOp:     gputypes.LoadOpClear,
+		StoreOp:    gputypes.StoreOpStore,
+		ClearValue: clearColor(list),
+	}
+	if msaa != nil {
+		att.View, att.ResolveTarget, att.StoreOp = msaa, view, gputypes.StoreOpDiscard
+	}
 	pass, err := enc.BeginRenderPass(&wgpu.RenderPassDescriptor{
-		ColorAttachments: []wgpu.RenderPassColorAttachment{{
-			View:       view,
-			LoadOp:     gputypes.LoadOpClear,
-			StoreOp:    gputypes.StoreOpStore,
-			ClearValue: clearColor(list),
-		}},
+		ColorAttachments: []wgpu.RenderPassColorAttachment{att},
 	})
 	if err != nil {
 		return err
@@ -1136,6 +1327,13 @@ func (g *GPU) Release() {
 	}
 	if g.pipeline != nil {
 		g.pipeline.Release()
+	}
+	if g.pipeline1 != nil {
+		g.pipeline1.Release()
+	}
+	g.releaseMSAA()
+	if g.shader != nil {
+		g.shader.Release()
 	}
 	if g.bindG != nil {
 		g.bindG.Release()

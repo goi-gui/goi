@@ -232,3 +232,26 @@ func BenchmarkVideoFrameWrite(b *testing.B) {
 		at.writeRegion(src, slot.r)
 	}
 }
+
+// TestSamplesFallBackInOrder pins the fallback chain: a device that refuses the
+// requested count still draws at four, and one that refuses that draws without
+// multisampling rather than failing the frame.
+func TestSamplesFallBackInOrder(t *testing.T) {
+	cases := map[int][]int{
+		8: {8, 4, 1},
+		4: {4, 1},
+		2: {2, 1},
+		1: {1},
+	}
+	for want, order := range cases {
+		got := samplesTryOrder(want)
+		if len(got) != len(order) {
+			t.Fatalf("%d: %v, want %v", want, got, order)
+		}
+		for i := range order {
+			if got[i] != order[i] {
+				t.Fatalf("%d: %v, want %v", want, got, order)
+			}
+		}
+	}
+}

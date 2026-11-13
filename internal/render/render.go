@@ -16,6 +16,11 @@ type Renderer interface {
 	// With it off a frame is presented as soon as it is ready, so the app can
 	// draw faster than the panel.
 	SetVSync(on bool) error
+	// SetSamples chooses the multisample count (1, 2, 4 or 8) the surface is
+	// drawn with, falling back to a count the device accepts. Samples reports
+	// what it settled on.
+	SetSamples(samples int) error
+	Samples() int
 	// Render draws the list and presents the frame. width and height are the
 	// framebuffer size in device pixels.
 	Render(list *paint.List, width, height int) error

@@ -50,6 +50,9 @@ type App struct {
 	needsFrame bool
 	// showFPS is the debug overlay switch; off unless the app asks for it.
 	showFPS bool
+	// msaa is the multisample count the renderer draws with; 0 keeps the
+	// renderer's own default (4).
+	msaa int
 	// vsync waits for the display refresh; maxFPS caps the drawn frames per
 	// second when it does not. Both default to "tied to the display".
 	vsync  bool
@@ -257,6 +260,35 @@ func (a *App) VSync(on bool) {
 	a.needsFrame = true
 	if d, ok := a.driver.(*gpuDriver); ok && d.gpu != nil {
 		if err := d.gpu.SetVSync(on); err != nil {
+			a.reportError(err)
+		}
+	}
+	if a.driver != nil {
+		a.driver.wake()
+	}
+}
+
+// MSAA sets the multisample count the window draws with: 1 turns it off, and
+// 2, 4 and 8 ask for that many samples per pixel. A device that cannot draw the
+// surface at the requested count falls back to 4 and then to 1, so the call
+// never fails the app; the renderer's Samples reports what it settled on.
+//
+// Four, the default, is the count WebGPU guarantees, and it is enough to take
+// the last stair-step off a curve. Curves are drawn from signed distances, which
+// already fade their own edges, so a higher count refines edges rather than
+// making a shape that lacked them.
+func (a *App) MSAA(samples int) {
+	if samples < 0 {
+		return
+	}
+	if samples != 0 && samples != 1 && samples != 2 && samples != 4 && samples != 8 {
+		a.reportError(fmt.Errorf("ui: MSAA(%d): use 1, 2, 4 or 8", samples))
+		return
+	}
+	a.msaa = samples
+	a.needsFrame = true
+	if d, ok := a.driver.(*gpuDriver); ok && d.gpu != nil && samples > 0 {
+		if err := d.gpu.SetSamples(samples); err != nil {
 			a.reportError(err)
 		}
 	}

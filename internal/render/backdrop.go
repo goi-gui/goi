@@ -157,7 +157,9 @@ func (g *GPU) bindSegment(src *wgpu.TextureView, seg *wgpu.Buffer) (*wgpu.BindGr
 
 // shapePass draws count instances into target, beginning at the first instance
 // the pass' segment uniform names. load keeps what the target already holds.
-func (g *GPU) shapePass(enc *wgpu.CommandEncoder, bd *backdropTarget, slot int, target *wgpu.TextureView, load bool, clear gputypes.Color, start, count int, src *wgpu.TextureView) error {
+// resolve is the single-sample texture a multisampled pass resolves into; nil
+// means the target is single-sample and the plain pipeline draws it.
+func (g *GPU) shapePass(enc *wgpu.CommandEncoder, bd *backdropTarget, slot int, target, resolve *wgpu.TextureView, load bool, clear gputypes.Color, start, count int, src *wgpu.TextureView) error {
 	seg, err := bd.seg(g, slot, start)
 	if err != nil {
 		return err
@@ -176,6 +178,13 @@ func (g *GPU) shapePass(enc *wgpu.CommandEncoder, bd *backdropTarget, slot int, 
 	if load {
 		att.LoadOp = gputypes.LoadOpLoad
 	}
+	pipeline := g.pipeline1
+	if resolve != nil {
+		// The samples are kept as well as resolved: a later scene pass loads
+		// this target, and a discarded attachment would load garbage.
+		att.ResolveTarget = resolve
+		pipeline = g.pipeline
+	}
 	pass, err := enc.BeginRenderPass(&wgpu.RenderPassDescriptor{
 		ColorAttachments: []wgpu.RenderPassColorAttachment{att},
 	})
@@ -183,7 +192,7 @@ func (g *GPU) shapePass(enc *wgpu.CommandEncoder, bd *backdropTarget, slot int, 
 		return err
 	}
 	if count > 0 {
-		pass.SetPipeline(g.pipeline)
+		pass.SetPipeline(pipeline)
 		pass.SetBindGroup(0, bg, nil)
 		pass.SetVertexBuffer(0, g.storage, 0)
 		pass.Draw(gputypes.DrawArgs{VertexCount: 6, InstanceCount: uint32(count)})
@@ -227,22 +236,22 @@ func (g *GPU) renderBackdrop(list *paint.List, width, height int, panels []backd
 	slot, start := 0, 0
 	load := false
 	for _, p := range panels {
-		if err := g.shapePass(enc, bd, slot, bd.sceneView, load, clear, start, p.at-start, nil); err != nil {
+		if err := g.shapePass(enc, bd, slot, bd.sceneView, nil, load, clear, start, p.at-start, nil); err != nil {
 			return err
 		}
 		slot++
 		load = true
 		// Horizontal then vertical: a quadratic kernel from two 9-tap passes.
 		// Each samples what the previous one wrote, so the blur is separable.
-		if err := g.shapePass(enc, bd, slot, bd.tmpView, true, clear, p.at, 1, bd.sceneView); err != nil {
+		if err := g.shapePass(enc, bd, slot, bd.tmpView, nil, true, clear, p.at, 1, bd.sceneView); err != nil {
 			return err
 		}
 		slot++
-		if err := g.shapePass(enc, bd, slot, bd.blurView, true, clear, p.at+1, 1, bd.tmpView); err != nil {
+		if err := g.shapePass(enc, bd, slot, bd.blurView, nil, true, clear, p.at+1, 1, bd.tmpView); err != nil {
 			return err
 		}
 		slot++
-		if err := g.shapePass(enc, bd, slot, bd.sceneView, true, clear, p.at+2, 1, bd.blurView); err != nil {
+		if err := g.shapePass(enc, bd, slot, bd.sceneView, nil, true, clear, p.at+2, 1, bd.blurView); err != nil {
 			return err
 		}
 		slot++
@@ -251,11 +260,13 @@ func (g *GPU) renderBackdrop(list *paint.List, width, height int, panels []backd
 	// The last instance copies the scene to the surface; everything before it is
 	// the scene itself.
 	blit := len(g.instances) - 1
-	if err := g.shapePass(enc, bd, slot, bd.sceneView, load, clear, start, blit-start, nil); err != nil {
+	if err := g.shapePass(enc, bd, slot, bd.sceneView, nil, load, clear, start, blit-start, nil); err != nil {
 		return err
 	}
 	slot++
-	if err := g.shapePass(enc, bd, slot, view, false, clear, blit, 1, bd.sceneView); err != nil {
+	// The composite is one textured quad, so it needs no samples of its own:
+	// the scene it samples was already resolved.
+	if err := g.shapePass(enc, bd, slot, view, nil, false, clear, blit, 1, bd.sceneView); err != nil {
 		return err
 	}
 
