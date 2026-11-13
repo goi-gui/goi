@@ -1708,8 +1708,10 @@ func (l *List) paintCircularProgress(c *tree.Component, r tree.Rect, clip tree.R
 	end := frac * 2 * math.Pi
 	l.progressArc(cx, cy, mid, thickness, 0, end, col.Primary, clip)
 	// The track is what is left of the ring, with a gap at each end of the
-	// filled part, so the two never touch and nothing runs under the arc.
-	gap := gapFor(thickness) / mid
+	// filled part, so the two never touch and nothing runs under the arc. The
+	// angle has to carry the two round caps as well as the gap: each band ends
+	// half a stroke past the angle it is cut at.
+	gap := (thickness + gapFor(thickness)) / mid
 	switch {
 	case end <= 0:
 		l.progressArc(cx, cy, mid, thickness, 0, 2*math.Pi, col.SecondaryContainer, clip)
@@ -1788,9 +1790,10 @@ func (l *List) paintWavyRing(r tree.Rect, frac, thickness float64, clip tree.Rec
 	l.chartDot(point(0), stroke/2, col.Primary, clip)
 	l.chartDot(point(end), stroke/2, col.Primary, clip)
 	// The track: a plain 4dp ring for the rest of the circle, a gap away from
-	// each end of the ribbon.
+	// each end of the ribbon. The angle carries the ribbon's cap and the
+	// track's own.
 	const trackW = 4.0
-	gap := gapFor(trackW) / rr
+	gap := (stroke/2 + trackW/2 + gapFor(trackW)) / rr
 	if 2*math.Pi-gap > end+gap {
 		l.progressArc(cx, cy, rr, trackW, end+gap, 2*math.Pi-gap, col.SecondaryContainer, clip)
 	}

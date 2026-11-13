@@ -906,3 +906,48 @@ func TestProgressHeightFollowsThickness(t *testing.T) {
 		t.Fatalf("a 12dp wavy bar is %.1f tall, want 21", got)
 	}
 }
+
+// TestProgressGapNeverCloses is the look the design asks for: the filled part
+// and the track never touch. A bar keeps a gap the width of its stroke; a ring's
+// gap has to carry the two round caps as well, which is what closed it before.
+func TestProgressGapNeverCloses(t *testing.T) {
+	for _, thickness := range []string{"", "thickness: 10"} {
+		// The bar: the active rect's right edge to the track's left edge.
+		l := m3list(t, `Window { Column { LinearProgress { value: 0.4 width: 300 `+thickness+` } } }`)
+		var activeRight, trackLeft float64
+		for _, op := range l.Ops {
+			switch {
+			case op.Kind != Fill || op.Shape != RoundedRect || op.Rect[2] < 20:
+			case op.Color == m3.Light().Colors.Primary:
+				activeRight = float64(op.Rect[0] + op.Rect[2])
+			case op.Color == m3.Light().Colors.SecondaryContainer:
+				trackLeft = float64(op.Rect[0])
+			}
+		}
+		if gap := trackLeft - activeRight; gap < 2.99 {
+			t.Fatalf("%s: the bar's gap is %.2fdp", thickness, gap)
+		}
+
+		// The ring: the angle between the two arcs, less the cap each band draws.
+		l = m3list(t, `Window { CircularProgress { value: 0.4 `+thickness+` } }`)
+		var arcs []Op
+		for _, op := range l.Ops {
+			if op.Kind == Fill && op.Shape == Arc {
+				arcs = append(arcs, op)
+			}
+		}
+		if len(arcs) != 2 {
+			t.Fatalf("%s: %d arcs, want the value and the track", thickness, len(arcs))
+		}
+		mid := float64(arcs[0].Rect[2])/2 - float64(arcs[0].Thickness)/2
+		edge := (float64(arcs[1].StartAngle)-float64(arcs[0].EndAngle))*mid - float64(arcs[0].Thickness)
+		if edge < 2.99 {
+			t.Fatalf("%s: the ring's gap is %.2fdp", thickness, edge)
+		}
+		// And the gap at the other end, between the track's end and 12 o'clock.
+		start := 2*math.Pi - float64(arcs[1].EndAngle)
+		if edge2 := start*mid - float64(arcs[0].Thickness); edge2 < 2.99 {
+			t.Fatalf("%s: the ring's second gap is %.2fdp", thickness, edge2)
+		}
+	}
+}
