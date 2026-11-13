@@ -1,3 +1,5 @@
+//go:build !js
+
 package ui
 
 import (
@@ -12,7 +14,6 @@ import (
 	"github.com/goi-gui/goi/internal/img"
 	"github.com/goi-gui/goi/internal/media"
 	"github.com/goi-gui/goi/internal/platform"
-	"github.com/goi-gui/goi/internal/subtitle"
 	"github.com/goi-gui/goi/internal/tree"
 )
 
@@ -28,16 +29,14 @@ import (
 // works without a scheduler of our own.
 
 const (
+	// maxBufferSeconds caps the property: a minute of video in RAM is a bug,
+	// not a feature.
+	maxBufferSeconds = 10.0
+
 	// audioRate and audioChannels are the format every decoder converts to, so
 	// one device serves an mp3 and a 48 kHz film alike.
 	audioRate     = 48000
 	audioChannels = 2
-	// DefaultBuffer is how far ahead a player decodes when the design does not
-	// say. Long enough to ride out a hiccup, short enough to seek quickly.
-	DefaultBuffer = 1.5
-	// maxBufferSeconds caps the property: a minute of video in RAM is a bug,
-	// not a feature.
-	maxBufferSeconds = 10.0
 	// Video and audio byte budgets. A buffer is measured in seconds, but memory
 	// is what runs out, so the seconds are clamped to these.
 	maxVideoBufferBytes = 64 << 20
@@ -62,12 +61,6 @@ const (
 	// decoder is reopened; short enough to be a blink, long enough not to spin
 	// on a server that is refusing the connection.
 	liveRetry = time.Second
-	// controlsHide is how long the control bar stays after the pointer stops
-	// moving over a player, or leaves it.
-	controlsHide = 3 * time.Second
-	// frameRetry is how often the loop looks again while a video is due a frame
-	// its decoder has not produced yet.
-	frameRetry = 8 * time.Millisecond
 )
 
 // mediaPlayer is one running decoder for one node.
@@ -175,10 +168,10 @@ func (a *App) resolveMedia(src string) (string, error) {
 	if media.IsURL(src) || filepath.IsAbs(src) {
 		return src, nil
 	}
-	if a.mediaFiles == nil {
-		a.mediaFiles = map[string]string{}
+	if a.decoders.files == nil {
+		a.decoders.files = map[string]string{}
 	}
-	if p, ok := a.mediaFiles[src]; ok {
+	if p, ok := a.decoders.files[src]; ok {
 		return p, nil
 	}
 	// A `goi://` path reads the design's container; a bare relative path is
@@ -204,7 +197,7 @@ func (a *App) resolveMedia(src string) (string, error) {
 		os.Remove(f.Name())
 		return "", err
 	}
-	a.mediaFiles[src] = f.Name()
+	a.decoders.files[src] = f.Name()
 	return f.Name(), nil
 }
 
@@ -218,7 +211,7 @@ func (a *App) probeMedia(n tree.Node, m *tree.Media) {
 	if src == "" {
 		return
 	}
-	if info, ok := a.mediaInfo[src]; ok {
+	if info, ok := a.decoders.info[src]; ok {
 		a.applyMediaInfo(n, m, src, info)
 		return
 	}
@@ -231,13 +224,13 @@ func (a *App) probeMedia(n tree.Node, m *tree.Media) {
 	m.Loading = true
 	m.LoadErr = nil
 	a.pulsing = true
-	if a.probes == nil {
-		a.probes = map[string]bool{}
+	if a.decoders.probes == nil {
+		a.decoders.probes = map[string]bool{}
 	}
-	if a.probes[src] {
+	if a.decoders.probes[src] {
 		return // one probe per src, however many nodes share it
 	}
-	a.probes[src] = true
+	a.decoders.probes[src] = true
 	go func() {
 		info, err := media.Probe(path)
 		a.Post(func() { a.finishProbe(src, info, err) })
@@ -247,12 +240,12 @@ func (a *App) probeMedia(n tree.Node, m *tree.Media) {
 // finishProbe applies a probe that ran in the background to every node still
 // waiting for that src, then starts any player that asked to play early.
 func (a *App) finishProbe(src string, info media.Info, err error) {
-	delete(a.probes, src)
+	delete(a.decoders.probes, src)
 	if err == nil {
-		if a.mediaInfo == nil {
-			a.mediaInfo = map[string]media.Info{}
+		if a.decoders.info == nil {
+			a.decoders.info = map[string]media.Info{}
 		}
-		a.mediaInfo[src] = info
+		a.decoders.info[src] = info
 	}
 	if a.win == nil || a.win.tree == nil {
 		return
@@ -332,7 +325,7 @@ func (a *App) startPlayer(n tree.Node) (*mediaPlayer, error) {
 		track: int(m.AudioTrack.Get()), wake: a.wakeFrames}
 	p.volume = clampUnit(m.Volume.Get())
 	p.muted = m.Muted.Get()
-	info := a.mediaInfo[src]
+	info := a.decoders.info[src]
 	if info.Width == 0 && info.Height == 0 && !info.HasAudio {
 		probed, err := media.Probe(path)
 		if err != nil {
@@ -389,6 +382,17 @@ func (a *App) startPlayer(n tree.Node) (*mediaPlayer, error) {
 	return p, nil
 }
 
+// bufferSeconds clamps the design's buffer to something a machine can hold.
+func bufferSeconds(v float64) float64 {
+	if v <= 0 {
+		return DefaultBuffer
+	}
+	if v > maxBufferSeconds {
+		return maxBufferSeconds
+	}
+	return v
+}
+
 // decodeSize picks the frame size a video decodes at: the file's own size,
 // shrunk to what the box can actually show, and capped so a huge file cannot
 // spend the whole frame budget on one picture.
@@ -428,17 +432,6 @@ func decodeSize(info media.Info, box tree.Rect, live bool) (int, int) {
 		sh = 2
 	}
 	return sw, sh
-}
-
-// bufferSeconds clamps the design's buffer to something a machine can hold.
-func bufferSeconds(v float64) float64 {
-	if v <= 0 {
-		return DefaultBuffer
-	}
-	if v > maxBufferSeconds {
-		return maxBufferSeconds
-	}
-	return v
 }
 
 // openFrames sizes the frame queue: `buffer` seconds of video at the file's
@@ -748,78 +741,6 @@ func (p *mediaPlayer) switchAudio(track int, at time.Duration) {
 }
 
 // MediaRequest runs one playback method a design called by id.
-func (a *App) mediaRequest(n tree.Node, method string, args []any) bool {
-	m, ok := tree.MediaNode(n)
-	if !ok {
-		return false
-	}
-	switch method {
-	case "play":
-		a.playMedia(n)
-	case "pause":
-		a.pauseMedia(n)
-	case "stop":
-		a.stopMedia(n)
-	case "toggle":
-		if m.Playing && !m.Paused {
-			a.pauseMedia(n)
-		} else {
-			a.playMedia(n)
-		}
-	case "fullscreen":
-		a.setFullscreen(n, true)
-	case "windowed":
-		a.setFullscreen(n, false)
-	case "toggleFullscreen":
-		if v, ok := n.(*tree.Video); ok {
-			a.setFullscreen(n, !v.Fullscreen.Get())
-		}
-	case "seek":
-		if len(args) != 1 {
-			return false
-		}
-		sec, ok := toFloat(args[0])
-		if !ok {
-			return false
-		}
-		a.seekMedia(n, time.Duration(sec*float64(time.Second)))
-	case "volume":
-		if len(args) != 1 {
-			return false
-		}
-		sec, ok := toFloat(args[0])
-		if !ok {
-			return false
-		}
-		a.setMediaVolume(n, sec)
-	case "audioTrack":
-		if len(args) != 1 {
-			return false
-		}
-		idx, ok := toFloat(args[0])
-		if !ok {
-			return false
-		}
-		a.setMediaAudioTrack(n, int(idx))
-	default:
-		return false
-	}
-	return true
-}
-
-// toFloat accepts the numeric shapes a bridge argument can arrive as.
-func toFloat(v any) (float64, bool) {
-	switch x := v.(type) {
-	case float64:
-		return x, true
-	case int:
-		return float64(x), true
-	case int64:
-		return float64(x), true
-	}
-	return 0, false
-}
-
 // playMedia starts or resumes a player.
 func (a *App) playMedia(n tree.Node) {
 	m, ok := tree.MediaNode(n)
@@ -935,99 +856,6 @@ func (a *App) seekMedia(n tree.Node, at time.Duration) {
 // setFullscreen puts a video over the whole window. The window itself follows
 // in syncVideoFullscreen, which also covers a design that writes
 // `fullscreen: true` and never calls the method.
-func (a *App) setFullscreen(n tree.Node, on bool) {
-	v, ok := n.(*tree.Video)
-	if !ok {
-		return
-	}
-	if v.Fullscreen.Get() == on {
-		return
-	}
-	v.Fullscreen.Set(on)
-	v.Base().MarkDirty(tree.DirtyLayout)
-	a.markDirty(tree.DirtyLayout)
-}
-
-// syncVideoFullscreen makes the window follow the videos: a fullscreen video
-// needs the platform window fullscreen too, or it fills a smaller box with a
-// title bar over it; leaving the last one restores whatever the design asked
-// for.
-func (a *App) syncVideoFullscreen() {
-	if a.win == nil || a.win.tree == nil {
-		return
-	}
-	on := tree.FullscreenVideo(a.win.tree) != nil
-	if on {
-		if a.fullscreenRestore != nil || a.win.tree.Root.Fullscreen.Get() {
-			return
-		}
-		prev := a.win.tree.Root.Fullscreen.Get()
-		a.fullscreenRestore = &prev
-		a.win.tree.Root.Fullscreen.Set(true)
-		return
-	}
-	if a.fullscreenRestore == nil {
-		return
-	}
-	a.win.tree.Root.Fullscreen.Set(*a.fullscreenRestore)
-	a.fullscreenRestore = nil
-}
-
-// loadSubtitles reads and parses the design's SRT. A local file is a few
-// kilobytes read here; a URL is fetched in the background with the same bounded
-// client an image uses, so a slow host cannot hold up the window.
-func (a *App) loadSubtitles(m *tree.Media) {
-	src := m.Subtitles.Get()
-	m.RenderedSubtitles = src
-	m.Cues, m.SubtitleErr = nil, nil
-	if src == "" {
-		return
-	}
-	if isRemoteSrc(src) {
-		go func() {
-			b, err := fetchRemote(src)
-			a.Post(func() { a.finishSubtitles(src, b, err) })
-		}()
-		return
-	}
-	b, err := a.readSrc(src)
-	a.applySubtitles(m, src, b, err)
-}
-
-// finishSubtitles hands a fetched SRT to every player still waiting for it.
-func (a *App) finishSubtitles(src string, b []byte, err error) {
-	if a.win == nil || a.win.tree == nil {
-		return
-	}
-	a.win.tree.Walk(func(n tree.Node) {
-		m, ok := tree.MediaNode(n)
-		if !ok || m.Subtitles.Get() != src || m.RenderedSubtitles != src {
-			return
-		}
-		a.applySubtitles(m, src, b, err)
-		m.Base().MarkDirty(tree.DirtyPaint)
-	})
-	a.markDirty(tree.DirtyPaint)
-}
-
-// applySubtitles parses one SRT read and stores the result, recording why it
-// failed rather than failing the player.
-func (a *App) applySubtitles(m *tree.Media, src string, b []byte, err error) {
-	if err != nil {
-		m.SubtitleErr = err
-		return
-	}
-	cues, perr := subtitle.Parse(b)
-	if perr != nil {
-		m.SubtitleErr = fmt.Errorf("%s: %w", src, perr)
-		return
-	}
-	m.Cues = cues
-}
-
-// setMediaAudioTrack picks an audio stream and reopens just the sound. The
-// index is clamped to the streams the file has, so a design that names a track
-// the film lacks keeps playing instead of going silent.
 func (a *App) setMediaAudioTrack(n tree.Node, track int) {
 	m, ok := tree.MediaNode(n)
 	if !ok {
@@ -1069,17 +897,6 @@ func (a *App) dropPlayer(n tree.Node) {
 			return
 		}
 	}
-}
-
-// clampUnit holds a number in 0..1.
-func clampUnit(v float64) float64 {
-	if v < 0 {
-		return 0
-	}
-	if v > 1 {
-		return 1
-	}
-	return v
 }
 
 // syncMedia follows the design: a src change restarts the player, a muted or
@@ -1506,8 +1323,8 @@ func (a *App) closeMedia() {
 	a.media = nil
 	a.hasMedia = false
 	// The temp files exist only to give ffmpeg a path; they go with the app.
-	for _, path := range a.mediaFiles {
+	for _, path := range a.decoders.files {
 		os.Remove(path)
 	}
-	a.mediaFiles = nil
+	a.decoders.files = nil
 }

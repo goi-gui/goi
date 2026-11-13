@@ -11,7 +11,6 @@ import (
 	"github.com/goi-gui/goi/internal/i18n"
 	"github.com/goi-gui/goi/internal/img"
 	"github.com/goi-gui/goi/internal/m3"
-	"github.com/goi-gui/goi/internal/media"
 	"github.com/goi-gui/goi/internal/svg"
 	"github.com/goi-gui/goi/internal/tree"
 )
@@ -38,8 +37,12 @@ type App struct {
 	mu     sync.Mutex
 	posted []func()
 
-	win        *Window
-	assets     fs.FS
+	win    *Window
+	assets fs.FS
+	// picked holds the files the user chose with PickFiles this session, keyed
+	// by their `goi://picked/…` src, so the image, media and subtitle readers
+	// all reach them the way they reach an asset.
+	picked     map[string][]byte
 	path       string
 	opts       Options
 	driver     driver
@@ -97,20 +100,16 @@ type App struct {
 	// themes are the schemes a `.goi` file may name, keyed by name.
 	themes map[string]*Theme
 	// hasMedia is true while the tree holds an Audio or Video, and media holds
-	// the running players, one per playing node. mediaInfo caches the probe of
-	// each src, so a reload does not run ffmpeg again.
-	hasMedia  bool
-	media     []*mediaPlayer
-	mediaInfo map[string]media.Info
-	// probes holds the srcs with a background ffmpeg probe in flight, so two
-	// nodes with the same src share one process.
-	probes map[string]bool
+	// the running players, one per playing node.
+	hasMedia bool
+	media    []*mediaPlayer
+	// decoders is the ffmpeg side of playback: the probe cache and the temp
+	// files it reads. A browser has no decoder of its own to feed, so the struct
+	// is empty there.
+	decoders mediaCache
 	// fullscreenRestore is the window's fullscreen state before a video took it
 	// over, so leaving the video puts it back.
 	fullscreenRestore *bool
-	// mediaFiles maps a src inside the design's container to the temp file
-	// ffmpeg reads, so one copy serves every player and a reload.
-	mediaFiles map[string]string
 	// fonts holds the families LoadFont registered, so a window created after
 	// the call still finds them.
 	fonts map[string][]byte

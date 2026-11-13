@@ -9,7 +9,7 @@ import "errors"
 // that handles the desktop error still compiles.
 var ErrDialogCanceled = errors.New("ui: the browser has no file dialogs")
 
-var errNoBrowserDialog = errors.New("ui: file dialogs are not available in the browser; use an <input type=\"file\">")
+var errNoBrowserDialog = errors.New("ui: a browser has no blocking file dialog; use App.PickFiles")
 
 // DialogsAvailable reports whether OpenFile and the rest can work here.
 func DialogsAvailable() bool { return false }

@@ -44,6 +44,12 @@ func isAssetSrc(src string) bool { return strings.HasPrefix(src, assetScheme) }
 // working directory or absolute. Remote URLs never reach here: they are fetched
 // in the background.
 func (a *App) readSrc(src string) ([]byte, error) {
+	if isPickSrc(src) {
+		if b, ok := a.picked[src]; ok {
+			return b, nil
+		}
+		return nil, fmt.Errorf("%s: not picked this session", src)
+	}
 	if isAssetSrc(src) {
 		if a.assets == nil {
 			return nil, fmt.Errorf("%s: no asset container", src)

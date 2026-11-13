@@ -46,6 +46,12 @@ type Window struct {
 	raf     js.Func
 	stop    js.Func
 	layouts js.Func
+	// ime is the invisible textarea the browser's input method composes into.
+	// A canvas cannot host a candidate window, so this element is what gives the
+	// IME something to edit while the app still draws its own caret.
+	ime       js.Value
+	imeFuncs  []js.Func
+	composing bool
 	// pending is the size the page asked for before the app installed its
 	// input sink, delivered by SetInput. A canvas that starts at the page's
 	// size rather than the design's would otherwise keep the wrong size.
@@ -73,6 +79,19 @@ func New(title string, width, height int, decorated bool) (*Window, error) {
 		canvas = doc.Call("createElement", "canvas")
 		doc.Get("body").Call("appendChild", canvas)
 	}
+	if gpu := js.Global().Get("navigator").Get("gpu"); gpu.IsUndefined() || gpu.IsNull() {
+		// A page on a browser without WebGPU gets a sentence instead of a blank
+		// canvas: the framework cannot draw, and saying so is what keeps the
+		// failure from looking like the app's own bug.
+		msg := doc.Call("createElement", "p")
+		msg.Set("textContent", "This browser has no WebGPU, so the app cannot draw. Try a current Chrome, Edge or Firefox.")
+		msg.Get("style").Set("font", "16px system-ui, sans-serif")
+		msg.Get("style").Set("padding", "24px")
+		msg.Get("style").Set("color", "#333")
+		doc.Get("body").Call("appendChild", msg)
+		return nil, fmt.Errorf("platform: this browser has no WebGPU")
+	}
+
 	p := &Window{
 		canvas:      canvas,
 		width:       maxInt(width, 1),
@@ -102,6 +121,7 @@ func New(title string, width, height int, decorated bool) (*Window, error) {
 		style.Set("height", fmt.Sprintf("%dpx", p.height))
 	}
 	p.applySize(p.width, p.height)
+	p.createIME()
 	p.listen()
 	p.watchTheme()
 	p.startFrames()
@@ -189,6 +209,52 @@ func (p *Window) listen() {
 	})
 	c.Call("addEventListener", "mouseleave", leave)
 
+	// The input method composes into the hidden textarea; what it produces is
+	// the app's preedit and committed text, on the same path SDL's IME uses.
+	if p.ime.Truthy() {
+		start := js.FuncOf(func(_ js.Value, _ []js.Value) any {
+			p.composing = true
+			p.ime.Set("value", "")
+			return nil
+		})
+		update := js.FuncOf(func(_ js.Value, args []js.Value) any {
+			if len(args) == 0 {
+				return nil
+			}
+			text := args[0].Get("data").String()
+			p.post(func(in Input) { in.Preedit(text, len([]rune(text))) })
+			return nil
+		})
+		end := js.FuncOf(func(_ js.Value, args []js.Value) any {
+			p.composing = false
+			p.ime.Set("value", "")
+			if len(args) == 0 {
+				return nil
+			}
+			text := args[0].Get("data").String()
+			if text != "" {
+				p.post(func(in Input) { in.CommitText(text) })
+			}
+			return nil
+		})
+		typed := js.FuncOf(func(_ js.Value, _ []js.Value) any {
+			if p.composing {
+				return nil
+			}
+			text := p.ime.Get("value").String()
+			p.ime.Set("value", "")
+			if text != "" {
+				p.post(func(in Input) { in.CommitText(text) })
+			}
+			return nil
+		})
+		p.ime.Call("addEventListener", "compositionstart", start)
+		p.ime.Call("addEventListener", "compositionupdate", update)
+		p.ime.Call("addEventListener", "compositionend", end)
+		p.ime.Call("addEventListener", "input", typed)
+		p.imeFuncs = []js.Func{start, update, end, typed}
+	}
+
 	wheel := js.FuncOf(func(_ js.Value, args []js.Value) any {
 		e := args[0]
 		// A wheel notch is 100 delta units in every browser; the framework
@@ -204,6 +270,11 @@ func (p *Window) listen() {
 
 	keydown := js.FuncOf(func(_ js.Value, args []js.Value) any {
 		e := args[0]
+		// An IME owns the keyboard while it composes, and the composition
+		// events above already carry the text.
+		if e.Get("isComposing").Bool() {
+			return nil
+		}
 		if e.Get("ctrlKey").Bool() || e.Get("metaKey").Bool() {
 			e.Call("preventDefault")
 		}
@@ -281,6 +352,9 @@ func (p *Window) listen() {
 		blur.Release()
 		copyFn.Release()
 		pasteFn.Release()
+		for _, f := range p.imeFuncs {
+			f.Release()
+		}
 		return nil
 	})
 
@@ -313,8 +387,8 @@ func (p *Window) local(e js.Value) (float64, float64) {
 	return x, y
 }
 
-// decodeKey maps a DOM keydown to a framework key and, for a printable key,
-// the text to commit.
+// decodeKey maps a DOM keydown to a framework key. Text is not produced here;
+// an `input` event on the hidden textarea commits it.
 func decodeKey(e js.Value) (Key, string, bool) {
 	key := e.Get("key")
 	if key.Type() != js.TypeString {
@@ -344,7 +418,7 @@ func keyFor(s string, ctrl bool) (Key, string, bool) {
 	case "Tab":
 		return KeyTab, "", true
 	case " ":
-		return KeySpace, " ", true
+		return KeySpace, "", true
 	case "Escape":
 		return KeyEscape, "", true
 	case "ArrowUp":
@@ -365,11 +439,10 @@ func keyFor(s string, ctrl bool) (Key, string, bool) {
 		}
 		return KeyNone, "", false
 	}
-	// A printable key arrives whole, so an IME composition is not in it; the
-	// candidate window is the browser's own and types into the field it targets.
-	if len([]rune(s)) == 1 {
-		return KeyNone, s, true
-	}
+	// A printable key is left to the browser: it types into the hidden textarea
+	// and the resulting `input` event commits the text, which is what makes
+	// dead keys, AltGr and an input method all take the same path. Consuming it
+	// here would type everything twice.
 	return KeyNone, "", false
 }
 
@@ -501,9 +574,59 @@ func cursorCSS(c Cursor) string {
 	return "default"
 }
 
-// SetTextInput is a no-op: the browser's own IME composes into the focused
-// element, and a canvas has none. Plain typing still arrives through keydown.
-func (p *Window) SetTextInput(active bool, x, y, w, h float64) {}
+// SetTextInput moves the hidden textarea to the caret and focuses it, which is
+// what lets the browser's input method compose; without a focused editable
+// element there is nothing for a candidate window to attach to.
+func (p *Window) SetTextInput(active bool, x, y, w, h float64) {
+	if !p.ime.Truthy() {
+		return
+	}
+	if !active {
+		if p.composing {
+			return
+		}
+		p.ime.Set("value", "")
+		p.ime.Call("blur")
+		return
+	}
+	rect := p.canvas.Call("getBoundingClientRect")
+	style := p.ime.Get("style")
+	style.Set("left", fmt.Sprintf("%.1fpx", rect.Get("left").Float()+x))
+	style.Set("top", fmt.Sprintf("%.1fpx", rect.Get("top").Float()+y+w*0.5))
+	if doc := js.Global().Get("document"); doc.Get("activeElement").Equal(p.ime) {
+		return
+	}
+	p.ime.Call("focus")
+}
+
+// createIME builds the invisible textarea. It is one pixel tall and fully
+// transparent, so the candidate window follows the caret while the app's own
+// caret is the one that shows.
+func (p *Window) createIME() {
+	doc := js.Global().Get("document")
+	ta := doc.Call("createElement", "textarea")
+	ta.Set("autocomplete", "off")
+	ta.Set("autocorrect", "off")
+	ta.Set("autocapitalize", "off")
+	ta.Set("spellcheck", false)
+	ta.Set("aria-hidden", "true")
+	ta.Set("tabIndex", -1)
+	style := ta.Get("style")
+	style.Set("position", "fixed")
+	style.Set("left", "0")
+	style.Set("top", "0")
+	style.Set("width", "1px")
+	style.Set("height", "1px")
+	style.Set("padding", "0")
+	style.Set("border", "none")
+	style.Set("outline", "none")
+	style.Set("resize", "none")
+	style.Set("opacity", "0")
+	style.Set("overflow", "hidden")
+	style.Set("zIndex", "-1")
+	doc.Get("body").Call("appendChild", ta)
+	p.ime = ta
+}
 
 // FramebufferSize returns the canvas backing store in device pixels.
 func (p *Window) FramebufferSize() (int, int) {

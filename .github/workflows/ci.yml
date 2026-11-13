@@ -119,6 +119,9 @@ jobs:
       - run: GOOS=js GOARCH=wasm go build ./...
       - run: GOOS=js GOARCH=wasm go vet ./internal/platform ./internal/render
       - run: GOOS=js GOARCH=wasm go test -exec="$(go env GOROOT)/lib/wasm/go_js_wasm_exec" ./internal/platform
+      # The browser-only piece that holds no DOM: the picker's accept string.
+      # The keyboard map and cursor names are covered in internal/platform.
+      - run: GOOS=js GOARCH=wasm go test -exec="$(go env GOROOT)/lib/wasm/go_js_wasm_exec" ./ui -run PickAccept
 
   lint:
     runs-on: ubuntu-latest
