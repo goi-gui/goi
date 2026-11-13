@@ -1166,7 +1166,10 @@ func (l *List) paintPie(c *tree.Chart, lay ChartLayout, clip tree.Rect) {
 			x := s.CX + math.Sin(mid)*rr
 			y := s.CY - math.Cos(mid)*rr
 			box := tree.Rect{X: x - 24, Y: y - 8, W: 48, H: 16}
-			l.textIn(label, style, chartText(c, l.Theme.Colors.OnSurface), box, AlignCenter, clip)
+			// A slice's own colour carries its number: `onPrimary` is white in
+			// the light scheme and near-black in the dark one, which is what
+			// reads on the accent fills both schemes use.
+			l.textIn(label, style, chartText(c, l.Theme.Colors.OnPrimary), box, AlignCenter, clip)
 		}
 	}
 }
