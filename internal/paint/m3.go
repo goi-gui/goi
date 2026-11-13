@@ -1583,8 +1583,14 @@ func (l *List) paintTab(c *tree.Component, r tree.Rect, clip tree.Rect) {
 
 func (l *List) paintLinearProgress(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
-	trackH := 4.0
-	if r.H > 0 && r.H < 12 {
+	wavy := variant(c, "normal") == "wavy"
+	// thickness sizes the stroke; a box shorter than the stroke wins, so the
+	// bar never draws outside the space layout gave it.
+	trackH := strokeOr(c.Thickness.Get(), 4)
+	if wavy {
+		trackH = waveStroke(c.Thickness.Get(), r.H)
+	}
+	if r.H > 0 && r.H < trackH {
 		trackH = r.H
 	}
 	tr := tree.Rect{X: r.X, Y: r.Y + (r.H-trackH)/2, W: r.W, H: trackH}
@@ -1598,8 +1604,8 @@ func (l *List) paintLinearProgress(c *tree.Component, r tree.Rect, clip tree.Rec
 		frac = (c.Value.Get() - lo) / (hi - lo)
 	}
 	frac = clamp01(frac)
-	if variant(c, "normal") == "wavy" {
-		l.paintWavyBar(c, tr, frac, stopX, clip)
+	if wavy {
+		l.paintWavyBar(tr, frac, trackH, clip)
 	} else {
 		w := tr.W * frac
 		l.fillRect(tree.Rect{X: tr.X, Y: tr.Y, W: w, H: tr.H}, col.Primary, trackH/2, 0, 0, clip)
@@ -1607,29 +1613,38 @@ func (l *List) paintLinearProgress(c *tree.Component, r tree.Rect, clip tree.Rec
 	l.fillRect(tree.Rect{X: stopX - 2, Y: tr.Y + tr.H/2 - 2, W: 4, H: 4}, col.OnSurfaceVariant, 2, 0, 0, clip)
 }
 
+// waveStroke is a wave's stroke width: the property's thickness, or the
+// component's own 8dp, scaled down when the box is shorter than the ribbon.
+func waveStroke(thickness, boxH float64) float64 {
+	stroke := strokeOr(thickness, 8)
+	// The ribbon is the stroke plus a quarter of it above and below.
+	if boxH > 0 && boxH < stroke*1.75 {
+		stroke = boxH / 1.75
+	}
+	return stroke
+}
+
 // paintWavyBar draws the active part as a ribbon: a sine along the track,
 // sampled and joined with the rounded segments the charts use, so the wave has
-// the same anti-aliased join as a chart line.
-func (l *List) paintWavyBar(c *tree.Component, tr tree.Rect, frac, stopX float64, clip tree.Rect) {
+// the same anti-aliased join as a chart line. The phase rides the list's clock,
+// so the wave travels and the caller keeps drawing frames.
+func (l *List) paintWavyBar(tr tree.Rect, frac, stroke float64, clip tree.Rect) {
 	col := l.Theme.Colors
 	if frac <= 0 {
 		return
 	}
+	l.Animating = true
 	w := tr.W * frac
 	if w < 2 {
 		return
 	}
-	const amplitude, wavelength = 3.0, 34.0
-	stroke := 8.0
-	// A design that pins a shorter box keeps the wave inside it.
-	if lim := tr.H + 8; lim < stroke+2*amplitude && lim > 0 {
-		scale := clamp01(lim / (stroke + 2*amplitude))
-		stroke *= scale
-	}
+	amplitude := stroke * 0.375
+	wavelength := stroke * 4.25
+	phase := l.wavePhase()
 	cx, cy := tr.X, tr.Y+tr.H/2
 	mid := cy
 	point := func(x float64) chartPoint {
-		return chartPoint{X: cx + x, Y: mid + amplitude*math.Sin(x/wavelength*2*math.Pi)}
+		return chartPoint{X: cx + x, Y: mid + amplitude*math.Sin(x/wavelength*2*math.Pi-phase)}
 	}
 	if w <= stroke {
 		l.chartDot(point(w/2), stroke/2, col.Primary, clip)
@@ -1662,10 +1677,13 @@ func (l *List) paintCircularProgress(c *tree.Component, r tree.Rect, clip tree.R
 	}
 	frac = clamp01(frac)
 	if variant(c, "normal") == "wavy" {
-		l.paintWavyRing(r, frac, clip)
+		l.paintWavyRing(r, frac, c.Thickness.Get(), clip)
 		return
 	}
-	thickness := 4.0
+	thickness := strokeOr(c.Thickness.Get(), 4)
+	if thickness > size {
+		thickness = size
+	}
 	rr := size/2 - thickness/2
 	track := tree.Rect{X: cx - rr, Y: cy - rr, W: rr * 2, H: rr * 2}
 	l.Ops = append(l.Ops, Op{
@@ -1688,23 +1706,25 @@ func (l *List) paintCircularProgress(c *tree.Component, r tree.Rect, clip tree.R
 // arc's radius pulses as it goes round, sampled into rounded segments the way
 // the charts draw a curve. The track stays a plain ring, so the wave reads as
 // the part that has moved.
-func (l *List) paintWavyRing(r tree.Rect, frac float64, clip tree.Rect) {
+func (l *List) paintWavyRing(r tree.Rect, frac, thickness float64, clip tree.Rect) {
 	col := l.Theme.Colors
 	size := minf(r.W, r.H)
-	if size <= 0 || frac <= 0 {
+	if size <= 0 {
 		return
 	}
 	cx, cy := r.X+r.W/2, r.Y+r.H/2
-	const amplitude, waves = 2.4, 7.0
-	stroke := 7.0
-	if size < 20 {
-		scale := clamp01(size / 20)
-		stroke *= scale
+	const waves = 7.0
+	stroke := strokeOr(thickness, 7)
+	// The ring carries its wave inward, so the box caps the stroke.
+	if limit := size / 2.5; stroke > limit {
+		stroke = limit
 	}
+	amplitude := stroke * 0.34
 	rr := size/2 - stroke/2 - amplitude
-	if rr <= 0 {
+	if rr <= 0 || frac <= 0 {
 		return
 	}
+	l.Animating = true
 	track := tree.Rect{X: cx - rr, Y: cy - rr, W: rr * 2, H: rr * 2}
 	l.Ops = append(l.Ops, Op{
 		Kind: Fill, Shape: Arc, Rect: rectArr(track),
@@ -1713,8 +1733,9 @@ func (l *List) paintWavyRing(r tree.Rect, frac float64, clip tree.Rect) {
 		Clip: clipArr(clip),
 	})
 	end := frac * 2 * 3.14159265
+	phase := l.wavePhase()
 	point := func(t float64) chartPoint {
-		rad := rr + amplitude*math.Sin(t*waves)
+		rad := rr + amplitude*math.Sin(t*waves-phase)
 		return chartPoint{X: cx + rad*math.Sin(t), Y: cy - rad*math.Cos(t)}
 	}
 	step := 2 * 3.14159265 / 120
@@ -1731,6 +1752,12 @@ func (l *List) paintWavyRing(r tree.Rect, frac float64, clip tree.Rect) {
 	}
 	l.chartDot(point(0), stroke/2, col.Primary, clip)
 	l.chartDot(point(end), stroke/2, col.Primary, clip)
+}
+
+// wavePhase is how far a wave has travelled: one wavelength every 1.6s, which
+// reads as a slow flow rather than a twitch.
+func (l *List) wavePhase() float64 {
+	return l.Clock.Seconds() / 1.6 * 2 * math.Pi
 }
 
 func (l *List) paintLoadingIndicator(c *tree.Component, r tree.Rect, clip tree.Rect) {

@@ -3,6 +3,7 @@ package paint
 import (
 	"math"
 	"testing"
+	"time"
 
 	"github.com/goi-gui/goi/internal/layout"
 	"github.com/goi-gui/goi/internal/m3"
@@ -809,4 +810,99 @@ func TestProgressVariants(t *testing.T) {
 		}
 	}
 	t.Fatal("a wavy ring lost its track")
+}
+
+// TestProgressThickness checks the stroke is the design's to choose: a normal
+// bar draws its line at the thickness it was given, and a wavy one scales its
+// ribbon with it.
+func TestProgressThickness(t *testing.T) {
+	height := func(op Op) float64 { return float64(op.Rect[3]) }
+	normal := m3list(t, `Window { LinearProgress { value: 0.5 width: 300 thickness: 8 } }`)
+	found := false
+	for _, op := range normal.Ops {
+		if op.Kind == Fill && op.Color == m3.Light().Colors.Primary && math.Abs(height(op)-8) < 0.01 {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("a thickness of 8 did not reach the bar\n%s", normal.Dump())
+	}
+
+	// A wavy ribbon carries its stroke on the segments, which are as wide as the
+	// thickness and turned with the wave.
+	wavy := m3list(t, `Window { LinearProgress { variant: wavy value: 0.5 width: 300 thickness: 12 } }`)
+	maxW := 0.0
+	for _, op := range wavy.Ops {
+		if op.Kind == Fill && op.Shape == RoundedRect && op.Rotate != 0 {
+			if w := float64(op.Rect[3]); w > maxW {
+				maxW = w
+			}
+		}
+	}
+	if maxW < 11 {
+		t.Fatalf("a wavy thickness of 12 drew segments %.1f wide", maxW)
+	}
+
+	// A ring's stroke is the thickness too, on the plain arc.
+	ring := m3list(t, `Window { CircularProgress { value: 0.5 thickness: 10 } }`)
+	for _, op := range ring.Ops {
+		if op.Kind == Fill && op.Color == m3.Light().Colors.Primary && math.Abs(float64(op.Thickness)-10) < 0.01 {
+			return
+		}
+	}
+	t.Fatalf("a ring ignored its thickness\n%s", ring.Dump())
+}
+
+// TestWavyProgressAnimates is what makes the wave move: the same design at two
+// clock values draws the ribbon at different points, and paint says a frame is
+// needed while it does.
+func TestWavyProgressAnimates(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window { LinearProgress { variant: wavy value: 0.5 width: 300 } }`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 400, 400)
+	l := &List{}
+	l.Build(tr, 400, 400)
+	if !l.Animating {
+		t.Fatal("a wavy bar did not ask for the next frame")
+	}
+	first := l.Dump()
+	l.Reset()
+	l.Clock = 400 * time.Millisecond
+	l.Build(tr, 400, 400)
+	if first == l.Dump() {
+		t.Fatal("the wave did not move with the clock")
+	}
+}
+
+// TestProgressHeightFollowsThickness is the layout half: a thicker stroke needs
+// a taller box, and a wavy one needs the ribbon's height rather than the line's.
+func TestProgressHeightFollowsThickness(t *testing.T) {
+	height := func(src string) float64 {
+		tr, diag := tree.BuildSource([]byte(src), nil)
+		if !diag.Empty() {
+			t.Fatalf("%v", diag)
+		}
+		layout.New(nil).Layout(tr.Root, 400, 400)
+		for _, n := range tr.All() {
+			if n.Kind() == "LinearProgress" {
+				return n.Base().Bounds().H
+			}
+		}
+		t.Fatal("no bar")
+		return 0
+	}
+	if got := height(`Window { Column { LinearProgress { width: 300 } } }`); math.Abs(got-4) > 0.01 {
+		t.Fatalf("a normal bar is %.1f tall, want 4", got)
+	}
+	if got := height(`Window { Column { LinearProgress { width: 300 thickness: 10 } } }`); math.Abs(got-10) > 0.01 {
+		t.Fatalf("a 10dp bar is %.1f tall", got)
+	}
+	if got := height(`Window { Column { LinearProgress { width: 300 variant: wavy } } }`); math.Abs(got-14) > 0.01 {
+		t.Fatalf("a wavy bar is %.1f tall, want 14 (8dp ribbon)", got)
+	}
+	if got := height(`Window { Column { LinearProgress { width: 300 variant: wavy thickness: 12 } } }`); math.Abs(got-21) > 0.01 {
+		t.Fatalf("a 12dp wavy bar is %.1f tall, want 21", got)
+	}
 }

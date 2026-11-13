@@ -97,6 +97,9 @@ type App struct {
 	// the phase clock for the loading placeholder.
 	pulsing   bool
 	loadClock float64
+	// clock is how long the window has been drawing, which is what a wave on a
+	// wavy progress bar follows. It advances only while frames run.
+	clock time.Duration
 	// themes are the schemes a `.goi` file may name, keyed by name.
 	themes map[string]*Theme
 	// hasMedia is true while the tree holds an Audio or Video, and media holds

@@ -123,8 +123,8 @@ var props = map[string][]string{
 	"NavigationItem":   {"label", "icon", "variant", "disabled", "selected"},
 	"Tabs":             {"variant"},
 	"Tab":              {"label", "icon", "variant", "disabled", "selected"},
-	"LinearProgress":   {"variant", "value", "min", "max"},
-	"CircularProgress": {"variant", "value", "min", "max", "size"},
+	"LinearProgress":   {"variant", "value", "min", "max", "thickness"},
+	"CircularProgress": {"variant", "value", "min", "max", "size", "thickness"},
 	"LoadingIndicator": {"variant", "size"},
 	"DatePicker":       {"label", "text", "variant", "size"},
 	"TimePicker":       {"label", "text", "variant", "size"},
@@ -240,7 +240,7 @@ func TypeOf(name string) PropType {
 		return Bool
 	case "value", "end", "center", "min", "max", "step", "spacing", "gap",
 		"rowHeight", "headerHeight", "sortColumn", "selectedRow",
-		"innerRadius", "startAngle":
+		"innerRadius", "startAngle", "thickness":
 		return Number
 	case "variant", "size", "crossAxisAlign", "mainAxisAlign", "align", "selectable":
 		return Enum

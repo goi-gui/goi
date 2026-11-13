@@ -42,6 +42,9 @@ type Component struct {
 	// Appearance.
 	Variant Prop[string]
 	Size    Prop[string]
+	// Thickness is the width of a progress stroke; 0 follows the component's
+	// own default, which depends on the variant.
+	Thickness Prop[float64]
 
 	// State.
 	Disabled Prop[bool]
@@ -123,6 +126,7 @@ func newComponent() Component {
 		ShowCopy:    newProp(nil, "showCopy", DirtyPaint, false),
 		Variant:     newProp(nil, "variant", DirtyPaint, ""),
 		Size:        newProp(nil, "size", DirtyLayout, ""),
+		Thickness:   newProp(nil, "thickness", DirtyLayout, 0.0),
 		Disabled:    newProp(nil, "disabled", DirtyPaint, false),
 		Checked:     newProp(nil, "checked", DirtyPaint, false),
 		// A selected chip or segment shows a check in place of its leading icon,
@@ -223,6 +227,10 @@ func (c *Component) one(kind, name string) NamedProp {
 		return NumberProp(b, "max", DirtyLayout, &c.Max)
 	case "step":
 		return NumberProp(b, "step", DirtyLayout, &c.Step)
+	case "thickness":
+		// A thicker stroke changes the box a progress bar needs, so it is a
+		// layout property rather than a repaint.
+		return NumberProp(b, "thickness", DirtyLayout, &c.Thickness)
 	case "spacing":
 		return NumberProp(b, "spacing", DirtyLayout, &c.Spacing)
 	case "gap":

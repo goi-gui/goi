@@ -1868,3 +1868,13 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   height keeps it, and the wave scales down to fit rather than drawing outside the
   box. The stop indicator dot is drawn in both variants: it is what says where a
   determinate bar's scale ends.
+- **A progress stroke is a property, and a wavy one moves with the window's
+  clock.** `thickness` sizes the stroke and the layout reads it, because a
+  thicker line — and a ribbon, which is 1.75 times its stroke — is a taller box,
+  not just a different paint. A box the design pins smaller wins, so the wave
+  scales down instead of drawing outside the space layout gave it.
+  The wave's phase comes from `List.Clock`, which the driver advances with the
+  frames; paint reports that it drew something that moves, and the loop asks for
+  the next frame from that rather than from a walk over the tree. A hidden wavy
+  bar paints nothing, so an idle page still sleeps — the animation costs what it
+  shows.

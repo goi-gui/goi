@@ -10,6 +10,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/goi-gui/goi/internal/img"
 	"github.com/goi-gui/goi/internal/m3"
@@ -171,10 +172,19 @@ type List struct {
 	// rich caches RichText line breaks, keyed by the paragraph's span version
 	// and the column it was wrapped in.
 	rich map[richKey][][]text.InlineRun
+	// Clock is how long the window has been drawing, which is what moves a wave
+	// on a wavy progress bar. A test sets it to look at a frame of its choosing.
+	Clock time.Duration
+	// Animating reports whether this list drew something that moves on its own,
+	// so the frame loop knows to draw the next one.
+	Animating bool
 }
 
 // Reset empties the list but keeps its capacity.
-func (l *List) Reset() { l.Ops = l.Ops[:0] }
+func (l *List) Reset() {
+	l.Ops = l.Ops[:0]
+	l.Animating = false
+}
 
 // Build fills l from tr. size is the client area in logical pixels.
 func (l *List) Build(tr *tree.Tree, w, h float64) {
@@ -708,6 +718,14 @@ func intersect(a, b tree.Rect) tree.Rect {
 		y1 = y0
 	}
 	return tree.Rect{X: x0, Y: y0, W: x1 - x0, H: y1 - y0}
+}
+
+// strokeOr is a stroke width with the component's own fallback.
+func strokeOr(v, def float64) float64 {
+	if v > 0 {
+		return v
+	}
+	return def
 }
 
 func maxf(a, b float64) float64 {

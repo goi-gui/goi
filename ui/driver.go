@@ -248,6 +248,10 @@ func (a *App) frame() {
 	if a.tickTweens() {
 		a.needsFrame = true
 	}
+	// A wave on a progress bar moves with time, so the clock it reads advances
+	// with the frames. It stops with the loop, so a sleeping window costs
+	// nothing.
+	a.clock += time.Duration(dt * float64(time.Second))
 
 	// Responsive properties follow the window width. Applying them marks the
 	// tree dirty when a value changes, so this runs before the frame check.
@@ -318,6 +322,7 @@ func (a *App) frame() {
 	}
 	d.list.ShowFPS = a.showFPS
 	d.list.FPS = d.fps
+	d.list.Clock = a.clock
 	if a.showFPS {
 		// The overlay measures paint rate, so it keeps painting to have
 		// something to measure. Only a debug build pays this.
@@ -327,6 +332,11 @@ func (a *App) frame() {
 	d.list.Build(a.win.tree, float64(d.pendingW)/float64(maxScale(d.pendingScale)), float64(d.pendingH)/float64(maxScale(d.pendingScale)))
 	if err := d.gpu.Render(&d.list, d.pendingW, d.pendingH); err != nil {
 		a.reportError(err)
+	}
+	// Paint knows whether it drew something that moves on its own, so the next
+	// frame is asked for here rather than by a walk over the tree.
+	if d.list.Animating {
+		a.needsFrame = true
 	}
 	clearAll(root.Base())
 }

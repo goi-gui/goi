@@ -229,9 +229,9 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 		// A wavy bar is a ribbon, so it needs the room the wave's own height
 		// takes; the paint pass scales it down if a design pins a smaller box.
 		if c.Variant == "wavy" {
-			return Metrics{W: 0, H: 16, FillW: true}
+			return Metrics{W: 0, H: waveHeight(c.Thickness, 8), FillW: true}
 		}
-		return Metrics{W: 0, H: 4, FillW: true}
+		return Metrics{W: 0, H: strokeOr(c.Thickness, 4), FillW: true}
 	case "CircularProgress":
 		return Metrics{W: 48, H: 48}
 	case "LoadingIndicator":
@@ -269,10 +269,25 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 type ComponentView struct {
 	Label, Supporting, Text, Placeholder  string
 	Icon, Trailing, Variant, Size         string
+	Thickness                             float64
 	Disabled, Checked, Selected, Expanded bool
 	Value, Min, Max, Step                 float64
 	Spacing                               float64
 	CrossAlign, MainAlign                 string
+}
+
+// strokeOr is a stroke width with the component's own fallback.
+func strokeOr(v, def float64) float64 {
+	if v > 0 {
+		return v
+	}
+	return def
+}
+
+// waveHeight is the box a wavy bar needs: the ribbon is the stroke plus the
+// amplitude above and below it, which is three quarters of the stroke.
+func waveHeight(thickness, def float64) float64 {
+	return strokeOr(thickness, def) * 1.75
 }
 
 func maxf(a, b float64) float64 {
