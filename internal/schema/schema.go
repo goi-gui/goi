@@ -368,6 +368,17 @@ var elements = func() []Element {
 			Prop{Name: "wrap", Type: TypeBool, Dirty: DirtyLayout, Default: false},
 			Prop{Name: "role", Type: TypeEnum, Dirty: DirtyLayout, Enum: textRoles, Default: "bodyMedium"},
 		)},
+		// RichText is the inline model: one paragraph whose runs may be bold,
+		// italic, a link or code. The runs come from Go, so only the paragraph's
+		// own style is a .goi property.
+		{Name: "RichText", Children: false, Attrs: withCommon(
+			Prop{Name: "text", Type: TypeString, Dirty: DirtyLayout, Default: ""},
+			Prop{Name: "fontSize", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
+			Prop{Name: "color", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0)},
+			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end"}, Default: "start"},
+			Prop{Name: "wrap", Type: TypeBool, Dirty: DirtyLayout, Default: false},
+			Prop{Name: "role", Type: TypeEnum, Dirty: DirtyLayout, Enum: textRoles, Default: "bodyMedium"},
+		)},
 	}
 	// Media players. They are not Material components: their chrome is a control
 	// bar, not a shape from the type scale, so the properties are declared here

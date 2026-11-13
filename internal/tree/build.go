@@ -481,6 +481,18 @@ func newNode(name string) Node {
 			DecorationColor:     newProp(nil, "decorationColor", DirtyPaint, uint32(0)),
 			Selectable:          newProp(nil, "selectable", DirtyPaint, false),
 		}
+	case "RichText":
+		// The style cells are the Text ones, so a RichText's role, size and
+		// alignment resolve exactly as a Text's do.
+		return &RichText{Text: Text{
+			NodeBase: b(),
+			Text:     newProp(nil, "text", DirtyLayout, ""),
+			FontSize: newProp(nil, "fontSize", DirtyLayout, 16.0),
+			Color:    newProp(nil, "color", DirtyPaint, uint32(0x000000FF)),
+			Align:    newProp(nil, "align", DirtyLayout, "start"),
+			Wrap:     newProp(nil, "wrap", DirtyLayout, false),
+			Role:     newProp(nil, "role", DirtyLayout, "bodyMedium"),
+		}}
 	}
 	if c := newM3Component(name); c != nil {
 		return c

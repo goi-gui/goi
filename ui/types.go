@@ -116,6 +116,8 @@ type (
 	Image      = tree.Image
 	SVG        = tree.SVG
 	Text       = tree.Text
+	RichText   = tree.RichText
+	Span       = tree.Span
 
 	// Material 3 components.
 	Button           = tree.Button

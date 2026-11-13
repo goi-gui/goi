@@ -13,9 +13,10 @@ import (
 )
 
 // Markdown renders a markdown document as a stack of ordinary elements: a
-// heading becomes a Text with a role, a fenced block a Code, a rule a Divider,
-// a list a run of rows, and a table a Table. The children are real nodes, so
-// layout, themes, wrapping and hit-testing work without a second renderer.
+// heading or a paragraph becomes a RichText, a fenced block a Code, a rule a
+// Divider, a list a run of rows, and a table a Table. The children are real
+// nodes, so layout, themes, wrapping and hit-testing work without a second
+// renderer, and inline markup survives as styled runs.
 //
 // The markdown is parsed once per change: Rebuild compares the source it last
 // rendered with the property and returns immediately when they match, which is
@@ -103,8 +104,8 @@ func headingRole(level int) string {
 func (c *Markdown) buildBlock(blk mdBlock, spaced bool) []Node {
 	switch blk.kind {
 	case mdHeading:
-		t := mdNew("Text").(*Text)
-		t.Text.Set(blk.text)
+		t := mdNew("RichText").(*RichText)
+		t.SetSpans(blk.spans)
 		t.Role.Set(headingRole(blk.level))
 		t.Wrap.Set(true)
 		if spaced {
@@ -112,8 +113,8 @@ func (c *Markdown) buildBlock(blk mdBlock, spaced bool) []Node {
 		}
 		return []Node{t}
 	case mdParagraph:
-		t := mdNew("Text").(*Text)
-		t.Text.Set(blk.text)
+		t := mdNew("RichText").(*RichText)
+		t.SetSpans(blk.spans)
 		t.Wrap.Set(true)
 		if spaced {
 			t.marginTop.Set(mdParaGap)
@@ -151,8 +152,8 @@ func (c *Markdown) buildBlock(blk mdBlock, spaced bool) []Node {
 			bullet := mdNew("Text").(*Text)
 			bullet.Text.Set(marker)
 			bullet.width.Set(18)
-			body := mdNew("Text").(*Text)
-			body.Text.Set(it.text)
+			body := mdNew("RichText").(*RichText)
+			body.SetSpans(it.spans)
 			body.Wrap.Set(true)
 			body.flex.Set(1)
 			for _, k := range []Node{bullet, body} {
@@ -207,14 +208,15 @@ func (c *Markdown) buildBlock(blk mdBlock, spaced bool) []Node {
 			for i, cell := range row {
 				cellNode := mdNew("TableCell").(*TableCell)
 				// Value is the machine-readable string the table sorts on; the
-				// reader sees a Text child, the way a designed cell works.
-				cellNode.Value.Set(cell)
+				// reader sees a RichText child, the way a designed cell works.
+				cellNode.Value.Set(cell.text)
+				text := mdNew("RichText").(*RichText)
+				text.SetSpans(cell.spans)
+				text.Wrap.Set(true)
 				if i < len(blk.aligns) && blk.aligns[i] != "" {
 					cellNode.Align.Set(blk.aligns[i])
+					text.Align.Set(blk.aligns[i])
 				}
-				text := mdNew("Text").(*Text)
-				text.Text.Set(cell)
-				text.Wrap.Set(true)
 				link(c, &cellNode.NodeBase, text)
 				link(c, &r.NodeBase, cellNode)
 			}
@@ -267,26 +269,34 @@ const (
 	mdTableBlock
 )
 
-// mdBlock is one parsed block, already flattened: inline styling is folded into
-// the text, because a Text node carries one style for the whole run.
+// mdBlock is one parsed block. text is the plain string a property takes;
+// spans are the styled runs a paragraph draws.
 type mdBlock struct {
 	kind     mdKind
 	level    int // heading level
 	text     string
+	spans    []Span
 	lang     string
 	items    []mdItem
 	children []mdBlock
 
 	header []string
-	rows   [][]string
+	rows   [][]mdCell
 	aligns []string
+}
+
+// mdCell is one table cell: the plain value the table sorts on, and the runs it
+// draws.
+type mdCell struct {
+	text  string
+	spans []Span
 }
 
 // mdItem is one list entry. depth is how many lists deep it sits, which paint
 // turns into an indent.
 type mdItem struct {
 	depth   int
-	text    string
+	spans   []Span
 	ordered bool
 	number  int
 }
@@ -311,16 +321,17 @@ func mdBlocks(n ast.Node, src []byte) []mdBlock {
 	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
 		switch x := c.(type) {
 		case *ast.Heading:
-			out = append(out, mdBlock{kind: mdHeading, level: x.Level, text: mdInline(c, src)})
+			spans := mdSpans(c, src)
+			out = append(out, mdBlock{kind: mdHeading, level: x.Level, spans: spans, text: mdSpanText(spans)})
 		case *ast.Paragraph:
-			if s := mdInline(c, src); s != "" {
-				out = append(out, mdBlock{kind: mdParagraph, text: s})
+			if spans := mdSpans(c, src); len(spans) > 0 {
+				out = append(out, mdBlock{kind: mdParagraph, spans: spans, text: mdSpanText(spans)})
 			}
 		case *ast.TextBlock:
 			// A tight list item holds its text in a TextBlock; it only reaches
 			// here for a looser shape than mdItems handles.
-			if s := mdInline(c, src); s != "" {
-				out = append(out, mdBlock{kind: mdParagraph, text: s})
+			if spans := mdSpans(c, src); len(spans) > 0 {
+				out = append(out, mdBlock{kind: mdParagraph, spans: spans, text: mdSpanText(spans)})
 			}
 		case *ast.FencedCodeBlock:
 			out = append(out, mdBlock{kind: mdCode, lang: string(x.Language(src)), text: string(x.Lines().Value(src))})
@@ -359,29 +370,30 @@ func mdItems(list *ast.List, src []byte, depth int, out *[]mdItem) {
 		}
 		item := mdItem{depth: depth, ordered: list.IsOrdered(), number: num}
 		var nested []mdItem
-		var parts []string
 		for sub := li.FirstChild(); sub != nil; sub = sub.NextSibling() {
 			switch s := sub.(type) {
 			case *ast.TextBlock, *ast.Paragraph:
-				if s := mdInline(sub, src); s != "" {
-					parts = append(parts, s)
+				if spans := mdSpans(sub, src); len(spans) > 0 {
+					if len(item.spans) > 0 {
+						item.spans = append(item.spans, Span{Text: " "})
+					}
+					item.spans = append(item.spans, spans...)
 				}
 			case *ast.List:
 				mdItems(s, src, depth+1, &nested)
 			case *extast.TaskCheckBox:
 				if s.IsChecked {
-					parts = append(parts, "☑")
+					item.spans = append(item.spans, Span{Text: "☑ "})
 				} else {
-					parts = append(parts, "☐")
+					item.spans = append(item.spans, Span{Text: "☐ "})
 				}
 			case *ast.FencedCodeBlock:
-				if s := mdInline(sub, src); s != "" {
-					parts = append(parts, s)
+				if spans := mdSpans(sub, src); len(spans) > 0 {
+					item.spans = append(item.spans, spans...)
 				}
 			}
 		}
-		item.text = strings.Join(parts, " ")
-		if item.text != "" {
+		if len(item.spans) > 0 {
 			*out = append(*out, item)
 		}
 		*out = append(*out, nested...)
@@ -403,12 +415,17 @@ func parseTable(t *extast.Table, src []byte) (mdBlock, bool) {
 		}
 	}
 	for n := t.FirstChild(); n != nil; n = n.NextSibling() {
-		var cells []string
+		var cells []mdCell
 		for cell := n.FirstChild(); cell != nil; cell = cell.NextSibling() {
-			cells = append(cells, mdInline(cell, src))
+			spans := mdSpans(cell, src)
+			cells = append(cells, mdCell{text: mdSpanText(spans), spans: spans})
 		}
 		if _, ok := n.(*extast.TableHeader); ok {
-			blk.header = cells
+			// A header cell is drawn by the column's label, which is one plain
+			// string, so the header keeps only its words.
+			for _, c := range cells {
+				blk.header = append(blk.header, c.text)
+			}
 			continue
 		}
 		blk.rows = append(blk.rows, cells)
@@ -416,27 +433,106 @@ func parseTable(t *extast.Table, src []byte) (mdBlock, bool) {
 	return blk, len(blk.header) > 0
 }
 
-// mdInline flattens inline markup into the text a Text node draws. Emphasis,
-// strong text, code spans, links and images keep their words and lose their
-// markup, because one Text run carries one style.
-func mdInline(n ast.Node, src []byte) string {
-	var b strings.Builder
+// mdSpans turns a node's inline markup into styled runs. A run keeps its
+// weight, slant, tint, strike and link, so one paragraph can mix all of them.
+func mdSpans(n ast.Node, src []byte) []Span {
+	var out []Span
 	_ = ast.Walk(n, func(c ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
 		}
+		var s Span
 		switch x := c.(type) {
 		case *ast.Text:
-			b.Write(x.Segment.Value(src))
+			s.Text = string(x.Segment.Value(src))
 			if x.SoftLineBreak() || x.HardLineBreak() {
-				b.WriteByte(' ')
+				s.Text += " "
 			}
 		case *ast.String:
-			b.Write(x.Value)
+			s.Text = string(x.Value)
 		case *ast.AutoLink:
-			b.Write(x.Label(src))
+			s.Text, s.Link = string(x.Label(src)), string(x.URL(src))
+		default:
+			return ast.WalkContinue, nil
 		}
+		s.Bold, s.Italic, s.Code, s.Strike, s.Link = mdSwitches(c, s.Link)
+		out = mdAppend(out, s)
 		return ast.WalkContinue, nil
 	})
-	return strings.TrimSpace(b.String())
+	return mdTrim(out)
+}
+
+// mdSwitches reads the styles an inline run inherits from its ancestors.
+func mdSwitches(n ast.Node, link string) (bold, italic, code, strike bool, dest string) {
+	dest = link
+	for p := n.Parent(); p != nil; p = p.Parent() {
+		switch x := p.(type) {
+		case *ast.Emphasis:
+			// Strong is emphasis of level 2; a nested pair is both.
+			if x.Level >= 2 {
+				bold = true
+			} else {
+				italic = true
+			}
+		case *ast.CodeSpan:
+			code = true
+		case *extast.Strikethrough:
+			strike = true
+		case *ast.Link:
+			if dest == "" {
+				dest = string(x.Destination)
+			}
+		}
+	}
+	return bold, italic, code, strike, dest
+}
+
+// mdAppend adds a run, merging it into the previous one when the style matches,
+// which keeps a word split by the parser as one drawn run.
+func mdAppend(out []Span, s Span) []Span {
+	if s.Text == "" {
+		return out
+	}
+	if n := len(out); n > 0 && mdSameStyle(out[n-1], s) {
+		out[n-1].Text += s.Text
+		return out
+	}
+	return append(out, s)
+}
+
+// mdSameStyle compares two runs ignoring their text.
+func mdSameStyle(a, b Span) bool {
+	a.Text, b.Text = "", ""
+	return a == b
+}
+
+// mdTrim drops the whitespace a block starts and ends with, the way the plain
+// flattening did.
+func mdTrim(spans []Span) []Span {
+	for len(spans) > 0 {
+		spans[0].Text = strings.TrimLeft(spans[0].Text, " \t\n")
+		if spans[0].Text != "" {
+			break
+		}
+		spans = spans[1:]
+	}
+	for len(spans) > 0 {
+		last := len(spans) - 1
+		spans[last].Text = strings.TrimRight(spans[last].Text, " \t\n")
+		if spans[last].Text != "" {
+			break
+		}
+		spans = spans[:last]
+	}
+	return spans
+}
+
+// mdSpanText flattens runs back to the plain string a property or a table's
+// sort value needs.
+func mdSpanText(spans []Span) string {
+	var b strings.Builder
+	for _, s := range spans {
+		b.WriteString(s.Text)
+	}
+	return b.String()
 }

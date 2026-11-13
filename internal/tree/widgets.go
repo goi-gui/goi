@@ -514,6 +514,15 @@ func (s *SVG) namedProps() []NamedProp {
 	)
 }
 
+// textRoles are the type-scale names a Text or a RichText may name as its role.
+var textRoles = []string{
+	"displayLarge", "displayMedium", "displaySmall",
+	"headlineLarge", "headlineMedium", "headlineSmall",
+	"titleLarge", "titleMedium", "titleSmall",
+	"bodyLarge", "bodyMedium", "bodySmall",
+	"labelLarge", "labelMedium", "labelSmall",
+}
+
 // Text draws a single run of text. FontSize 0 means "use the M3 role in Role";
 // Role is one of the type-scale names (bodyMedium is the default).
 type Text struct {
@@ -570,12 +579,7 @@ func (t *Text) namedProps() []NamedProp {
 		ColorProp(&t.NodeBase, "color", DirtyPaint, &t.Color),
 		EnumProp(&t.NodeBase, "align", DirtyLayout, &t.Align, "start", "center", "end"),
 		BoolProp(&t.NodeBase, "wrap", DirtyLayout, &t.Wrap),
-		EnumProp(&t.NodeBase, "role", DirtyLayout, &t.Role,
-			"displayLarge", "displayMedium", "displaySmall",
-			"headlineLarge", "headlineMedium", "headlineSmall",
-			"titleLarge", "titleMedium", "titleSmall",
-			"bodyLarge", "bodyMedium", "bodySmall",
-			"labelLarge", "labelMedium", "labelSmall"),
+		EnumProp(&t.NodeBase, "role", DirtyLayout, &t.Role, textRoles...),
 		NumberProp(&t.NodeBase, "weight", DirtyLayout, &t.Weight),
 		// fontWeight is the CSS spelling: the parser turns its keywords into the
 		// same number, so both names share one cell and the last write wins.

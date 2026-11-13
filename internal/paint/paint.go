@@ -168,6 +168,9 @@ type List struct {
 	// visible paragraph, and the answer only changes with the text, the column
 	// and the style. Reset keeps it, because it is still valid.
 	wrap map[wrapKey][]text.Line
+	// rich caches RichText line breaks, keyed by the paragraph's span version
+	// and the column it was wrapped in.
+	rich map[richKey][][]text.InlineRun
 }
 
 // Reset empties the list but keeps its capacity.
@@ -351,6 +354,9 @@ func (l *List) paintContent(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
 	}
 	if t, ok := b.Node().(*tree.Text); ok {
 		l.paintText(t, r, clip)
+	}
+	if rt, ok := b.Node().(*tree.RichText); ok {
+		l.paintRichText(rt, r, clip)
 	}
 	if im, ok := b.Node().(*tree.Image); ok {
 		l.paintImage(im, r, clip)
