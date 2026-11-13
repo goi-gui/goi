@@ -1434,6 +1434,8 @@ func (p *parser) parseTerm() (Value, bool) {
 		t := p.next()
 		p.errorf(t, "unexpected '$' in a value: a fragment reads its inputs as props.name")
 		return nil, false
+	case tokLBracket:
+		return p.parseList()
 	case tokLParen:
 		p.next()
 		v, ok := p.parseExpr()
@@ -1471,6 +1473,32 @@ func (p *parser) parseTerm() (Value, bool) {
 		p.errorf(t, "expected a value or reference")
 		return nil, false
 	}
+}
+
+// parseList reads `[42, 27, 18]`: a property whose value is a list. A trailing
+// comma is allowed, so a long list reads like Go's. Each item is a value, which
+// is what lets a colour list name a theme role next to a literal.
+func (p *parser) parseList() (Value, bool) {
+	open := p.next() // '['
+	l := &List{At: open.pos}
+	for p.peek().kind != tokRBracket && p.peek().kind != tokEOF {
+		v, ok := p.parseValue()
+		if !ok {
+			return nil, false
+		}
+		l.Items = append(l.Items, v)
+		if p.peek().kind == tokComma {
+			p.next()
+			continue
+		}
+		break
+	}
+	if p.peek().kind != tokRBracket {
+		p.errorf(p.peek(), "expected ']' to close the list")
+		return nil, false
+	}
+	p.next()
+	return l, true
 }
 
 // parseBuiltin reads `formatf("%d items", count)`, a call on a bare function

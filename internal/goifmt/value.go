@@ -181,6 +181,12 @@ func printInner(v syntax.Value) string {
 			name = printInner(x.Callee)
 		}
 		return name + "(" + strings.Join(parts, ", ") + ")"
+	case *syntax.List:
+		parts := make([]string, len(x.Items))
+		for i, it := range x.Items {
+			parts[i] = printValue(it)
+		}
+		return "[" + strings.Join(parts, ", ") + "]"
 	case *syntax.Map:
 		if len(x.Entries) == 0 {
 			return "{}"

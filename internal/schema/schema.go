@@ -29,6 +29,8 @@ const (
 	// TypeRotate is the CSS rotate value: none, an angle, an axis plus angle, or
 	// a vector plus angle.
 	TypeRotate
+	// TypeList is a list literal, `[1, 2, 3]`, whose items Elem types.
+	TypeList
 )
 
 func (t ValueType) String() string {
@@ -67,11 +69,13 @@ const (
 
 // Prop describes one property of one element.
 type Prop struct {
-	Name    string
-	Type    ValueType
-	Dirty   DirtyKind
-	Enum    []string // valid values for TypeEnum
-	Default any      // string/float64/bool/uint32/enum string
+	Name  string
+	Type  ValueType
+	Dirty DirtyKind
+	Enum  []string // valid values for TypeEnum
+	// Elem is the type of one item of a TypeList property.
+	Elem    ValueType
+	Default any // string/float64/bool/uint32/enum string
 	// Common marks properties every element accepts.
 	Common bool
 }
@@ -387,8 +391,8 @@ var elements = func() []Element {
 		// data when the file is built, and the element leaves the tree.
 		{Name: "ChartSeries", Attrs: withCommon(
 			Prop{Name: "label", Type: TypeString, Dirty: DirtyPaint, Default: ""},
-			Prop{Name: "values", Type: TypeString, Dirty: DirtyPaint, Default: ""},
-			Prop{Name: "colors", Type: TypeString, Dirty: DirtyPaint, Default: ""},
+			Prop{Name: "values", Type: TypeList, Elem: TypeNumber, Dirty: DirtyLayout},
+			Prop{Name: "colors", Type: TypeList, Elem: TypeColor, Dirty: DirtyPaint},
 			Prop{Name: "color", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0)},
 		)},
 	}
@@ -472,6 +476,9 @@ var elements = func() []Element {
 				p.Type, p.Dirty, p.Default = TypeScalar, DirtyLayout, ""
 			case componentdef.Color:
 				p.Type, p.Dirty, p.Default = TypeColor, DirtyPaint, uint32(0)
+			case componentdef.List:
+				p.Type, p.Dirty = TypeList, DirtyLayout
+				p.Elem = listElemType(componentdef.ListElem(name))
 			default:
 				p.Type, p.Dirty, p.Default = TypeString, DirtyLayout, ""
 			}
@@ -530,3 +537,15 @@ func ElementNames() []string {
 
 // RootNames returns the elements allowed as a file root.
 func RootNames() []string { return []string{"Window"} }
+
+// listElemType maps a componentdef list element to the schema type it checks
+// against.
+func listElemType(t componentdef.PropType) ValueType {
+	switch t {
+	case componentdef.Number:
+		return TypeNumber
+	case componentdef.Color:
+		return TypeColor
+	}
+	return TypeString
+}

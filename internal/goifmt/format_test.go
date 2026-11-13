@@ -288,3 +288,32 @@ func TestRotateRoundTrips(t *testing.T) {
 		}
 	}
 }
+
+// TestFormatLists keeps a list on one line with a comma and one space after
+// each item, and drops the trailing comma the parser allows.
+func TestFormatLists(t *testing.T) {
+	src := `Window {
+	PieChart {
+		categories: ["Direct",  "Search"]
+		ChartSeries {
+			values: [42,27,18,]
+			colors: [theme.primary, #c62828]
+		}
+	}
+}
+`
+	want := `Window {
+	PieChart {
+		categories: ["Direct", "Search"]
+
+		ChartSeries {
+			values: [42, 27, 18]
+			colors: [theme.primary, #c62828]
+		}
+	}
+}
+`
+	if got := string(Source([]byte(src))); got != want {
+		t.Fatalf("format =\n%s\nwant\n%s", got, want)
+	}
+}

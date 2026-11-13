@@ -755,6 +755,19 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 			fail("a rotate value: none, 90deg, x 90deg or 1 1 1 90deg")
 		}
 		return
+	case TypeList:
+		list, ok := val.(*syntax.List)
+		if !ok {
+			fail(fmt.Sprintf("a list like %s", listExample(pd.Elem)))
+			return
+		}
+		for _, item := range list.Items {
+			if _, err := ListItem(pd.Elem, item); err != nil {
+				at := item.Pos()
+				v.add(at, at+syntax.Pos(listItemLen(item)), fmt.Sprintf("%s: %v", pd.Name, err), "")
+			}
+		}
+		return
 	case TypeScalar:
 		switch val.(type) {
 		case *syntax.String, *syntax.Ident, *syntax.Number, *syntax.Bool:
@@ -800,26 +813,6 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 			if pd.Name == "decoration" {
 				if txt, ok := literalText(val); ok {
 					v.checkDecoration(e, pd, txt, at, end)
-				}
-			}
-			// A series' values are a comma-separated number list; a word that
-			// does not parse would otherwise draw as zero.
-			if pd.Name == "values" && e.Name == "ChartSeries" {
-				if txt, ok := literalText(val); ok {
-					if _, err := NumberList(txt); err != nil {
-						v.add(at, end, fmt.Sprintf("values: %v", err),
-							"write the numbers separated by commas: values: \"12, 18, 9\"")
-					}
-				}
-			}
-			// A per-slice colour list is a list of colours and roles, so a
-			// malformed literal is a diagnostic here, not a defaulted slice.
-			if pd.Name == "colors" && e.Name == "ChartSeries" {
-				if txt, ok := literalText(val); ok {
-					if _, _, err := ColorList(txt); err != nil {
-						v.add(at, end, fmt.Sprintf("colors: %v", err),
-							"write colours separated by commas: colors: \"primary, tertiary, #c62828\"")
-					}
 				}
 			}
 		default:
@@ -1556,3 +1549,30 @@ func kindName(val syntax.Value) string {
 // isChart reports whether an element name is one of the chart kinds, which are
 // the only elements whose children are series.
 func isChart(name string) bool { return componentdef.Chart(name) }
+
+// listExample shows the shape a list property wants, so the diagnostic names
+// the form instead of only rejecting the value.
+func listExample(elem ValueType) string {
+	switch elem {
+	case TypeNumber:
+		return "[42, 27, 18]"
+	case TypeColor:
+		return "[theme.primary, theme.tertiary, #c62828]"
+	}
+	return `["Direct", "Search"]`
+}
+
+// listItemLen is how many source bytes an item covers, so a diagnostic can
+// underline it. A literal with a known width uses it; everything else gets one
+// byte, which still marks the spot.
+func listItemLen(v syntax.Value) int {
+	switch x := v.(type) {
+	case *syntax.String:
+		return len(x.Val) + 2
+	case *syntax.Ident:
+		return len(x.Val)
+	case *syntax.Ref:
+		return len(x.ID) + 1 + len(x.Prop)
+	}
+	return 1
+}

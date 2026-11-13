@@ -1,10 +1,13 @@
 package tree
 
 import (
+	"fmt"
 	"math"
+	"slices"
 	"strconv"
 
 	"github.com/goi-gui/goi/internal/csscolor"
+	"github.com/goi-gui/goi/internal/schema"
 	"github.com/goi-gui/goi/internal/syntax"
 )
 
@@ -117,6 +120,8 @@ const (
 	// table cell's value takes whatever the row's data holds.
 	propScalar
 	propRotate
+	// propList writes a design list: a chart's categories, values or colours.
+	propList
 )
 
 // Get returns the value as an interface, boxing it. The expression layer reads
@@ -138,6 +143,8 @@ func (p *NamedProp) Get() any {
 		out := make([]ShadowLayer, len(sp.layers))
 		copy(out, sp.layers)
 		return out
+	case propList:
+		return p.cell.(listCell).listValue()
 	}
 	return nil
 }
@@ -183,6 +190,12 @@ func (p *NamedProp) SetLiteral(v syntax.Value) bool {
 		}
 		p.cell.(*Prop[Rotation]).val = rotationOf(r)
 		return true
+	case propList:
+		list, ok := v.(*syntax.List)
+		if !ok {
+			return false
+		}
+		return p.cell.(listCell).setList(list.Items)
 	case propScalar:
 		// A value is the sort key, so a number is kept as its exact decimal
 		// text: `3.14` sorts and compares as written, and `42` does not become
@@ -445,6 +458,74 @@ func (p *NamedProp) setGoSet(v bool) {
 	case propShadow:
 		p.cell.(*ShadowProp).goSet = v
 	}
+}
+
+// ListProp is a property whose value is a design list. It holds the parsed
+// items; parse reads them through the schema, so the checker and the builder
+// agree on what an item may be.
+type ListProp[T comparable] struct {
+	base  *NodeBase
+	name  string
+	dirty DirtyKind
+	val   []T
+	parse func([]syntax.Value) ([]T, error)
+}
+
+// listCell is what a NamedProp of a list property talks to, so the builder does
+// not need to know the item type.
+type listCell interface {
+	setList(items []syntax.Value) bool
+	listValue() any
+}
+
+// Get returns the items.
+func (p *ListProp[T]) Get() []T { return p.val }
+
+// Set replaces the items and marks the owner dirty when they changed.
+func (p *ListProp[T]) Set(v []T) {
+	if slices.Equal(p.val, v) {
+		return
+	}
+	p.val = v
+	if p.base != nil {
+		p.base.mark(p.dirty)
+	}
+}
+
+func (p *ListProp[T]) setList(items []syntax.Value) bool {
+	v, err := p.parse(items)
+	if err != nil {
+		return false
+	}
+	p.val = v
+	return true
+}
+
+func (p *ListProp[T]) listValue() any { return p.val }
+
+// ListPropOf builds a NamedProp for a list cell. The schema owns what an item
+// means, so parse goes through it rather than reading the syntax here.
+func ListPropOf[T comparable](b *NodeBase, name string, dirty DirtyKind, p *ListProp[T]) NamedProp {
+	p.base, p.name, p.dirty = b, name, dirty
+	return NamedProp{Name: name, Dirty: dirty, kind: propList, cell: p}
+}
+
+// ListItems parses a design list whose items are all one Go type: the strings,
+// numbers or colours a chart property holds.
+func ListItems[T comparable](elem schema.ValueType, items []syntax.Value) ([]T, error) {
+	out := make([]T, 0, len(items))
+	for _, item := range items {
+		v, err := schema.ListItem(elem, item)
+		if err != nil {
+			return nil, err
+		}
+		typed, ok := v.(T)
+		if !ok {
+			return nil, fmt.Errorf("unexpected list item")
+		}
+		out = append(out, typed)
+	}
+	return out, nil
 }
 
 // StringProp builds a NamedProp for a string cell.

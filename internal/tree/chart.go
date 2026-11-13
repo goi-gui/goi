@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/goi-gui/goi/internal/schema"
+	"github.com/goi-gui/goi/internal/syntax"
 )
 
 // Series is one line, one group of bars, or the slices of one pie ring.
@@ -58,9 +59,9 @@ type Chart struct {
 
 	Data ChartData
 
-	// Categories is the design's category labels, a comma-separated list. The
-	// builder copies it into Data, so a chart written in the file needs no Go.
-	Categories Prop[string]
+	// Categories is the design's category labels. The builder copies it into
+	// Data, so a chart written in the file needs no Go.
+	Categories ListProp[string]
 
 	// Appearance.
 	Grid   Prop[bool] // value grid lines
@@ -100,6 +101,14 @@ type Chart struct {
 	LegendHits []Rect
 }
 
+// listParse is the item reader a list cell gets from the schema, so a list is
+// read the way the checker checked it.
+func listParse[T comparable](elem schema.ValueType) func([]syntax.Value) ([]T, error) {
+	return func(items []syntax.Value) ([]T, error) {
+		return ListItems[T](elem, items)
+	}
+}
+
 // ChartCore exposes the shared state to paint, which cannot type-assert five
 // concrete kinds.
 func (c *Chart) ChartCore() *Chart { return c }
@@ -118,11 +127,11 @@ func (c *Chart) SetData(d ChartData) {
 type ChartSeries struct {
 	NodeBase
 	Label  Prop[string]
-	Values Prop[string]
+	Values ListProp[float64]
 	Color  Prop[uint32]
-	// Colors is the per-slice list, comma-separated: `"primary, tertiary, #c62828"`.
+	// Colors is the per-slice list: `[theme.primary, theme.tertiary, #c62828]`.
 	// A pie colours one slice per entry; every other kind colours one point.
-	Colors Prop[string]
+	Colors ListProp[schema.ListColor]
 }
 
 // Kind implements Node.
@@ -131,8 +140,8 @@ func (*ChartSeries) Kind() string { return "ChartSeries" }
 func (s *ChartSeries) namedProps() []NamedProp {
 	return append(commonProps(&s.NodeBase),
 		StringProp(&s.NodeBase, "label", &s.Label),
-		StringProp(&s.NodeBase, "values", &s.Values),
-		StringProp(&s.NodeBase, "colors", &s.Colors),
+		ListPropOf(&s.NodeBase, "values", DirtyLayout, &s.Values),
+		ListPropOf(&s.NodeBase, "colors", DirtyPaint, &s.Colors),
 		ColorProp(&s.NodeBase, "color", DirtyPaint, &s.Color),
 	)
 }
@@ -146,16 +155,11 @@ func (c *Chart) adopt(t *Tree) error {
 		if !ok {
 			return fmt.Errorf("chart children must be ChartSeries, not %s", k.Node().Kind())
 		}
-		values, err := schema.NumberList(cs.Values.Get())
-		if err != nil {
-			return fmt.Errorf("%s values: %w", c.Node().Kind(), err)
+		s := Series{Label: cs.Label.Get(), Values: cs.Values.Get(), Color: cs.Color.Get()}
+		for _, c := range cs.Colors.Get() {
+			s.Colors = append(s.Colors, c.Color)
+			s.ColorRoles = append(s.ColorRoles, c.Role)
 		}
-		s := Series{Label: cs.Label.Get(), Values: values, Color: cs.Color.Get()}
-		colors, roles, err := schema.ColorList(cs.Colors.Get())
-		if err != nil {
-			return fmt.Errorf("%s colors: %w", c.Node().Kind(), err)
-		}
-		s.Colors, s.ColorRoles = colors, roles
 		// A role outlives the child: the painter resolves it from the current
 		// scheme, which a colour copied now could not do.
 		if role := cs.colorRoleFor("color"); role != "" && !strings.HasPrefix(role, "custom:") {
@@ -167,10 +171,10 @@ func (c *Chart) adopt(t *Tree) error {
 		t.Remove(k.node)
 	}
 	cats := c.Categories.Get()
-	if len(series) == 0 && cats == "" {
+	if len(series) == 0 && len(cats) == 0 {
 		return nil
 	}
-	c.SetData(ChartData{Categories: schema.LabelList(cats), Series: series})
+	c.SetData(ChartData{Categories: cats, Series: series})
 	return nil
 }
 
@@ -256,7 +260,7 @@ func gridProps(c *Chart) []NamedProp {
 		BoolProp(&c.NodeBase, "axis", DirtyPaint, &c.Axis),
 		BoolProp(&c.NodeBase, "legend", DirtyLayout, &c.Legend),
 		BoolProp(&c.NodeBase, "values", DirtyPaint, &c.Values),
-		StringProp(&c.NodeBase, "categories", &c.Categories),
+		ListPropOf(&c.NodeBase, "categories", DirtyLayout, &c.Categories),
 		ColorProp(&c.NodeBase, "textColor", DirtyPaint, &c.TextColor),
 		ColorProp(&c.NodeBase, "gridColor", DirtyPaint, &c.GridColor),
 		NumberProp(&c.NodeBase, "min", DirtyPaint, &c.Min),
@@ -363,7 +367,7 @@ func (c *GaugeChart) namedProps() []NamedProp {
 func newChart() Chart {
 	return Chart{
 		Component:      newComponent(),
-		Categories:     newProp(nil, "categories", DirtyLayout, ""),
+		Categories:     ListProp[string]{parse: listParse[string](schema.TypeString)},
 		TextColor:      newProp(nil, "textColor", DirtyPaint, uint32(0)),
 		GridColor:      newProp(nil, "gridColor", DirtyPaint, uint32(0)),
 		Grid:           newProp(nil, "grid", DirtyPaint, true),

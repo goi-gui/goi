@@ -3,6 +3,7 @@ package paint
 import (
 	"math"
 	"strconv"
+	"strings"
 
 	"github.com/goi-gui/goi/internal/m3"
 	"github.com/goi-gui/goi/internal/tree"
@@ -745,12 +746,22 @@ func chartGrid(c *tree.Chart, fallback uint32) uint32 {
 	return fallback
 }
 
+// roleName reads one item of a colour list: a theme role resolves from the
+// scheme, while a custom colour cannot, because the painter has no access to the
+// app's table. The second result says whether the role was one it can resolve.
+func roleName(role string) (string, bool) {
+	if role == "" || strings.HasPrefix(role, "custom:") {
+		return "", false
+	}
+	return role, true
+}
+
 // seriesColor is the colour of one series, or the palette's turn. A role
 // written in the design is resolved here, so the series follows the scheme.
 func seriesColor(c *tree.Chart, t m3.Theme, pal []uint32, s int) uint32 {
 	if s < len(c.Data.Series) {
-		if role := c.Data.Series[s].ColorRole; role != "" {
-			if col, ok := t.Colors.Role(role); ok {
+		if name, ok := roleName(c.Data.Series[s].ColorRole); ok {
+			if col, ok := t.Colors.Role(name); ok {
 				return col
 			}
 		}
@@ -766,9 +777,11 @@ func seriesColor(c *tree.Chart, t m3.Theme, pal []uint32, s int) uint32 {
 func pointColor(c *tree.Chart, t m3.Theme, pal []uint32, s, i int) uint32 {
 	if s < len(c.Data.Series) {
 		ser := c.Data.Series[s]
-		if i < len(ser.ColorRoles) && ser.ColorRoles[i] != "" {
-			if col, ok := t.Colors.Role(ser.ColorRoles[i]); ok {
-				return col
+		if i < len(ser.ColorRoles) {
+			if name, ok := roleName(ser.ColorRoles[i]); ok {
+				if col, ok := t.Colors.Role(name); ok {
+					return col
+				}
 			}
 		}
 		if i < len(ser.Colors) && ser.Colors[i] != 0 {

@@ -9,11 +9,11 @@ func TestChartSeriesBecomeData(t *testing.T) {
 	tr, diag := BuildSource([]byte(`Window {
 		BarChart {
 			id:         sales
-			categories: "Jan, Feb, Mar"
+			categories: ["Jan", "Feb", "Mar"]
 			values:     true
-			ChartSeries { id: first label: "2026" values: "12, 18, 9" }
-			ChartSeries { label: "2027" values: "10, 14, 20" color: tertiary }
-			ChartSeries { label: "2028" values: "4" color: #ff0000ff }
+			ChartSeries { id: first label: "2026" values: [12, 18, 9] }
+			ChartSeries { label: "2027" values: [10, 14, 20] color: tertiary }
+			ChartSeries { label: "2028" values: [4] color: #ff0000ff }
 		}
 	}`), nil)
 	if !diag.Empty() {
@@ -62,7 +62,7 @@ func TestChartSetDataReplacesDesignData(t *testing.T) {
 	tr, diag := BuildSource([]byte(`Window {
 		LineChart {
 			id: leaf
-			ChartSeries { values: "1, 2" }
+			ChartSeries { values: [1, 2] }
 		}
 	}`), nil)
 	if !diag.Empty() {
@@ -74,7 +74,7 @@ func TestChartSetDataReplacesDesignData(t *testing.T) {
 	if len(chart.Data.Series) != 1 || chart.Data.Series[0].Values[0] != 7 {
 		t.Fatalf("data = %+v", chart.Data)
 	}
-	if chart.Categories.Get() != "" {
+	if len(chart.Categories.Get()) != 0 {
 		t.Fatal("a chart with no categories property still has labels")
 	}
 }
@@ -87,11 +87,11 @@ func TestChartColorsFromDesign(t *testing.T) {
 			id:         channels
 			textColor:  onSurfaceVariant
 			gridColor:  #808080ff
-			categories: "Direct, Search, Social"
+			categories: ["Direct", "Search", "Social"]
 
 			ChartSeries {
-				values: "42, 27, 18"
-				colors: "primary, tertiary, #c62828"
+				values: [42, 27, 18]
+				colors: [theme.primary, theme.tertiary, #c62828]
 			}
 		}
 	}`), nil)

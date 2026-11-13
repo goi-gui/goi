@@ -504,7 +504,8 @@ func newNode(name string) Node {
 		return &ChartSeries{
 			NodeBase: b(),
 			Label:    newProp(nil, "label", DirtyPaint, ""),
-			Values:   newProp(nil, "values", DirtyPaint, ""),
+			Values:   ListProp[float64]{parse: listParse[float64](schema.TypeNumber)},
+			Colors:   ListProp[schema.ListColor]{parse: listParse[schema.ListColor](schema.TypeColor)},
 			Color:    newProp(nil, "color", DirtyPaint, uint32(0)),
 		}
 	}

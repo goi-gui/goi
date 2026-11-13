@@ -265,6 +265,9 @@ func plainValue(pd Prop) syntax.Value {
 		}
 	case TypeShadow:
 		return &syntax.Shadow{Layers: []syntax.ShadowLayer{{X: 1, Y: 1}}}
+	case TypeList:
+		item := plainValue(Prop{Type: pd.Elem})
+		return &syntax.List{Items: []syntax.Value{item}}
 	case TypeScalar:
 		return &syntax.String{Val: "x"}
 	case TypeRotate:
@@ -698,15 +701,15 @@ func TestRichTextChildrenAreText(t *testing.T) {
 // ChartSeries goes inside one, and a ChartSeries belongs to a chart.
 func TestChartChildrenAreSeries(t *testing.T) {
 	for _, kind := range []string{"LineChart", "AreaChart", "BarChart", "PieChart", "ScatterChart", "RadarChart", "GaugeChart"} {
-		cats := "categories: \"Jan, Feb\""
+		cats := `categories: ["Jan", "Feb"]`
 		if kind == "GaugeChart" {
 			// A gauge is one value against its range, so it has no categories.
 			cats = ""
 		}
 		src := `Window { ` + kind + ` {
 			` + cats + `
-			ChartSeries { label: "2026" values: "12, 18" }
-			ChartSeries { values: "1" color: tertiary }
+			ChartSeries { label: "2026" values: [12, 18] }
+			ChartSeries { values: [1] color: tertiary }
 		} }`
 		if _, diag := validate(t, src); !diag.Empty() {
 			t.Errorf("%s: %v", kind, diag)
@@ -720,26 +723,44 @@ func TestChartChildrenAreSeries(t *testing.T) {
 			t.Errorf("%s diagnostic = %v", kind, diag)
 		}
 	}
-	_, diag := validate(t, `Window { Column { ChartSeries { values: "1" } } }`)
+	_, diag := validate(t, `Window { Column { ChartSeries { values: [1] } } }`)
 	if diag.Empty() || !strings.Contains(diag.Error(), "direct child of a chart") {
 		t.Fatalf("a ChartSeries outside a chart: %v", diag)
 	}
 }
 
-// TestChartSeriesValuesAreNumbers catches the mistake the property's string type
-// hides: a word in the list would draw as zero.
-func TestChartSeriesValuesAreNumbers(t *testing.T) {
-	ok := []string{`"12, 18, 9"`, `"0"`, `"-2.5, 4e3"`, `"12, 18,"`}
-	for _, v := range ok {
-		src := "Window { LineChart { ChartSeries { values: " + v + " } } }"
+// TestChartListsAreLists keeps the list properties honest: a number list takes
+// numbers, a colour list takes literals and namespaced roles, and a bare role
+// name is rejected with the form to write instead.
+func TestChartListsAreLists(t *testing.T) {
+	ok := []string{
+		`Window { LineChart { ChartSeries { values: [12, 18, 9] } } }`,
+		`Window { LineChart { ChartSeries { values: [0, -2.5, 4000] } } }`,
+		`Window { LineChart { ChartSeries { values: [] } } }`,
+		`Window { PieChart { ChartSeries { colors: [theme.primary, theme.tertiary, #c62828] } } }`,
+		`Window { PieChart { ChartSeries { colors: ["rgb(198, 40, 40)", red] } } }`,
+		`Window { BarChart { categories: ["Direct", Search] } }`,
+	}
+	for _, src := range ok {
 		if _, diag := validate(t, src); !diag.Empty() {
-			t.Errorf("values %s: %v", v, diag)
+			t.Errorf("%s: %v", src, diag)
 		}
 	}
-	for _, v := range []string{`"12, x"`, `"1 2"`, `"many"`} {
-		src := "Window { LineChart { ChartSeries { values: " + v + " } } }"
-		if _, diag := validate(t, src); diag.Empty() {
-			t.Errorf("values %s passed", v)
+	bad := map[string]string{
+		`Window { LineChart { ChartSeries { values: "12, 18" } } }`: "a list like",
+		`Window { LineChart { ChartSeries { values: [12, x] } } }`:  "expected a number",
+		`Window { PieChart { ChartSeries { colors: [primary] } } }`: "theme.primary",
+		`Window { PieChart { ChartSeries { colors: ["#zz"] } } }`:   "not a colour",
+		`Window { BarChart { categories: "Direct" } }`:              "a list like",
+	}
+	for src, want := range bad {
+		_, diag := validate(t, src)
+		if diag.Empty() {
+			t.Errorf("%s passed", src)
+			continue
+		}
+		if !strings.Contains(diag.Error(), want) {
+			t.Errorf("%s diagnostic = %v, want %q", src, diag, want)
 		}
 	}
 }

@@ -1805,3 +1805,16 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   roles (`colors: "primary, #c62828"`), parsed by the checker and stored as a
   literal slice beside a role slice, because the colour pass resolves one cell
   and a list has no cell of its own; the painter asks the scheme per entry.
+- **A list is a value, not a string of commas.** Chart data first took
+  `values: "12, 18, 9"`, which made the checker parse a string to find a typo and
+  made a colour list the one place a role could not be written the way the rest
+  of the language writes it. `[42, 27, 18]` gives the parser the items: the
+  printer keeps them on one line, the checker reads each one by the property's
+  own element type, and a colour list takes a `theme.` reference like any other
+  colour. The parser has no other list to spend, so it is one more value kind and
+  nothing else changes.
+- **A role in a list keeps its namespace.** A single colour property accepts
+  `primary` and `theme.primary`, because one value leaves no doubt. In a list a
+  bare word is a CSS colour name (`red`, `rebeccapurple`), so `[primary]` would
+  be ambiguous; the checker rejects it with the form to write instead of guessing
+  between two meanings.

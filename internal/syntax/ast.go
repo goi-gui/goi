@@ -398,10 +398,12 @@ const (
 	ShadowKind
 	RotateKind
 	ModifierValueKind
+	ListKind
 )
 
 // Value is a property literal. The concrete type is one of *String,
-// *Number, *Bool, *Color, *Ident, *Map, *Percent, *Ref, *Binary or *Shadow.
+// *Number, *Bool, *Color, *Ident, *Map, *Percent, *Ref, *Binary, *Shadow or
+// *List.
 type Value interface {
 	Kind() ValueKind
 	Pos() Pos
@@ -431,6 +433,20 @@ type Color struct {
 	At   Pos
 	RGBA uint32
 }
+
+// List is `[a, b, c]`: a property whose value is a list, such as a chart's
+// categories, values or slice colours. The items are ordinary values, so a
+// colour in one may be a literal or a `theme.` role.
+type List struct {
+	At    Pos
+	Items []Value
+}
+
+// Kind implements Value.
+func (*List) Kind() ValueKind { return ListKind }
+
+// Pos implements Value.
+func (l *List) Pos() Pos { return l.At }
 
 // Ident is a bare identifier, used for enums and for the string-like `id`.
 type Ident struct {

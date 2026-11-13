@@ -145,6 +145,12 @@ func dumpValue(v Value) string {
 		return fmt.Sprintf("#%08x", v.RGBA)
 	case *Ident:
 		return v.Val
+	case *List:
+		parts := make([]string, len(v.Items))
+		for i, it := range v.Items {
+			parts[i] = dumpValue(it)
+		}
+		return "[" + strings.Join(parts, ", ") + "]"
 	case *Percent:
 		return strconv.FormatFloat(v.Val, 'g', -1, 64) + "%"
 	case *Ref:

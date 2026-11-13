@@ -188,6 +188,8 @@ const (
 	// Color is a theme role or a CSS colour, which is what a chart's text and
 	// grid take.
 	Color
+	// List is a list literal, `[1, 2, 3]`, whose items ListElem types.
+	List
 )
 
 // defaults are the component properties whose initial value is not the Go zero
@@ -244,9 +246,16 @@ func TypeOf(name string) PropType {
 		return Enum
 	case "textColor", "gridColor":
 		return Color
+	case "categories":
+		return List
 	}
 	return String
 }
+
+// ListElem is the type of one item of a list property, which is what the
+// checker reads each entry as. Only a chart's categories are a list today, and
+// a label is a string.
+func ListElem(name string) PropType { return String }
 
 // variantValues narrows the shared variant union where a component paints only
 // a few styles, so completion and the checker do not offer a word the painter

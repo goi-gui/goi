@@ -1206,6 +1206,33 @@ Window {
 	}
 }
 
+// TestCompletionInsideList covers a value list: after `theme.` the roles are the
+// completion, which is what a colour list is written from.
+func TestCompletionInsideList(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tPieChart {\n\t\tChartSeries { colors: [theme.] }\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "colors: [theme.", len("colors: [theme.")),
+	})
+	var list completionList
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	labels := map[string]bool{}
+	for _, it := range list.Items {
+		labels[it.Label] = true
+	}
+	// The label is the whole reference, since the editor replaces `theme.` too.
+	if !labels["theme.primary"] || !labels["theme.onSurfaceVariant"] {
+		t.Fatalf("theme roles missing inside a list: %v", labels)
+	}
+}
+
 // TestCompletionOffersModeGlobals keeps the two new app globals discoverable,
 // with the light/dark meaning in the detail line.
 func TestCompletionOffersModeGlobals(t *testing.T) {

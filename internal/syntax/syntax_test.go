@@ -1014,3 +1014,54 @@ func TestParseSubtitleStyleLiterals(t *testing.T) {
 		t.Fatalf("dump mismatch\n--- got ---\n%s--- want ---\n%s", got, want)
 	}
 }
+
+// TestParseList covers the list literal: items stay ordinary values, so a
+// colour list can mix a theme role with a literal, and a trailing comma is
+// allowed the way Go allows it.
+func TestParseList(t *testing.T) {
+	f, diag := Parse([]byte(`A {
+		values: [42, -2.5,]
+		colors: [theme.primary, #c62828, "rgb(1, 2, 3)"]
+		empty:  []
+	}`))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	values := f.Root.Prop("values").Value.(*List)
+	if len(values.Items) != 2 {
+		t.Fatalf("values = %v", values.Items)
+	}
+	if n, ok := values.Items[0].(*Number); !ok || n.Val != 42 {
+		t.Fatalf("first value = %#v", values.Items[0])
+	}
+	// The lexer folds a minus into the number that follows it.
+	neg, ok := values.Items[1].(*Number)
+	if !ok || neg.Val != -2.5 {
+		t.Fatalf("second value = %#v", values.Items[1])
+	}
+	colors := f.Root.Prop("colors").Value.(*List)
+	if len(colors.Items) != 3 {
+		t.Fatalf("colors = %v", colors.Items)
+	}
+	if ref, ok := colors.Items[0].(*Ref); !ok || ref.ID != "theme" || ref.Prop != "primary" {
+		t.Fatalf("first colour = %#v", colors.Items[0])
+	}
+	if _, ok := colors.Items[1].(*Color); !ok {
+		t.Fatalf("second colour = %#v", colors.Items[1])
+	}
+	// The printer round-trips it.
+	got := Dump(f)
+	if !strings.Contains(got, "[theme.primary, #c62828ff, ") || !strings.Contains(got, "[42, -2.5]") {
+		t.Fatalf("dump = %s", got)
+	}
+}
+
+// TestParseListDiagnostics keeps an unclosed list a parse error rather than a
+// silently shorter one.
+func TestParseListDiagnostics(t *testing.T) {
+	for _, src := range []string{`A { v: [1, 2 }`, `A { v: [1, 2`} {
+		if _, diag := Parse([]byte(src)); diag.Empty() {
+			t.Errorf("%s parsed", src)
+		}
+	}
+}
