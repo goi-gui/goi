@@ -261,6 +261,12 @@ func (t *Tree) build(el *syntax.Element, parent *NodeBase, hooks *Hooks) (Node, 
 	if md, ok := n.(*Markdown); ok {
 		md.Rebuild()
 	}
+	// A RichText's children are its runs, authored as Text elements.
+	if rt, ok := n.(*RichText); ok {
+		if err := rt.adopt(t); err != nil {
+			return nil, err
+		}
+	}
 	return n, nil
 }
 

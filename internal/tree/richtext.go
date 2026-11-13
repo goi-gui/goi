@@ -1,6 +1,11 @@
 package tree
 
-import "github.com/goi-gui/goi/internal/text"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/goi-gui/goi/internal/text"
+)
 
 // Span is one styled run inside a RichText. A span is data, not a node: a run
 // can break across lines, which one node's bounds cannot describe.
@@ -18,6 +23,10 @@ type Span struct {
 	Link string
 	// Color overrides the run's colour; 0 keeps the RichText's own.
 	Color uint32
+	// ColorRole names a theme role for the run, such as "primary" or
+	// "tertiary". It wins over Color and follows the scheme, so a role written
+	// on a Text child keeps changing colour with the theme.
+	ColorRole string
 }
 
 // RichText is one paragraph whose runs may differ: the inline model behind
@@ -79,6 +88,56 @@ func (r *RichText) Inlines() []text.Inline {
 		out[i] = text.Inline{Text: s.Text, Style: i}
 	}
 	return out
+}
+
+// adopt turns the Text children a design declared into the runs they describe
+// and detaches them. The children are only a way to author the runs: a span is
+// data, not a node, because a run may break across lines.
+func (r *RichText) adopt(t *Tree) error {
+	if len(r.kids) == 0 {
+		return nil
+	}
+	spans := make([]Span, 0, len(r.kids))
+	for _, k := range r.kids {
+		tx, ok := k.Node().(*Text)
+		if !ok {
+			return fmt.Errorf("RichText children must be Text, not %s", k.Node().Kind())
+		}
+		spans = append(spans, spanOf(tx))
+	}
+	for _, k := range append([]*NodeBase(nil), r.kids...) {
+		t.Remove(k.node)
+	}
+	r.SetSpans(spans)
+	return nil
+}
+
+// spanOf maps a Text child's style onto one run: a heavy weight is bold, an
+// italic style slants, the decoration's strokes carry over, and a colour
+// override does too. The size and family stay the RichText's own.
+func spanOf(tx *Text) Span {
+	s := Span{Text: tx.Text.Get(), Color: tx.Color.Get()}
+	// A role keeps following the scheme after the child is gone; only a theme
+	// role can be resolved by the painter, so a custom one falls back.
+	if role := tx.colorRoleFor("color"); role != "" && !strings.HasPrefix(role, "custom:") {
+		s.ColorRole, s.Color = strings.TrimPrefix(role, "theme:"), 0
+	}
+	switch w := tx.Weight.Get(); {
+	case w >= 600, w == weightBolder:
+		s.Bold = true
+	}
+	if tx.FontStyle.Get() == "italic" {
+		s.Italic = true
+	}
+	for _, tok := range strings.Fields(tx.Decoration.Get()) {
+		switch tok {
+		case "underline":
+			s.Underline = true
+		case "line-through":
+			s.Strike = true
+		}
+	}
+	return s
 }
 
 func (r *RichText) namedProps() []NamedProp {

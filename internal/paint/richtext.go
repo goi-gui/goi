@@ -82,6 +82,11 @@ func (l *List) paintRichText(r *tree.RichText, box tree.Rect, clip tree.Rect) {
 				}, l.Theme.Colors.SurfaceContainerHighest, 3, 0, 0, clip)
 			}
 			runColor := sp.Color
+			if sp.ColorRole != "" {
+				if c, ok := l.Theme.Colors.Role(sp.ColorRole); ok {
+					runColor = c
+				}
+			}
 			if runColor == 0 {
 				runColor = color
 			}

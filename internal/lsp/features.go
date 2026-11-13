@@ -1076,7 +1076,19 @@ func memberItems(file *syntax.File, src []byte, off int) []completionResult {
 		})
 	}
 	if el.Children {
-		out = append(out, elementItems(file)...)
+		items := elementItems(file)
+		// A RichText's children are its runs, so only Text is worth offering
+		// there; every other element would be rejected by the checker.
+		if el.Name == "RichText" {
+			runs := items[:0]
+			for _, it := range items {
+				if it.Label == "Text" {
+					runs = append(runs, it)
+				}
+			}
+			items = runs
+		}
+		out = append(out, items...)
 		out = append(out, blockItems(file)...)
 	}
 	return out

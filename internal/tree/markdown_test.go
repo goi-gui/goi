@@ -179,3 +179,53 @@ func TestMarkdownInlineRuns(t *testing.T) {
 		t.Fatalf("plain text = %q, want %q", got, want)
 	}
 }
+
+// TestRichTextChildrenBecomeSpans covers the declarative path: a design writes
+// its runs as Text children, and they arrive as spans with their style mapped.
+func TestRichTextChildrenBecomeSpans(t *testing.T) {
+	tr, diag := BuildSource([]byte(`Window {
+		RichText {
+			id: doc
+			Text { id: a text: "plain " }
+			Text { text: "bold" fontWeight: bold }
+			Text { text: "it" fontStyle: italic }
+			Text { text: "under" decoration: underline }
+			Text { text: "gone" decoration: line-through color: #ff0000ff }
+			Text { text: "role" color: tertiary }
+		}
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	n, ok := tr.ByID("doc")
+	if !ok {
+		t.Fatal("no RichText")
+	}
+	rt := n.(*RichText)
+	spans := rt.Spans()
+	if len(spans) != 6 {
+		t.Fatalf("spans = %v", spans)
+	}
+	want := []Span{
+		{Text: "plain "},
+		{Text: "bold", Bold: true},
+		{Text: "it", Italic: true},
+		{Text: "under", Underline: true},
+		{Text: "gone", Strike: true, Color: 0xFF0000FF},
+		// A role stays a role, so the run follows a theme change.
+		{Text: "role", ColorRole: "tertiary"},
+	}
+	for i := range want {
+		if spans[i] != want[i] {
+			t.Fatalf("span %d = %+v, want %+v", i, spans[i], want[i])
+		}
+	}
+	// The children were authored, not drawn: they are gone from the tree, so
+	// layout, paint and id lookups do not see them.
+	if got := len(rt.Kids()); got != 0 {
+		t.Fatalf("RichText kept %d child node(s)", got)
+	}
+	if _, ok := tr.ByID("a"); ok {
+		t.Fatal("a run's id is still registered after it became a span")
+	}
+}

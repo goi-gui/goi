@@ -664,3 +664,29 @@ Column { }`, "has no default"},
 		})
 	}
 }
+
+// TestRichTextChildrenAreText is the guard on the one element whose children
+// are data: a run is a Text, so anything else is rejected at the file.
+func TestRichTextChildrenAreText(t *testing.T) {
+	_, diag := validate(t, `Window {
+		RichText {
+			Text { text: "one" }
+			Text { text: "two" fontWeight: bold }
+			Text { text: "three" fontStyle: italic decoration: underline }
+		}
+	}`)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	_, diag = validate(t, `Window {
+		RichText {
+			Button { label: "no" }
+		}
+	}`)
+	if diag.Empty() {
+		t.Fatal("a Button inside a RichText passed validation")
+	}
+	if !strings.Contains(diag.Error(), "each one is a Text") {
+		t.Fatalf("diagnostic = %v", diag)
+	}
+}

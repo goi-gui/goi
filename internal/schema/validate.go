@@ -281,6 +281,9 @@ func (v *validator) walk(e *syntax.Element, parent string) {
 	if e.Name == "Positioned" && parent != "Stack" {
 		v.add(e.NameAt, e.NameAt+syntax.Pos(len(e.Name)), "Positioned must be a direct child of Stack", "")
 	}
+	if parent == "RichText" && e.Name != "Text" {
+		v.add(e.NameAt, e.NameAt+syntax.Pos(len(e.Name)), "RichText children are its runs, so each one is a Text", "")
+	}
 
 	seen := map[string]syntax.Pos{}
 	for _, p := range e.Props() {

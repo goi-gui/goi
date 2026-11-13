@@ -371,7 +371,7 @@ var elements = func() []Element {
 		// RichText is the inline model: one paragraph whose runs may be bold,
 		// italic, a link or code. The runs come from Go, so only the paragraph's
 		// own style is a .goi property.
-		{Name: "RichText", Children: false, Attrs: withCommon(
+		{Name: "RichText", Children: true, Attrs: withCommon(
 			Prop{Name: "text", Type: TypeString, Dirty: DirtyLayout, Default: ""},
 			Prop{Name: "fontSize", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
 			Prop{Name: "color", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0)},

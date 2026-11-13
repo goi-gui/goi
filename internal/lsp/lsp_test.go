@@ -282,6 +282,35 @@ func TestCompletionOffersPropertiesAndChildren(t *testing.T) {
 	}
 }
 
+// TestCompletionRichTextOffersOnlyText guards the one element whose children
+// are data: offering a Button there only produces a diagnostic.
+func TestCompletionRichTextOffersOnlyText(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tRichText {\n\t\t\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "\t\t\n", 2),
+	})
+	var list completionList
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	labels := map[string]bool{}
+	for _, it := range list.Items {
+		labels[it.Label] = true
+	}
+	if !labels["Text"] {
+		t.Fatalf("Text missing from a RichText: %v", list.Items)
+	}
+	if labels["Button"] || labels["Column"] {
+		t.Fatalf("a non-Text element completed inside a RichText: %v", list.Items)
+	}
+}
+
 // TestSVGVocabulary is the same guard for a newer element: the design must stop
 // being squiggled, and completion must offer it. A goipls binary installed before
 // SVG existed reported `unknown element "SVG"`, and only a rebuild fixed it.

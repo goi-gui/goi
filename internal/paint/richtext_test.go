@@ -58,6 +58,7 @@ func TestRichTextStylesRuns(t *testing.T) {
 		{Text: "code", Code: true},
 		{Text: " "},
 		{Text: "link", Link: "https://goi.dev"},
+		{Text: " role", ColorRole: "tertiary"},
 	}, 200, 300)
 
 	plain := runs(l, "plain ")
@@ -70,6 +71,9 @@ func TestRichTextStylesRuns(t *testing.T) {
 	}
 	if got := runs(l, "slanted"); len(got) != 1 || !got[0].Italic {
 		t.Fatalf("slanted run not italic: %+v", got)
+	}
+	if got := runs(l, " role"); len(got) != 1 || got[0].Color != m3.Light().Colors.Tertiary {
+		t.Fatalf("role run = %+v", got)
 	}
 	link := runs(l, "link")
 	if len(link) != 1 || link[0].Color != m3.Light().Colors.Primary {
