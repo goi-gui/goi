@@ -1086,6 +1086,7 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 			panels = append(panels, panel)
 			g.instances = append(g.instances, backdropInstances(panel, float32(width)/g.scale, float32(height)/g.scale)...)
 		case paint.Fill:
+			rect := instanceRect(op, g.scale)
 			params := [4]float32{shapeKind(op.Shape), 0, op.StartAngle, op.EndAngle}
 			if op.Gradient != nil {
 				// A CSS gradient: kind 9 linear, 10 radial, params.y its record.
@@ -1096,7 +1097,7 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 				params = [4]float32{kind, float32(g.gradIndex(op.Gradient)), 0, 0}
 			}
 			g.instances = append(g.instances, gpuInstance{
-				Rect:    snapRect(op.Rect, g.scale),
+				Rect:    rect,
 				Radius:  op.Radius,
 				Color:   rgba(op.Color),
 				Border:  borderVec(op.BorderColor, op.BorderWidth),
@@ -1407,6 +1408,17 @@ func clearColor(list *paint.List) gputypes.Color {
 // fractional x starts on two rows at 90% and 10% coverage, which reads as a
 // broken line; snapped, both edges land on one row each. Adjacent boxes share
 // their edges, so snapping them all keeps them flush.
+// instanceRect is the pixel rectangle a fill instance draws in. Only an upright
+// shape snaps to the pixel grid: snapping is what keeps a border crisp, and a
+// curve's joins live at subpixels, so snapping each small step of a spline
+// turns the curve into a staircase.
+func instanceRect(op paint.Op, scale float32) [4]float32 {
+	if op.Rotate != 0 {
+		return op.Rect
+	}
+	return snapRect(op.Rect, scale)
+}
+
 func snapRect(r [4]float32, scale float32) [4]float32 {
 	s := scale
 	if s <= 0 {

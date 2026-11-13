@@ -255,3 +255,17 @@ func TestSamplesFallBackInOrder(t *testing.T) {
 		}
 	}
 }
+
+// TestTurnedFillIsNotSnapped is the spline fix: a chart draws a curve as small
+// turned quads, and snapping each one to the pixel grid turned its joins into a
+// staircase. An upright box still snaps, so borders stay crisp.
+func TestTurnedFillIsNotSnapped(t *testing.T) {
+	op := paint.Op{Rect: [4]float32{10.4, 20.6, 30.5, 2.4}}
+	if got := instanceRect(op, 1); got != [4]float32{10, 21, 31, 2} {
+		t.Fatalf("upright rect = %v, want the snapped box", got)
+	}
+	op.Rotate = 0.5
+	if got := instanceRect(op, 1); got != op.Rect {
+		t.Fatalf("turned rect = %v, want the exact box", got)
+	}
+}

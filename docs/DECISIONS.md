@@ -1905,3 +1905,8 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   radius past half the box as a circle; the distance field does not, and returned
   "outside" for every fragment. Both the op and the shader clamp, so a design's
   `radius: 999` circle draws and a tool reading the list sees the real radius.
+- **An upright shape snaps to the pixel grid; a turned one does not.** Snapping
+  is what keeps a border crisp, but a chart draws a curve as dozens of small
+  turned quads whose joins live at subpixels. Snapping each one rounded its
+  rectangle back to whole pixels and the spline read as a staircase, so a
+  rotated fill keeps its exact box and the distance field fades its own edge.
