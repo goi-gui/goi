@@ -321,9 +321,9 @@ func TestFormatLists(t *testing.T) {
 }
 
 // TestFormatMultilineString is the round trip that matters: a document is
-// written one line per source line, indented under its property, and reading
-// the result back gives the same value. Nested indentation and blank lines are
-// part of the value and must survive.
+// written one line per source line, lined up under the first line's text, and
+// reading the result back gives the same value. Nested indentation and blank
+// lines are part of the value and must survive.
 func TestFormatMultilineString(t *testing.T) {
 	src := "Window {\n" +
 		"\tMarkdown {\n" +
@@ -335,15 +335,18 @@ func TestFormatMultilineString(t *testing.T) {
 		"\t\t\"!\n" +
 		"\t}\n" +
 		"}\n"
+	// valueCol is the width of `text:` plus its padding, and the text starts two
+	// characters later, behind `!"`.
+	pad := "\t\t" + strings.Repeat(" ", 8)
 	got := string(Source([]byte(src)))
 	want := "Window {\n" +
 		"\tMarkdown {\n" +
 		"\t\ttext: !\"# Title\n" +
 		"\n" +
-		"\t\t\ta paragraph\n" +
-		"\t\t\t- one\n" +
-		"\t\t\t\t- nested\n" +
-		"\t\t\t\"!\n" +
+		pad + "a paragraph\n" +
+		pad + "- one\n" +
+		pad + "\t- nested\n" +
+		pad + "\"!\n" +
 		"\t}\n" +
 		"}\n"
 	if got != want {
@@ -373,4 +376,26 @@ func parseText(t *testing.T, src string) string {
 		}
 	})
 	return out
+}
+
+// TestMultilineAlignsWithItsValueColumn checks the alignment uses the padded
+// value column: a longer property beside the text moves the block right with it.
+func TestMultilineAlignsWithItsValueColumn(t *testing.T) {
+	src := "Window {\n" +
+		"\tMarkdown {\n" +
+		"\t\tpadding: 1\n" +
+		"\t\ttext: !\"one\n" +
+		"\t\ttwo\"!\n" +
+		"\t}\n" +
+		"}\n"
+	got := string(Source([]byte(src)))
+	// `padding:` is 8 wide, so its value column is 9 and the text starts two
+	// characters later, behind `!"`.
+	pad := "\t\t" + strings.Repeat(" ", 11)
+	if !strings.Contains(got, "text:    !\"one\n"+pad+"two\"!") {
+		t.Fatalf("format =\n%s", got)
+	}
+	if parseText(t, got) != "one\ntwo" {
+		t.Fatalf("round trip = %q", parseText(t, got))
+	}
 }

@@ -32,7 +32,7 @@ func printValue(v syntax.Value) string {
 // formatter must not turn `bold` into 700 or add quotes around `underline`,
 // because the next read would be a different file. depth is the property's own
 // indentation, so a multi-line value block lines up with the file.
-func printProperty(name string, v syntax.Value, depth int) string {
+func printProperty(name string, v syntax.Value, depth, valueCol int) string {
 	switch m := v.(type) {
 	case *syntax.Map:
 		return printResponsive(m, depth)
@@ -42,7 +42,7 @@ func printProperty(name string, v syntax.Value, depth int) string {
 		// A string with a line break goes back out in the form it was written
 		// in: one line per source line, indented under the property.
 		if strings.Contains(m.Val, "\n") {
-			return printMultiline(m.Val, depth)
+			return printMultiline(m.Val, depth, valueCol)
 		}
 	}
 	switch name {
@@ -68,13 +68,15 @@ func printProperty(name string, v syntax.Value, depth int) string {
 }
 
 // printMultiline writes a string that spans lines as `!"…"!`, one line per
-// source line. Every line but the first is indented one level under the
-// property, and the closing delimiter rides on the last line, so reading the
-// file back strips exactly the indentation this added. A blank line is written
-// blank, except the last one: it carries the indentation the reader needs to
-// find the block's base.
-func printMultiline(val string, depth int) string {
-	pad := strings.Repeat("\t", depth+1)
+// source line. Every line but the first is indented to the column the first
+// line's text starts at — the property's own line, after `name: !"` — so the
+// whole block reads as one column instead of hanging left of its first word.
+// The closing delimiter rides on the last line, so reading the file back strips
+// exactly the indentation this added. A blank line is written blank, except the
+// last one: it carries the indentation the reader needs to find the block's base.
+func printMultiline(val string, depth, valueCol int) string {
+	// +2 for the `!"` the first line's text starts behind.
+	pad := strings.Repeat("\t", depth) + strings.Repeat(" ", valueCol+2)
 	lines := strings.Split(val, "\n")
 	var b strings.Builder
 	b.WriteString(`!"`)

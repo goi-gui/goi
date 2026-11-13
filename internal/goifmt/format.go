@@ -215,7 +215,9 @@ func (p *printer) members(members []syntax.Member, close syntax.Pos) {
 		p.indent()
 		p.b.WriteString(pr.Name + ":")
 		p.b.WriteString(strings.Repeat(" ", width-len(pr.Name)))
-		p.b.WriteString(printProperty(pr.Name, pr.Value, p.depth))
+		// A multi-line value lines up under the column its first line starts
+		// at, which is the property name plus its padding.
+		p.b.WriteString(printProperty(pr.Name, pr.Value, p.depth, width+1))
 		p.b.WriteString("\n")
 		p.trailing(stop)
 	}

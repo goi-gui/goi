@@ -1850,3 +1850,12 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   list is. Nothing is unescaped in the form, because a document is not source
   code; goifmt writes any value with a line break back this way and puts its own
   indentation in front of each line, so a re-read strips exactly that.
+- **A block string lines up under its own first character.** Writing the
+  continuation lines one level under the property put them left of the first line
+  whenever the property name is short (`text: !"#` starts eight columns after the
+  indentation, a tab-indented body at four), which reads as a hanging block rather
+  than one document. goifmt pads each continuation line with the indentation plus
+  the value column plus the two characters of `!"`, so every line starts where
+  the first line's text does. The alignment is plain spaces after the tabs, which
+  matters because the reader strips the closing line's indentation and only
+  whitespace can be stripped.
