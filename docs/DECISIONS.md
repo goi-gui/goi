@@ -1910,3 +1910,16 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   turned quads whose joins live at subpixels. Snapping each one rounded its
   rectangle back to whole pixels and the spline read as a staircase, so a
   rotated fill keeps its exact box and the distance field fades its own edge.
+- **`size` is a shorthand, not a cell.** One number writes width and height,
+  because most boxes are square and two lines for one decision reads worse. It
+  owns no cell: writing it writes both axes, reading it gives the width, and a
+  later `width` or `height` moves only the axis it names. It replaced an enum of
+  the same name (sm/md/lg) that only a few components' metrics read and that
+  everybody else ignored, so the language has one `size` and it means a number.
+- **The loading indicator is a polar signed distance, not a bitmap.** The M3
+  shape is a six-lobed rounded star whose lobes deepen and flatten while it
+  turns; drawing it from a distance field keeps it sharp at any size and display
+  scale, needs one quad a frame and no atlas, and lets the design tint it with
+  `color`. The gallery's SVG was the reference for the motion, not the
+  implementation: morphing 200 lines of path per frame would have cost a
+  rasterization a frame and blurred at large sizes.
