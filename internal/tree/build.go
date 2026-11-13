@@ -629,7 +629,10 @@ func newM3Component(name string) Node {
 	case "CircularProgress":
 		return &CircularProgress{Component: newComponent()}
 	case "LoadingIndicator":
-		return &LoadingIndicator{Component: newComponent()}
+		return &LoadingIndicator{
+			Component: newComponent(),
+			Color:     newProp(nil, "color", DirtyPaint, uint32(0)),
+		}
 	case "DatePicker":
 		return &DatePicker{Component: newComponent()}
 	case "TimePicker":

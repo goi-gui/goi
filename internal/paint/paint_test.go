@@ -1,6 +1,8 @@
 package paint
 
 import (
+	"time"
+
 	"fmt"
 	"math"
 	"testing"
@@ -19,6 +21,20 @@ func list(t *testing.T, src string, w, h float64) *List {
 	}
 	layout.New(nil).Layout(tr.Root, w, h)
 	l := &List{}
+	l.Build(tr, w, h)
+	return l
+}
+
+// listAt builds the list with the frame clock set, which is what moves an
+// animation that reads it.
+func listAt(t *testing.T, src string, w, h float64, clock time.Duration) *List {
+	t.Helper()
+	tr, diag := tree.BuildSource([]byte(src), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, w, h)
+	l := &List{Clock: clock}
 	l.Build(tr, w, h)
 	return l
 }

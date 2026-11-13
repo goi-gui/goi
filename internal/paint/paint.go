@@ -55,6 +55,10 @@ const (
 	// CSSGradient fills a shape with a CSS linear or radial gradient, using the
 	// op's Gradient field for its stops.
 	CSSGradient
+	// Loading is the M3 loading shape: a six-lobed rounded star whose lobes
+	// deepen and flatten while it turns. StartAngle is the turn, Depth the lobe
+	// depth at this moment (0 flat, 1 a deep star).
+	Loading
 )
 
 // Align is the horizontal alignment of a text or icon run inside its box.
@@ -96,10 +100,14 @@ type Op struct {
 	// layer. They are ignored by every other kind.
 	TextShadows []tree.ShadowLayer
 
-	// Arc fields, in radians, 0 at 12 o'clock and growing clockwise.
+	// Arc fields, in radians, 0 at 12 o'clock and growing clockwise. A Loading
+	// shape reads StartAngle as its turn.
 	StartAngle float32
 	EndAngle   float32
 	Thickness  float32
+
+	// Depth is a Loading shape's lobe depth, 0 (round) to 1 (a deep star).
+	Depth float32
 
 	// Clip is the intersection of every ancestor's content box, as x, y, w, h.
 	// Ops outside it are still emitted; the renderer discards those fragments.

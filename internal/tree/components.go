@@ -638,12 +638,21 @@ type CircularProgress struct{ Component }
 func (*CircularProgress) Kind() string              { return "CircularProgress" }
 func (c *CircularProgress) namedProps() []NamedProp { return c.props("CircularProgress") }
 
-// LoadingIndicator is the expressive loading indicator.
-type LoadingIndicator struct{ Component }
+// LoadingIndicator is the expressive loading indicator: a rotating, morphing
+// shape. Color is its own cell because the shape is the component, so a design
+// tints it directly rather than through a background.
+type LoadingIndicator struct {
+	Component
+	Color Prop[uint32]
+}
 
 // Kind implements Node.
-func (*LoadingIndicator) Kind() string              { return "LoadingIndicator" }
-func (c *LoadingIndicator) namedProps() []NamedProp { return c.props("LoadingIndicator") }
+func (*LoadingIndicator) Kind() string { return "LoadingIndicator" }
+func (c *LoadingIndicator) namedProps() []NamedProp {
+	return append(c.propsExcept("LoadingIndicator", "color"),
+		ColorProp(&c.NodeBase, "color", DirtyPaint, &c.Color),
+	)
+}
 
 // DatePicker picks a date.
 type DatePicker struct{ Component }

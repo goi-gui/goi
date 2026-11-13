@@ -2509,6 +2509,9 @@ func propDoc(el string, p schema.Prop) string {
 		}
 	}
 	switch p.Name {
+	case "size":
+		b.WriteString("\n\nSets width and height together: `size: 32` is a 32 by 32 box. " +
+			"A later `width` or `height` moves only the axis it names.")
 	case "opacity":
 		b.WriteString("\n\n0 to 1, or a percentage such as `50%`. Fades the element and " +
 			"everything under it. From Go: `node.SetOpacity(0.5)`, which a `Tween` can drive.")

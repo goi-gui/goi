@@ -1004,3 +1004,49 @@ func TestCurveStepFollowsTheScale(t *testing.T) {
 		t.Fatalf("segments at 1x = %d, at 2x = %d; want more at 2x", one, two)
 	}
 }
+
+// TestLoadingIndicatorIsNativeShape covers the loading shape: it is one signed
+// distance rather than a bitmap, its colour comes from the component, and its
+// turn and morph follow the frame clock.
+func TestLoadingIndicatorIsNativeShape(t *testing.T) {
+	src := `Window { Column {
+		LoadingIndicator { size: 48 }
+		LoadingIndicator { size: 96 color: #cc4444ff }
+	} }`
+	l := m3list(t, src)
+	var ops []Op
+	for _, op := range l.Ops {
+		if op.Shape == Loading {
+			ops = append(ops, op)
+		}
+	}
+	if len(ops) != 2 {
+		t.Fatalf("drew %d loading shapes, want 2\n%s", len(ops), l.Dump())
+	}
+	if ops[1].Color != 0xCC4444FF {
+		t.Fatalf("colour = %08x, want the component's own", ops[1].Color)
+	}
+	if ops[1].Rect[2] != 96 || ops[1].Rect[3] != 96 {
+		t.Fatalf("size: 96 gave box %v", ops[1].Rect)
+	}
+	if !l.Animating {
+		t.Fatal("a loading shape must keep the frame loop running")
+	}
+	if ops[0].Depth < 0 || ops[0].Depth > 1 {
+		t.Fatalf("depth = %v, want 0..1", ops[0].Depth)
+	}
+
+	// A later frame has turned the shape and moved its morph on.
+	first := ops[0]
+	later := listAt(t, src, 400, 400, 900*time.Millisecond)
+	for _, op := range later.Ops {
+		if op.Shape == Loading {
+			if op.StartAngle == first.StartAngle || op.Depth == first.Depth {
+				t.Fatalf("frame at 900ms: turn %v depth %v, want both moved from %v/%v",
+					op.StartAngle, op.Depth, first.StartAngle, first.Depth)
+			}
+			return
+		}
+	}
+	t.Fatal("no loading shape in the later frame")
+}

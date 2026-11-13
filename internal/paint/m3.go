@@ -1801,19 +1801,47 @@ func (l *List) paintWavyRing(r tree.Rect, frac, thickness float64, clip tree.Rec
 	}
 }
 
+// paintLoadingIndicator draws the M3 loading shape: a rounded star whose lobe
+// count morphs while it turns. The shape is a signed distance in the renderer,
+// so it stays sharp at any size and needs no bitmap; the list only says where
+// the morph and the turn are, and keeps drawing frames while it plays.
 func (l *List) paintLoadingIndicator(c *tree.Component, r tree.Rect, clip tree.Rect) {
-	col := l.Theme.Colors
-	size := minf(r.W, r.H)
-	cx, cy := r.X+r.W/2, r.Y+r.H/2
-	// Expressive loading indicator: a thick rounded arc that keeps a gap.
-	rr := size/2 - 4
-	track := tree.Rect{X: cx - rr, Y: cy - rr, W: rr * 2, H: rr * 2}
+	if minf(r.W, r.H) <= 0 {
+		return
+	}
+	col := l.Theme.Colors.Primary
+	if li, ok := c.Node().(*tree.LoadingIndicator); ok {
+		if v := li.Color.Get(); v != 0 {
+			col = v
+		}
+	}
+	l.Animating = true
 	l.Ops = append(l.Ops, Op{
-		Kind: Fill, Shape: Arc, Rect: rectArr(track),
-		Color: col.Primary, Thickness: float32(size * 0.16),
-		StartAngle: 0.6, EndAngle: 5.2,
-		Clip: clipArr(clip),
+		Kind: Fill, Shape: Loading, Rect: rectArr(r),
+		Color: col,
+		// The turn rides the list's clock, like a wave's phase.
+		StartAngle: float32(l.loadingTurn()),
+		Depth:      float32(l.loadingDepth()),
+		Clip:       clipArr(clip),
 	})
+}
+
+// loadingMorphDur is one breath of the loading shape, in seconds. 4.55s is the
+// timing the M3 indicator morphs on.
+const loadingMorphDur = 4.55
+
+// loadingDepth is how deep the star's lobes are at this moment: a cosine wave
+// between a deep star and a nearly round shape, so the animation breathes
+// instead of looping with a jump.
+func (l *List) loadingDepth() float64 {
+	s := l.Clock.Seconds() / loadingMorphDur * 2 * math.Pi
+	return 0.5 - 0.5*math.Cos(s)
+}
+
+// loadingTurn is the shape's rotation: 900 degrees every six seconds, which is
+// the speed the M3 indicator turns at.
+func (l *List) loadingTurn() float64 {
+	return l.Clock.Seconds() * (900.0 / 6.0) * math.Pi / 180
 }
 
 // ---------------------------------------------------------------- misc

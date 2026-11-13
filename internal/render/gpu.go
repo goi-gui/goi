@@ -145,6 +145,16 @@ fn sd_round_rect(p: vec2f, s: vec2f, r: f32) -> f32 {
 
 const PI = 3.14159265359;
 
+// loading_star is the radius of one loading lobe at angle a, as a fraction of
+// the shape's outer radius. Six shares of a cosine make six lobes, and depth
+// (0..1) says how deep their valleys run, so the same function draws a nearly
+// round shape and a deep star. It is a polar curve rather than a polygon, which
+// is what keeps every lobe round at any size.
+fn loading_star(a: f32, depth: f32) -> f32 {
+	let k = 0.12 + 0.24 * depth;
+	return (1.0 - k) + k * abs(cos(3.0 * a));
+}
+
 // gradient_color samples a CSS gradient. Each record is 6 vec4: header
 // (kind, angle, stop count, unused), the four stop positions, then four stop
 // colours. t is the position along the gradient line, 0..1.
@@ -209,6 +219,28 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 
 	let aa = 0.5 / max(viewport.size.z, 1.0);
 	let kind = in.params.x;
+
+	if (kind > 12.5) {
+		// The loading shape: a rounded star whose lobe count morphs while it
+		// turns. params.z is the turn, misc.x and misc.y the lobe pair and
+		// params.w the morph between them.
+		let c = in.size * 0.5;
+		let q = vec2f(in.local.x - c.x, in.local.y - c.y);
+		let rho = max(length(q), 0.0001);
+		let th = atan2(q.y, q.x) - in.params.z;
+		let depth = in.misc.x;
+		let outer = min(in.size.x, in.size.y) * 0.40;
+		let r = loading_star(th, depth) * outer;
+		// The polar radius is not a distance: dividing by the surface's own
+		// slope turns it into one, so the fade is a pixel wide on the lobes'
+		// sides as well as at their tips.
+		let e = 0.02;
+		let dr = (loading_star(th + e, depth) - loading_star(th - e, depth)) / (2.0 * e) * outer;
+		let d = (rho - r) / sqrt(1.0 + (dr * dr) / (rho * rho));
+		let cov = 1.0 - smoothstep(-aa, aa, d);
+		if (cov <= 0.0) { discard; }
+		return vec4f(in.color.rgb, in.color.a * cov);
+	}
 
 	if (kind > 11.5) {
 		// One separable blur pass of the backdrop. params.y is the radius in
@@ -1088,6 +1120,10 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 		case paint.Fill:
 			rect := instanceRect(op, g.scale)
 			params := [4]float32{shapeKind(op.Shape), 0, op.StartAngle, op.EndAngle}
+			misc := [4]float32{op.Thickness, 0, op.ClipRadius, 0}
+			if op.Shape == paint.Loading {
+				misc = [4]float32{op.Depth, 0, op.ClipRadius, 0}
+			}
 			if op.Gradient != nil {
 				// A CSS gradient: kind 9 linear, 10 radial, params.y its record.
 				kind := float32(9)
@@ -1104,7 +1140,7 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 				Clip:    clipVec(op.Clip),
 				ClipBox: clipVec(op.ClipBox),
 				Params:  params,
-				Misc:    [4]float32{op.Thickness, 0, op.ClipRadius, 0},
+				Misc:    misc,
 				Rot:     [4]float32{op.Rotate, op.PivotX, op.PivotY, 0},
 			})
 		case paint.Shadow:
@@ -1443,6 +1479,8 @@ func shapeKind(s paint.Shape) float32 {
 		return 8
 	case paint.CSSGradient:
 		return 9
+	case paint.Loading:
+		return 13
 	}
 	return 0
 }
