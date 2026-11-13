@@ -207,6 +207,12 @@ func (s *Server) completion(raw json.RawMessage) any {
 		line = line[i+1:]
 	}
 
+	// A block string is a document: nothing in it is a property or a value, so
+	// a popup there would only interrupt the prose.
+	if insideBlockString(d.text, off) {
+		return completionList{}
+	}
+
 	items := []completionResult{}
 	incomplete := false
 	file, _ := syntax.Parse(d.text)
@@ -1132,6 +1138,44 @@ func insideString(src []byte, off int) bool {
 		}
 	}
 	return quotes%2 == 1
+}
+
+// insideBlockString reports whether off sits inside a `!"…"!` block. The scan
+// walks the source once, so a `!"` inside a comment or an ordinary string does
+// not open a document and a `"!` in prose does not close one.
+func insideBlockString(src []byte, off int) bool {
+	inBlock := false
+	for i := 0; i < off && i < len(src); i++ {
+		switch {
+		case inBlock:
+			if src[i] == '"' && i+1 < len(src) && src[i+1] == '!' {
+				inBlock = false
+				i++
+			}
+		case src[i] == '/' && i+1 < len(src) && src[i+1] == '/':
+			for i < len(src) && src[i] != '\n' {
+				i++
+			}
+		case src[i] == '/' && i+1 < len(src) && src[i+1] == '*':
+			i += 2
+			for i+1 < len(src) && !(src[i] == '*' && src[i+1] == '/') {
+				i++
+			}
+			i++
+		case src[i] == '!' && i+1 < len(src) && src[i+1] == '"':
+			inBlock = true
+			i++
+		case src[i] == '"':
+			i++
+			for i < len(src) && src[i] != '"' {
+				if src[i] == '\\' {
+					i++
+				}
+				i++
+			}
+		}
+	}
+	return inBlock
 }
 
 // memberItems offers properties and child elements inside an element body.

@@ -2349,3 +2349,31 @@ func TestCompletionOffersSwitchArms(t *testing.T) {
 		t.Fatalf("case inserts %q", got)
 	}
 }
+
+// TestNoCompletionInsideABlockString keeps a document from popping a list on
+// every word: inside `!"…"!` nothing a design can complete is being typed.
+func TestNoCompletionInsideABlockString(t *testing.T) {
+	c := newClient(t)
+	c.initializeWithSnippets(true)
+	dir := t.TempDir()
+	src := "Window {\n\tMarkdown {\n\t\ttext: !\"# Title\n\n\t\t\ta t\"!\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	if items := completionAt(t, c, uri, src, "a t").Items; len(items) != 0 {
+		t.Fatalf("completion inside a block string = %v", items)
+	}
+	// Outside it the same word is a property, not prose.
+	src2 := "Window {\n\tMarkdown {\n\t\tte\n\t}\n}\n"
+	uri2 := writeDesign(t, dir, "b.goi", src2)
+	c.openDoc(uri2, src2)
+	found := false
+	for _, it := range completionAt(t, c, uri2, src2, "\t\tte").Items {
+		if it.Label == "text" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("text: missing outside a block string")
+	}
+}
