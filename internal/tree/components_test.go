@@ -58,7 +58,15 @@ func TestEveryComponentPropHasItsOwnCell(t *testing.T) {
 // paired reports the one deliberate alias: gap and spacing are the same cell,
 // so a file can spell the gap either way.
 func paired(a, b string) bool {
-	return (a == "gap" && b == "spacing") || (a == "spacing" && b == "gap")
+	switch a {
+	case "gap":
+		return b == "spacing"
+	case "spacing":
+		return b == "gap"
+	case "size":
+		return b == "width" || b == "height"
+	}
+	return false
 }
 
 // setAny writes a distinctive value of whichever type the property takes.
@@ -292,5 +300,28 @@ func TestIfBlockAddsNoContainerNode(t *testing.T) {
 		if c.Kind() != "Text" {
 			t.Fatalf("child is %s, want Text", c.Kind())
 		}
+	}
+}
+
+// TestSizeSetsBothAxes pins the shorthand: `size` is one number for a square
+// box, and a later width only moves the axis it names.
+func TestSizeSetsBothAxes(t *testing.T) {
+	tr, diag := BuildSource([]byte(`Window { Column {
+		Rectangle { id: both size: 32 }
+		Rectangle { id: split size: 32 width: 10 }
+	} }`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	both, _ := tr.ByID("both")
+	if both == nil {
+		t.Fatal("no node")
+	}
+	if w, h := both.Base().Width(), both.Base().Height(); w != 32 || h != 32 {
+		t.Fatalf("size: 32 gave %vx%v, want 32x32", w, h)
+	}
+	split, _ := tr.ByID("split")
+	if w, h := split.Base().Width(), split.Base().Height(); w != 10 || h != 32 {
+		t.Fatalf("size: 32 width: 10 gave %vx%v, want 10x32", w, h)
 	}
 }

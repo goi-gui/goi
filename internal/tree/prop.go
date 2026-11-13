@@ -122,6 +122,9 @@ const (
 	propRotate
 	// propList writes a design list: a chart's categories, values or colours.
 	propList
+	// propSize is the `size` shorthand: one number that writes both width and
+	// height, so a square box is one property rather than two.
+	propSize
 )
 
 // Get returns the value as an interface, boxing it. The expression layer reads
@@ -145,6 +148,10 @@ func (p *NamedProp) Get() any {
 		return out
 	case propList:
 		return p.cell.(listCell).listValue()
+	case propSize:
+		// The width is what a `size` reads back as; the two are the same number
+		// unless the design sets one of them on its own afterwards.
+		return p.cell.(*NodeBase).width.val
 	}
 	return nil
 }
@@ -168,6 +175,9 @@ func (p *NamedProp) Same(v any) bool {
 	case propRotate:
 		r, ok := v.(Rotation)
 		return ok && p.cell.(*Prop[Rotation]).val == r
+	case propSize:
+		f, ok := v.(float64)
+		return ok && p.cell.(*NodeBase).width.val == f
 	}
 	return false
 }
@@ -196,6 +206,14 @@ func (p *NamedProp) SetLiteral(v syntax.Value) bool {
 			return false
 		}
 		return p.cell.(listCell).setList(list.Items)
+	case propSize:
+		n, ok := v.(*syntax.Number)
+		if !ok {
+			return false
+		}
+		b := p.cell.(*NodeBase)
+		b.width.val, b.height.val = n.Val, n.Val
+		return true
 	case propScalar:
 		// A value is the sort key, so a number is kept as its exact decimal
 		// text: `3.14` sorts and compares as written, and `42` does not become
@@ -566,6 +584,15 @@ func ScalarProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[string]) Name
 func NumberProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[float64]) NamedProp {
 	wire(b, name, p)
 	return NamedProp{Name: name, Dirty: dirty, kind: propNumber, cell: p}
+}
+
+// SizeProp builds the `size` shorthand. It owns no cell of its own: writing it
+// writes width and height, which is what a square box needs in one property.
+// Reading it back gives the width, so `width: other.size` still means something
+// after a design sets the two axes apart.
+func SizeProp(b *NodeBase) NamedProp {
+	b.width.base = b
+	return NamedProp{Name: "size", Dirty: DirtyLayout, kind: propSize, cell: b}
 }
 
 // BoolProp builds a NamedProp for a bool cell.

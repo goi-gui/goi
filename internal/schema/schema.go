@@ -182,6 +182,8 @@ var common = []Prop{
 	{Name: "id", Type: TypeID, Dirty: DirtyNone, Common: true},
 	{Name: "width", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true}, // -1 = auto
 	{Name: "height", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
+	// size sets both axes at once: `size: 32` is a 32 by 32 box.
+	{Name: "size", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
 	{Name: "minWidth", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0, Common: true},
 	{Name: "maxWidth", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
 	{Name: "minHeight", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0, Common: true},

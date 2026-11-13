@@ -25,6 +25,7 @@ func commonProps(b *NodeBase) []NamedProp {
 	return []NamedProp{
 		NumberProp(b, "width", DirtyLayout, &b.width),
 		NumberProp(b, "height", DirtyLayout, &b.height),
+		SizeProp(b),
 		NumberProp(b, "minWidth", DirtyLayout, &b.minWidth),
 		NumberProp(b, "maxWidth", DirtyLayout, &b.maxWidth),
 		NumberProp(b, "minHeight", DirtyLayout, &b.minHeight),
