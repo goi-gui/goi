@@ -107,6 +107,19 @@ jobs:
             done
           done
 
+  # The browser build needs no C toolchain and no display, so it builds and
+  # tests here: GOOS=js swaps the window layer and the WebGPU backend only.
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.x"
+      - run: GOOS=js GOARCH=wasm go build ./...
+      - run: GOOS=js GOARCH=wasm go vet ./internal/platform ./internal/render
+      - run: GOOS=js GOARCH=wasm go test -exec="$(go env GOROOT)/lib/wasm/go_js_wasm_exec" ./internal/platform
+
   lint:
     runs-on: ubuntu-latest
     steps:

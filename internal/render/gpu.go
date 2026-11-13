@@ -13,12 +13,14 @@ import (
 	"github.com/goi-gui/goi/internal/paint"
 	"github.com/goi-gui/goi/internal/text"
 	"github.com/goi-gui/goi/internal/tree"
-
-	_ "github.com/gogpu/wgpu/hal/allbackends"
 )
 
 // One pipeline draws every solid shape. The fragment shader branches on the
 // shape kind, which keeps a whole window at one draw call.
+//
+// Every texture sample is textureSampleLevel(…, 0.0) rather than textureSample:
+// a kind branch is not uniform control flow, and only the *Level form is legal
+// there. Native drivers accept both, Chrome rejects the plain one.
 //
 //	kind 0: rounded rect (per-corner radius, optional border)
 //	kind 1: filled circle
@@ -214,7 +216,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 			var uv = uv0;
 			if (in.misc.x < 1.5) { uv.x = uv.x + o / viewport.size.x; }
 			else { uv.y = uv.y + o / viewport.size.y; }
-			sum = sum + textureSample(images, imgSamp, uv);
+			sum = sum + textureSampleLevel(images, imgSamp, uv, 0.0);
 		}
 		return sum * 0.1111111;
 	}
@@ -227,7 +229,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 		let r = clamp(corner_radius(in.radius, in.local, in.size), 0.0, min(in.size.x, in.size.y) * 0.5);
 		let d = sd_round_rect(in.local, in.size, r);
 		let cov = 1.0 - smoothstep(-aa, aa, d);
-		let c = textureSample(images, imgSamp, in.pos2 / viewport.size.xy);
+		let c = textureSampleLevel(images, imgSamp, in.pos2 / viewport.size.xy, 0.0);
 		if (cov <= 0.0 || c.a <= 0.0) { discard; }
 		return vec4f(c.rgb, c.a * cov * in.color.a);
 	}
@@ -318,7 +320,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 		let d = sd_round_rect(in.local, in.size, r);
 		let cov = 1.0 - smoothstep(-aa, aa, d);
 		if (cov <= 0.0) { discard; }
-		let c = textureSample(images, imgSamp, in.uv);
+		let c = textureSampleLevel(images, imgSamp, in.uv, 0.0);
 		if (c.a <= 0.0) { discard; }
 		return vec4f(c.rgb, c.a * cov);
 	}
@@ -326,7 +328,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 	if (kind > 3.5) {
 		// Glyph: the atlas holds one coverage value per texel. A text shadow is
 		// a separately blurred entry in the same atlas, so this stays one sample.
-		let a = textureSample(atlas, samp, in.uv).r;
+		let a = textureSampleLevel(atlas, samp, in.uv, 0.0).r;
 		return vec4f(in.color.rgb, in.color.a * a);
 	}
 
@@ -475,6 +477,9 @@ const (
 	TargetX11
 	TargetWin32
 	TargetMetal
+	// TargetWeb is a browser canvas: the page provides it, so both handles are
+	// unused.
+	TargetWeb
 )
 
 // NewGPU creates a renderer for an existing native window.
@@ -490,16 +495,7 @@ func NewGPU(display, window uintptr, kind TargetKind) (*GPU, error) {
 	}
 	g := &GPU{instance: inst, scale: 1, vsync: true, capacity: 256}
 
-	target := wgpu.SurfaceTargetFromWaylandSurface(display, window)
-	switch kind {
-	case TargetX11:
-		target = wgpu.SurfaceTargetFromXlibWindow(display, window)
-	case TargetWin32:
-		target = wgpu.SurfaceTargetFromWindowsHWND(display, window)
-	case TargetMetal:
-		target = wgpu.SurfaceTargetFromMetalLayer(window)
-	}
-	surface, err := inst.CreateSurfaceUnsafe(target)
+	surface, err := createSurface(inst, display, window, kind)
 	if err != nil {
 		inst.Release()
 		return nil, fmt.Errorf("wgpu surface: %w", err)
@@ -574,7 +570,9 @@ func (g *GPU) initPipeline() error {
 	}
 	g.storage, err = g.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Label: "instances",
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopyDst,
+		// The shader reads it as storage and the pass binds it as a vertex
+		// buffer, and a browser validates that the usage covers both.
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopyDst | gputypes.BufferUsageVertex,
 		Size:  g.storageSize(g.capacity),
 	})
 	if err != nil {
@@ -1049,7 +1047,7 @@ func (g *GPU) grow(n int) error {
 	}
 	buf, err := g.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Label: "instances",
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopyDst | gputypes.BufferUsageVertex,
 		Size:  g.storageSize(capacity),
 	})
 	if err != nil {
