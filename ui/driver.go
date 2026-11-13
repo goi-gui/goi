@@ -279,6 +279,11 @@ func (a *App) frame() {
 	// An Image src written as an expression, or a row built by a loop, only has
 	// its value once the expression pass above has run.
 	a.syncImages()
+	// A Markdown's children are built from its source, so a text change from Go
+	// or an expression has to land before layout measures them.
+	if a.syncMarkdown() {
+		a.needsFrame = true
+	}
 	// A player follows its design: a changed src restarts the decoder, a muted
 	// switch silences it, and autoplay starts on the frame the node appears.
 	if a.syncMedia() {

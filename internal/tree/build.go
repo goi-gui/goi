@@ -256,6 +256,11 @@ func (t *Tree) build(el *syntax.Element, parent *NodeBase, hooks *Hooks) (Node, 
 	if err := t.buildMembers(el.Members, b, hooks, nil); err != nil {
 		return nil, err
 	}
+	// A markdown element's children are the document, so they are built here
+	// rather than written in the file.
+	if md, ok := n.(*Markdown); ok {
+		md.Rebuild()
+	}
 	return n, nil
 }
 
@@ -604,6 +609,8 @@ func newM3Component(name string) Node {
 		return &TextArea{Component: newComponent()}
 	case "Code":
 		return &Code{Component: newComponent()}
+	case "Markdown":
+		return &Markdown{Component: newComponent()}
 	case "LineChart":
 		return &LineChart{Chart: newChart()}
 	case "AreaChart":

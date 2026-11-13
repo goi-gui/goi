@@ -12,6 +12,7 @@ require (
 	github.com/kettek/apng v0.0.0-20250827064933-2bb5f5fcf253
 	github.com/ksckaan1/logger v0.4.0
 	github.com/ncruces/zenity v0.10.15
+	github.com/yuin/goldmark v1.8.5
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef
 	golang.org/x/image v0.47.0

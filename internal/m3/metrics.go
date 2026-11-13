@@ -245,6 +245,10 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 			}
 		}
 		return Metrics{W: 0, H: float64(lines)*20.15 + 24, FillW: true}
+	case "Markdown":
+		// The document's blocks are real children, so the height is their sum
+		// and the width is whatever the design gives it.
+		return Metrics{W: 0, H: 0, FillW: true}
 	case "DatePicker":
 		return Metrics{W: 328, H: 400, Top: 56, Right: 24, Bottom: 24, Left: 24}
 	case "TimePicker":

@@ -175,6 +175,7 @@ type (
 	Series           = tree.Series
 	ClipRRect        = tree.ClipRRect
 	Code             = tree.Code
+	Markdown         = tree.Markdown
 	Carousel         = tree.Carousel
 	Toolbar          = tree.Toolbar
 )
