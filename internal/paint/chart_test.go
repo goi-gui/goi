@@ -328,3 +328,24 @@ func TestHiddenSeriesLeavesTheScale(t *testing.T) {
 		t.Fatal("hiding a series threw the layout away")
 	}
 }
+
+// TestChartSeriesColorRole checks the declarative colour all the way to the
+// drawing op: a role written on a ChartSeries is resolved from the scheme, so it
+// follows the theme instead of being a colour copied once.
+func TestChartSeriesColorRole(t *testing.T) {
+	data := barData()
+	data.Series[0].ColorRole = "tertiary"
+	_, l := chartNode(t, "BarChart", "", data, 240, 160)
+	want := l.Theme.Colors.Tertiary
+	found := false
+	for _, op := range l.Ops {
+		// The bars are the only rect fills on that series' column besides the
+		// grid, which is not the tertiary colour.
+		if op.Kind == Fill && op.Color == want {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("no op took the series' role colour")
+	}
+}

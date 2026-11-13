@@ -311,6 +311,35 @@ func TestCompletionRichTextOffersOnlyText(t *testing.T) {
 	}
 }
 
+// TestCompletionChartOffersOnlySeries is the same guard for a chart's data:
+// only a ChartSeries belongs inside one.
+func TestCompletionChartOffersOnlySeries(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tBarChart {\n\t\t\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "\t\t\n", 2),
+	})
+	var list completionList
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	labels := map[string]bool{}
+	for _, it := range list.Items {
+		labels[it.Label] = true
+	}
+	if !labels["ChartSeries"] || !labels["categories"] {
+		t.Fatalf("ChartSeries or categories missing from a chart: %v", list.Items)
+	}
+	if labels["Button"] || labels["Text"] {
+		t.Fatalf("a non-series element completed inside a chart: %v", list.Items)
+	}
+}
+
 // TestSVGVocabulary is the same guard for a newer element: the design must stop
 // being squiggled, and completion must offer it. A goipls binary installed before
 // SVG existed reported `unknown element "SVG"`, and only a rebuild fixed it.

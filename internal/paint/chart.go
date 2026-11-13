@@ -727,29 +727,37 @@ func seriesPalette(t m3.Theme) []uint32 {
 	return []uint32{c.Primary, c.Tertiary, c.Secondary, c.Error, c.PrimaryContainer, c.TertiaryContainer}
 }
 
-// seriesColor is the colour of one series, or the palette's turn.
-func seriesColor(c *tree.Chart, pal []uint32, s int) uint32 {
-	if s < len(c.Data.Series) && c.Data.Series[s].Color != 0 {
-		return c.Data.Series[s].Color
+// seriesColor is the colour of one series, or the palette's turn. A role
+// written in the design is resolved here, so the series follows the scheme.
+func seriesColor(c *tree.Chart, t m3.Theme, pal []uint32, s int) uint32 {
+	if s < len(c.Data.Series) {
+		if role := c.Data.Series[s].ColorRole; role != "" {
+			if col, ok := t.Colors.Role(role); ok {
+				return col
+			}
+		}
+		if c.Data.Series[s].Color != 0 {
+			return c.Data.Series[s].Color
+		}
 	}
 	return pal[s%len(pal)]
 }
 
 // pointColor is the colour of one point. A pie colours each slice from the
 // palette; an explicit series colour or a per-slice colour wins.
-func pointColor(c *tree.Chart, pal []uint32, s, i int) uint32 {
+func pointColor(c *tree.Chart, t m3.Theme, pal []uint32, s, i int) uint32 {
 	if s < len(c.Data.Series) {
 		if cols := c.Data.Series[s].Colors; i < len(cols) && cols[i] != 0 {
 			return cols[i]
 		}
 	}
 	if c.Node().Kind() == "PieChart" {
-		if s < len(c.Data.Series) && c.Data.Series[s].Color != 0 {
-			return c.Data.Series[s].Color
+		if s < len(c.Data.Series) && (c.Data.Series[s].Color != 0 || c.Data.Series[s].ColorRole != "") {
+			return seriesColor(c, t, pal, s)
 		}
 		return pal[i%len(pal)]
 	}
-	return seriesColor(c, pal, s)
+	return seriesColor(c, t, pal, s)
 }
 
 // pieColors hands the legend the colours the slices were drawn with.
@@ -757,7 +765,7 @@ func pieColors(c *tree.Chart, t m3.Theme) []uint32 {
 	pal := seriesPalette(t)
 	out := make([]uint32, 0, len(c.Data.Categories))
 	for i := range c.Data.Categories {
-		out = append(out, pointColor(c, pal, 0, i))
+		out = append(out, pointColor(c, t, pal, 0, i))
 	}
 	return out
 }
@@ -807,7 +815,7 @@ func (l *List) paintRadar(c *tree.Chart, lay ChartLayout, clip tree.Rect, style 
 		if c.SeriesHidden(s) || len(pts) < 2 {
 			continue
 		}
-		color := seriesColor(c, pal, s)
+		color := seriesColor(c, *l.Theme, pal, s)
 		// The wash inside the polygon is what makes two series read apart.
 		for i := range pts {
 			l.fillTriangle(chartPoint{X: lay.CX, Y: lay.CY}, pts[i], pts[(i+1)%len(pts)],
@@ -852,7 +860,7 @@ func (l *List) paintGauge(c *tree.Chart, lay ChartLayout, clip tree.Rect) {
 		Clip:       clipArr(clip),
 	})
 	frac := clampf((g.Value-g.Min)/(g.Max-g.Min), 0, 1)
-	color := pointColor(c, seriesPalette(*l.Theme), 0, 0)
+	color := pointColor(c, *l.Theme, seriesPalette(*l.Theme), 0, 0)
 	if frac > 0 {
 		l.Ops = append(l.Ops, Op{
 			Kind: Fill, Shape: Arc, Rect: box,
@@ -910,7 +918,7 @@ func (l *List) paintBars(c *tree.Chart, lay ChartLayout, clip tree.Rect, pal []u
 		if c.SeriesHidden(s) {
 			continue
 		}
-		color := seriesColor(c, pal, s)
+		color := seriesColor(c, *l.Theme, pal, s)
 		for i, r := range lay.Bars[s] {
 			if r.W <= 0 || r.H <= 0 {
 				continue
@@ -937,7 +945,7 @@ func (l *List) paintLines(c *tree.Chart, lay ChartLayout, clip tree.Rect, pal []
 		if c.SeriesHidden(s) {
 			continue
 		}
-		color := seriesColor(c, pal, s)
+		color := seriesColor(c, *l.Theme, pal, s)
 		if c.Node().Kind() != "ScatterChart" {
 			if c.Smooth.Get() {
 				l.paintSmooth(pts, color, clip)
@@ -1004,7 +1012,7 @@ func (l *List) paintAreas(c *tree.Chart, lay ChartLayout, clip tree.Rect, pal []
 		if len(pts) < 2 || c.SeriesHidden(s) {
 			continue
 		}
-		color := withAlpha(seriesColor(c, pal, s), 0.22)
+		color := withAlpha(seriesColor(c, *l.Theme, pal, s), 0.22)
 		// A stacked area fills down to the series under it, not to zero, which
 		// is what keeps the lower band visible.
 		lower := func(i int) float64 {
@@ -1091,7 +1099,7 @@ func (l *List) paintPie(c *tree.Chart, lay ChartLayout, clip tree.Rect) {
 		rect := [4]float32{float32(cx - outer), float32(cy - outer), float32(outer * 2), float32(outer * 2)}
 		l.Ops = append(l.Ops, Op{
 			Kind: Fill, Shape: Arc, Rect: rect,
-			Color:      pointColor(c, pal, s.Series, i),
+			Color:      pointColor(c, *l.Theme, pal, s.Series, i),
 			Thickness:  float32(outer - s.In),
 			StartAngle: float32(s.Start),
 			EndAngle:   float32(s.End),

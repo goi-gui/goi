@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/goi-gui/goi/internal/componentdef"
 	"github.com/goi-gui/goi/internal/csscolor"
 	"github.com/goi-gui/goi/internal/m3"
 	"github.com/goi-gui/goi/internal/syntax"
@@ -283,6 +284,19 @@ func (v *validator) walk(e *syntax.Element, parent string) {
 	}
 	if parent == "RichText" && e.Name != "Text" {
 		v.add(e.NameAt, e.NameAt+syntax.Pos(len(e.Name)), "RichText children are its runs, so each one is a Text", "")
+	}
+	// A chart's children are its series, and only its children: a ChartSeries
+	// anywhere else is data with nothing to belong to.
+	if e.Name == "ChartSeries" && !isChart(parent) {
+		v.add(e.NameAt, e.NameAt+syntax.Pos(len(e.Name)), "ChartSeries must be a direct child of a chart", "")
+	}
+	if isChart(e.Name) {
+		for _, m := range e.Members {
+			if x, ok := m.(*syntax.Element); ok && x.Name != "ChartSeries" {
+				v.add(x.NameAt, x.NameAt+syntax.Pos(len(x.Name)),
+					fmt.Sprintf("%s children are its series, so each one is a ChartSeries", e.Name), "")
+			}
+		}
 	}
 
 	seen := map[string]syntax.Pos{}
@@ -786,6 +800,16 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 			if pd.Name == "decoration" {
 				if txt, ok := literalText(val); ok {
 					v.checkDecoration(e, pd, txt, at, end)
+				}
+			}
+			// A series' values are a comma-separated number list; a word that
+			// does not parse would otherwise draw as zero.
+			if pd.Name == "values" && e.Name == "ChartSeries" {
+				if txt, ok := literalText(val); ok {
+					if _, err := NumberList(txt); err != nil {
+						v.add(at, end, fmt.Sprintf("values: %v", err),
+							"write the numbers separated by commas: values: \"12, 18, 9\"")
+					}
 				}
 			}
 		default:
@@ -1518,3 +1542,7 @@ func kindName(val syntax.Value) string {
 }
 
 // parseColor accepts #rgb, #rrggbb and #rrggbbaa.
+
+// isChart reports whether an element name is one of the chart kinds, which are
+// the only elements whose children are series.
+func isChart(name string) bool { return componentdef.Chart(name) }

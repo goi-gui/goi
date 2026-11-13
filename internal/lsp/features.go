@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/goi-gui/goi/internal/asset"
+	"github.com/goi-gui/goi/internal/componentdef"
 	"github.com/goi-gui/goi/internal/csscolor"
 	"github.com/goi-gui/goi/internal/goifmt"
 	"github.com/goi-gui/goi/internal/highlight"
@@ -1077,16 +1078,17 @@ func memberItems(file *syntax.File, src []byte, off int) []completionResult {
 	}
 	if el.Children {
 		items := elementItems(file)
-		// A RichText's children are its runs, so only Text is worth offering
-		// there; every other element would be rejected by the checker.
-		if el.Name == "RichText" {
-			runs := items[:0]
+		// Three elements author data as children, so only the child that holds
+		// it is worth offering there; every other element would be rejected by
+		// the checker.
+		if only := childElement(el.Name); only != "" {
+			kept := items[:0]
 			for _, it := range items {
-				if it.Label == "Text" {
-					runs = append(runs, it)
+				if it.Label == only {
+					kept = append(kept, it)
 				}
 			}
-			items = runs
+			items = kept
 		}
 		out = append(out, items...)
 		out = append(out, blockItems(file)...)
@@ -2745,4 +2747,16 @@ func lastIndexByte(b []byte, c byte) int {
 		}
 	}
 	return -1
+}
+
+// childElement is the one element a data-carrying parent accepts as a child, or
+// "" when a parent takes any element. It mirrors the checker's own rule.
+func childElement(parent string) string {
+	switch {
+	case parent == "RichText":
+		return "Text"
+	case componentdef.Chart(parent):
+		return "ChartSeries"
+	}
+	return ""
 }

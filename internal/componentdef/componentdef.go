@@ -133,12 +133,12 @@ var props = map[string][]string{
 	"TextArea":         {"label", "text", "placeholder", "supporting", "variant", "disabled"},
 	"Code":             {"text", "language", "variant", "showCopy"},
 	"Markdown":         {"text"},
-	"LineChart":        {"grid", "axis", "legend", "values", "smooth", "points", "min", "max"},
-	"AreaChart":        {"grid", "axis", "legend", "values", "smooth", "points", "stacked", "min", "max"},
-	"BarChart":         {"grid", "axis", "legend", "values", "stacked", "horizontal", "min", "max"},
-	"PieChart":         {"grid", "axis", "legend", "values", "innerRadius", "startAngle", "min", "max"},
-	"ScatterChart":     {"grid", "axis", "legend", "values", "points", "min", "max"},
-	"RadarChart":       {"grid", "axis", "legend", "values", "points", "min", "max"},
+	"LineChart":        {"grid", "axis", "legend", "categories", "values", "smooth", "points", "min", "max"},
+	"AreaChart":        {"grid", "axis", "legend", "categories", "values", "smooth", "points", "stacked", "min", "max"},
+	"BarChart":         {"grid", "axis", "legend", "categories", "values", "stacked", "horizontal", "min", "max"},
+	"PieChart":         {"grid", "axis", "legend", "categories", "values", "innerRadius", "startAngle", "min", "max"},
+	"ScatterChart":     {"grid", "axis", "legend", "categories", "values", "points", "min", "max"},
+	"RadarChart":       {"grid", "axis", "legend", "categories", "values", "points", "min", "max"},
 	"GaugeChart":       {"min", "max", "startAngle"},
 }
 

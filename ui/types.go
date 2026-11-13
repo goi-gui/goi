@@ -175,6 +175,7 @@ type (
 	GaugeChart       = tree.GaugeChart
 	ChartData        = tree.ChartData
 	Series           = tree.Series
+	ChartSeries      = tree.ChartSeries
 	ClipRRect        = tree.ClipRRect
 	Code             = tree.Code
 	Markdown         = tree.Markdown

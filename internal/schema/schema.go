@@ -382,6 +382,14 @@ var elements = func() []Element {
 			Prop{Name: "wrap", Type: TypeBool, Dirty: DirtyLayout, Default: false},
 			Prop{Name: "role", Type: TypeEnum, Dirty: DirtyLayout, Enum: textRoles, Default: "bodyMedium"},
 		)},
+		// ChartSeries is one series of a chart written in the design. Like a
+		// RichText run it is data, not a node: the values become the chart's
+		// data when the file is built, and the element leaves the tree.
+		{Name: "ChartSeries", Attrs: withCommon(
+			Prop{Name: "label", Type: TypeString, Dirty: DirtyPaint, Default: ""},
+			Prop{Name: "values", Type: TypeString, Dirty: DirtyPaint, Default: ""},
+			Prop{Name: "color", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0)},
+		)},
 	}
 	// Media players. They are not Material components: their chrome is a control
 	// bar, not a shape from the type scale, so the properties are declared here
@@ -469,7 +477,9 @@ var elements = func() []Element {
 			}
 			attrs = append(attrs, p)
 		}
-		out = append(out, Element{Name: k.Name, Children: k.Container, Attrs: withCommon(attrs...)})
+		// A chart's children are its series: data written in the design rather
+		// than handed over from Go.
+		out = append(out, Element{Name: k.Name, Children: k.Container || componentdef.Chart(k.Name), Attrs: withCommon(attrs...)})
 	}
 	// Every element is a hit area; only components have the value-carrying
 	// events. The list stays in one place so the validator, the builder and the

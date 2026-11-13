@@ -249,6 +249,9 @@ func plainValue(pd Prop) syntax.Value {
 		if pd.Name == "decoration" {
 			return &syntax.String{Val: "underline"}
 		}
+		if pd.Name == "values" {
+			return &syntax.String{Val: "1, 2"}
+		}
 		return &syntax.String{Val: "x"}
 	case TypeNumber:
 		return &syntax.Number{Val: 1}
@@ -688,5 +691,55 @@ func TestRichTextChildrenAreText(t *testing.T) {
 	}
 	if !strings.Contains(diag.Error(), "each one is a Text") {
 		t.Fatalf("diagnostic = %v", diag)
+	}
+}
+
+// TestChartChildrenAreSeries checks the two rules a chart's data has: only a
+// ChartSeries goes inside one, and a ChartSeries belongs to a chart.
+func TestChartChildrenAreSeries(t *testing.T) {
+	for _, kind := range []string{"LineChart", "AreaChart", "BarChart", "PieChart", "ScatterChart", "RadarChart", "GaugeChart"} {
+		cats := "categories: \"Jan, Feb\""
+		if kind == "GaugeChart" {
+			// A gauge is one value against its range, so it has no categories.
+			cats = ""
+		}
+		src := `Window { ` + kind + ` {
+			` + cats + `
+			ChartSeries { label: "2026" values: "12, 18" }
+			ChartSeries { values: "1" color: tertiary }
+		} }`
+		if _, diag := validate(t, src); !diag.Empty() {
+			t.Errorf("%s: %v", kind, diag)
+		}
+		bad := `Window { ` + kind + ` { Text { text: "no" } } }`
+		_, diag := validate(t, bad)
+		if diag.Empty() {
+			t.Fatalf("%s accepted a Text child", kind)
+		}
+		if !strings.Contains(diag.Error(), "each one is a ChartSeries") {
+			t.Errorf("%s diagnostic = %v", kind, diag)
+		}
+	}
+	_, diag := validate(t, `Window { Column { ChartSeries { values: "1" } } }`)
+	if diag.Empty() || !strings.Contains(diag.Error(), "direct child of a chart") {
+		t.Fatalf("a ChartSeries outside a chart: %v", diag)
+	}
+}
+
+// TestChartSeriesValuesAreNumbers catches the mistake the property's string type
+// hides: a word in the list would draw as zero.
+func TestChartSeriesValuesAreNumbers(t *testing.T) {
+	ok := []string{`"12, 18, 9"`, `"0"`, `"-2.5, 4e3"`, `"12, 18,"`}
+	for _, v := range ok {
+		src := "Window { LineChart { ChartSeries { values: " + v + " } } }"
+		if _, diag := validate(t, src); !diag.Empty() {
+			t.Errorf("values %s: %v", v, diag)
+		}
+	}
+	for _, v := range []string{`"12, x"`, `"1 2"`, `"many"`} {
+		src := "Window { LineChart { ChartSeries { values: " + v + " } } }"
+		if _, diag := validate(t, src); diag.Empty() {
+			t.Errorf("values %s passed", v)
+		}
 	}
 }

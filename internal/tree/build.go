@@ -261,9 +261,10 @@ func (t *Tree) build(el *syntax.Element, parent *NodeBase, hooks *Hooks) (Node, 
 	if md, ok := n.(*Markdown); ok {
 		md.Rebuild()
 	}
-	// A RichText's children are its runs, authored as Text elements.
-	if rt, ok := n.(*RichText); ok {
-		if err := rt.adopt(t); err != nil {
+	// Two elements author data as children: a RichText's runs and a chart's
+	// series. The children become values and leave the tree.
+	if a, ok := n.(interface{ adopt(*Tree) error }); ok {
+		if err := a.adopt(t); err != nil {
 			return nil, err
 		}
 	}
@@ -499,6 +500,13 @@ func newNode(name string) Node {
 			Wrap:     newProp(nil, "wrap", DirtyLayout, false),
 			Role:     newProp(nil, "role", DirtyLayout, "bodyMedium"),
 		}}
+	case "ChartSeries":
+		return &ChartSeries{
+			NodeBase: b(),
+			Label:    newProp(nil, "label", DirtyPaint, ""),
+			Values:   newProp(nil, "values", DirtyPaint, ""),
+			Color:    newProp(nil, "color", DirtyPaint, uint32(0)),
+		}
 	}
 	if c := newM3Component(name); c != nil {
 		return c

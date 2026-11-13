@@ -1781,3 +1781,18 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   in is the box that was drawn. The cost is one wrap per pointer move over a
   paragraph that has a link; `HasLink` makes that cost zero for the ones that do
   not.
+- **Chart data is a child element, so a chart needs no Go.** A design had no way
+  to hold a list of numbers, so every chart was filled from code. `ChartSeries`
+  is the list: `categories` carries the labels and one child per series carries
+  `values`, a comma-separated string, because the language has no list literal
+  and inventing one for charts alone would be a parser feature with a narrower
+  use than the element. The child is data, not a node — the builder turns it into
+  `Series` and detaches it, exactly as a RichText's runs are turned into spans —
+  so layout, paint and id lookup never see it. A number that does not parse is a
+  diagnostic from the checker, not a bar of zero: the string type would otherwise
+  hide the mistake.
+- **A chart's colour role is resolved in paint, not copied at build.** `Series`
+  gains `ColorRole` for the same reason `Span` did: the child is gone when the
+  series is drawn, and a colour copied then would not follow a theme change. The
+  painter asks the scheme, so `color: tertiary` on a series reads like any other
+  role.

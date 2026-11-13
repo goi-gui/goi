@@ -1,6 +1,12 @@
 package tree
 
-import "strconv"
+import (
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/goi-gui/goi/internal/schema"
+)
 
 // Series is one line, one group of bars, or the slices of one pie ring.
 type Series struct {
@@ -11,12 +17,24 @@ type Series struct {
 	// how a pie colours each slice.
 	Color  uint32
 	Colors []uint32
+	// ColorRole names a theme role for the series, such as "primary". It wins
+	// over Color and follows the scheme, so a role written on a ChartSeries
+	// keeps changing colour with the theme.
+	ColorRole string
 }
 
 // ChartData is what a chart draws: the category labels along the value axis and
 // one series per line, bar group or ring.
 //
-// The design file cannot hold a number list, so data is set from Go:
+// A design writes it as children, one ChartSeries per line:
+//
+//	BarChart {
+//		categories: "Jan, Feb, Mar"
+//		ChartSeries { label: "2026" values: "12, 18, 9" }
+//		ChartSeries { label: "2027" values: "10, 14, 20" color: tertiary }
+//	}
+//
+// From Go, SetData replaces the whole picture:
 //
 //	chart := ui.MustByID[*ui.BarChart](w, "sales")
 //	chart.SetData(ui.ChartData{
@@ -35,6 +53,10 @@ type Chart struct {
 	Component
 
 	Data ChartData
+
+	// Categories is the design's category labels, a comma-separated list. The
+	// builder copies it into Data, so a chart written in the file needs no Go.
+	Categories Prop[string]
 
 	// Appearance.
 	Grid   Prop[bool] // value grid lines
@@ -77,6 +99,59 @@ func (c *Chart) SetData(d ChartData) {
 	c.HoverSeries, c.HoverIndex = -1, -1
 	c.Hidden = nil
 	c.Base().MarkDirty(DirtyLayout)
+}
+
+// ChartSeries is one series of a chart, written in the design. It is a way to
+// author data, not a node: the builder turns it into a Series and detaches it,
+// because a chart draws its data, not its children.
+type ChartSeries struct {
+	NodeBase
+	Label  Prop[string]
+	Values Prop[string]
+	Color  Prop[uint32]
+}
+
+// Kind implements Node.
+func (*ChartSeries) Kind() string { return "ChartSeries" }
+
+func (s *ChartSeries) namedProps() []NamedProp {
+	return append(commonProps(&s.NodeBase),
+		StringProp(&s.NodeBase, "label", &s.Label),
+		StringProp(&s.NodeBase, "values", &s.Values),
+		ColorProp(&s.NodeBase, "color", DirtyPaint, &s.Color),
+	)
+}
+
+// adopt turns the ChartSeries children a design declared into the chart's data
+// and detaches them, so layout, paint and lookups never see them.
+func (c *Chart) adopt(t *Tree) error {
+	series := make([]Series, 0, len(c.kids))
+	for _, k := range c.kids {
+		cs, ok := k.Node().(*ChartSeries)
+		if !ok {
+			return fmt.Errorf("chart children must be ChartSeries, not %s", k.Node().Kind())
+		}
+		values, err := schema.NumberList(cs.Values.Get())
+		if err != nil {
+			return fmt.Errorf("%s values: %w", c.Node().Kind(), err)
+		}
+		s := Series{Label: cs.Label.Get(), Values: values, Color: cs.Color.Get()}
+		// A role outlives the child: the painter resolves it from the current
+		// scheme, which a colour copied now could not do.
+		if role := cs.colorRoleFor("color"); role != "" && !strings.HasPrefix(role, "custom:") {
+			s.ColorRole, s.Color = strings.TrimPrefix(role, "theme:"), 0
+		}
+		series = append(series, s)
+	}
+	for _, k := range append([]*NodeBase(nil), c.kids...) {
+		t.Remove(k.node)
+	}
+	cats := c.Categories.Get()
+	if len(series) == 0 && cats == "" {
+		return nil
+	}
+	c.SetData(ChartData{Categories: schema.LabelList(cats), Series: series})
+	return nil
 }
 
 // SeriesHidden reports whether the legend turned an entry off.
@@ -148,7 +223,7 @@ func (c *Chart) DataAt(series, i int) (float64, bool) {
 // kind draws, plus the common ones every element has.
 func chartProps(c *Chart, kind string, own ...NamedProp) []NamedProp {
 	return append(c.propsExcept(kind,
-		"grid", "axis", "legend", "values",
+		"grid", "axis", "legend", "values", "categories",
 		"stacked", "horizontal", "smooth", "points",
 		"innerRadius", "startAngle", "min", "max",
 	), own...)
@@ -161,6 +236,7 @@ func gridProps(c *Chart) []NamedProp {
 		BoolProp(&c.NodeBase, "axis", DirtyPaint, &c.Axis),
 		BoolProp(&c.NodeBase, "legend", DirtyLayout, &c.Legend),
 		BoolProp(&c.NodeBase, "values", DirtyPaint, &c.Values),
+		StringProp(&c.NodeBase, "categories", &c.Categories),
 		NumberProp(&c.NodeBase, "min", DirtyPaint, &c.Min),
 		NumberProp(&c.NodeBase, "max", DirtyPaint, &c.Max),
 	}
@@ -263,6 +339,7 @@ func (c *GaugeChart) namedProps() []NamedProp {
 func newChart() Chart {
 	return Chart{
 		Component:      newComponent(),
+		Categories:     newProp(nil, "categories", DirtyLayout, ""),
 		Grid:           newProp(nil, "grid", DirtyPaint, true),
 		Axis:           newProp(nil, "axis", DirtyPaint, true),
 		Legend:         newProp(nil, "legend", DirtyLayout, false),
