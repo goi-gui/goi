@@ -129,6 +129,13 @@ fn corner_radius(r: vec4f, p: vec2f, s: vec2f) -> f32 {
 	return r.x;
 }
 
+// radius_of is the corner radius a fragment sees, clamped to half the shape:
+// CSS treats a border-radius of 999px on a 12px box as a circle, and without the
+// clamp the distance field stays positive everywhere and the box vanishes.
+fn radius_of(radius: vec4f, p: vec2f, s: vec2f) -> f32 {
+	return clamp(corner_radius(radius, p, s), 0.0, min(s.x, s.y) * 0.5);
+}
+
 // Signed distance to a rounded rectangle centred on s/2.
 fn sd_round_rect(p: vec2f, s: vec2f, r: f32) -> f32 {
 	let h = s * 0.5;
@@ -226,7 +233,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 		// masked to the panel's rounded box. The element's own background then
 		// paints over it, which is what makes a translucent background read as
 		// tinted glass.
-		let r = clamp(corner_radius(in.radius, in.local, in.size), 0.0, min(in.size.x, in.size.y) * 0.5);
+		let r = radius_of(in.radius, in.local, in.size);
 		let d = sd_round_rect(in.local, in.size, r);
 		let cov = 1.0 - smoothstep(-aa, aa, d);
 		let c = textureSampleLevel(images, imgSamp, in.pos2 / viewport.size.xy, 0.0);
@@ -239,7 +246,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 		// corners and border drawn on top.
 		let head = gradients[u32(in.params.y) * 6u];
 		let g = gradient_color(in.params.y, gradient_t(head, in.params.y, in.local, in.size));
-		let r = clamp(corner_radius(in.radius, in.local, in.size), 0.0, min(in.size.x, in.size.y) * 0.5);
+		let r = radius_of(in.radius, in.local, in.size);
 		let d = sd_round_rect(in.local, in.size, r);
 		let cov = 1.0 - smoothstep(-aa, aa, d);
 		if (cov <= 0.0) { discard; }
@@ -300,14 +307,14 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 		// measures from a box's top-left, so the hole's own origin is subtracted.
 		let hole = max(in.size - vec2f(2.0 * spread), vec2f(0.0));
 		let holeOrigin = (in.size - hole) * 0.5 + vec2f(in.params.z, in.params.w);
-		let hr = max(corner_radius(in.radius, in.local, in.size) - spread, 0.0);
+		let hr = max(radius_of(in.radius, in.local, in.size) - spread, 0.0);
 		let dh = sd_round_rect(in.local - holeOrigin, hole, hr);
 		// Outside the hole is where the shadow is: dh >= 0, and the edge of the
 		// hole is the darkest point before the fade inward.
 		let cov = smoothstep(-blur, 0.0, dh);
 		if (cov <= 0.0) { discard; }
 		// Keep the band inside the shape itself.
-		let dr = sd_round_rect(in.local, in.size, corner_radius(in.radius, in.local, in.size));
+		let dr = sd_round_rect(in.local, in.size, radius_of(in.radius, in.local, in.size));
 		let inside = 1.0 - smoothstep(-aa, aa, dr);
 		if (inside <= 0.0) { discard; }
 		return vec4f(in.color.rgb, in.color.a * cov * inside);
@@ -339,7 +346,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 		let blur = max(in.params.y, 0.001);
 		let innerSize = in.size - vec2f(2.0 * blur);
 		let p = in.local - vec2f(blur);
-		let r = max(corner_radius(in.radius, in.local, in.size) - blur, 0.0);
+		let r = max(radius_of(in.radius, in.local, in.size) - blur, 0.0);
 		let d = sd_round_rect(p, innerSize, r);
 		let cov = 1.0 - smoothstep(-blur * 0.25, blur, d);
 		if (cov <= 0.0) { discard; }
@@ -357,7 +364,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 			thick = max(in.misc.x, 0.5);
 			d = abs(length(in.local - c) - (r - thick * 0.5)) - thick * 0.5;
 		}
-		let cov = 1.0 - smoothstep(-aa, aa, d);
+		var cov = 1.0 - smoothstep(-aa, aa, d);
 		if (cov <= 0.0) { discard; }
 
 		// Sweep mask, measured from 12 o'clock clockwise. A filled circle has no
@@ -373,13 +380,20 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 			// that begins before 12 o'clock (a gauge's left shoulder) whole.
 			let span = end - start;
 			let rel = fract((ang - start) / (2.0 * PI)) * 2.0 * PI;
-			if (rel > span) { discard; }
+			// The sweep is a straight cut, so it needs its own fade: the arc
+			// length to the nearest cut, over one physical pixel, is what keeps
+			// a wedge's radial edge from reading as a staircase. A fragment past
+			// the sweep has a negative distance and fades to nothing.
+			let edge = min(rel, span - rel) * max(r - thick * 0.5, 1.0);
+			let px = 1.0 / max(viewport.size.z, 1.0);
+			cov = cov * smoothstep(0.0, px, edge);
+			if (cov <= 0.0) { discard; }
 		}
 		return vec4f(in.color.rgb, in.color.a * cov);
 	}
 
 	// Rounded rectangle with an optional border.
-	let r = clamp(corner_radius(in.radius, in.local, in.size), 0.0, min(in.size.x, in.size.y) * 0.5);
+	let r = radius_of(in.radius, in.local, in.size);
 	let d = sd_round_rect(in.local, in.size, r);
 	let cov = 1.0 - smoothstep(-aa, aa, d);
 	if (cov <= 0.0) { discard; }
