@@ -86,15 +86,15 @@ func Lookup(name string) (Kind, bool) {
 
 // props is the property list per kind, beyond the common box properties.
 var props = map[string][]string{
-	"Button":           {"label", "icon", "variant", "size", "disabled"},
-	"IconButton":       {"icon", "variant", "size", "disabled", "selected"},
-	"FAB":              {"label", "icon", "variant", "size", "disabled", "expanded"},
-	"FABMenu":          {"icon", "variant", "size", "disabled", "expanded"},
-	"ButtonGroup":      {"variant", "size", "disabled"},
-	"SplitButton":      {"label", "icon", "variant", "size", "disabled", "expanded"},
-	"SegmentedButton":  {"label", "icon", "variant", "size", "disabled", "selected"},
-	"Chip":             {"label", "icon", "trailingIcon", "variant", "size", "disabled", "selected", "checked"},
-	"Badge":            {"label", "variant", "size"},
+	"Button":           {"label", "icon", "variant", "disabled"},
+	"IconButton":       {"icon", "variant", "disabled", "selected"},
+	"FAB":              {"label", "icon", "variant", "disabled", "expanded"},
+	"FABMenu":          {"icon", "variant", "disabled", "expanded"},
+	"ButtonGroup":      {"variant", "disabled"},
+	"SplitButton":      {"label", "icon", "variant", "disabled", "expanded"},
+	"SegmentedButton":  {"label", "icon", "variant", "disabled", "selected"},
+	"Chip":             {"label", "icon", "trailingIcon", "variant", "disabled", "selected", "checked"},
+	"Badge":            {"label", "variant"},
 	"Checkbox":         {"label", "variant", "disabled", "checked"},
 	"RadioButton":      {"label", "variant", "disabled", "checked"},
 	"Switch":           {"label", "variant", "disabled", "checked", "icon", "iconOn", "iconOff"},
@@ -124,12 +124,12 @@ var props = map[string][]string{
 	"Tabs":             {"variant"},
 	"Tab":              {"label", "icon", "variant", "disabled", "selected"},
 	"LinearProgress":   {"variant", "value", "min", "max", "thickness"},
-	"CircularProgress": {"variant", "value", "min", "max", "size", "thickness"},
-	"LoadingIndicator": {"variant", "size"},
-	"DatePicker":       {"label", "text", "variant", "size"},
-	"TimePicker":       {"label", "text", "variant", "size"},
+	"CircularProgress": {"variant", "value", "min", "max", "thickness"},
+	"LoadingIndicator": {"variant", "color"},
+	"DatePicker":       {"label", "text", "variant"},
+	"TimePicker":       {"label", "text", "variant"},
 	"Carousel":         {"variant"},
-	"Toolbar":          {"variant", "size"},
+	"Toolbar":          {"variant"},
 	"TextArea":         {"label", "text", "placeholder", "supporting", "variant", "disabled"},
 	"Code":             {"text", "language", "variant", "showCopy"},
 	"Markdown":         {"text"},
@@ -238,13 +238,13 @@ func TypeOf(name string) PropType {
 		"sortable", "numeric", "striped", "showHeader", "stickyHeader", "sortAscending",
 		"grid", "axis", "legend", "values", "stacked", "horizontal", "smooth", "points":
 		return Bool
-	case "value", "end", "center", "min", "max", "step", "spacing", "gap",
+	case "value", "end", "center", "min", "max", "step", "spacing", "gap", "size",
 		"rowHeight", "headerHeight", "sortColumn", "selectedRow",
 		"innerRadius", "startAngle", "thickness":
 		return Number
-	case "variant", "size", "crossAxisAlign", "mainAxisAlign", "align", "selectable":
+	case "variant", "crossAxisAlign", "mainAxisAlign", "align", "selectable":
 		return Enum
-	case "textColor", "gridColor":
+	case "textColor", "gridColor", "color":
 		return Color
 	case "categories":
 		return List
@@ -284,9 +284,6 @@ func EnumValuesFor(kind, name string) []string {
 // union: a variant that does not apply to a component is simply unused, unless
 // that component narrows the list with EnumValuesFor.
 func EnumValues(name string) []string {
-	if name == "size" {
-		return []string{"xs", "sm", "md", "lg", "xl", "small", "large", "extended", "primary", "secondary"}
-	}
 	if name == "crossAxisAlign" {
 		return []string{"start", "center", "end", "stretch"}
 	}

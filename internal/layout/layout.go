@@ -1010,7 +1010,6 @@ func (e *Engine) componentOf(b *tree.NodeBase) (*m3.ComponentView, bool) {
 		Icon:        c.Icon.Get(),
 		Trailing:    c.Trailing.Get(),
 		Variant:     c.Variant.Get(),
-		Size:        c.Size.Get(),
 		Thickness:   c.Thickness.Get(),
 		Disabled:    c.Disabled.Get(),
 		Checked:     c.Checked.Get(),

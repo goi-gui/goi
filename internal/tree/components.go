@@ -207,8 +207,6 @@ func (c *Component) one(kind, name string) NamedProp {
 		// against. Repeating them here let the validator accept `vertical` on a
 		// Divider while the node rejected it, so the enum is read once.
 		return EnumProp(b, "variant", DirtyPaint, &c.Variant, componentdef.EnumValuesFor(kind, "variant")...)
-	case "size":
-		return EnumProp(b, "size", DirtyLayout, &c.Size, componentdef.EnumValues("size")...)
 	case "disabled":
 		return BoolProp(b, "disabled", DirtyPaint, &c.Disabled)
 	case "checked":

@@ -13,7 +13,7 @@ import (
 func TestZeroAreaNodeDrawsNothing(t *testing.T) {
 	tr, diag := tree.BuildSource([]byte(`Window { Column {
 		FABMenu { id: menu icon: add
-			FAB { icon: edit size: sm }
+			FAB { icon: edit size: 40 }
 		}
 	} }`), nil)
 	if !diag.Empty() {

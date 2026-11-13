@@ -89,24 +89,11 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 		}
 		return Metrics{W: withIcon(lw) + pad*2, H: 40}
 	case "IconButton":
-		size := 40.0
-		switch c.Size {
-		case "sm":
-			size = 32
-		case "lg":
-			size = 48
-		}
-		return Metrics{W: size, H: size}
+		return Metrics{W: 40, H: 40}
 	case "FAB":
 		if label != "" {
 			lw := labelWidth(m, kind, label)
 			return Metrics{W: 20 + 24 + 12 + lw + 20, H: 56}
-		}
-		switch c.Size {
-		case "sm":
-			return Metrics{W: 40, H: 40}
-		case "lg":
-			return Metrics{W: 96, H: 96}
 		}
 		return Metrics{W: 56, H: 56}
 	case "FABMenu", "Toolbar":
@@ -268,7 +255,7 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 // an import cycle with tree.
 type ComponentView struct {
 	Label, Supporting, Text, Placeholder  string
-	Icon, Trailing, Variant, Size         string
+	Icon, Trailing, Variant               string
 	Thickness                             float64
 	Disabled, Checked, Selected, Expanded bool
 	Value, Min, Max, Step                 float64
