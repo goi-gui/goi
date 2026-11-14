@@ -117,6 +117,12 @@ static int goiTranslate(SDL_Event *e, goiEvent *o) {
 		o->wheelX = e->wheel.x;
 		o->wheelY = e->wheel.y;
 		return 1;
+	case SDL_EVENT_PINCH_UPDATE:
+		// The pinch event has no position of its own; the input layer anchors
+		// it at the pointer, which is where a trackpad gesture is aimed.
+		o->type = GOI_EV_PINCH;
+		o->scale = e->pinch.scale;
+		return 1;
 	case SDL_EVENT_KEY_DOWN:
 		o->type = GOI_EV_KEY;
 		o->scancode = e->key.scancode;

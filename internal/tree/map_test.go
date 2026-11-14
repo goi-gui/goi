@@ -182,3 +182,44 @@ func TestMapGeomReparsesOnChange(t *testing.T) {
 		t.Fatalf("stale geometry: %v", g.Points)
 	}
 }
+
+// TestMapFillMasksPolygons checks the rasterized fill: a polygon's inside takes
+// the colour, a hole stays clear, and the mask is reused until the geometry or
+// the colour changes.
+func TestMapFillMasksPolygons(t *testing.T) {
+	m := newMap()
+	m.Geom.Set(`{"type":"Polygon","coordinates":[
+		[[0,0],[10,0],[10,10],[0,10],[0,0]],
+		[[4,4],[6,4],[6,6],[4,6],[4,4]]
+	]}`)
+	m.FillColor.Set(0x11223344)
+	d, box := m.PolygonFill()
+	if d == nil || d.W <= 0 || d.H <= 0 {
+		t.Fatal("no fill mask")
+	}
+	if !(box[0] < box[2] && box[1] < box[3]) {
+		t.Fatalf("fill box = %v", box)
+	}
+	at := func(lat, lng float64) byte {
+		px := int((mercatorX(lng) - box[0]) / (box[2] - box[0]) * float64(d.W))
+		py := int((mercatorY(lat) - box[1]) / (box[3] - box[1]) * float64(d.H))
+		return d.Pix[(py*d.W+px)*4+3]
+	}
+	if a := at(1, 1); a != 0x44 {
+		t.Fatalf("inside alpha = %#x, want 0x44", a)
+	}
+	if a := at(5, 5); a != 0 {
+		t.Fatalf("hole alpha = %#x, want transparent", a)
+	}
+	if again, _ := m.PolygonFill(); again != d {
+		t.Fatal("the mask was rebuilt without a change")
+	}
+	m.FillColor.Set(0x44556677)
+	if next, _ := m.PolygonFill(); next == d || next.Pix[0] == d.Pix[0] {
+		t.Fatal("a colour change did not rebuild the mask")
+	}
+	m.FillColor.Set(0)
+	if none, _ := m.PolygonFill(); none != nil {
+		t.Fatal("a zero fill colour still produced a mask")
+	}
+}

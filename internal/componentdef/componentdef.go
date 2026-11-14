@@ -146,7 +146,7 @@ var props = map[string][]string{
 	"TextArea":         {"label", "text", "placeholder", "supporting", "variant", "disabled"},
 	"Code":             {"text", "language", "variant", "showCopy"},
 	"Markdown":         {"text"},
-	"Map":              {"tiles", "attribution", "center", "zoom", "bbox", "geom", "disablePan", "disableZoom"},
+	"Map":              {"tiles", "attribution", "center", "zoom", "bbox", "geom", "lineColor", "fillColor", "reverseTileColors", "disablePan", "disableZoom"},
 	"LineChart":        {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "smooth", "points", "min", "max"},
 	"AreaChart":        {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "smooth", "points", "stacked", "min", "max"},
 	"BarChart":         {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "stacked", "horizontal", "min", "max"},
@@ -272,7 +272,7 @@ func TypeOf(name string) PropType {
 	case "disabled", "checked", "selected", "expanded", "showCopy",
 		"sortable", "numeric", "striped", "showHeader", "stickyHeader", "sortAscending",
 		"grid", "axis", "legend", "values", "stacked", "horizontal", "smooth", "points",
-		"disablePan", "disableZoom":
+		"disablePan", "disableZoom", "reverseTileColors":
 		return Bool
 	case "value", "end", "center", "min", "max", "step", "spacing", "gap", "size", "hourFormat",
 		"rowHeight", "headerHeight", "sortColumn", "selectedRow",
@@ -280,7 +280,7 @@ func TypeOf(name string) PropType {
 		return Number
 	case "variant", "crossAxisAlign", "mainAxisAlign", "align", "selectable":
 		return Enum
-	case "textColor", "gridColor", "color":
+	case "textColor", "gridColor", "color", "lineColor", "fillColor":
 		return Color
 	case "categories", "bbox":
 		return List

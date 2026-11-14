@@ -134,8 +134,17 @@ func translateSDLEvent(e *sdl.Event) (rawEvent, bool) {
 		return rawEvent{kind: evTheme}, true
 	case sdl.EVENT_LOCALE_CHANGED:
 		return rawEvent{kind: evLocale}, true
+	case sdl.EVENT_PINCH_UPDATE:
+		return rawEvent{kind: evPinch, scale: float64(pinchScale(e))}, true
 	}
 	return rawEvent{}, false
+}
+
+// pinchScale reads SDL_PinchFingerEvent.scale. go-sdl3 declares the struct but
+// has no accessor, so the field is read at its ABI offset: type, reserved,
+// timestamp, then the float at byte 16.
+func pinchScale(e *sdl.Event) float32 {
+	return *(*float32)(unsafe.Add(unsafe.Pointer(e), 16))
 }
 
 func sdlPushUserEvent() {

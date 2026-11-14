@@ -21,6 +21,7 @@ const (
 	evUser
 	evTheme
 	evLocale
+	evPinch
 )
 
 // rawEvent is one translated SDL event.
@@ -37,6 +38,7 @@ type rawEvent struct {
 	mod      int
 	text     string
 	caret    int
+	scale    float64
 }
 
 // wantWaylandDriver reports whether a Wayland session should get SDL's native

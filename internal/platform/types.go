@@ -21,6 +21,10 @@ type Input interface {
 	// Scroll carries the wheel delta, in logical steps, plus the Shift state:
 	// a notched wheel is vertical unless Shift asks for horizontal.
 	Scroll(dx, dy float64, shift bool)
+	// Pinch carries a relative scale from a trackpad or touch gesture: above 1
+	// zooms in, below 1 out. The gesture has no position of its own, so the
+	// input layer anchors it at the pointer.
+	Pinch(scale float64)
 	Key(key Key, mods Mods)
 	// Preedit carries the not-yet-committed IME composition and the caret
 	// position inside it; an empty string ends the composition.

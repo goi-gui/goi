@@ -19,6 +19,7 @@ typedef struct {
 	int   mod;        // GOI_EV_KEY, SDL keymod
 	const char *text; // GOI_EV_TEXT, GOI_EV_EDITING (valid for this call only)
 	int   caret;      // GOI_EV_EDITING
+	float scale;      // GOI_EV_PINCH, relative to the previous update
 } goiEvent;
 
 enum {
@@ -38,7 +39,8 @@ enum {
 	GOI_EV_EDITING,
 	GOI_EV_USER,
 	GOI_EV_THEME,
-	GOI_EV_LOCALE
+	GOI_EV_LOCALE,
+	GOI_EV_PINCH
 };
 
 int goiPollEvent(goiEvent *o);

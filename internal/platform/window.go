@@ -231,6 +231,10 @@ func (p *Window) dispatch(ev rawEvent) {
 		} else {
 			p.input.MouseUp(ev.x, ev.y, ev.button)
 		}
+	case evPinch:
+		if p.input != nil {
+			p.input.Pinch(ev.scale)
+		}
 	case evWheel:
 		if p.input != nil {
 			// SDL reports whole wheel steps, positive away from the user, which

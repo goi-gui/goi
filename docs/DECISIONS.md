@@ -2058,11 +2058,18 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   value. Geometry
   is drawn as one thin rounded quad per segment turned about its midpoint
   because the display list has no path primitive, and adding one for a boundary
-  would have meant a new shader and a new instance kind. Polygons are outlines
-  only: a translucent fill over street tiles reads worse than the gap it is
-  meant to show, and filling would need the triangulation the list cannot carry.
-  Tiles live in the image cache and the node, not in a second GPU path, so a
-  map is one more consumer of the bitmap atlas.
+  would have meant a new shader and a new instance kind. A polygon fill is a
+  raster mask baked once in Mercator space and drawn through the same bitmap
+  path, so panning only moves its quad and the display list still has one
+  primitive fewer. Tiles live in the image cache and the node, not in a second
+  GPU path, so a map is one more consumer of the bitmap atlas.
+- **Map gestures follow the platform, except the wheel.** A double click zooms
+  one level around the click, a pinch applies SDL's relative scale, and both
+  respect `disableZoom`. SDL's pinch event carries no position, so the pointer is
+  the anchor; a trackpad gesture is aimed there. The wheel is reversed from page
+  scrolling on purpose: the map zooms in when the wheel rolls away from the user.
+  `reverseTileColors` is a shader switch rather than a decode-time inversion, so
+  one cached tile serves both schemes and the atlas does not hold two copies.
 - **The default tile endpoint sends an identifying User-Agent.** OpenStreetMap
   refuses an anonymous client with a 403 "blocked" tile, which is what a stock
   Go request looks like; the image fetch now names goi. The policy's other

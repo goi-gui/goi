@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -86,9 +87,9 @@ func TestMapGesturesPanAndZoom(t *testing.T) {
 
 	in.MouseMove(cx, cy)
 	_, _, z0 := m.View()
-	// A wheel notch away from the user is a scroll down, which zooms out; the
-	// other direction zooms in.
-	in.Scroll(0, -1, false)
+	// The map's wheel is reversed from a page scroll: a notch away from the
+	// user zooms in.
+	in.Scroll(0, 1, false)
 	_, _, z1 := m.View()
 	if z1 <= z0 {
 		t.Fatalf("wheel did not zoom in: %v -> %v", z0, z1)
@@ -107,5 +108,40 @@ func TestMapGesturesPanAndZoom(t *testing.T) {
 	in.MouseUp(cx+40, cy, 0)
 	if _, lng3, _ := m.View(); lng3 != lng2 {
 		t.Fatalf("a disabled pan still moved: %v -> %v", lng2, lng3)
+	}
+}
+
+// TestMapDoubleClickAndPinch covers the two gestures that are not a drag: a
+// second press on the same spot zooms in around it, and a pinch applies its
+// relative scale to the map under the pointer.
+func TestMapDoubleClickAndPinch(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		Map { id: map width: 400 height: 300 center: "41,29" zoom: 4 }
+	}`, 400, 300)
+	m := MustByID[*Map](win, "map")
+	m.Prepare(m.Bounds().W, m.Bounds().H)
+	r := absoluteRect(m)
+	cx, cy := r.X+r.W/2, r.Y+r.H/2
+
+	_, _, z0 := m.View()
+	in.MouseDown(cx, cy, 0, false)
+	in.MouseUp(cx, cy, 0)
+	in.MouseDown(cx, cy, 0, false)
+	if _, _, z1 := m.View(); z1 != z0+1 {
+		t.Fatalf("double click zoomed %v -> %v, want one level in", z0, z1)
+	}
+	in.MouseUp(cx, cy, 0)
+
+	in.MouseMove(cx, cy)
+	_, _, z2 := m.View()
+	in.Pinch(2)
+	_, _, z3 := m.View()
+	if math.Abs(z3-(z2+1)) > 1e-9 {
+		t.Fatalf("pinch 2x zoomed %v -> %v, want one level in", z2, z3)
+	}
+	m.DisableZoom.Set(true)
+	in.Pinch(2)
+	if _, _, z4 := m.View(); z4 != z3 {
+		t.Fatalf("a disabled pinch zoomed: %v -> %v", z3, z4)
 	}
 }

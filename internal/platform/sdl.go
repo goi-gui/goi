@@ -111,6 +111,7 @@ func translateEvent(e *C.goiEvent) rawEvent {
 		mod:      int(e.mod),
 		text:     C.GoString(e.text),
 		caret:    int(e.caret),
+		scale:    float64(e.scale),
 	}
 }
 

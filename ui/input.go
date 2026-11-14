@@ -143,9 +143,12 @@ type interactor struct {
 	colorMode int
 
 	// mapNode is the map the pointer is panning, and mapLastX/Y is the previous
-	// move, so a drag hands the map a delta rather than a position.
-	mapNode            tree.Node
-	mapLastX, mapLastY float64
+	// move, so a drag hands the map a delta rather than a position. mapClickAt
+	// is the last press on a map, which is how a double click zooms.
+	mapNode              tree.Node
+	mapLastX, mapLastY   float64
+	mapClickAt           time.Time
+	mapClickX, mapClickY float64
 }
 
 // Gesture timings, the ones Flutter uses: a press that stays inside the slop for
@@ -461,7 +464,13 @@ func (i *interactor) MouseMove(x, y float64) {
 	i.cursorX, i.cursorY = x, y
 	if i.mapNode != nil {
 		if m, ok := i.mapNode.(*tree.Map); ok {
-			m.PanBy(x-i.mapLastX, y-i.mapLastY)
+			dx, dy := x-i.mapLastX, y-i.mapLastY
+			if dx != 0 || dy != 0 {
+				// A drag is not half of a double click, so a quick second press
+				// after moving the map must not zoom.
+				i.mapClickAt = time.Time{}
+			}
+			m.PanBy(dx, dy)
 			i.markDirty()
 		}
 		i.mapLastX, i.mapLastY = x, y
@@ -705,16 +714,29 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 		}
 	}
 	// A map takes the press itself: its pan is a drag, not a click, so it must
-	// not start a ripple, a gesture detector or a scroll. A press on a map that
-	// disabled panning falls through, which leaves the page scrollable under it.
+	// not start a ripple, a gesture detector or a scroll. A second press on the
+	// same spot zooms in; a press on a map that disabled panning falls through,
+	// which leaves the page scrollable under it.
 	if button == 0 && hit != nil {
-		if m := mapAt(hit); m != nil && !m.DisablePan.Get() {
-			i.setFocus(nil)
-			i.setKbd(hit)
-			i.scrollNode = nil
-			i.mapNode, i.mapLastX, i.mapLastY = hit, x, y
-			i.pointer(platform.CursorMove)
-			return
+		if m := mapAt(hit); m != nil {
+			dbl := !i.mapClickAt.IsZero() && time.Since(i.mapClickAt) < gestureDoubleTap &&
+				math.Hypot(x-i.mapClickX, y-i.mapClickY) < gestureSlop
+			i.mapClickAt, i.mapClickX, i.mapClickY = time.Now(), x, y
+			if dbl && !m.DisableZoom.Get() {
+				ar := absoluteRect(m)
+				m.ZoomAt(x-ar.X, y-ar.Y, 1)
+				i.mapClickAt = time.Time{}
+				i.markDirty()
+				return
+			}
+			if !m.DisablePan.Get() {
+				i.setFocus(nil)
+				i.setKbd(hit)
+				i.scrollNode = nil
+				i.mapNode, i.mapLastX, i.mapLastY = hit, x, y
+				i.pointer(platform.CursorMove)
+				return
+			}
 		}
 	}
 	if button == 0 {
@@ -1937,10 +1959,11 @@ func (i *interactor) Scroll(dx, dy float64, shift bool) {
 		return
 	}
 	// The wheel zooms the map under the pointer, around the point under it,
-	// instead of scrolling the page behind it.
+	// instead of scrolling the page behind it. A notch away from the user zooms
+	// in, which is the reverse of the usual scroll direction.
 	if m := mapAt(i.hit(i.cursorX, i.cursorY)); m != nil && !m.DisableZoom.Get() && dy != 0 {
 		ar := absoluteRect(m)
-		dz := -dy * 0.5
+		dz := dy * 0.5
 		if dz > 1 {
 			dz = 1
 		} else if dz < -1 {
@@ -2219,6 +2242,22 @@ func (i *interactor) dragScrollbar(x, y float64) {
 	b.SetScrollOffsetFor(i.scrollbarAxis, frac*b.ScrollMaxFor(i.scrollbarAxis))
 	i.flingNode, i.flingV = nil, 0
 	i.showScrollbar(n)
+	i.markDirty()
+}
+
+// Pinch zooms a map under the pointer. SDL reports a relative scale and no
+// position, so the pointer is the anchor: on a trackpad that is where the
+// gesture is aimed.
+func (i *interactor) Pinch(scale float64) {
+	if scale <= 0 || scale == 1 {
+		return
+	}
+	m := mapAt(i.hit(i.cursorX, i.cursorY))
+	if m == nil || m.DisableZoom.Get() {
+		return
+	}
+	ar := absoluteRect(m)
+	m.ZoomAt(i.cursorX-ar.X, i.cursorY-ar.Y, math.Log2(scale))
 	i.markDirty()
 }
 

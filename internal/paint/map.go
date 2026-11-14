@@ -36,8 +36,10 @@ func (l *List) paintMap(m *tree.Map, r tree.Rect, clip tree.Rect) {
 			Clip:       clipArr(inner),
 			ClipBox:    box,
 			ClipRadius: radius,
+			Invert:     m.ReverseTileColors.Get(),
 		})
 	}
+	l.paintMapFill(m, r, inner, radius, box)
 	l.paintMapGeom(m, r, inner, radius, box)
 	l.paintMapAttribution(m, r, inner)
 	// The border goes last: the tiles are full bleed, so one drawn with the
@@ -52,6 +54,35 @@ func (l *List) paintMap(m *tree.Map, r tree.Rect, clip tree.Rect) {
 	}
 }
 
+// paintMapFill draws the rasterized polygon fill under the boundary. The mask
+// is baked in Mercator world coordinates, so panning only moves its quad; the
+// part outside the map is cropped with the op's UV, which keeps a zoomed-in
+// polygon from packing a whole-country bitmap at screen size.
+func (l *List) paintMapFill(m *tree.Map, r tree.Rect, clip tree.Rect, radius float32, box [4]float32) {
+	d, wb := m.PolygonFill()
+	if d == nil {
+		return
+	}
+	x0, y0 := m.ProjectWorld(wb[0], wb[1])
+	x1, y1 := m.ProjectWorld(wb[2], wb[3])
+	quad := tree.Rect{X: r.X + x0, Y: r.Y + y0, W: x1 - x0, H: y1 - y0}
+	vis := intersect(clip, quad)
+	if quad.W <= 0 || quad.H <= 0 || vis.W <= 0 || vis.H <= 0 {
+		return
+	}
+	u0 := float32((vis.X - quad.X) / quad.W)
+	v0 := float32((vis.Y - quad.Y) / quad.H)
+	u1 := float32((vis.Right() - quad.X) / quad.W)
+	v1 := float32((vis.Bottom() - quad.Y) / quad.H)
+	l.Ops = append(l.Ops, Op{
+		Kind: Bitmap, Src: d, UV: [4]float32{u0, v0, u1, v1},
+		Rect:       rectArr(vis),
+		Clip:       clipArr(clip),
+		ClipBox:    box,
+		ClipRadius: radius,
+	})
+}
+
 // paintMapGeom strokes each ring and line as one thin rounded rectangle per
 // segment, turned about its own midpoint. The renderer already rotates a quad,
 // so a line needs no path primitive; a dot at every vertex rounds the joins and
@@ -63,6 +94,9 @@ func (l *List) paintMapGeom(m *tree.Map, r tree.Rect, clip tree.Rect, radius flo
 	}
 	const width = 2.0
 	color := l.Theme.Colors.Primary
+	if c := m.LineColor.Get(); c != 0 {
+		color = c
+	}
 	stroke := func(a, b tree.Point) {
 		x1, y1 := m.Project(a)
 		x2, y2 := m.Project(b)

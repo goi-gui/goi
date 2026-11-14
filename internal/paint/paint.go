@@ -140,6 +140,9 @@ type Op struct {
 	// 0..1, so a cover or contain fit only changes the quad and the UVs.
 	Src *img.Data
 	UV  [4]float32
+	// Invert flips the bitmap's RGB, keeping alpha. A map uses it to turn a
+	// light raster tile set into something a dark scheme can sit on.
+	Invert bool
 
 	// Text fields.
 	Text     string

@@ -291,3 +291,18 @@ func TestBitmapRoundsItselfFromItsRadius(t *testing.T) {
 		t.Fatalf("clip radius = %v, want 4", inst.Misc[2])
 	}
 }
+
+// TestBitmapInvertFlag checks the map's reverseTileColors switch: the invert
+// flag must reach the one free float of the bitmap instance that the shader
+// reads.
+func TestBitmapInvertFlag(t *testing.T) {
+	at := newTestImageRenderer(64)
+	d := &img.Data{W: 8, H: 8, Pix: make([]byte, 8*8*4)}
+	op := paint.Op{Kind: paint.Bitmap, Src: d, Rect: [4]float32{0, 0, 8, 8}, Invert: true}
+	at.prepare(&paint.List{Ops: []paint.Op{op}})
+	at.addOp(op)
+	inst := at.gpu.instances[len(at.gpu.instances)-1]
+	if inst.Misc[3] != 1 {
+		t.Fatalf("invert flag = %v, want 1", inst.Misc[3])
+	}
+}

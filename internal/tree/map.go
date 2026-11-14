@@ -188,6 +188,13 @@ type Map struct {
 	BBox ListProp[float64]
 	// Geom is GeoJSON text, or the path of an asset that holds it.
 	Geom Prop[string]
+	// LineColor paints the boundary; 0 takes the scheme's primary.
+	LineColor Prop[uint32]
+	// FillColor fills the polygons; 0 leaves them unfilled.
+	FillColor Prop[uint32]
+	// ReverseTileColors inverts the tile RGB after decoding, which is what a
+	// dark theme over a light raster service needs.
+	ReverseTileColors Prop[bool]
 	// DisablePan and DisableZoom take the matching pointer gesture away.
 	DisablePan  Prop[bool]
 	DisableZoom Prop[bool]
@@ -206,6 +213,14 @@ type Map struct {
 
 	tiles map[MapTile]*img.Data
 
+	// fill is the rasterized polygon fill, rebuilt only when the geometry or
+	// the colour changes; fillBox is its [west, north, east, south] world box,
+	// in normalized Mercator coordinates.
+	fillSrc   *MapGeometry
+	fillColor uint32
+	fill      *img.Data
+	fillBox   [4]float64
+
 	// geomText is the text of a `geom` that names an asset; the ui layer reads
 	// it and keeps the property itself untouched, so an expression that returns
 	// the path does not fight the resolved text.
@@ -222,15 +237,18 @@ type Map struct {
 // validator and the builder agree on what an unwritten property means.
 func newMap() *Map {
 	return &Map{
-		Component:   newComponent(),
-		Tiles:       newProp(nil, "tiles", DirtyPaint, "https://tile.openstreetmap.org/{z}/{x}/{y}.png"),
-		Attribution: newProp(nil, "attribution", DirtyPaint, "© OpenStreetMap contributors"),
-		Center:      newProp(nil, "center", DirtyPaint, ""),
-		Zoom:        newProp(nil, "zoom", DirtyPaint, 2.0),
-		BBox:        ListProp[float64]{parse: listParse[float64](schema.TypeNumber)},
-		Geom:        newProp(nil, "geom", DirtyPaint, ""),
-		DisablePan:  newProp(nil, "disablePan", DirtyPaint, false),
-		DisableZoom: newProp(nil, "disableZoom", DirtyPaint, false),
+		Component:         newComponent(),
+		Tiles:             newProp(nil, "tiles", DirtyPaint, "https://tile.openstreetmap.org/{z}/{x}/{y}.png"),
+		Attribution:       newProp(nil, "attribution", DirtyPaint, "© OpenStreetMap contributors"),
+		Center:            newProp(nil, "center", DirtyPaint, ""),
+		Zoom:              newProp(nil, "zoom", DirtyPaint, 2.0),
+		BBox:              ListProp[float64]{parse: listParse[float64](schema.TypeNumber)},
+		Geom:              newProp(nil, "geom", DirtyPaint, ""),
+		LineColor:         newProp(nil, "lineColor", DirtyPaint, uint32(0)),
+		FillColor:         newProp(nil, "fillColor", DirtyPaint, uint32(0)),
+		ReverseTileColors: newProp(nil, "reverseTileColors", DirtyPaint, false),
+		DisablePan:        newProp(nil, "disablePan", DirtyPaint, false),
+		DisableZoom:       newProp(nil, "disableZoom", DirtyPaint, false),
 	}
 }
 
@@ -247,6 +265,9 @@ func (m *Map) namedProps() []NamedProp {
 		NumberProp(&m.NodeBase, "zoom", DirtyPaint, &m.Zoom),
 		ListPropOf(&m.NodeBase, "bbox", DirtyPaint, &m.BBox),
 		StringProp(&m.NodeBase, "geom", &m.Geom),
+		ColorProp(&m.NodeBase, "lineColor", DirtyPaint, &m.LineColor),
+		ColorProp(&m.NodeBase, "fillColor", DirtyPaint, &m.FillColor),
+		BoolProp(&m.NodeBase, "reverseTileColors", DirtyPaint, &m.ReverseTileColors),
 		BoolProp(&m.NodeBase, "disablePan", DirtyPaint, &m.DisablePan),
 		BoolProp(&m.NodeBase, "disableZoom", DirtyPaint, &m.DisableZoom),
 	)
@@ -369,9 +390,15 @@ func (m *Map) ViewTiles() []MapTileView {
 // Project turns a position into a point relative to the map's top-left corner.
 // A position outside the visible area is still projected; the caller clips it.
 func (m *Map) Project(p Point) (x, y float64) {
+	return m.ProjectWorld(mercatorX(p.Lng), mercatorY(p.Lat))
+}
+
+// ProjectWorld is Project for a normalized Mercator point, which is what a
+// rasterized fill is laid out in.
+func (m *Map) ProjectWorld(x, y float64) (sx, sy float64) {
 	scale := m.worldSize()
-	return (mercatorX(p.Lng)-mercatorX(m.lng))*scale + m.w/2,
-		(mercatorY(p.Lat)-mercatorY(m.lat))*scale + m.h/2
+	return (x-mercatorX(m.lng))*scale + m.w/2,
+		(y-mercatorY(m.lat))*scale + m.h/2
 }
 
 // ResetTiles clears the bitmaps of the previous frame. The ui layer fills them
