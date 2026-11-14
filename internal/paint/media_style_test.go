@@ -224,10 +224,11 @@ func TestAudioNeverHidesItsBar(t *testing.T) {
 	}
 }
 
-// TestSeekbarWavyDrawsARibbon: `seekbar: wavy` replaces the flat track with a
-// sine ribbon and keeps the thumb; the default is still the plain bar.
-func TestSeekbarWavyDrawsARibbon(t *testing.T) {
-	paint := func(seekbar string) *List {
+// TestSeekbarWavyIsOnlyThePlayedPart: the ribbon is the part already heard,
+// and only while the player runs. What is still ahead is a dim flat track, and a
+// paused player falls back to the normal bar.
+func TestSeekbarWavyIsOnlyThePlayedPart(t *testing.T) {
+	paint := func(seekbar string, playing bool) (*List, MediaLayout) {
 		tr, diag := tree.BuildSource([]byte(`Window { Audio {
 			width: 360 height: 64 seekbar: `+seekbar+`
 		} }`), nil)
@@ -242,25 +243,47 @@ func TestSeekbarWavyDrawsARibbon(t *testing.T) {
 		}
 		m.Duration = 100 * time.Second
 		m.Position = 40 * time.Second
+		m.Playing = playing
 		m.ControlsShown = true
 		layout.New(nil).Layout(tr.Root, 400, 200)
 		l := &List{}
 		l.Build(tr, 400, 200)
-		return l
+		return l, MediaLayoutOf(m, tree.Rect{X: 0, Y: 0, W: 360, H: 64})
 	}
-	ribbon := func(l *List) int {
-		n := 0
+	ribbon := func(l *List) []Op {
+		var out []Op
 		for _, op := range l.Ops {
 			if op.Kind == Fill && op.Rotate != 0 {
-				n++
+				out = append(out, op)
 			}
 		}
-		return n
+		return out
 	}
-	if got := ribbon(paint("normal")); got != 0 {
-		t.Fatalf("a normal seekbar drew %d rotated segments", got)
+	// Paused: no ribbon at all, and the played part is a flat fill.
+	if got := ribbon(mustPainted(t, paint, "wavy", false)); len(got) != 0 {
+		t.Fatalf("a paused seekbar drew %d ribbon segments", len(got))
 	}
-	if got := ribbon(paint("wavy")); got < 20 {
-		t.Fatalf("a wavy seekbar drew %d rotated segments, want a ribbon", got)
+	// Playing: a ribbon over the played span and nothing beyond it.
+	l, lay := paint("wavy", true)
+	got := ribbon(l)
+	if len(got) < 20 {
+		t.Fatalf("a playing seekbar drew %d ribbon segments, want a ribbon", len(got))
 	}
+	playEnd := lay.Track.X + lay.Track.W*0.4 + 4
+	for _, op := range got {
+		if x := float64(op.Rect[0]); x > playEnd {
+			t.Fatalf("a ribbon segment at %v is past the played part (ends %v)", x, playEnd)
+		}
+	}
+	// A normal seekbar never waves, playing or not.
+	if got := ribbon(mustPainted(t, paint, "normal", true)); len(got) != 0 {
+		t.Fatalf("a normal seekbar drew %d ribbon segments", len(got))
+	}
+}
+
+// mustPainted is the awkward bit of building a list through a closure.
+func mustPainted(t *testing.T, paint func(string, bool) (*List, MediaLayout), seekbar string, playing bool) *List {
+	t.Helper()
+	l, _ := paint(seekbar, playing)
+	return l
 }

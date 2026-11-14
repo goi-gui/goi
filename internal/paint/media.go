@@ -329,40 +329,28 @@ func (l *List) paintMediaBar(m *tree.Media, r tree.Rect, lay MediaLayout, clip t
 	if m.Duration > 0 {
 		frac = math.Max(0, math.Min(1, float64(m.Position)/float64(m.Duration)))
 	}
-	wavy := m.Seekbar.Get() == "wavy"
-	if wavy {
-		// A ribbon: the track's midline is the wave, the played part is drawn
-		// over the buffered one so the layers read in the order they fill.
-		mid := lay.Track.Y + lay.Track.H/2
-		l.mediaWave(lay.Track.X, lay.Track.X+lay.Track.W, mid, track, clip)
-		if m.Buffered > 0 && m.Duration > 0 {
-			end := math.Min(1, frac+float64(m.Buffered)/float64(m.Duration))
-			buffered := withAlpha(fallback, 0.42)
-			if trackColor != 0 {
-				buffered = withAlpha(trackColor, 0.55)
-			}
-			l.mediaWave(lay.Track.X, lay.Track.X+lay.Track.W*end, mid, buffered, clip)
+	// A wavy seekbar is a ribbon only while the player runs, and only for the
+	// part already played: what is still ahead stays a dim, flat track, and a
+	// paused player looks like the normal bar again.
+	ripple := m.Seekbar.Get() == "wavy" && m.Playing && !m.Paused && frac > 0
+	flat := tree.Rect{X: lay.Track.X, Y: lay.Track.Y + lay.Track.H/2 - 2, W: lay.Track.W, H: 4}
+	l.fillRect(flat, track, 2, 0, 0, clip)
+	// The buffered span sits behind the played part, so a reader can see how far
+	// ahead the decoder is before the picture stalls.
+	if m.Buffered > 0 && m.Duration > 0 {
+		end := math.Min(1, frac+float64(m.Buffered)/float64(m.Duration))
+		buffered := withAlpha(fallback, 0.42)
+		if trackColor != 0 {
+			buffered = withAlpha(trackColor, 0.55)
 		}
-		if frac > 0 {
-			l.mediaWave(lay.Track.X, lay.Track.X+lay.Track.W*frac, mid, playedColor, clip)
-		}
-	} else {
-		l.fillRect(lay.Track, track, lay.Track.H/2, 0, 0, clip)
-		// The buffered span sits behind the played part, so a reader can see how
-		// far ahead the decoder is before the picture stalls.
-		if m.Buffered > 0 && m.Duration > 0 {
-			end := math.Min(1, frac+float64(m.Buffered)/float64(m.Duration))
-			buffered := withAlpha(fallback, 0.42)
-			if trackColor != 0 {
-				buffered = withAlpha(trackColor, 0.55)
-			}
-			l.fillRect(tree.Rect{X: lay.Track.X, Y: lay.Track.Y, W: lay.Track.W * end, H: lay.Track.H},
-				buffered, lay.Track.H/2, 0, 0, clip)
-		}
-		if frac > 0 {
-			l.fillRect(tree.Rect{X: lay.Track.X, Y: lay.Track.Y, W: lay.Track.W * frac, H: lay.Track.H},
-				playedColor, lay.Track.H/2, 0, 0, clip)
-		}
+		l.fillRect(tree.Rect{X: flat.X, Y: flat.Y, W: flat.W * end, H: flat.H},
+			buffered, 2, 0, 0, clip)
+	}
+	if frac > 0 && ripple {
+		l.mediaWave(flat.X, flat.X+flat.W*frac, flat.Y+flat.H/2, playedColor, clip)
+	} else if frac > 0 {
+		l.fillRect(tree.Rect{X: flat.X, Y: flat.Y, W: flat.W * frac, H: flat.H},
+			playedColor, 2, 0, 0, clip)
 	}
 	l.fillRect(lay.Thumb, playedColor, lay.Thumb.W/2, 0, 0, clip)
 
