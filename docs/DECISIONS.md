@@ -2015,3 +2015,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   changes the spelling and gives the dial its second ring. The chip on the action
   row is both the label of the current clock and its switch, which keeps the
   visual toggle out of the header the design is using for the time itself.
+- **The minute dial is continuous, and picking minutes sticks.** A five-minute
+  grid cannot express 13, so the ring maps its full sixty positions and the
+  picked circle rides the hand's exact angle while the label under it steps
+  aside. The dial is dragged from the press rather than clicked once, and a
+  minute pick leaves the minutes active: only an hour pick hands over, never
+  back. A dial change reports through `onSubmit` like any value change; `onOK`
+  is the explicit confirmation and stays with the button and Enter.

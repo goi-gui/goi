@@ -215,6 +215,19 @@ func (t TimeLayout) HourText() string {
 	return pad12(t.Hour)
 }
 
+// DialAngle is where the hand points, in radians from twelve o'clock. The hour
+// snaps to a number; the minute takes every one of its sixty positions, so 13
+// is reachable even though the labels only mark every fifth.
+func (t TimeLayout) DialAngle() float64 {
+	if t.Field == 1 {
+		return float64(t.Minute) / 60 * 2 * math.Pi
+	}
+	if t.Format == 24 && (t.Hour == 0 || t.Hour >= 13) {
+		return float64(t.Hour%12) / 12 * 2 * math.Pi
+	}
+	return float64(t.Hour%12) / 12 * 2 * math.Pi
+}
+
 // DialInner reports whether the selected hour sits on the inner ring, which
 // only a 24-hour dial has.
 func (t TimeLayout) DialInner() bool {
@@ -264,7 +277,10 @@ func (t TimeLayout) TimeAt(x, y float64) (string, int, bool) {
 		}
 		return pad2(h) + ":" + pad2(t.Minute), 1, true
 	}
-	return pad2(t.Hour) + ":" + pad2(idx*5), 0, true
+	// The minute ring has sixty positions, so a point between the labels still
+	// picks the minute under it.
+	minute := int(math.Round(ang/(2*math.Pi)*60)) % 60
+	return pad2(t.Hour) + ":" + pad2(minute), 1, true
 }
 
 // DialIndex is the position of the current value on the active dial.
@@ -293,6 +309,17 @@ func (t TimeLayout) DialLabel(i int) string {
 		return itoa(i)
 	}
 	return pad2(i * 5)
+}
+
+// DialPickedLabel is the text inside the selected circle.
+func (t TimeLayout) DialPickedLabel() string {
+	if t.Field == 1 {
+		return pad2(t.Minute)
+	}
+	if t.DialInner() {
+		return t.DialInnerLabel(t.DialIndex())
+	}
+	return t.DialLabel(t.DialIndex())
 }
 
 // DialInnerLabel is the inner-ring label of a 24-hour dial: 13-23, then 00.
@@ -454,6 +481,7 @@ func (l *List) paintTimeDial(t TimeLayout, clip tree.Rect) {
 	if t.DialInner() {
 		selRadius = t.InnerRadius()
 	}
+	angle := t.DialAngle()
 	// A 24-hour clock labels both rings: 1-12 outside, 13-00 inside. The minute
 	// dial and a 12-hour clock have one ring.
 	rings := []struct {
@@ -473,8 +501,15 @@ func (l *List) paintTimeDial(t TimeLayout, clip tree.Rect) {
 			size, style = 30, innerNumbers
 		}
 		for i := 0; i < 12; i++ {
-			if i == selected && ring.inner == t.DialInner() {
+			if i == selected && ring.inner == t.DialInner() && t.Field == 0 {
 				continue // its filled circle is drawn below, on top
+			}
+			if t.Field == 1 {
+				// The picked minute can sit between two labels; the one under
+				// its circle is left out so only the picked number shows.
+				if math.Abs(wrapAngle(float64(i)*math.Pi/6-angle)) < 0.21 {
+					continue
+				}
 			}
 			label := t.DialLabel(i)
 			if ring.inner {
@@ -485,7 +520,9 @@ func (l *List) paintTimeDial(t TimeLayout, clip tree.Rect) {
 				tree.Rect{X: lx - size/2, Y: ly - 14, W: size, H: 28}, AlignCenter, clip)
 		}
 	}
-	sx, sy := dialPoint(dcx, dcy, selRadius, selected)
+	// The picked value rides the hand's own angle, not the nearest label.
+	sx := dcx + selRadius*math.Sin(angle)
+	sy := dcy - selRadius*math.Cos(angle)
 	// The hand: a 2dp rule from the centre dot to the picked number.
 	dx, dy := sx-dcx, sy-dcy
 	l.Ops = append(l.Ops, Op{
@@ -505,12 +542,20 @@ func (l *List) paintTimeDial(t TimeLayout, clip tree.Rect) {
 		Rect:  [4]float32{float32(sx - 18), float32(sy - 18), 36, 36},
 		Color: col.Primary, Clip: clipArr(clip),
 	})
-	selLabel := t.DialLabel(selected)
-	if t.DialInner() {
-		selLabel = t.DialInnerLabel(selected)
-	}
-	l.textIn(selLabel, numbers, col.OnPrimary,
+	l.textIn(t.DialPickedLabel(), numbers, col.OnPrimary,
 		tree.Rect{X: sx - 20, Y: sy - 14, W: 40, H: 28}, AlignCenter, clip)
+}
+
+// wrapAngle folds an angle difference into -pi..pi, so the gap between two
+// positions is measured the short way round.
+func wrapAngle(a float64) float64 {
+	for a > math.Pi {
+		a -= 2 * math.Pi
+	}
+	for a < -math.Pi {
+		a += 2 * math.Pi
+	}
+	return a
 }
 
 // pad12 is the 12-hour spelling of an hour: 0 and 12 both read 12, and the

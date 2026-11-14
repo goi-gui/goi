@@ -84,6 +84,11 @@ func TestTimePickerClick(t *testing.T) {
 	if got := tp.Text.Get(); got != "03:30" {
 		t.Fatalf("minutes click value = %q, want 03:30", got)
 	}
+	// Picking minutes keeps the minutes active: the hour never comes back on
+	// its own.
+	if tp.PickerField != 1 {
+		t.Fatalf("field = %d after picking minutes, want the minutes", tp.PickerField)
+	}
 
 	// The header halves switch the dial back to the hour.
 	in.MouseDown(layout.HourBox.X+10, layout.HourBox.Y+10, 0, false)
@@ -314,5 +319,61 @@ func TestTimePicker24HourDialMarksTheInnerRing(t *testing.T) {
 		if got := tl.DialInner(); got != c.inner || tl.DialIndex() != c.index {
 			t.Errorf("%s: inner=%v index=%d, want %v/%d", c.value, got, tl.DialIndex(), c.inner, c.index)
 		}
+	}
+}
+
+// TestTimePickerMinuteDrag: the minute ring has sixty positions, so dragging
+// the hand picks 13 as well as 15, and the field stays on the minutes.
+func TestTimePickerMinuteDrag(t *testing.T) {
+	_, win, in := inputFixture(t, pickerUI, 480, 900)
+	tp := MustByID[*TimePicker](win, "time")
+	tp.Text.Set("10:30")
+	r := absoluteRect(tp)
+	tl := paint.TimeLayoutOf(r, "10:30", 0, "dial", 12)
+	cx, cy := tl.Dial.X+tl.Dial.W/2, tl.Dial.Y+tl.Dial.H/2
+	at := func(minute float64) (float64, float64) {
+		ang := minute / 60 * 2 * math.Pi
+		return cx + tl.DialRadius()*math.Sin(ang), cy - tl.DialRadius()*math.Cos(ang)
+	}
+
+	// Pick the hour first, which hands over to the minutes.
+	x3, y3 := at(15) // three o'clock, 15 minutes
+	in.MouseDown(x3, y3, 0, false)
+	in.MouseUp(x3, y3, 0)
+	if got := tp.Text.Get(); got != "03:30" || tp.PickerField != 1 {
+		t.Fatalf("hour pick = %q field %d", got, tp.PickerField)
+	}
+
+	// Drag from the 13th minute to the 47th: no label sits on either. A dial
+	// change submits, but it is not a confirmation, so onOK stays quiet.
+	oks := 0
+	tp.OnOK(func(string) { oks++ })
+	x13, y13 := at(13)
+	x47, y47 := at(47)
+	in.MouseDown(x13, y13, 0, false)
+	if got := tp.Text.Get(); got != "03:13" {
+		t.Fatalf("down at minute 13 = %q", got)
+	}
+	in.MouseMove(x47, y47)
+	if got := tp.Text.Get(); got != "03:47" {
+		t.Fatalf("drag to minute 47 = %q", got)
+	}
+	in.MouseUp(x47, y47, 0)
+	if got := tp.Text.Get(); got != "03:47" {
+		t.Fatalf("release = %q", got)
+	}
+	if tp.PickerField != 1 {
+		t.Fatalf("field = %d after dragging minutes, want the minutes", tp.PickerField)
+	}
+	if oks != 0 {
+		t.Fatalf("a dial drag fired onOK %d times", oks)
+	}
+
+	// A plain click on a minute leaves the minutes active too.
+	x5, y5 := at(5)
+	in.MouseDown(x5, y5, 0, false)
+	in.MouseUp(x5, y5, 0)
+	if got := tp.Text.Get(); got != "03:05" || tp.PickerField != 1 {
+		t.Fatalf("minute click = %q field %d", got, tp.PickerField)
 	}
 }

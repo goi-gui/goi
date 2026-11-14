@@ -131,6 +131,11 @@ type interactor struct {
 	// seekNode is the player whose scrubber the pointer is dragging. The
 	// position follows the pointer and only the release seeks the decoder.
 	seekNode tree.Node
+
+	// pickNode is the time picker whose dial the pointer is dragging, and
+	// pickField is the field it was on when the drag started.
+	pickNode  tree.Node
+	pickField int
 }
 
 // Gesture timings, the ones Flutter uses: a press that stays inside the slop for
@@ -449,6 +454,14 @@ func (i *interactor) MouseMove(x, y float64) {
 		i.pointer(platform.CursorPointer)
 		return
 	}
+	if i.pickNode != nil {
+		if c := comp(i.pickNode); c != nil {
+			if tp := timePickerAt(i.pickNode); tp != nil {
+				i.pickAt(i.pickNode, c, tp, x, y)
+			}
+		}
+		return
+	}
 	hit := i.hit(x, y)
 	if i.seekNode != nil {
 		if m, ok := tree.MediaNode(i.seekNode); ok {
@@ -718,6 +731,17 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 	if hit == nil {
 		return
 	}
+	// The dial is dragged, not clicked once: the press moves the hand to the
+	// pointer and every move follows, so any minute is reachable.
+	if button == 0 {
+		if n, c, tp := i.pickDialAt(hit, x, y); n != nil {
+			i.setKbd(n)
+			i.pickNode, i.pickField = n, c.PickerField
+			i.resetPick(tp)
+			i.pickAt(n, c, tp, x, y)
+			return
+		}
+	}
 	if button == 0 {
 		i.armGesture(hit, x, y)
 	}
@@ -758,6 +782,16 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 
 func (i *interactor) MouseUp(x, y float64, button int) {
 	i.event("MouseUp", "x", x, "y", y, "button", button)
+	if i.pickNode != nil {
+		n := i.pickNode
+		i.pickNode = nil
+		if c := comp(n); c != nil {
+			if tp := timePickerAt(n); tp != nil {
+				i.finishPick(n, c, tp)
+			}
+		}
+		return
+	}
 	i.finishSeek()
 	swallow := i.gestureRelease(x, y)
 	defer func() {
@@ -1177,19 +1211,76 @@ func (i *interactor) pickTime(n tree.Node, c *tree.Component, x, y float64) {
 		i.focusPickField(tp, c, 0)
 	case hitRect(t.MinBox, x, y):
 		i.focusPickField(tp, c, 1)
-	case t.Variant == "dial":
-		v, field, ok := t.TimeAt(x, y)
-		if !ok {
-			return
-		}
-		c.Text.Set(v)
-		c.PickerField = field
-		i.resetPick(tp)
-		c.Submit.Emit(v)
 	default:
 		return
 	}
 	n.Base().MarkDirty(tree.DirtyPaint)
+}
+
+// timePickerAt returns the nearest TimePicker at or above n.
+func timePickerAt(n tree.Node) *tree.TimePicker {
+	for ; n != nil; n = n.Base().Parent() {
+		if tp, ok := n.(*tree.TimePicker); ok {
+			return tp
+		}
+	}
+	return nil
+}
+
+// pickDialAt reports whether the point is on the dial of a time picker, which
+// is dragged rather than clicked once.
+func (i *interactor) pickDialAt(hit tree.Node, x, y float64) (tree.Node, *tree.Component, *tree.TimePicker) {
+	tp := timePickerAt(hit)
+	if tp == nil {
+		return nil, nil, nil
+	}
+	n := tp.Base().Node()
+	c := comp(n)
+	if c == nil || c.Variant.Get() == "input" {
+		return nil, nil, nil
+	}
+	format := 12
+	if tp.HourFormat.Get() == 24 {
+		format = 24
+	}
+	t := paint.TimeLayoutOf(absoluteRect(n), c.Text.Get(), c.PickerField, "dial", format)
+	if !hitRect(t.Dial, x, y) {
+		return nil, nil, nil
+	}
+	return n, c, tp
+}
+
+// pickAt moves the time to the pointer's angle on the dial. The field stays
+// where it was, so dragging the minutes does not jump back to the hour.
+func (i *interactor) pickAt(n tree.Node, c *tree.Component, tp *tree.TimePicker, x, y float64) {
+	format := 12
+	if tp.HourFormat.Get() == 24 {
+		format = 24
+	}
+	t := paint.TimeLayoutOf(absoluteRect(n), c.Text.Get(), c.PickerField, "dial", format)
+	v, _, ok := t.TimeAt(x, y)
+	if !ok {
+		return
+	}
+	c.Text.Set(v)
+	n.Base().MarkDirty(tree.DirtyPaint)
+	i.markDirty()
+}
+
+// finishPick ends a dial drag: the hour hands over to the minutes, the minutes
+// stay put, and the value is reported once, on release.
+func (i *interactor) finishPick(n tree.Node, c *tree.Component, tp *tree.TimePicker) {
+	if i.pickField == 0 {
+		c.PickerField = 1
+	} else {
+		c.PickerField = 1
+	}
+	i.resetPick(tp)
+	// The dial reports a changed value, not a confirmation: onOK belongs to the
+	// OK action (and Enter), not to every drag.
+	c.Submit.Emit(c.Text.Get())
+	n.Base().MarkDirty(tree.DirtyPaint)
+	i.markDirty()
 }
 
 // focusPickField makes one half of the time active and starts its digit buffer

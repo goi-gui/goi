@@ -1,6 +1,7 @@
 package paint
 
 import (
+	"math"
 	"testing"
 
 	"github.com/goi-gui/goi/internal/layout"
@@ -134,4 +135,55 @@ func TestTimePicker24HourPaint(t *testing.T) {
 		t.Fatal("the 24-hour picker still draws the AM/PM switch")
 	}
 	_ = chip
+}
+
+// TestTimePickerMinuteHandTakesEveryMinute: the picked minute rides the hand's
+// own angle, so 13 shows its circle where 13 is, and the label it covers (15)
+// steps aside.
+func TestTimePickerMinuteHandTakesEveryMinute(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window { Column {
+		TimePicker { width: 328 height: 420 variant: dial text: "03:13" }
+	} }`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	for _, n := range tr.All() {
+		if tp, ok := n.(*tree.TimePicker); ok {
+			tp.PickerField = 1
+		}
+	}
+	layout.New(nil).Layout(tr.Root, 480, 900)
+	l := &List{}
+	l.Build(tr, 480, 900)
+	tl := TimeLayoutOf(tree.Rect{X: 0, Y: 0, W: 328, H: 420}, "03:13", 1, "dial", 12)
+
+	texts := map[string]bool{}
+	var picked *Op
+	for i := range l.Ops {
+		op := &l.Ops[i]
+		if op.Kind == Text && !op.Icon {
+			texts[op.Text] = true
+		}
+		if op.Kind == Fill && op.Shape == Circle && op.Rect[2] == 36 {
+			picked = op
+		}
+	}
+	if !texts["13"] {
+		t.Fatalf("the picked minute is not drawn: %v", texts)
+	}
+	if texts["15"] {
+		t.Fatal("the label under the picked minute was not skipped")
+	}
+	if picked == nil {
+		t.Fatal("no picked-minute circle")
+	}
+	// The circle sits at 13/60 of a turn from twelve o'clock.
+	cx, cy := tl.Dial.X+tl.Dial.W/2, tl.Dial.Y+tl.Dial.H/2
+	gotX := float64(picked.Rect[0]) + float64(picked.Rect[2])/2
+	gotY := float64(picked.Rect[1]) + float64(picked.Rect[3])/2
+	wantAngle := 13.0 / 60 * 2 * math.Pi
+	gotAngle := math.Atan2(gotX-cx, cy-gotY)
+	if math.Abs(gotAngle-wantAngle) > 0.02 {
+		t.Fatalf("picked circle at angle %v, want %v", gotAngle, wantAngle)
+	}
 }
