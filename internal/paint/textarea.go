@@ -85,12 +85,21 @@ func (l *List) paintTextArea(c *tree.Component, r tree.Rect, clip tree.Rect) {
 
 	box := TextAreaBox(r, false)
 	hasValue := c.Text.Get() != "" || c.Preedit != "" || c.Focused
-	labelBox := tree.Rect{X: box.X, Y: r.Y + 8, W: box.W, H: 16}
-	if !hasValue {
-		// Empty and unfocused: the label is the placeholder, on the text line.
-		labelBox = tree.Rect{X: box.X, Y: r.Y + textAreaLabel, W: box.W, H: lh}
+	if hasValue {
+		// Content or focus floats the label into the top band; the text line
+		// below is free for the value or an empty-field placeholder.
+		l.textIn(c.Label.Get(), small, hint,
+			tree.Rect{X: box.X, Y: r.Y + 8, W: box.W, H: 16}, AlignStart, clip)
+	} else {
+		// Empty and unfocused: one line, and a label wins over a placeholder so
+		// the two never draw on top of each other.
+		label := c.Label.Get()
+		if label == "" {
+			label = c.Placeholder.Get()
+		}
+		l.textIn(label, body, hint,
+			tree.Rect{X: box.X, Y: box.Y, W: box.W, H: lh}, AlignStart, clip)
 	}
-	l.textIn(c.Label.Get(), small, hint, labelBox, AlignStart, clip)
 
 	lines := TextAreaLines(c.Text.Get(), box.W, func(s string) float64 {
 		return textWidth(l, s, body)
@@ -113,8 +122,9 @@ func (l *List) paintTextArea(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		}
 		l.textIn(ln.Text, body, fg, tree.Rect{X: box.X, Y: y, W: box.W, H: lh}, AlignStart, textClip)
 	}
-	// Placeholder text when the field is empty and focused.
-	if c.Text.Get() == "" && c.Preedit == "" && c.Placeholder.Get() != "" {
+	// Placeholder text while the empty field has focus; an unfocused empty
+	// field above already shows its label instead.
+	if c.Focused && c.Text.Get() == "" && c.Preedit == "" && c.Placeholder.Get() != "" {
 		l.textIn(c.Placeholder.Get(), body, hint,
 			tree.Rect{X: box.X, Y: box.Y, W: box.W, H: lh}, AlignStart, textClip)
 	}
