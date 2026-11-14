@@ -223,3 +223,44 @@ func TestAudioNeverHidesItsBar(t *testing.T) {
 		t.Fatal("a video with its bar shown laid out as empty")
 	}
 }
+
+// TestSeekbarWavyDrawsARibbon: `seekbar: wavy` replaces the flat track with a
+// sine ribbon and keeps the thumb; the default is still the plain bar.
+func TestSeekbarWavyDrawsARibbon(t *testing.T) {
+	paint := func(seekbar string) *List {
+		tr, diag := tree.BuildSource([]byte(`Window { Audio {
+			width: 360 height: 64 seekbar: `+seekbar+`
+		} }`), nil)
+		if !diag.Empty() {
+			t.Fatalf("%v", diag)
+		}
+		var m *tree.Media
+		for _, n := range tr.All() {
+			if mm, ok := tree.MediaNode(n); ok {
+				m = mm
+			}
+		}
+		m.Duration = 100 * time.Second
+		m.Position = 40 * time.Second
+		m.ControlsShown = true
+		layout.New(nil).Layout(tr.Root, 400, 200)
+		l := &List{}
+		l.Build(tr, 400, 200)
+		return l
+	}
+	ribbon := func(l *List) int {
+		n := 0
+		for _, op := range l.Ops {
+			if op.Kind == Fill && op.Rotate != 0 {
+				n++
+			}
+		}
+		return n
+	}
+	if got := ribbon(paint("normal")); got != 0 {
+		t.Fatalf("a normal seekbar drew %d rotated segments", got)
+	}
+	if got := ribbon(paint("wavy")); got < 20 {
+		t.Fatalf("a wavy seekbar drew %d rotated segments, want a ribbon", got)
+	}
+}

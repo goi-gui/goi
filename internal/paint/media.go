@@ -79,13 +79,19 @@ func MediaLayoutOf(m *tree.Media, r tree.Rect) MediaLayout {
 	if trackW < 40 {
 		trackW = 40
 	}
-	l.Track = tree.Rect{X: trackX, Y: bar.Y + bar.H/2 - 2, W: trackW, H: 4}
+	// A wavy scrubber is a ribbon, so its hit strip is as tall as the wave and
+	// its thumb rides the midline.
+	trackH := 4.0
+	if m.Seekbar.Get() == "wavy" {
+		trackH = 10
+	}
+	l.Track = tree.Rect{X: trackX, Y: bar.Y + bar.H/2 - trackH/2, W: trackW, H: trackH}
 	frac := 0.0
 	if m.Duration > 0 {
 		frac = float64(m.Position) / float64(m.Duration)
 	}
 	frac = math.Max(0, math.Min(1, frac))
-	l.Thumb = tree.Rect{X: l.Track.X + frac*l.Track.W - 6, Y: l.Track.Y - 4, W: 12, H: 12}
+	l.Thumb = tree.Rect{X: l.Track.X + frac*l.Track.W - 6, Y: l.Track.Y + trackH/2 - 6, W: 12, H: 12}
 	return l
 }
 
@@ -319,30 +325,77 @@ func (l *List) paintMediaBar(m *tree.Media, r tree.Rect, lay MediaLayout, clip t
 	if trackColor != 0 {
 		track = withAlpha(trackColor, 0.32)
 	}
-	l.fillRect(lay.Track, track, lay.Track.H/2, 0, 0, clip)
 	frac := 0.0
 	if m.Duration > 0 {
 		frac = math.Max(0, math.Min(1, float64(m.Position)/float64(m.Duration)))
 	}
-	// The buffered span sits behind the played part, so a reader can see how far
-	// ahead the decoder is before the picture stalls.
-	if m.Buffered > 0 && m.Duration > 0 {
-		end := math.Min(1, frac+float64(m.Buffered)/float64(m.Duration))
-		buffered := withAlpha(fallback, 0.42)
-		if trackColor != 0 {
-			buffered = withAlpha(trackColor, 0.55)
+	wavy := m.Seekbar.Get() == "wavy"
+	if wavy {
+		// A ribbon: the track's midline is the wave, the played part is drawn
+		// over the buffered one so the layers read in the order they fill.
+		mid := lay.Track.Y + lay.Track.H/2
+		l.mediaWave(lay.Track.X, lay.Track.X+lay.Track.W, mid, track, clip)
+		if m.Buffered > 0 && m.Duration > 0 {
+			end := math.Min(1, frac+float64(m.Buffered)/float64(m.Duration))
+			buffered := withAlpha(fallback, 0.42)
+			if trackColor != 0 {
+				buffered = withAlpha(trackColor, 0.55)
+			}
+			l.mediaWave(lay.Track.X, lay.Track.X+lay.Track.W*end, mid, buffered, clip)
 		}
-		l.fillRect(tree.Rect{X: lay.Track.X, Y: lay.Track.Y, W: lay.Track.W * end, H: lay.Track.H},
-			buffered, lay.Track.H/2, 0, 0, clip)
-	}
-	if frac > 0 {
-		l.fillRect(tree.Rect{X: lay.Track.X, Y: lay.Track.Y, W: lay.Track.W * frac, H: lay.Track.H},
-			playedColor, lay.Track.H/2, 0, 0, clip)
+		if frac > 0 {
+			l.mediaWave(lay.Track.X, lay.Track.X+lay.Track.W*frac, mid, playedColor, clip)
+		}
+	} else {
+		l.fillRect(lay.Track, track, lay.Track.H/2, 0, 0, clip)
+		// The buffered span sits behind the played part, so a reader can see how
+		// far ahead the decoder is before the picture stalls.
+		if m.Buffered > 0 && m.Duration > 0 {
+			end := math.Min(1, frac+float64(m.Buffered)/float64(m.Duration))
+			buffered := withAlpha(fallback, 0.42)
+			if trackColor != 0 {
+				buffered = withAlpha(trackColor, 0.55)
+			}
+			l.fillRect(tree.Rect{X: lay.Track.X, Y: lay.Track.Y, W: lay.Track.W * end, H: lay.Track.H},
+				buffered, lay.Track.H/2, 0, 0, clip)
+		}
+		if frac > 0 {
+			l.fillRect(tree.Rect{X: lay.Track.X, Y: lay.Track.Y, W: lay.Track.W * frac, H: lay.Track.H},
+				playedColor, lay.Track.H/2, 0, 0, clip)
+		}
 	}
 	l.fillRect(lay.Thumb, playedColor, lay.Thumb.W/2, 0, 0, clip)
 
 	l.textIn(MediaClock(m.Position)+" / "+MediaClock(m.Duration), st, textColor,
 		lay.Time, AlignEnd, clip)
+}
+
+// mediaWave draws one scrubber segment as a sine ribbon with round joins: the
+// same shape the wavy progress uses, at the bar's own scale. It is not animated,
+// because a seekbar marks a position rather than a process still running.
+func (l *List) mediaWave(x0, x1, mid float64, color uint32, clip tree.Rect) {
+	if x1-x0 < 1 || color == 0 {
+		return
+	}
+	const stroke, amplitude, wavelength = 3.0, 3.5, 22.0
+	point := func(x float64) chartPoint {
+		return chartPoint{X: x, Y: mid + amplitude*math.Sin(x/wavelength*2*math.Pi)}
+	}
+	step := math.Max(0.75, 2.0/l.deviceScale())
+	var prev chartPoint
+	for x := x0; ; x += step {
+		if x > x1 {
+			x = x1
+		}
+		p := point(x)
+		if x > x0 {
+			l.chartSegment(prev, p, color, stroke, clip)
+		}
+		prev = p
+		if x >= x1 {
+			break
+		}
+	}
 }
 
 // MediaClock writes a duration as m:ss, or h:mm:ss past an hour.

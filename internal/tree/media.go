@@ -17,6 +17,9 @@ const DefaultBufferSeconds = 1.5
 // The decoding lives in the ui layer, which owns the ffmpeg processes; a node
 // only records what the design and Go asked for.
 type Media struct {
+	// Seekbar is the scrubber's style: "normal" (a plain bar) or "wavy" (a
+	// ribbon). It is a cell of its own because both players share it.
+	Seekbar Prop[string]
 	NodeBase
 
 	Src Prop[string]
@@ -141,6 +144,7 @@ func mediaProps(m *Media) []NamedProp {
 		NumberProp(&m.NodeBase, "volume", DirtyPaint, &m.Volume),
 		NumberProp(&m.NodeBase, "startAt", DirtyPaint, &m.StartAt),
 		NumberProp(&m.NodeBase, "buffer", DirtyPaint, &m.Buffer),
+		EnumProp(&m.NodeBase, "seekbar", DirtyPaint, &m.Seekbar, "normal", "wavy"),
 		StringProp(&m.NodeBase, "subtitles", &m.Subtitles),
 		NumberProp(&m.NodeBase, "audioTrack", DirtyPaint, &m.AudioTrack),
 		NumberProp(&m.NodeBase, "subtitleFontSize", DirtyLayout, &m.SubtitleFontSize),
@@ -227,8 +231,10 @@ func newMedia() Media {
 	return Media{
 		Volume:   newProp(nil, "volume", DirtyPaint, 1.0),
 		Controls: newProp(nil, "controls", DirtyLayout, true),
-		StartAt:  newProp(nil, "startAt", DirtyPaint, 0.0),
-		Buffer:   newProp(nil, "buffer", DirtyPaint, DefaultBufferSeconds),
+		// The scrubber's style: a plain bar, or a ribbon drawn as a wave.
+		Seekbar: newProp(nil, "seekbar", DirtyPaint, "normal"),
+		StartAt: newProp(nil, "startAt", DirtyPaint, 0.0),
+		Buffer:  newProp(nil, "buffer", DirtyPaint, DefaultBufferSeconds),
 		// The bar starts visible and hides on its own after the pointer rests.
 		ControlsShown: true,
 	}
