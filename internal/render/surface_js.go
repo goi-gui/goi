@@ -4,9 +4,9 @@ package render
 
 import "github.com/gogpu/wgpu"
 
-// createSurface takes the page's canvas. A browser has no native handles: the
-// canvas is found by the script that hosts the app, so the id is unused and the
-// first canvas element is the surface.
-func createSurface(inst *wgpu.Instance, _, _ uintptr, _ TargetKind) (*wgpu.Surface, error) {
-	return inst.CreateSurfaceUnsafe(wgpu.SurfaceTargetFromWebCanvasID(0))
+// createSurface takes the canvas the window named. A browser surface is found
+// by the number the canvas carries as data-raw-handle, which is why the window
+// handle is the canvas id and not a pointer.
+func createSurface(inst *wgpu.Instance, _, window uintptr, _ TargetKind) (*wgpu.Surface, error) {
+	return inst.CreateSurfaceUnsafe(wgpu.SurfaceTargetFromWebCanvasID(window))
 }

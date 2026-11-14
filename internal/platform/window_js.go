@@ -10,7 +10,9 @@ package platform
 
 import (
 	"fmt"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"syscall/js"
 	"time"
 )
@@ -24,6 +26,9 @@ type Window struct {
 	// between them and the canvas backing store.
 	width, height int
 	scale         float32
+	// handle is the number the renderer asks the DOM for, set on the canvas as
+	// data-raw-handle, so several apps on one page each find their own.
+	handle uintptr
 
 	closing bool
 
@@ -64,20 +69,38 @@ type Window struct {
 // readable until the page has seen a paste once.
 var clipboard string
 
+// canvasHandles numbers the canvases this page hosts. The renderer names one by
+// a number the DOM carries as data-raw-handle rather than by the page's own id,
+// so two apps on one page each find their element instead of both taking the
+// first.
+var canvasHandles atomic.Uint64
+
+func nextCanvasHandle() uintptr { return uintptr(canvasHandles.Add(1)) }
+
 // Init is a no-op: the browser has no subsystem to start.
 func Init() error { return nil }
 
 // Terminate is a no-op.
 func Terminate() {}
 
-// New takes over the page's canvas, or creates one when the page has none, and
-// starts the frame pump.
-func New(title string, width, height int, decorated bool) (*Window, error) {
+// New takes over the canvas the page named, or the first one, or creates one
+// when the page has none, and starts the frame pump.
+func New(title string, width, height int, decorated bool, id string) (*Window, error) {
 	doc := js.Global().Get("document")
-	canvas := doc.Call("querySelector", "canvas")
-	if canvas.IsNull() || canvas.IsUndefined() {
-		canvas = doc.Call("createElement", "canvas")
-		doc.Get("body").Call("appendChild", canvas)
+	var canvas js.Value
+	if id != "" {
+		canvas = doc.Call("getElementById", id)
+		if canvas.IsNull() || canvas.IsUndefined() {
+			canvas = doc.Call("createElement", "canvas")
+			canvas.Set("id", id)
+			doc.Get("body").Call("appendChild", canvas)
+		}
+	} else {
+		canvas = doc.Call("querySelector", "canvas")
+		if canvas.IsNull() || canvas.IsUndefined() {
+			canvas = doc.Call("createElement", "canvas")
+			doc.Get("body").Call("appendChild", canvas)
+		}
 	}
 	if gpu := js.Global().Get("navigator").Get("gpu"); gpu.IsUndefined() || gpu.IsNull() {
 		// A page on a browser without WebGPU gets a sentence instead of a blank
@@ -94,6 +117,7 @@ func New(title string, width, height int, decorated bool) (*Window, error) {
 
 	p := &Window{
 		canvas:      canvas,
+		handle:      nextCanvasHandle(),
 		width:       maxInt(width, 1),
 		height:      maxInt(height, 1),
 		scale:       1,
@@ -102,7 +126,16 @@ func New(title string, width, height int, decorated bool) (*Window, error) {
 		maximizable: true,
 		wake:        make(chan struct{}, 1),
 	}
-	if title != "" {
+	canvas.Call("setAttribute", "data-raw-handle", strconv.FormatUint(uint64(p.handle), 10))
+	// A canvas takes no keyboard focus unless it is focusable. Making it a tab
+	// stop is what lets keys reach this app, and what tells a page with several
+	// canvases which one the keyboard belongs to.
+	if !canvas.Call("hasAttribute", "tabindex").Bool() {
+		canvas.Set("tabIndex", 0)
+	}
+	// A page with several apps must not have its title taken by whichever one
+	// started last, so only a page that has none gets the design's.
+	if title != "" && doc.Get("title").String() == "" {
 		doc.Set("title", title)
 	}
 	if dpr := js.Global().Get("devicePixelRatio"); dpr.Type() == js.TypeNumber && dpr.Float() > 0 {
@@ -184,6 +217,9 @@ func (p *Window) listen() {
 
 	down := js.FuncOf(func(_ js.Value, args []js.Value) any {
 		e := args[0]
+		// A press on the app moves the keyboard here, so a page with several
+		// canvases types into the one the pointer is on.
+		c.Call("focus", map[string]any{"preventScroll": true})
 		x, y := p.local(e)
 		button := e.Get("button").Int()
 		shift := e.Get("shiftKey").Bool()
@@ -270,6 +306,12 @@ func (p *Window) listen() {
 
 	keydown := js.FuncOf(func(_ js.Value, args []js.Value) any {
 		e := args[0]
+		// Only the app whose canvas, or whose hidden input, is focused hears a
+		// key. Without that filter every app on a page would type at once.
+		active := js.Global().Get("document").Get("activeElement")
+		if !active.Equal(c) && !(p.ime.Truthy() && active.Equal(p.ime)) {
+			return nil
+		}
 		// An IME owns the keyboard while it composes, and the composition
 		// events above already carry the text.
 		if e.Get("isComposing").Bool() {

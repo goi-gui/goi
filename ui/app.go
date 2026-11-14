@@ -20,6 +20,11 @@ type Options struct {
 	HotReload bool
 	Width     int // used only when the .goi file has no width
 	Height    int
+	// Canvas names the DOM element a browser build draws into, by id. A page
+	// with several canvases runs one app per canvas, and each app names its
+	// own. An empty id takes the page's first canvas, creating one if the page
+	// has none; a desktop build ignores it.
+	Canvas string
 }
 
 // Option mutates Options.
@@ -30,6 +35,14 @@ func WithHotReload(on bool) Option { return func(o *Options) { o.HotReload = on 
 
 // WithSize sets the fallback client size for files that do not declare one.
 func WithSize(w, h int) Option { return func(o *Options) { o.Width, o.Height = w, h } }
+
+// WithCanvas names the element a browser build draws into, by id:
+//
+//	app.LoadWindow(fsys, "app.goi", ui.WithCanvas("hero"))
+//
+// A page can hold several canvases and run one app per canvas. Without it the
+// app takes the page's first canvas, which is what a single-canvas page wants.
+func WithCanvas(id string) Option { return func(o *Options) { o.Canvas = id } }
 
 // App owns the UI goroutine, the posted-function queue and every window's
 // state. It is safe to call Post from any goroutine.

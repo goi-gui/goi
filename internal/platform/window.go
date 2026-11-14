@@ -82,7 +82,9 @@ func (p *Window) SetTextInput(active bool, x, y, w, h float64) {
 
 // New creates the window. Call Init once on the main goroutine first.
 // decorated=false hides the platform title bar, so the design draws its own.
-func New(title string, width, height int, decorated bool) (*Window, error) {
+// New opens the window. canvas is the browser's element id and is unused on a
+// desktop, where the window is the surface.
+func New(title string, width, height int, decorated bool, canvas string) (*Window, error) {
 	win, err := sdlCreateWindow(title, width, height, decorated)
 	if err != nil {
 		return nil, err

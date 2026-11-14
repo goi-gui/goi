@@ -4,12 +4,16 @@ package platform
 
 import "fmt"
 
-// SurfaceHandles returns the browser canvas the renderer draws into. A canvas
-// is addressed by the page, not by a raw handle, so the pair is empty and the
-// kind says so.
+// SurfaceHandles returns the browser canvas the renderer draws into. The handle
+// is the number the canvas carries as data-raw-handle, which is how the renderer
+// finds this element and not another: a page with several canvases hosts one app
+// each.
 func (p *Window) SurfaceHandles() (display, window uintptr, kind SurfaceKind, err error) {
 	if p == nil || p.canvas.IsUndefined() || p.canvas.IsNull() {
 		return 0, 0, 0, fmt.Errorf("platform: window is not open")
 	}
-	return 0, 0, SurfaceWeb, nil
+	if p.handle == 0 {
+		return 0, 0, 0, fmt.Errorf("platform: canvas has no handle")
+	}
+	return 0, p.handle, SurfaceWeb, nil
 }

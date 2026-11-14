@@ -51,7 +51,7 @@ func (a *App) initPlatform() error {
 // initWindow creates the native window, the renderer and the input handler.
 func (a *App) initWindow(w *Window) error {
 	// A custom title bar means the platform draws no decorations of its own.
-	pw, err := platform.New(w.title, w.width, w.height, w.tree.Root.TitleBar.Get() != "custom")
+	pw, err := platform.New(w.title, w.width, w.height, w.tree.Root.TitleBar.Get() != "custom", w.app.opts.Canvas)
 	if err != nil {
 		return fmt.Errorf("ui: create window: %w", err)
 	}
