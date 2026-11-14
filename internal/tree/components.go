@@ -122,7 +122,7 @@ func newComponent() Component {
 		IconOn:      newProp(nil, "iconOn", DirtyLayout, ""),
 		IconOff:     newProp(nil, "iconOff", DirtyLayout, ""),
 		Language:    newProp(nil, "language", DirtyPaint, ""),
-		ShowCopy:    newProp(nil, "showCopy", DirtyPaint, false),
+		ShowCopy:    newProp(nil, "showCopy", DirtyPaint, true),
 		Variant:     newProp(nil, "variant", DirtyPaint, ""),
 		Thickness:   newProp(nil, "thickness", DirtyLayout, 0.0),
 		Disabled:    newProp(nil, "disabled", DirtyPaint, false),

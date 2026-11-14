@@ -70,11 +70,11 @@ func TestCodeCopyButton(t *testing.T) {
 	}
 }
 
-// Without showCopy there is no button, so a press in that corner selects text
-// like anywhere else.
+// The button is drawn by default; `showCopy: false` removes it, so a press in
+// that corner selects text like anywhere else.
 func TestCodeCopyButtonIsOptIn(t *testing.T) {
 	_, win, in := inputFixture(t, `Window {
-		Column { Code { id: block text: "x = 1" width: 400 height: 120 } }
+		Column { Code { id: block text: "x = 1" width: 400 height: 120 showCopy: false } }
 	}`, 500, 200)
 	code := MustByID[*Code](win, "block")
 	copied := false
@@ -85,6 +85,20 @@ func TestCodeCopyButtonIsOptIn(t *testing.T) {
 	in.MouseUp(btn.X+btn.W/2, btn.Y+btn.H/2, 0)
 	if copied {
 		t.Fatal("copied with showCopy off")
+	}
+
+	// And a block with the default does have one.
+	_, win, in = inputFixture(t, `Window {
+		Column { Code { id: block text: "x = 1" width: 400 height: 120 } }
+	}`, 500, 200)
+	code = MustByID[*Code](win, "block")
+	copied = false
+	in.setClipboard = func(string) { copied = true }
+	btn = paint.CodeCopyRect(absoluteRect(code))
+	in.MouseDown(btn.X+btn.W/2, btn.Y+btn.H/2, 0, false)
+	in.MouseUp(btn.X+btn.W/2, btn.Y+btn.H/2, 0)
+	if !copied {
+		t.Fatal("the default copy button did not copy")
 	}
 }
 

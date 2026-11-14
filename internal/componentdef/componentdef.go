@@ -220,7 +220,9 @@ var defaults = map[string]any{
 	"sortColumn":    -1.0,
 	"sortAscending": true,
 	"selectable":    "none",
-	"selectedRow":   -1.0,
+	// A code block offers its copy button until the design says otherwise.
+	"showCopy":    true,
+	"selectedRow": -1.0,
 	// A centered slider fills from the midpoint of min and max until the
 	// design names a center of its own.
 	"center": math.NaN(),

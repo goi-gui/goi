@@ -59,7 +59,9 @@ func CodeLines(src string) []text.Line {
 func (l *List) paintCode(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
 	l.fillRect(r, col.SurfaceContainerLow, m3.ShapeMedium, 0, 0, clip)
-	if c.Variant.Get() == "outlined" {
+	// Outlined is the default: a code block reads as a block without a declared
+	// border, and `variant: filled` is the one that drops it.
+	if variant(c, "outlined") != "filled" {
 		l.fillRect(r, 0, m3.ShapeMedium, col.OutlineVariant, 1, clip)
 	}
 

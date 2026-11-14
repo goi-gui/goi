@@ -1128,3 +1128,32 @@ func bubbleBox(l *List) tree.Rect {
 	}
 	return tree.Rect{}
 }
+
+// TestCodeDefaultsToBorderAndCopy is what a block looks like unwrapped: a 1dp
+// outline and a copy button, because both are what a reader expects of code on a
+// page. `variant: filled` drops the border and `showCopy: false` the button.
+func TestCodeDefaultsToBorderAndCopy(t *testing.T) {
+	col := m3.Light().Colors
+	count := func(l *List) (border, copy int) {
+		for _, op := range l.Ops {
+			if op.Kind != Fill {
+				continue
+			}
+			if op.BorderWidth == 1 && op.BorderColor == col.OutlineVariant {
+				border++
+			}
+			if op.Color == withAlpha(col.SecondaryContainer, 0.9) {
+				copy++
+			}
+		}
+		return border, copy
+	}
+	border, copy := count(m3list(t, `Window { Code { text: "x" } }`))
+	if border != 1 || copy != 1 {
+		t.Fatalf("default Code has %d borders and %d copy buttons, want 1 and 1", border, copy)
+	}
+	border, copy = count(m3list(t, `Window { Code { text: "x" variant: filled showCopy: false } }`))
+	if border != 0 || copy != 0 {
+		t.Fatalf("filled Code without copy has %d borders and %d buttons", border, copy)
+	}
+}
