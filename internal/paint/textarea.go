@@ -14,9 +14,20 @@ const (
 	textAreaBottom = 12.0
 )
 
+// TextFieldBox is the field's own height inside a node that may reserve a line
+// for supporting text under it. The node is the whole component, so the field
+// fill, border and text stop above the helper line.
+func TextFieldBox(r tree.Rect, supporting bool) tree.Rect {
+	if supporting && r.H > 20 {
+		r.H -= 20
+	}
+	return r
+}
+
 // TextAreaBox is the visible text box inside a TextArea, in the same coordinate
-// space as r.
-func TextAreaBox(r tree.Rect) tree.Rect {
+// space as r. supporting shrinks the field so its helper line has room.
+func TextAreaBox(r tree.Rect, supporting bool) tree.Rect {
+	r = TextFieldBox(r, supporting)
 	return tree.Rect{
 		X: r.X + textAreaPad,
 		Y: r.Y + textAreaLabel,
@@ -32,6 +43,7 @@ func TextAreaLines(src string, width float64, advance func(string) float64) []te
 }
 
 func (l *List) paintTextArea(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	r = TextFieldBox(r, c.Supporting.Get() != "")
 	col := l.Theme.Colors
 	filled := variant(c, "filled") == "filled"
 	fg := disabledAlpha(c, col.OnSurface)
@@ -71,7 +83,7 @@ func (l *List) paintTextArea(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		lh = body.Size * 1.2
 	}
 
-	box := TextAreaBox(r)
+	box := TextAreaBox(r, false)
 	hasValue := c.Text.Get() != "" || c.Preedit != "" || c.Focused
 	labelBox := tree.Rect{X: box.X, Y: r.Y + 8, W: box.W, H: 16}
 	if !hasValue {

@@ -82,7 +82,7 @@ func TestTextFieldEnterStillSubmits(t *testing.T) {
 func TestTextAreaClickPicksLine(t *testing.T) {
 	_, win, in := inputFixture(t, textAreaUI, 400, 240)
 	a := MustByID[*TextArea](win, "area")
-	box := paint.TextAreaBox(absoluteRect(a))
+	box := paint.TextAreaBox(absoluteRect(a), a.Supporting.Get() != "")
 	lh := textAreaLineHeight()
 
 	// Click at the very start of the second line.

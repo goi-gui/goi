@@ -1030,3 +1030,33 @@ func TestTimePickerMetricsFollowTheVariant(t *testing.T) {
 	want(t, bounds(t, tr, "dial"), 0, 0, 328, 420)
 	want(t, bounds(t, tr, "input"), 0, 420, 328, 188)
 }
+
+// TestTextFieldSupportingReservesItsLine: the field draws supporting text under
+// its 56dp box, so its natural height has to include that line or the next
+// field in a column starts over it.
+func TestTextFieldSupportingReservesItsLine(t *testing.T) {
+	tr := build(t, `Window { Column { spacing: 10
+		TextField { id: with supporting: "Shown under the field" }
+		TextField { id: without }
+		TextArea { id: area supporting: "Shown under the field" }
+		TextField { id: after }
+	} }`)
+	New(nil).Layout(tr.Root, 480, 400)
+	a, b := bounds(t, tr, "with"), bounds(t, tr, "without")
+	if a.H != 76 {
+		t.Fatalf("field with supporting text = %g high, want 76", a.H)
+	}
+	if b.Y < a.Y+a.H+10 {
+		t.Fatalf("next field starts at %g, supporting field ends at %g", b.Y, a.Y+a.H)
+	}
+	if b.H != 56 {
+		t.Fatalf("plain field = %g high, want 56", b.H)
+	}
+	area, after := bounds(t, tr, "area"), bounds(t, tr, "after")
+	if area.H != 152 {
+		t.Fatalf("area with supporting text = %g high, want 152", area.H)
+	}
+	if after.Y < area.Y+area.H+10 {
+		t.Fatalf("field after area starts at %g, area ends at %g", after.Y, area.Y+area.H)
+	}
+}

@@ -1105,6 +1105,7 @@ func clamp01(v float64) float64 {
 // ---------------------------------------------------------------- text input
 
 func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	r = TextFieldBox(r, c.Supporting.Get() != "")
 	col := l.Theme.Colors
 	filled := variant(c, "filled") == "filled"
 	fg := disabledAlpha(c, col.OnSurface)

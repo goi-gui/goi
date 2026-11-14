@@ -2483,7 +2483,7 @@ func (i *interactor) imeSync() {
 	if isMultiline(f) {
 		// A multiline field puts the candidate window on the caret's own line,
 		// which may be scrolled out of the single-line box.
-		box := paint.TextAreaBox(absoluteRect(n))
+		box := paint.TextAreaBox(absoluteRect(n), f.Supporting.Get() != "")
 		lines := i.areaLines(f)
 		lh := textAreaLineHeight()
 		line, x := 0, 0.0
@@ -3135,6 +3135,9 @@ func fieldTextStart(n tree.Node) float64 {
 // 52dp search inset.
 func fieldTextBox(n tree.Node) tree.Rect {
 	box := absoluteRect(n)
+	if c := comp(n); c != nil && n.Kind() == "TextField" {
+		box = paint.TextFieldBox(box, c.Supporting.Get() != "")
+	}
 	if n.Kind() == "ColorPicker" {
 		field := paint.ColorLayoutOf(box).Hex
 		return tree.Rect{X: field.X + 12, Y: field.Y, W: field.W - 24, H: field.H}
@@ -3243,7 +3246,7 @@ func (i *interactor) areaLines(f *tree.Component) []text.Line {
 	if n == nil {
 		return nil
 	}
-	box := paint.TextAreaBox(absoluteRect(n))
+	box := paint.TextAreaBox(absoluteRect(n), f.Supporting.Get() != "")
 	return paint.TextAreaLines(f.Text.Get(), box.W, i.textWidth)
 }
 
@@ -3253,7 +3256,7 @@ func (i *interactor) areaIndexAt(f *tree.Component, x, y float64) int {
 	if n == nil {
 		return 0
 	}
-	box := paint.TextAreaBox(absoluteRect(n))
+	box := paint.TextAreaBox(absoluteRect(n), f.Supporting.Get() != "")
 	lines := i.areaLines(f)
 	if len(lines) == 0 {
 		return 0

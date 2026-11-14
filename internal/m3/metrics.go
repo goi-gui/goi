@@ -144,7 +144,13 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 		return Metrics{W: 200, H: 44}
 	case "TextField":
 		_ = text
-		return Metrics{W: 200, H: 56}
+		// Supporting text is drawn under the box, so the field asks for its
+		// line: a column would otherwise start the next field over it.
+		h := 56.0
+		if c.Supporting != "" {
+			h += 20
+		}
+		return Metrics{W: 200, H: h}
 	case "SearchBar":
 		return Metrics{W: 360, H: 56}
 	case "Tooltip":
@@ -227,8 +233,13 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 		return Metrics{W: 48, H: 48}
 	case "TextArea":
 		// Three lines is the usual resting height for a multiline field; a
-		// design that wants more sets height itself.
-		return Metrics{W: 0, H: 132, FillW: true}
+		// design that wants more sets height itself. Supporting text is drawn
+		// under the box, so it reserves its line too.
+		h := 132.0
+		if c.Supporting != "" {
+			h += 20
+		}
+		return Metrics{W: 0, H: h, FillW: true}
 	case "Code":
 		// Height follows the hard line breaks, since a code block does not
 		// wrap: what is counted here is exactly what the painter draws.
