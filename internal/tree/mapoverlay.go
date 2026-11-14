@@ -12,11 +12,11 @@ type Coord = schema.Coord
 // in `lineColor` and an optional `fillColor`. A design writes one Geom per
 // polygon, usually from a loop over an API's geometry.
 //
-// `data` is a flat list of numbers, `[lon, lat, lon, lat, ...]`, which is the
-// one shape a property list can carry; the ring closes itself.
+// `data` is a list of `[lon, lat]` pairs, the same coordinate shape a Path
+// takes; the ring closes itself.
 type Geom struct {
 	NodeBase
-	Data      ListProp[float64]
+	Data      ListProp[schema.Coord]
 	LineColor Prop[uint32]
 	FillColor Prop[uint32]
 
@@ -32,7 +32,7 @@ func (*Geom) Kind() string { return "Geom" }
 func newGeom(base NodeBase) *Geom {
 	g := &Geom{
 		NodeBase:  base,
-		Data:      ListProp[float64]{parse: listParse[float64](schema.TypeNumber)},
+		Data:      ListProp[schema.Coord]{parse: listParse[schema.Coord](schema.TypeCoords)},
 		LineColor: newProp(nil, "lineColor", DirtyPaint, uint32(0)),
 		FillColor: newProp(nil, "fillColor", DirtyPaint, uint32(0)),
 	}
@@ -53,16 +53,15 @@ func (g *Geom) invalidate() {
 	g.fill = nil
 }
 
-// Ring returns the polygon's closed ring. An odd final number is ignored, which
-// keeps a half-pasted coordinate list from drawing a wrong edge.
+// Ring returns the polygon's closed ring, with the last point joining the first.
 func (g *Geom) Ring() []LatLng {
 	if g.ring != nil {
 		return g.ring
 	}
 	data := g.Data.Get()
-	ring := make([]LatLng, 0, len(data)/2)
-	for i := 0; i+1 < len(data); i += 2 {
-		ring = append(ring, LatLng{Lat: data[i+1], Lng: data[i]})
+	ring := make([]LatLng, 0, len(data))
+	for _, c := range data {
+		ring = append(ring, LatLng{Lat: c[1], Lng: c[0]})
 	}
 	if len(ring) > 0 && ring[0] != ring[len(ring)-1] {
 		ring = append(ring, ring[0])

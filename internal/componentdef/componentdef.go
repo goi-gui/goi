@@ -301,9 +301,9 @@ func TypeOf(name string) PropType {
 // four numbers.
 func ListElem(name string) PropType {
 	switch name {
-	case "bbox", "data", "coordinate":
+	case "bbox", "coordinate":
 		return Number
-	case "coordinates":
+	case "data", "coordinates":
 		return Coords
 	}
 	return String

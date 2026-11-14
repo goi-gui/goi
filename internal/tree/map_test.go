@@ -139,7 +139,7 @@ func TestMapZoomClamps(t *testing.T) {
 // polygon keeps its corners clear.
 func TestGeomRingAndFill(t *testing.T) {
 	g := newGeom(NodeBase{})
-	g.Data.Set([]float64{28, 40, 30, 40, 30, 42, 28, 42})
+	g.Data.Set([]schema.Coord{{28, 40}, {30, 40}, {30, 42}, {28, 42}})
 	ring := g.Ring()
 	if len(ring) != 5 {
 		t.Fatalf("ring = %d points, want the four corners plus the closing point", len(ring))
@@ -163,7 +163,7 @@ func TestGeomRingAndFill(t *testing.T) {
 		t.Fatalf("centre alpha = %#x, want the fill's 0x44", d.Pix[center+3])
 	}
 	// Changing the data rebuilds both the ring and the mask.
-	g.Data.Set([]float64{28, 40, 30, 40, 30, 42})
+	g.Data.Set([]schema.Coord{{28, 40}, {30, 40}, {30, 42}})
 	if len(g.Ring()) != 4 {
 		t.Fatalf("a changed ring kept its old cache: %v", g.Ring())
 	}
@@ -200,7 +200,7 @@ func TestPointAndPathCoordinates(t *testing.T) {
 // literal, so the loop can build one polygon per API row.
 func TestListPropertiesReadBridgeSlices(t *testing.T) {
 	tr, diag := BuildSource([]byte(`bridge {
-		Data   []float64
+		Data   [][]float64
 		Marker []float64
 	}
 	Window {
@@ -213,7 +213,7 @@ func TestListPropertiesReadBridgeSlices(t *testing.T) {
 	if !diag.Empty() {
 		t.Fatalf("%v", diag)
 	}
-	tr.SetData("Data", []float64{28, 40, 30, 40, 30, 42})
+	tr.SetData("Data", [][]float64{{28, 40}, {30, 40}, {30, 42}})
 	tr.SetData("Marker", []float64{29, 41})
 	tr.ApplyExpressions()
 
@@ -230,7 +230,7 @@ func TestListPropertiesReadBridgeSlices(t *testing.T) {
 }
 
 type testGeomData struct {
-	Data []float64 `goi:"data"`
+	Data [][]float64 `goi:"data"`
 }
 
 // TestGeomDataFromLoop covers the shape the map example uses: the polygon data
@@ -240,7 +240,7 @@ func TestGeomDataFromLoop(t *testing.T) {
 		Geoms []GeomData
 	}
 	type GeomData {
-		Data []float64
+		Data [][]float64
 	}
 	Window {
 		Map {
@@ -253,7 +253,7 @@ func TestGeomDataFromLoop(t *testing.T) {
 	if !diag.Empty() {
 		t.Fatalf("%v", diag)
 	}
-	tr.SetData("Geoms", []testGeomData{{Data: []float64{28, 40, 30, 40, 30, 42}}})
+	tr.SetData("Geoms", []testGeomData{{Data: [][]float64{{28, 40}, {30, 40}, {30, 42}}}})
 	tr.ApplyExpressions()
 	found := false
 	for _, n := range tr.All() {
@@ -262,7 +262,7 @@ func TestGeomDataFromLoop(t *testing.T) {
 			continue
 		}
 		found = true
-		if got := g.Data.Get(); len(got) != 6 || got[0] != 28 || got[5] != 42 {
+		if got := g.Data.Get(); len(got) != 3 || got[0] != (schema.Coord{28, 40}) || got[2] != (schema.Coord{30, 42}) {
 			t.Fatalf("geom data = %v, want the loop row's ring", got)
 		}
 	}

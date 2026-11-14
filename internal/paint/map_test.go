@@ -80,7 +80,7 @@ func TestMapPaintsGeom(t *testing.T) {
 		Map {
 			width: 300 height: 200
 			center: "41,29" zoom: 5
-			Geom { data: [28, 40, 30, 40, 30, 42, 28, 42] }
+			Geom { data: [[28, 40], [30, 40], [30, 42], [28, 42]] }
 		}
 	}`
 	_, _, l := mapList(t, src, 300, 200)
@@ -103,7 +103,7 @@ func TestMapColorsAndFill(t *testing.T) {
 			width: 300 height: 200
 			center: "41,29" zoom: 5
 			Geom {
-				data:      [28, 40, 30, 40, 30, 42, 28, 42]
+				data:      [[28, 40], [30, 40], [30, 42], [28, 42]]
 				lineColor: #ff0000
 				fillColor: #00ff0044
 			}

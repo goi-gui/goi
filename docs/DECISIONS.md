@@ -2054,9 +2054,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
 - **A map's overlays are children, and its camera is two properties.** `Geom`,
   `Path` and `Point` are elements, so an API's polygons come from a loop and the
   design carries no geometry JSON string; one `Geom` is one polygon, its `data`
-  a flat `[lon, lat, …]` ring because that is the only list shape a property
-  holds today. A `Path` takes a list of pairs, which needed one new list element
-  type (`TypeCoords`) rather than a second parallel property system. `center` and
+  a list of `[lon, lat]` pairs. A `Path` takes the same shape, which needed one
+  new list element type (`TypeCoords`) rather than a second parallel property
+  system; the expression layer converts nested slices to nested list literals,
+  so an API's `[][]float64` reaches both. `center` and
   `zoom` are what the pointer writes, so `View` needs no separate state and a
   design that binds either keeps working; `bbox` is four numbers that fit the
   view when the box or the viewport changes, not a third camera value. Overlays
@@ -2072,7 +2073,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   now turns any slice or fixed array into a list literal, and `normalizeData`
   accepts one, so `data: g.Data` and `coordinate: bridge.Marker` work without an
   `Instantiate` dance. A slice of structs still fails to normalize, which keeps
-  a ticket list a loop-only value rather than a property value.
+  a ticket list a loop-only value rather than a property value. A loop row's
+  field goes through the same `normalizeData`, not the scalar-only `normalize`,
+  or a nested coordinate field would read as missing and the Geom would stay
+  empty.
 - **A marker is positioned when it paints, not when it lays out.** A Point knows
   its coordinate, but the camera changes every frame, so layout gives it the
   size of its children and the painter shifts the subtree to the projected

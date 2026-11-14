@@ -655,7 +655,9 @@ func normalizeData(v any) (any, bool) {
 	if items, isList := sliceItems(v); isList {
 		out := make([]any, len(items))
 		for i, it := range items {
-			n, ok := normalize(it)
+			// Nested lists are values too: a [][]float64 is a coordinate list
+			// (a list of [lon, lat] pairs), not a list of scalars.
+			n, ok := normalizeData(it)
 			if !ok {
 				return nil, false
 			}
