@@ -418,6 +418,8 @@ func (l *List) paintComponent(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		l.paintDatePicker(c, r, clip)
 	case "TimePicker":
 		l.paintTimePicker(c, r, clip)
+	case "ColorPicker":
+		l.paintColorPicker(c, r, clip)
 	case "TextArea":
 		l.paintTextArea(c, r, clip)
 	case "Code":
@@ -443,10 +445,7 @@ func (l *List) paintComponent(c *tree.Component, r tree.Rect, clip tree.Rect) {
 // radius. M3 offsets the indicator by 3dp.
 func (l *List) focusRing(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	const gap, width = 3.0, 2.0
-	rad := c.Base().Radius()
-	if rad <= 0 {
-		rad = r.H / 2
-	}
+	rad := l.shapeRadius(c.Base(), r)
 	l.fillRect(
 		tree.Rect{X: r.X - gap, Y: r.Y - gap, W: r.W + 2*gap, H: r.H + 2*gap},
 		0, rad+gap, l.Theme.Colors.Primary, width, clip,

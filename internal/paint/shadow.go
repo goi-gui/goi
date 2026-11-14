@@ -84,7 +84,7 @@ func (l *List) shapeRadius(b *tree.NodeBase, r tree.Rect) float64 {
 		return m3.ShapeLarge
 	case "Card":
 		return m3.ShapeMedium
-	case "Dialog", "BottomSheet", "SideSheet", "Menu", "DatePicker", "TimePicker", "Carousel":
+	case "Dialog", "BottomSheet", "SideSheet", "Menu", "DatePicker", "TimePicker", "ColorPicker", "Carousel":
 		return m3.ShapeExtraLarge
 	case "Snackbar", "Tooltip", "TextField", "TextArea":
 		return m3.ShapeExtraSmall

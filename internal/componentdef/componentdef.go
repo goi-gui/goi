@@ -70,6 +70,7 @@ var Kinds = []Kind{
 	// Date and time.
 	{"DatePicker", true},
 	{"TimePicker", true},
+	{"ColorPicker", false},
 	// Charts.
 	{"LineChart", false},
 	{"AreaChart", false},
@@ -138,6 +139,7 @@ var props = map[string][]string{
 	"LoadingIndicator": {"variant", "color"},
 	"DatePicker":       {"label", "text", "variant"},
 	"TimePicker":       {"label", "text", "variant", "hourFormat"},
+	"ColorPicker":      {"label", "text"},
 	"Carousel":         {"variant"},
 	"Toolbar":          {"variant"},
 	"TextArea":         {"label", "text", "placeholder", "supporting", "variant", "disabled"},

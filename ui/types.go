@@ -162,6 +162,7 @@ type (
 	LoadingIndicator = tree.LoadingIndicator
 	DatePicker       = tree.DatePicker
 	TimePicker       = tree.TimePicker
+	ColorPicker      = tree.ColorPicker
 	TextArea         = tree.TextArea
 	Audio            = tree.Audio
 	Video            = tree.Video

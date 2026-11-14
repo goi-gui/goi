@@ -2567,6 +2567,10 @@ func propDoc(el string, p schema.Prop) string {
 			b.WriteString("\n\nEmoji draw in colour from the embedded Noto Color Emoji font, " +
 				"at the size of the run, so a line can mix text and emoji.")
 		}
+		if el == "ColorPicker" {
+			b.WriteString("\n\nThe value as `#rrggbb`. Any CSS colour is read, and picking " +
+				"rewrites it in hex; `onEdit` fires on every change and `onSubmit` on release.")
+		}
 	case "type":
 		b.WriteString("\n\nFilters what reaches the value: `text` (default), `numeric`, " +
 			"`alpha`, `alphanumeric`, or the characters themselves " +

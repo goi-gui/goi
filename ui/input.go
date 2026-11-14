@@ -136,6 +136,11 @@ type interactor struct {
 	// pickField is the field it was on when the drag started.
 	pickNode  tree.Node
 	pickField int
+
+	// colorNode is the picker whose square or hue bar the pointer drags, and
+	// colorHue says which of the two the drag belongs to.
+	colorNode tree.Node
+	colorHue  bool
 }
 
 // Gesture timings, the ones Flutter uses: a press that stays inside the slop for
@@ -276,7 +281,7 @@ func interactive(n tree.Node) bool {
 	case "Button", "IconButton", "FAB", "FABMenu", "SplitButton", "SegmentedButton",
 		"Chip", "Checkbox", "RadioButton", "Switch", "Slider", "TextField",
 		"SearchBar", "ListItem", "MenuItem", "Tab", "Card", "NavigationItem",
-		"DatePicker", "TimePicker",
+		"DatePicker", "TimePicker", "ColorPicker",
 		"LineChart", "AreaChart", "BarChart", "PieChart", "ScatterChart", "RadarChart",
 		"GaugeChart", "Audio", "Video":
 		return true
@@ -462,6 +467,10 @@ func (i *interactor) MouseMove(x, y float64) {
 		}
 		return
 	}
+	if i.colorNode != nil {
+		i.dragColor(x, y)
+		return
+	}
 	hit := i.hit(x, y)
 	if i.seekNode != nil {
 		if m, ok := tree.MediaNode(i.seekNode); ok {
@@ -620,6 +629,10 @@ func (i *interactor) pointerAt(hit tree.Node) {
 		i.pointer(platform.CursorPointer)
 		return
 	}
+	if n, _, ok := colorAt(hit, i.cursorX, i.cursorY); ok && n != nil {
+		i.pointer(platform.CursorCrosshair)
+		return
+	}
 	if selectableAt(hit) != nil {
 		i.pointer(platform.CursorText)
 		return
@@ -742,6 +755,17 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 			return
 		}
 	}
+	// A colour picker's square and hue bar are dragged the same way: the press
+	// picks the point and every move follows, clamped to that control.
+	if button == 0 {
+		if n, hue, ok := colorAt(hit, x, y); ok {
+			i.scrollNode = nil
+			i.setKbd(n)
+			i.colorNode, i.colorHue = n, hue
+			i.dragColor(x, y)
+			return
+		}
+	}
 	if button == 0 {
 		i.armGesture(hit, x, y)
 	}
@@ -782,6 +806,15 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 
 func (i *interactor) MouseUp(x, y float64, button int) {
 	i.event("MouseUp", "x", x, "y", y, "button", button)
+	if i.colorNode != nil {
+		n := i.colorNode
+		i.colorNode = nil
+		if c := comp(n); c != nil {
+			c.Submit.Emit(c.Text.Get())
+		}
+		i.markDirty()
+		return
+	}
 	if i.pickNode != nil {
 		n := i.pickNode
 		i.pickNode = nil
@@ -1281,6 +1314,97 @@ func (i *interactor) finishPick(n tree.Node, c *tree.Component, tp *tree.TimePic
 	c.Submit.Emit(c.Text.Get())
 	n.Base().MarkDirty(tree.DirtyPaint)
 	i.markDirty()
+}
+
+// colorAt returns the ColorPicker whose square or hue bar holds the point, and
+// whether it is the hue bar. A few pixels around the thin bar still grab it.
+func colorAt(hit tree.Node, x, y float64) (tree.Node, bool, bool) {
+	for ; hit != nil; hit = hit.Base().Parent() {
+		if _, ok := hit.(*tree.ColorPicker); ok {
+			break
+		}
+	}
+	if hit == nil {
+		return nil, false, false
+	}
+	cl := paint.ColorLayoutOf(absoluteRect(hit))
+	if hitRect(cl.SV, x, y) {
+		return hit, false, true
+	}
+	if x >= cl.Hue.X && x <= cl.Hue.Right() && y >= cl.Hue.Y-8 && y <= cl.Hue.Bottom()+8 {
+		return hit, true, true
+	}
+	return nil, false, false
+}
+
+// dragColor follows the pointer on the control the press took, so leaving the
+// square clamps to its edge instead of jumping to the hue bar.
+func (i *interactor) dragColor(x, y float64) {
+	n := i.colorNode
+	cp, ok := n.(*tree.ColorPicker)
+	if !ok {
+		return
+	}
+	c := comp(n)
+	if c == nil {
+		return
+	}
+	cl := paint.ColorLayoutOf(absoluteRect(n))
+	h, s, v := cp.HSV()
+	if i.colorHue {
+		h = cl.HueAt(x)
+	} else {
+		s, v = cl.SVAt(x, y)
+	}
+	c.Edit.Emit(cp.SetHSV(h, s, v))
+	n.Base().MarkDirty(tree.DirtyPaint)
+	i.markDirty()
+}
+
+// colorKey drives a focused colour picker: arrows change the hue, the value and
+// with Ctrl the saturation, and Enter reports the value.
+func (i *interactor) colorKey(n tree.Node, k tree.Key, mods tree.Mods) bool {
+	cp, ok := n.(*tree.ColorPicker)
+	if !ok {
+		return false
+	}
+	c := comp(n)
+	if c == nil {
+		return false
+	}
+	step := 1.0
+	if mods.Shift {
+		step = 10
+	}
+	h, s, v := cp.HSV()
+	switch k {
+	case tree.KeyLeft:
+		h -= step
+	case tree.KeyRight:
+		h += step
+	case tree.KeyUp:
+		if mods.Control() {
+			s += step / 100
+		} else {
+			v += step / 100
+		}
+	case tree.KeyDown:
+		if mods.Control() {
+			s -= step / 100
+		} else {
+			v -= step / 100
+		}
+	case tree.KeyEnter:
+		c.Submit.Emit(cp.Hex())
+		i.markDirty()
+		return true
+	default:
+		return false
+	}
+	c.Edit.Emit(cp.SetHSV(h, s, v))
+	n.Base().MarkDirty(tree.DirtyPaint)
+	i.markDirty()
+	return true
 }
 
 // focusPickField makes one half of the time active and starts its digit buffer
@@ -1996,6 +2120,9 @@ func (i *interactor) key(k tree.Key, mods tree.Mods) {
 			return
 		}
 		if i.kbd.Kind() == "TimePicker" && i.pickerKey(i.kbd, k, mods) {
+			return
+		}
+		if i.kbd.Kind() == "ColorPicker" && i.colorKey(i.kbd, k, mods) {
 			return
 		}
 		if k == tree.KeyEnter || k == tree.KeySpace {

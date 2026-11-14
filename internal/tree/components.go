@@ -692,6 +692,60 @@ type DatePicker struct{ Component }
 func (*DatePicker) Kind() string              { return "DatePicker" }
 func (c *DatePicker) namedProps() []NamedProp { return c.props("DatePicker") }
 
+// ColorPicker picks an opaque sRGB colour from a saturation/value square and a
+// hue bar. The value is a `#rrggbb` string in Text.
+type ColorPicker struct {
+	Component
+	// Hue, Sat and Val are the HSV the controls show. Hue survives a black or
+	// grey value, which the hex alone cannot express.
+	Hue, Sat, Val float64
+	// picked is the Text the HSV above was read from, so a value set from Go
+	// re-seeds the controls once instead of on every frame.
+	picked string
+}
+
+// Kind implements Node.
+func (*ColorPicker) Kind() string              { return "ColorPicker" }
+func (c *ColorPicker) namedProps() []NamedProp { return c.props("ColorPicker") }
+
+// HSV returns the colour the controls show, following Text when the design or
+// the app changed it.
+func (c *ColorPicker) HSV() (h, s, v float64) {
+	if text := c.Text.Get(); text != c.picked {
+		if h, s, v, ok := hexHSV(text); ok {
+			c.Hue, c.Sat, c.Val = h, s, v
+		}
+		c.picked = text
+	}
+	return c.Hue, c.Sat, c.Val
+}
+
+// SetHSV writes the colour as `#rrggbb` and returns it. Picking is opaque:
+//
+// shortcut: an alpha in the old value is dropped. Add an alpha control when
+// translucent picking is needed.
+func (c *ColorPicker) SetHSV(h, s, v float64) string {
+	// Keep 360 rather than folding it to 0 so the marker stays at the right
+	// edge of the hue bar; the conversions treat it as the same red.
+	if h < 0 || h > 360 {
+		h = math.Mod(h, 360)
+		if h < 0 {
+			h += 360
+		}
+	}
+	c.Hue, c.Sat, c.Val = h, clamp01(s), clamp01(v)
+	hex := hsvHex(c.Hue, c.Sat, c.Val)
+	c.picked = hex
+	c.Text.Set(hex)
+	return hex
+}
+
+// Hex is the current colour as `#rrggbb`, read the way the picker shows it.
+func (c *ColorPicker) Hex() string {
+	h, s, v := c.HSV()
+	return hsvHex(h, s, v)
+}
+
 // TimePicker picks a time. Variant "dial" shows the clock and "input" the two
 // text fields.
 type TimePicker struct {

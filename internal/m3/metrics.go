@@ -42,7 +42,7 @@ func labelStyle(kind string) TextStyle {
 			return t.TitleMedium
 		}
 		return t.TitleLarge
-	case "DatePicker", "TimePicker":
+	case "DatePicker", "TimePicker", "ColorPicker":
 		return t.LabelMedium
 	}
 	return t.BodyMedium
@@ -253,6 +253,8 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 			h = 188
 		}
 		return Metrics{W: 328, H: h, Top: 56, Right: 24, Bottom: 24, Left: 24}
+	case "ColorPicker":
+		return Metrics{W: 328, H: 300, Top: 56, Right: 24, Bottom: 24, Left: 24}
 	case "Carousel":
 		return Metrics{W: 0, H: 200, FillW: true}
 	}
