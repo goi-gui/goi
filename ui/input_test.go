@@ -1300,3 +1300,104 @@ func TestVideoHidesTheCursorWhenIdle(t *testing.T) {
 		t.Fatal("a video away from the pointer hid it")
 	}
 }
+
+const gestureUI = `Window {
+	Column {
+		padding: 20
+		GestureDetector {
+			id: gd
+			width: 240
+			height: 120
+
+			Text { text: "gesture" }
+		}
+	}
+}`
+
+// TestGestureDetectorDoubleTap: a second press and release inside the double-tap
+// window on the same detector fires DoubleTap, and the click that the second
+// release would otherwise run is suppressed.
+func TestGestureDetectorDoubleTap(t *testing.T) {
+	_, win, in := inputFixture(t, gestureUI, 480, 320)
+	gd := MustByID[*GestureDetector](win, "gd")
+	b := absoluteRect(gd)
+	doubles, clicks := 0, 0
+	gd.OnDoubleTap(func(ClickEvent) { doubles++ })
+	gd.OnClick(func(ClickEvent) { clicks++ })
+
+	cx, cy := b.X+b.W/2, b.Y+b.H/2
+	for i := 0; i < 2; i++ {
+		in.MouseDown(cx, cy, 0, false)
+		in.MouseUp(cx, cy, 0)
+	}
+	if doubles != 1 {
+		t.Fatalf("double taps = %d, want 1", doubles)
+	}
+	if clicks != 1 {
+		t.Fatalf("clicks = %d, want only the first tap", clicks)
+	}
+}
+
+// TestGestureDetectorLongPress: a press that stays inside the slop becomes a
+// long press, and its release does not also click.
+func TestGestureDetectorLongPress(t *testing.T) {
+	_, win, in := inputFixture(t, gestureUI, 480, 320)
+	gd := MustByID[*GestureDetector](win, "gd")
+	b := absoluteRect(gd)
+	longs, clicks := 0, 0
+	gd.OnLongPress(func(ClickEvent) { longs++ })
+	gd.OnClick(func(ClickEvent) { clicks++ })
+
+	cx, cy := b.X+b.W/2, b.Y+b.H/2
+	in.MouseDown(cx, cy, 0, false)
+	in.stopGestureTimer() // the test drives the clock instead of waiting
+	in.fireLongPress(gd)
+	in.MouseUp(cx, cy, 0)
+	if longs != 1 {
+		t.Fatalf("long presses = %d, want 1", longs)
+	}
+	if clicks != 0 {
+		t.Fatalf("clicks = %d, want none after a long press", clicks)
+	}
+}
+
+// TestGestureDetectorPan: leaving the slop starts a pan, each move reports its
+// delta, and the release ends it. The click never fires.
+func TestGestureDetectorPan(t *testing.T) {
+	_, win, in := inputFixture(t, gestureUI, 480, 320)
+	gd := MustByID[*GestureDetector](win, "gd")
+	b := absoluteRect(gd)
+	var starts, updates, ends int
+	var total, last uiPanEvent
+	gd.OnPanStart(func(e PanEvent) {
+		starts++
+		if e.DX != 0 || e.DY != 0 {
+			t.Errorf("pan start carried a delta: %+v", e)
+		}
+	})
+	gd.OnPanUpdate(func(e PanEvent) {
+		updates++
+		total.dx += e.DX
+		total.dy += e.DY
+		last = uiPanEvent{e.DX, e.DY}
+	})
+	gd.OnPanEnd(func(PanEvent) { ends++ })
+
+	x0, y0 := b.X+10, b.Y+10
+	in.MouseDown(x0, y0, 0, false)
+	in.MouseMove(x0+30, y0)
+	if starts != 1 || updates != 1 || last.dx != 30 {
+		t.Fatalf("pan start = %d, updates %d, step %+v", starts, updates, last)
+	}
+	in.MouseMove(x0+45, y0)
+	if updates != 2 || last.dx != 15 || total.dx != 45 {
+		t.Fatalf("pan updates = %d, step %+v total %+v", updates, last, total)
+	}
+	in.MouseUp(x0+45, y0, 0)
+	if ends != 1 {
+		t.Fatalf("pan ends = %d", ends)
+	}
+}
+
+// uiPanEvent is the two numbers a pan step carries, so a test can compare them.
+type uiPanEvent struct{ dx, dy float64 }

@@ -176,6 +176,13 @@ var eventDefs = []EventDef{
 	{Name: "onPlay", Type: TypeNumber, HasValue: true, Component: true},
 	{Name: "onPause", Type: TypeNumber, HasValue: true, Component: true},
 	{Name: "onEnd", Type: TypeNumber, HasValue: true, Component: true},
+	// Gestures: a GestureDetector reports them, and they carry no scalar a
+	// design could use, so `event` is not available in their handlers.
+	{Name: "onDoubleTap"},
+	{Name: "onLongPress"},
+	{Name: "onPanStart"},
+	{Name: "onPanUpdate"},
+	{Name: "onPanEnd"},
 }
 
 var common = []Prop{
@@ -323,6 +330,7 @@ var elements = func() []Element {
 			Prop{Name: "crossAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
 			Prop{Name: "mainAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
 		)},
+		{Name: "GestureDetector", Children: true, Attrs: withCommon()},
 		{Name: "Positioned", Children: true, Attrs: withCommon(
 			Prop{Name: "left", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0}, // -1 = auto
 			Prop{Name: "top", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0},
@@ -511,6 +519,11 @@ var elements = func() []Element {
 		out[i].Events = append(out[i].Events, "onClick")
 		if out[i].Name == "Audio" || out[i].Name == "Video" {
 			out[i].Events = append(out[i].Events, "onPlay", "onPause", "onEnd")
+			continue
+		}
+		if out[i].Name == "GestureDetector" {
+			out[i].Events = append(out[i].Events,
+				"onDoubleTap", "onLongPress", "onPanStart", "onPanUpdate", "onPanEnd")
 			continue
 		}
 		if _, ok := componentdef.Lookup(out[i].Name); ok {

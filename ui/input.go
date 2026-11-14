@@ -110,6 +110,143 @@ type interactor struct {
 	// pointer; hideTimer asks for one repaint when the grace period ends.
 	hoverScroll tree.Node
 	hideTimer   *time.Timer
+
+	// GestureDetector state: the detector under the press, where the press went
+	// down, whether it became a pan or a long press, and the clock that turns a
+	// still press into a long press.
+	gesture       *tree.GestureDetector
+	gestureNode   tree.Node
+	gestureDown   bool
+	gesturePanned bool
+	gestureLong   bool
+	gestureStartX float64
+	gestureStartY float64
+	gestureLastX  float64
+	gestureLastY  float64
+	gestureTimer  *time.Timer
+	lastGesture   tree.Node
+	lastGestureAt time.Time
+}
+
+// Gesture timings, the ones Flutter uses: a press that stays inside the slop for
+// half a second is a long press, and a second tap within a third of a second of
+// the first is a double tap.
+const (
+	gestureLongPress = 500 * time.Millisecond
+	gestureDoubleTap = 300 * time.Millisecond
+	gestureSlop      = 8.0
+)
+
+// gestureAt returns the nearest GestureDetector at or above n, and the node the
+// pointer actually landed on.
+func gestureAt(n tree.Node) (*tree.GestureDetector, tree.Node) {
+	for ; n != nil; n = n.Base().Parent() {
+		if g, ok := n.(*tree.GestureDetector); ok {
+			return g, n
+		}
+	}
+	return nil, nil
+}
+
+// armGesture records a press for the detector above it and starts the long-press
+// clock. The clock posts to the UI goroutine, which is the only one that reads
+// the interactor.
+func (i *interactor) armGesture(hit tree.Node, x, y float64) {
+	g, n := gestureAt(hit)
+	i.stopGestureTimer()
+	i.gesture, i.gestureNode = g, n
+	i.gestureDown = g != nil
+	i.gesturePanned, i.gestureLong = false, false
+	if g == nil {
+		return
+	}
+	i.gestureStartX, i.gestureStartY = x, y
+	i.gestureLastX, i.gestureLastY = x, y
+	i.gestureTimer = time.AfterFunc(gestureLongPress, func() {
+		if i.app != nil {
+			i.app.Post(func() { i.fireLongPress(g) })
+		}
+	})
+}
+
+func (i *interactor) stopGestureTimer() {
+	if i.gestureTimer != nil {
+		i.gestureTimer.Stop()
+		i.gestureTimer = nil
+	}
+}
+
+// fireLongPress runs on the UI goroutine once the pointer has rested on the
+// detector for half a second without becoming a pan.
+func (i *interactor) fireLongPress(g *tree.GestureDetector) {
+	if !i.gestureDown || i.gesture != g || i.gesturePanned || i.gestureLong {
+		return
+	}
+	i.gestureLong = true
+	g.LongPress.Emit(tree.ClickEvent{X: i.cursorX, Y: i.cursorY})
+	i.markDirty()
+}
+
+// gestureMove turns a press that has left the slop into a pan and reports
+// whether it consumed the move. A pan owns the gesture, so a scroll view under
+// the detector does not also scroll.
+func (i *interactor) gestureMove(x, y float64) bool {
+	if i.gesture == nil || !i.gestureDown {
+		return false
+	}
+	if !i.gesturePanned {
+		dx, dy := x-i.gestureStartX, y-i.gestureStartY
+		if math.Hypot(dx, dy) < gestureSlop {
+			return false
+		}
+		i.gesturePanned = true
+		i.stopGestureTimer()
+		// Start carries no movement; the update that follows carries everything
+		// since the press, so a handler only ever adds a delta.
+		i.gesture.PanStart.Emit(tree.PanEvent{X: x, Y: y})
+	}
+	i.gesture.PanUpdate.Emit(tree.PanEvent{
+		X: x, Y: y, DX: x - i.gestureLastX, DY: y - i.gestureLastY,
+	})
+	i.gestureLastX, i.gestureLastY = x, y
+	i.markDirty()
+	return true
+}
+
+// gestureRelease ends a gesture and reports whether the click that MouseUp would
+// otherwise run belongs to a double tap, which fires instead of the second click.
+func (i *interactor) gestureRelease(x, y float64) bool {
+	g := i.gesture
+	if g == nil || !i.gestureDown {
+		return false
+	}
+	i.gestureDown = false
+	i.stopGestureTimer()
+	swallow := false
+	switch {
+	case i.gesturePanned:
+		g.PanEnd.Emit(tree.PanEvent{
+			X: x, Y: y, DX: x - i.gestureLastX, DY: y - i.gestureLastY,
+		})
+		i.markDirty()
+	case i.gestureLong:
+		// The long press already answered this gesture; a click on release
+		// would run the action a second time.
+		swallow = true
+	default:
+		now := time.Now()
+		if i.lastGesture == i.gestureNode && now.Sub(i.lastGestureAt) < gestureDoubleTap {
+			g.DoubleTap.Emit(tree.ClickEvent{X: x, Y: y})
+			i.lastGesture = nil
+			i.lastGestureAt = time.Time{}
+			swallow = true
+			i.markDirty()
+		} else {
+			i.lastGesture, i.lastGestureAt = i.gestureNode, now
+		}
+	}
+	i.gesture, i.gestureNode = nil, nil
+	return swallow
 }
 
 // comp returns the Material component behind a node, if it has one.
@@ -323,6 +460,9 @@ func (i *interactor) MouseMove(x, y float64) {
 		return
 	}
 	i.pointerAt(hit)
+	if i.gestureMove(x, y) {
+		return
+	}
 	if i.selecting && i.textField != nil {
 		i.dragX, i.dragY = x, y
 		i.caretFromPoint(i.textField, x, y, true)
@@ -567,9 +707,19 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 	if hit == nil {
 		return
 	}
+	if button == 0 {
+		i.armGesture(hit, x, y)
+	}
 	// A press inside a table cell selects its row; a control in the cell keeps
 	// its own click.
 	hit = pressTarget(hit)
+	// A detector with a click handler owns its whole area: a press on a child
+	// that is not itself a control belongs to the detector.
+	if i.pressed == nil {
+		if g, gn := gestureAt(hit); g != nil && g.Base().Click.Len() > 0 {
+			i.pressed = gn
+		}
+	}
 	if i.clickable(hit, x, y) {
 		i.setKbd(hit)
 		i.pressed = hit
@@ -597,6 +747,7 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 
 func (i *interactor) MouseUp(x, y float64, button int) {
 	i.event("MouseUp", "x", x, "y", y, "button", button)
+	swallow := i.gestureRelease(x, y)
 	defer func() {
 		i.pressed = nil
 		i.dragging = false
@@ -617,6 +768,12 @@ func (i *interactor) MouseUp(x, y float64, button int) {
 		c.Base().MarkDirty(tree.DirtyPaint)
 	}
 	i.dragging = false
+	if swallow {
+		// A double tap or a long press already answered the press; the click it
+		// would otherwise become is suppressed.
+		i.markDirty()
+		return
+	}
 
 	hit := i.hit(x, y)
 	if target.Kind() == "Slider" {

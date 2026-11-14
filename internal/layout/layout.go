@@ -175,7 +175,7 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 	switch b.Node().Kind() {
 	case "Row", "TitleBar":
 		e.linear(b, kids, cw, ch, pe.Left+be.Left, true, pe.Top+be.Top)
-	case "Stack", "ClipRRect", "Positioned", "AspectRatio":
+	case "Stack", "ClipRRect", "Positioned", "AspectRatio", "GestureDetector":
 		e.stackChildren(b, w, h, pe.Left+be.Left, pe.Top+be.Top, pe.Right+be.Right, pe.Bottom+be.Bottom)
 	case "Wrap":
 		e.wrap(b, kids, cw, ch, pe.Left+be.Left, pe.Top+be.Top)
@@ -1112,6 +1112,8 @@ func containerOf(b *tree.NodeBase) *tree.Container {
 		return &n.Container
 	case *tree.AspectRatio:
 		return &n.Container
+	case *tree.GestureDetector:
+		return &n.Container
 	}
 	// A node that is not a container has no spacing or alignment of its own.
 	// Its zero value answers both questions; sharing one avoids an allocation
@@ -1139,6 +1141,8 @@ func containerKind(b *tree.NodeBase) (*tree.Container, bool) {
 	case *tree.Grid:
 		return &n.Container, true
 	case *tree.AspectRatio:
+		return &n.Container, true
+	case *tree.GestureDetector:
 		return &n.Container, true
 	}
 	return nil, false
@@ -1302,10 +1306,11 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 			e.gridHeight(kids, innerW, cols, spacing) + insetH
 	}
 
+	stack := kind == "Stack" || kind == "GestureDetector"
 	var mainSum, maxW, maxH float64
 	for i, c := range kids {
 		var cw, ch float64
-		if kind == "Stack" && c.Node().Kind() == "Positioned" {
+		if stack && c.Node().Kind() == "Positioned" {
 			cw, ch = e.positionedExtent(c, innerW, maxf(availH-insetH, 0))
 		} else {
 			cw, ch = e.natural(c, availW, availH)
@@ -1316,17 +1321,17 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 				ch = v
 			}
 		}
-		switch kind {
-		case "Row", "TitleBar":
+		switch {
+		case kind == "Row" || kind == "TitleBar":
 			mainSum += cw
-		case "Stack":
+		case stack:
 			mainSum = maxf(mainSum, cw)
 		default:
 			mainSum += ch
 		}
 		maxW = maxf(maxW, cw)
 		maxH = maxf(maxH, ch)
-		if i > 0 && kind != "Stack" {
+		if i > 0 && !stack {
 			mainSum += spacing
 		}
 	}
@@ -1346,7 +1351,7 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 func isContainer(k *tree.NodeBase) bool {
 	switch k.Node().Kind() {
 	case "Window", "Column", "Row", "TitleBar", "Stack", "Positioned", "Wrap", "Grid",
-		"AspectRatio",
+		"AspectRatio", "GestureDetector",
 		"Card", "Dialog", "BottomSheet", "SideSheet", "List", "Menu",
 		"NavigationDrawer", "NavigationBar", "NavigationRail", "Tabs",
 		"ButtonGroup", "Carousel":

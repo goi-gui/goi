@@ -182,6 +182,8 @@ type (
 	Carousel         = tree.Carousel
 	Toolbar          = tree.Toolbar
 	AspectRatio      = tree.AspectRatio
+	GestureDetector  = tree.GestureDetector
+	PanEvent         = tree.PanEvent
 )
 
 // Event types.

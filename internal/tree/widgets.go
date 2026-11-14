@@ -230,6 +230,43 @@ type Stack struct{ Container }
 // Kind implements Node.
 func (*Stack) Kind() string { return "Stack" }
 
+// GestureDetector is a hit area with gestures beyond a click, the way Flutter's
+// detector works: it wraps its children, sizes to them, and reports a double
+// tap, a long press and a pan beside the click every element already has.
+type GestureDetector struct {
+	Container
+	DoubleTap Event[ClickEvent]
+	LongPress Event[ClickEvent]
+	PanStart  Event[PanEvent]
+	PanUpdate Event[PanEvent]
+	PanEnd    Event[PanEvent]
+}
+
+// Kind implements Node.
+func (*GestureDetector) Kind() string { return "GestureDetector" }
+
+// OnDoubleTap, OnLongPress and OnPanStep are the Go side of the gestures; each
+// returns an unsubscribe function.
+func (g *GestureDetector) OnDoubleTap(fn func(ClickEvent)) (off func()) {
+	return g.DoubleTap.On(fn)
+}
+
+func (g *GestureDetector) OnLongPress(fn func(ClickEvent)) (off func()) {
+	return g.LongPress.On(fn)
+}
+
+func (g *GestureDetector) OnPanStart(fn func(PanEvent)) (off func()) {
+	return g.PanStart.On(fn)
+}
+
+func (g *GestureDetector) OnPanUpdate(fn func(PanEvent)) (off func()) {
+	return g.PanUpdate.On(fn)
+}
+
+func (g *GestureDetector) OnPanEnd(fn func(PanEvent)) (off func()) {
+	return g.PanEnd.On(fn)
+}
+
 // ClipRRect lays its children out like a Stack and cuts them to a rounded box,
 // which is what a photo in a circle or a scrolling row inside a pill needs. The
 // radius comes from the common `radius` property; a background painted on it is

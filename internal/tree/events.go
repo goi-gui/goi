@@ -8,6 +8,13 @@ type ClickEvent struct {
 	Button int
 }
 
+// PanEvent is one step of a drag a GestureDetector reports: the pointer, and the
+// movement since the previous step (from the press, for PanStart).
+type PanEvent struct {
+	X, Y   float64
+	DX, DY float64
+}
+
 // KeyEvent is delivered for key presses and text input.
 type KeyEvent struct {
 	Key  Key
