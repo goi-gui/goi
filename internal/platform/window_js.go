@@ -31,6 +31,8 @@ type Window struct {
 	handle uintptr
 
 	closing bool
+	// ready marks the first presented frame, so the page is told once.
+	ready bool
 
 	// queue holds the callbacks a DOM event produced, drained by PollEvents so
 	// a frame never runs in the middle of a DOM callback. A DOM callback is a
@@ -562,6 +564,18 @@ func (p *Window) WaitEventsTimeout(d time.Duration) bool {
 		p.PollEvents()
 		return false
 	}
+}
+
+// Ready tells the page that the first frame is on the canvas. It dispatches a
+// "goi-ready" event on the canvas, which is what lets a page drop its loading
+// screen; a page without a listener is unaffected.
+func (w *Window) Ready() {
+	if w == nil || w.ready || !w.canvas.Truthy() {
+		return
+	}
+	w.ready = true
+	event := js.Global().Get("CustomEvent").New("goi-ready", map[string]any{"bubbles": true})
+	w.canvas.Call("dispatchEvent", event)
 }
 
 // SetCursor changes the pointer shape.

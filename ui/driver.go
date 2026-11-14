@@ -338,6 +338,10 @@ func (a *App) frame() {
 	d.list.Build(a.win.tree, float64(d.pendingW)/float64(maxScale(d.pendingScale)), float64(d.pendingH)/float64(maxScale(d.pendingScale)))
 	if err := d.gpu.Render(&d.list, d.pendingW, d.pendingH); err != nil {
 		a.reportError(err)
+	} else {
+		// The browser page can cover the canvas until this first presented
+		// frame; the desktop method is a no-op.
+		d.win.Ready()
 	}
 	// Paint knows whether it drew something that moves on its own, so the next
 	// frame is asked for here rather than by a walk over the tree.

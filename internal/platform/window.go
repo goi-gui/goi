@@ -47,6 +47,10 @@ type Window struct {
 	maximizable bool
 }
 
+// Ready tells the page the first frame is on screen. The desktop has no page,
+// so it does nothing.
+func (w *Window) Ready() {}
+
 // SetCursor changes the pointer shape. It is a no-op when the shape is already
 // set, so the input layer can call it on every move.
 func (p *Window) SetCursor(c Cursor) {
