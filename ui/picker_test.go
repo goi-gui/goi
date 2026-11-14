@@ -166,6 +166,11 @@ func TestTimePickerVariantSwitch(t *testing.T) {
 	if got := tp.Variant.Get(); got != "input" {
 		t.Fatalf("variant = %q, want input", got)
 	}
+	// The two variants have different heights, so the switch must lay out again;
+	// a repaint alone left the card at the old size and the picture broke.
+	if kind, dirty := tp.Base().Dirty(); !dirty || kind != tree.DirtyLayout {
+		t.Fatalf("the variant switch marked dirty=%v kind=%v, want a layout change", dirty, kind)
+	}
 	inLayout := paint.TimeLayoutOf(absoluteRect(tp), "08:15", 0, "input")
 	in.MouseDown(inLayout.Switch.X+10, inLayout.Switch.Y+10, 0, false)
 	in.MouseUp(inLayout.Switch.X+10, inLayout.Switch.Y+10, 0)
@@ -179,9 +184,10 @@ func TestTimePickerActions(t *testing.T) {
 	_, win, in := inputFixture(t, pickerUI, 480, 900)
 	tp := MustByID[*TimePicker](win, "time")
 	tp.Text.Set("06:45")
-	var submitted, cancelled []string
+	var submitted, cancelled, confirmed []string
 	tp.OnSubmit(func(v string) { submitted = append(submitted, v) })
 	tp.OnCancel(func(v string) { cancelled = append(cancelled, v) })
+	tp.OnOK(func(v string) { confirmed = append(confirmed, v) })
 	layout := paint.TimeLayoutOf(absoluteRect(tp), "06:45", 0, "dial")
 
 	click := func(r tree.Rect) {
@@ -195,6 +201,9 @@ func TestTimePickerActions(t *testing.T) {
 	}
 	if len(cancelled) != 1 || cancelled[0] != "06:45" {
 		t.Fatalf("cancelled = %v, want [06:45]", cancelled)
+	}
+	if len(confirmed) != 1 || confirmed[0] != "06:45" {
+		t.Fatalf("onOK = %v, want [06:45]", confirmed)
 	}
 }
 
@@ -214,24 +223,29 @@ func TestTimePickerTyping(t *testing.T) {
 	if in.kbd != tp.Base().Node() {
 		t.Fatal("the picker did not take keyboard focus")
 	}
-	in.Char('0')
-	in.Char('7')
+	// Digits arrive as committed text from the platform, not as key presses.
+	in.CommitText("0")
+	in.CommitText("7")
 	if got := tp.Text.Get(); got != "07:00" {
 		t.Fatalf("typed hour = %q, want 07:00", got)
 	}
 	if tp.PickerField != 1 {
 		t.Fatalf("field = %d, want the minutes after two digits", tp.PickerField)
 	}
-	in.Char('4')
-	in.Char('5')
+	in.CommitText("4")
+	in.CommitText("5")
 	if got := tp.Text.Get(); got != "07:45" {
 		t.Fatalf("typed minutes = %q, want 07:45", got)
 	}
-	// Enter is OK.
-	var submitted []string
+	// Enter is OK: it reports through onSubmit and onOK alike.
+	var submitted, confirmed []string
 	tp.OnSubmit(func(v string) { submitted = append(submitted, v) })
+	tp.OnOK(func(v string) { confirmed = append(confirmed, v) })
 	in.key(tree.KeyEnter, tree.Mods{})
 	if len(submitted) != 1 || submitted[0] != "07:45" {
 		t.Fatalf("submitted = %v, want [07:45]", submitted)
+	}
+	if len(confirmed) != 1 || confirmed[0] != "07:45" {
+		t.Fatalf("onOK = %v, want [07:45]", confirmed)
 	}
 }

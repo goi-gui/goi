@@ -204,7 +204,14 @@ func (c *Component) one(kind, name string) NamedProp {
 		// The accepted words live in componentdef, which the schema validates
 		// against. Repeating them here let the validator accept `vertical` on a
 		// Divider while the node rejected it, so the enum is read once.
-		return EnumProp(b, "variant", DirtyPaint, &c.Variant, componentdef.EnumValuesFor(kind, "variant")...)
+		//
+		// A TimePicker's variant picks between a tall clock and a short field
+		// card, so switching it has to lay the component out again.
+		dirty := DirtyPaint
+		if kind == "TimePicker" {
+			dirty = DirtyLayout
+		}
+		return EnumProp(b, "variant", dirty, &c.Variant, componentdef.EnumValuesFor(kind, "variant")...)
 	case "disabled":
 		return BoolProp(b, "disabled", DirtyPaint, &c.Disabled)
 	case "checked":
@@ -683,8 +690,9 @@ type TimePicker struct {
 	// since it was focused, which is what lets a second digit complete "07".
 	PickBuffer, PickDigits int
 	// Cancel fires when the Cancel action is pressed, with the current value.
-	// Submitting (OK or Enter) uses the component's own Submit event.
 	Cancel Event[string]
+	// OK fires when the OK action or Enter confirms, with the value.
+	OK Event[string]
 }
 
 // Kind implements Node.
@@ -693,6 +701,9 @@ func (c *TimePicker) namedProps() []NamedProp { return c.props("TimePicker") }
 
 // OnCancel subscribes to the Cancel action of a time picker.
 func (c *TimePicker) OnCancel(fn func(string)) (off func()) { return c.Cancel.On(fn) }
+
+// OnOK subscribes to the OK action of a time picker, with the picked value.
+func (c *TimePicker) OnOK(fn func(string)) (off func()) { return c.OK.On(fn) }
 
 // TextArea is a multiline text field.
 type TextArea struct{ Component }

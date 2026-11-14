@@ -2003,3 +2003,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   by twelve hours. The corner icon flips the variant, so a design can start on
   either. Cancel and OK are events (`onCancel`, `onSubmit`) rather than
   behaviour, because whether a picker is a dialog is the app's decision.
+- **A picker's variant is a layout change, and its typing needs the platform's
+  text input.** The two variants have different sizes, so a shared variant cell
+  marked for repaint left the card at its old height when the icon switched it;
+  a TimePicker's cell is built as layout dirt. The input variant also takes
+  digits from the platform's text path, so a focused picker turns the text input
+  on anchored to its active field, the same way a text field does — otherwise a
+  browser types into nothing and SDL never starts text input.

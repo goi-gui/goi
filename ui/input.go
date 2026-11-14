@@ -1155,6 +1155,9 @@ func (i *interactor) pickTime(n tree.Node, c *tree.Component, x, y float64) {
 		i.resetPick(tp)
 	case hitRect(t.OK, x, y):
 		c.Submit.Emit(c.Text.Get())
+		if tp != nil {
+			tp.OK.Emit(c.Text.Get())
+		}
 	case hitRect(t.AMBox, x, y):
 		i.setPickHalf(c, true)
 	case hitRect(t.PMBox, x, y):
@@ -1260,6 +1263,24 @@ func (i *interactor) pickTimeDigit(n tree.Node, d int) bool {
 	return true
 }
 
+// pickerText types a committed run of digits into the focused time picker. It
+// reports whether the picker took it, so the text field path stays untouched.
+func (i *interactor) pickerText(text string) bool {
+	if i.focus != nil || i.kbd == nil || i.kbd.Kind() != "TimePicker" || text == "" {
+		return false
+	}
+	handled := false
+	for _, r := range text {
+		if r < '0' || r > '9' {
+			return handled
+		}
+		if i.pickTimeDigit(i.kbd, int(r-'0')) {
+			handled = true
+		}
+	}
+	return handled
+}
+
 // pickerKey handles the keys a time picker owns while it has keyboard focus:
 // arrows step and switch fields, Enter is OK and Escape is Cancel.
 func (i *interactor) pickerKey(n tree.Node, k tree.Key, mods tree.Mods) bool {
@@ -1288,6 +1309,7 @@ func (i *interactor) pickerKey(n tree.Node, k tree.Key, mods tree.Mods) bool {
 		}
 	case tree.KeyEnter, tree.KeySpace:
 		c.Submit.Emit(c.Text.Get())
+		tp.OK.Emit(c.Text.Get())
 		return true
 	case tree.KeyEscape:
 		tp.Cancel.Emit(c.Text.Get())
@@ -1959,8 +1981,7 @@ func (i *interactor) key(k tree.Key, mods tree.Mods) {
 // so a composed run is inserted over the selection like typed text.
 func (i *interactor) Char(r rune) {
 	i.event("Char", "rune", string(r))
-	if i.focus == nil && i.kbd != nil && i.kbd.Kind() == "TimePicker" &&
-		r >= '0' && r <= '9' && i.pickTimeDigit(i.kbd, int(r-'0')) {
+	if i.pickerText(string(r)) {
 		return
 	}
 	f := i.focus
@@ -1986,6 +2007,11 @@ func (i *interactor) Preedit(text string, caret int) {
 // CommitText replaces the composition with finished text, over any selection.
 func (i *interactor) CommitText(text string) {
 	i.event("CommitText", "text", text)
+	// A picker has no text field, but its input variant still takes digits from
+	// the keyboard, and every platform delivers them here.
+	if i.pickerText(text) {
+		return
+	}
 	f := i.focus
 	if f == nil || !isTextField(f) {
 		return
@@ -2032,6 +2058,19 @@ func (i *interactor) imeSync() {
 	d, ok := i.app.driver.(*gpuDriver)
 	if !ok || d == nil || d.win == nil {
 		return
+	}
+	// A time picker's input variant takes digits from the keyboard too, so the
+	// platform's text input has to stay on for it, anchored to the active field.
+	if i.focus == nil {
+		if tp, ok := i.kbd.(*tree.TimePicker); ok && tp.Variant.Get() == "input" {
+			t := paint.TimeLayoutOf(absoluteRect(i.kbd), tp.Text.Get(), tp.PickerField, "input")
+			box := t.HourBox
+			if tp.PickerField == 1 {
+				box = t.MinBox
+			}
+			d.win.SetTextInput(true, box.X+box.W/2, box.Y+box.H/2, 2, 20)
+			return
+		}
 	}
 	f := i.focus
 	if f == nil || !isTextField(f) {
