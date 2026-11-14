@@ -3,7 +3,9 @@ module github.com/goi-gui/goi
 go 1.27.3
 
 require (
+	github.com/Zyko0/go-sdl3 v0.1.3
 	github.com/alecthomas/chroma/v2 v2.27.0
+	github.com/ebitengine/purego v0.10.2
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/gen2brain/beeep v0.11.3
 	github.com/go-text/typesetting v0.3.4
@@ -21,6 +23,7 @@ require (
 
 require (
 	git.sr.ht/~jackmordaunt/go-toast v1.1.2 // indirect
+	github.com/Zyko0/purego-gen v0.0.2 // indirect
 	github.com/akavel/rsrc v0.10.2 // indirect
 	github.com/caarlos0/env/v11 v11.3.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

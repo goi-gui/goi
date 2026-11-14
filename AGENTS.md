@@ -19,19 +19,24 @@ go vet ./...                                 # SDL picks the driver at runtime
 gofmt -l .                                   # CI fails on any output
 go test -race -ldflags=-linkmode=internal ./ui ./internal/syntax ./internal/schema ./internal/layout ./internal/paint ./internal/text ./internal/hotreload ./internal/lsp ./internal/goifmt
 go test -ldflags=-linkmode=internal ./...    # test binaries link goffi too
+CGO_ENABLED=0 go build -tags nofakecgo ./...  # purego platform, no cgo
 go run ./cmd/goicheck -layout -ops ../examples/*/*.goi  # headless render check
 go run ./cmd/goifmt -l .                                # CI fails on any output
 ```
 
-- `-ldflags=-linkmode=internal` is not optional on Linux: goffi's dynamic
-  imports (the renderer's FFI) fail under the external linker.
+- `-ldflags=-linkmode=internal` is not optional on Linux for a cgo build:
+  goffi's dynamic imports (the renderer's FFI) fail under the external linker.
+  A `CGO_ENABLED=0` purego build needs no cgo flags.
 - `internal/platform` is the only cgo in the tree: a small `sdl_shim.c` over
-  SDL3, because SDL3 has no Go binding we own and its dark, `cgo_import_dynamic`
-  build clashes with goffi's. Everything above `platform` stays cgo-free.
+  SDL3, because SDL3 has no Go binding we own. A `CGO_ENABLED=0` build uses the
+  purego SDL3 backend instead; goffi and purego both ship a fake C runtime, so
+  that build needs `-tags nofakecgo` to let goffi use purego's copy. Everything
+  above `platform` stays cgo-free.
 - `-ldflags=-linkmode=internal` is Linux-only; Windows and macOS build plain.
-  The platform layer is cgo, so each target is built on its own machine
-  (`.github/workflows/ci.yml` does that for all three); there is no build tag
-  per platform, `SurfaceHandles` asks SDL which driver it got.
+  The cgo platform is built on its own machine (`.github/workflows/ci.yml` does
+  that for all three); the `CGO_ENABLED=0` purego platform cross-compiles for
+  Linux, Windows and macOS. There is no build tag per platform,
+  `SurfaceHandles` asks SDL which driver it got.
 - The examples are their own module in `../examples`, next to this checkout.
   `make -C ../examples gallery` runs one, because each loads
   `<name>/<name>.goi` by relative path; running the binary from elsewhere fails
