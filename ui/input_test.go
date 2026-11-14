@@ -1243,3 +1243,28 @@ func TestCodeCopyRipples(t *testing.T) {
 		t.Fatal("the ripple never finished")
 	}
 }
+
+// TestTooltipHoversWithItsChild is the tooltip contract at the input layer: the
+// wrapper is not a control, but hovering any part of the child it wraps marks it
+// hovered, which is what paints the bubble.
+func TestTooltipHoversWithItsChild(t *testing.T) {
+	const src = `Window { Column {
+		padding: 40
+		Tooltip { id: tip text: "A hint"
+			Text { id: inner text: "Hover me" }
+		}
+	} }`
+	_, win, in := inputFixture(t, src, 480, 320)
+	tip := MustByID[*Tooltip](win, "tip")
+	inner := MustByID[*Text](win, "inner")
+	b := absoluteRect(inner)
+
+	in.MouseMove(b.X+2, b.Y+2)
+	if !tip.M3().Hover {
+		t.Fatal("hovering the child did not show the tooltip")
+	}
+	in.MouseMove(2, 300)
+	if tip.M3().Hover {
+		t.Fatal("the tooltip stayed hovered after the pointer left")
+	}
+}
