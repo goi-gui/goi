@@ -2051,3 +2051,20 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   back to the last colour that parsed. Cancel and OK follow the time picker:
   they report the current value rather than deciding whether to revert, which
   stays the app's call.
+- **A map's camera is two properties, and its boundary is strokes, not a path.**
+  `center` and `zoom` are what the pointer writes, so `View` needs no separate
+  state and a design that binds either keeps working; `bbox` is a fit rule that
+  runs when the box or the viewport changes, not a third camera value. Geometry
+  is drawn as one thin rounded quad per segment turned about its midpoint
+  because the display list has no path primitive, and adding one for a boundary
+  would have meant a new shader and a new instance kind. Polygons are outlines
+  only: a translucent fill over street tiles reads worse than the gap it is
+  meant to show, and filling would need the triangulation the list cannot carry.
+  Tiles live in the image cache and the node, not in a second GPU path, so a
+  map is one more consumer of the bitmap atlas.
+- **The default tile endpoint sends an identifying User-Agent.** OpenStreetMap
+  refuses an anonymous client with a 403 "blocked" tile, which is what a stock
+  Go request looks like; the image fetch now names goi. The policy's other
+  requirements are in the code: the credit line is drawn unless cleared, only
+  two downloads run at a time, results are cached, and the docs point production
+  traffic at the app's own tile server.

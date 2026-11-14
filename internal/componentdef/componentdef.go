@@ -19,6 +19,7 @@ var Kinds = []Kind{
 	// Content: components that are plain nodes with behaviour.
 	{"Code", false},
 	{"Markdown", false},
+	{"Map", false},
 	// Actions.
 	{"Button", false},
 	{"IconButton", false},
@@ -145,6 +146,7 @@ var props = map[string][]string{
 	"TextArea":         {"label", "text", "placeholder", "supporting", "variant", "disabled"},
 	"Code":             {"text", "language", "variant", "showCopy"},
 	"Markdown":         {"text"},
+	"Map":              {"tiles", "attribution", "center", "zoom", "bbox", "geom", "disablePan", "disableZoom"},
 	"LineChart":        {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "smooth", "points", "min", "max"},
 	"AreaChart":        {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "smooth", "points", "stacked", "min", "max"},
 	"BarChart":         {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "stacked", "horizontal", "min", "max"},
@@ -225,14 +227,28 @@ var defaults = map[string]any{
 	// A code block offers its copy button until the design says otherwise.
 	"showCopy":    true,
 	"selectedRow": -1.0,
-	// A centered slider fills from the midpoint of min and max until the
-	// design names a center of its own.
-	"center": math.NaN(),
+	// A map starts on the whole world, drawn from OpenStreetMap, and credits
+	// it until the design says otherwise.
+	"zoom":        2.0,
+	"tiles":       "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+	"attribution": "© OpenStreetMap contributors",
+}
+
+// kindDefaults are defaults that belong to one kind, for a property name that
+// means different things elsewhere: a Slider's `center` is a number, a Map's is
+// a position string, and neither can take the other's default.
+var kindDefaults = map[string]map[string]any{
+	"Slider": {"center": math.NaN()},
 }
 
 // Default returns the initial value of a component property, when it is not the
 // zero value for its type.
-func Default(name string) (any, bool) {
+func Default(kind, name string) (any, bool) {
+	if d, ok := kindDefaults[kind]; ok {
+		if v, ok := d[name]; ok {
+			return v, true
+		}
+	}
 	v, ok := defaults[name]
 	return v, ok
 }
@@ -243,6 +259,10 @@ func TypeOfFor(kind, name string) PropType {
 	if kind == "TableCell" && name == "value" {
 		return Scalar
 	}
+	// A Slider's center is a number; a Map's is a `lat,lon` string.
+	if kind == "Map" && name == "center" {
+		return String
+	}
 	return TypeOf(name)
 }
 
@@ -251,11 +271,12 @@ func TypeOf(name string) PropType {
 	switch name {
 	case "disabled", "checked", "selected", "expanded", "showCopy",
 		"sortable", "numeric", "striped", "showHeader", "stickyHeader", "sortAscending",
-		"grid", "axis", "legend", "values", "stacked", "horizontal", "smooth", "points":
+		"grid", "axis", "legend", "values", "stacked", "horizontal", "smooth", "points",
+		"disablePan", "disableZoom":
 		return Bool
 	case "value", "end", "center", "min", "max", "step", "spacing", "gap", "size", "hourFormat",
 		"rowHeight", "headerHeight", "sortColumn", "selectedRow",
-		"innerRadius", "startAngle", "thickness":
+		"innerRadius", "startAngle", "thickness", "zoom":
 		return Number
 	case "variant", "crossAxisAlign", "mainAxisAlign", "align", "selectable":
 		return Enum

@@ -493,7 +493,7 @@ var elements = func() []Element {
 				continue
 			}
 			p := Prop{Name: name}
-			def, hasDef := componentdef.Default(name)
+			def, hasDef := componentdef.Default(k.Name, name)
 			switch componentdef.TypeOfFor(k.Name, name) {
 			case componentdef.Bool:
 				p.Type, p.Dirty, p.Default = TypeBool, DirtyPaint, false

@@ -380,6 +380,10 @@ func (l *List) paintComponent(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		if ch, ok := c.Node().(interface{ ChartCore() *tree.Chart }); ok {
 			l.paintChart(ch.ChartCore(), r, clip)
 		}
+	case "Map":
+		if m, ok := c.Node().(*tree.Map); ok {
+			l.paintMap(m, r, clip)
+		}
 	case "TableColumn":
 		l.paintTableColumn(c, r, clip)
 	case "TableRow":

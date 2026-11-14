@@ -669,6 +669,8 @@ func newM3Component(name string) Node {
 		return &Code{Component: newComponent()}
 	case "Markdown":
 		return &Markdown{Component: newComponent()}
+	case "Map":
+		return newMap()
 	case "LineChart":
 		return &LineChart{Chart: newChart()}
 	case "AreaChart":

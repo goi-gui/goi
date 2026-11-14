@@ -191,6 +191,10 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 		// which a design overrides with an explicit one. The intrinsic width is
 		// what it asks for inside a Row, where `flex` splits the space.
 		return Metrics{W: 240, H: 220, FillW: true}
+	case "Map":
+		// A map fills its width like a chart; the design usually gives it a
+		// height, and 220 is the readable default when it does not.
+		return Metrics{W: 240, H: 220, FillW: true}
 	case "ListItem":
 		h := 56.0
 		if c.Supporting != "" {

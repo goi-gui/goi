@@ -180,6 +180,10 @@ type (
 	ClipRRect        = tree.ClipRRect
 	Code             = tree.Code
 	Markdown         = tree.Markdown
+	Map              = tree.Map
+	MapTile          = tree.MapTile
+	MapGeometry      = tree.MapGeometry
+	Point            = tree.Point
 	Carousel         = tree.Carousel
 	Toolbar          = tree.Toolbar
 	AspectRatio      = tree.AspectRatio

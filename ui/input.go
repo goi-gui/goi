@@ -141,6 +141,11 @@ type interactor struct {
 	// drags, and colorMode says which of the three the drag belongs to.
 	colorNode tree.Node
 	colorMode int
+
+	// mapNode is the map the pointer is panning, and mapLastX/Y is the previous
+	// move, so a drag hands the map a delta rather than a position.
+	mapNode            tree.Node
+	mapLastX, mapLastY float64
 }
 
 // Gesture timings, the ones Flutter uses: a press that stays inside the slop for
@@ -454,6 +459,14 @@ func (i *interactor) event(name string, fields ...any) {
 
 func (i *interactor) MouseMove(x, y float64) {
 	i.cursorX, i.cursorY = x, y
+	if i.mapNode != nil {
+		if m, ok := i.mapNode.(*tree.Map); ok {
+			m.PanBy(x-i.mapLastX, y-i.mapLastY)
+			i.markDirty()
+		}
+		i.mapLastX, i.mapLastY = x, y
+		return
+	}
 	if i.scrollbar != nil {
 		i.dragScrollbar(x, y)
 		i.pointer(platform.CursorPointer)
@@ -649,6 +662,10 @@ func (i *interactor) pointerAt(hit tree.Node) {
 		i.pointer(platform.CursorArrow)
 		return
 	}
+	if m := mapAt(hit); m != nil && !m.DisablePan.Get() {
+		i.pointer(platform.CursorMove)
+		return
+	}
 	if i.clickable(hit, i.cursorX, i.cursorY) {
 		i.pointer(platform.CursorPointer)
 		return
@@ -684,6 +701,19 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 				i.scrollbarGrab = y - thumb.Y
 			}
 			i.showScrollbar(n)
+			return
+		}
+	}
+	// A map takes the press itself: its pan is a drag, not a click, so it must
+	// not start a ripple, a gesture detector or a scroll. A press on a map that
+	// disabled panning falls through, which leaves the page scrollable under it.
+	if button == 0 && hit != nil {
+		if m := mapAt(hit); m != nil && !m.DisablePan.Get() {
+			i.setFocus(nil)
+			i.setKbd(hit)
+			i.scrollNode = nil
+			i.mapNode, i.mapLastX, i.mapLastY = hit, x, y
+			i.pointer(platform.CursorMove)
 			return
 		}
 	}
@@ -854,6 +884,7 @@ func (i *interactor) MouseUp(x, y float64, button int) {
 		i.textField = nil
 		i.selecting = false
 		i.scrollbar = nil
+		i.mapNode = nil
 	}()
 	if i.pressed == nil {
 		i.dragging = false
@@ -960,6 +991,16 @@ func (i *interactor) mediaRect(n tree.Node) tree.Rect {
 		return tree.Rect{X: 0, Y: 0, W: i.windowW(), H: i.windowH()}
 	}
 	return absoluteRect(n)
+}
+
+// mapAt returns the Map at or above n.
+func mapAt(n tree.Node) *tree.Map {
+	for ; n != nil; n = n.Base().Parent() {
+		if m, ok := n.(*tree.Map); ok {
+			return m
+		}
+	}
+	return nil
 }
 
 // mediaAt returns the Audio or Video at or above n.
@@ -1893,6 +1934,20 @@ func (i *interactor) Scroll(dx, dy float64, shift bool) {
 	// y is positive away from the user, so only y flips.
 	panX, panY := dx*scrollStep, -dy*scrollStep
 	if panX == 0 && panY == 0 {
+		return
+	}
+	// The wheel zooms the map under the pointer, around the point under it,
+	// instead of scrolling the page behind it.
+	if m := mapAt(i.hit(i.cursorX, i.cursorY)); m != nil && !m.DisableZoom.Get() && dy != 0 {
+		ar := absoluteRect(m)
+		dz := -dy * 0.5
+		if dz > 1 {
+			dz = 1
+		} else if dz < -1 {
+			dz = -1
+		}
+		m.ZoomAt(i.cursorX-ar.X, i.cursorY-ar.Y, dz)
+		i.markDirty()
 		return
 	}
 	start := scrollableAt(i.hit(i.cursorX, i.cursorY))

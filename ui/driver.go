@@ -317,6 +317,12 @@ func (a *App) frame() {
 		// A relayout moves children, so everything must be repainted.
 		markAll(root.Base(), tree.DirtyPaint)
 	}
+	// A map's viewport is its laid-out box, which a bbox fits against, and the
+	// tiles it needs follow the camera. This runs before the display list is
+	// built, so a new tile or a fitted view lands on this frame.
+	if a.hasMaps {
+		a.syncMaps()
+	}
 	// Half a second is long enough to smooth frame-time jitter and short enough
 	// that a stutter shows up while it is still happening.
 	now = time.Now()

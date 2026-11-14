@@ -104,6 +104,21 @@ type App struct {
 	// hasImages is true while the tree holds an Image, so the per-frame src
 	// check only walks a design that can use one.
 	hasImages bool
+	// hasMaps is true while the tree holds a Map, so the tile scheduler only
+	// walks a design that draws one.
+	hasMaps bool
+	// mapQueue is the tile URLs waiting for one of mapTileParallel downloads;
+	// mapPending dedupes them, mapFailed remembers a URL that 404ed so the same
+	// blank tile is not requested every frame, and mapKeys is the insertion
+	// order the cache cap evicts by.
+	mapQueue    []string
+	mapPending  map[string]bool
+	mapFailed   map[string]bool
+	mapKeys     []string
+	mapInFlight int
+	// mapGeom caches a `geom` asset's text by path, so a reload does not read
+	// the file again.
+	mapGeom map[string]string
 	// hasSVGAnim is true while the tree holds an animated SVG document.
 	hasSVGAnim bool
 	// pending holds the URLs with a fetch in flight, so two nodes with the same

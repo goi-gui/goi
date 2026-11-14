@@ -78,7 +78,11 @@ func (a *App) loadImages(tr *tree.Tree) {
 	a.hasSVG = false
 	a.hasSVGAnim = false
 	a.hasImages = false
+	a.hasMaps = false
 	for _, n := range tr.All() {
+		if _, ok := n.(*tree.Map); ok {
+			a.hasMaps = true
+		}
 		if s, ok := n.(*tree.SVG); ok {
 			a.hasSVG = true
 			a.loadSVG(s)
@@ -494,6 +498,11 @@ func fetchRemote(src string) ([]byte, error) {
 		return nil, fmt.Errorf("%s: %w", src, err)
 	}
 	req.Header.Set("Accept", "image/*")
+	// A tile service can refuse an anonymous client: OpenStreetMap's policy
+	// asks for an identifying agent, and it is what turns a 403 into tiles. A
+	// browser drops this header and sends its own, which is what its policy
+	// expects anyway.
+	req.Header.Set("User-Agent", "goi (+https://github.com/goi-gui/goi)")
 	resp, err := remoteImageClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", src, err)
