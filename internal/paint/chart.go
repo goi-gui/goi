@@ -682,10 +682,15 @@ func (l *List) paintChart(c *tree.Chart, r tree.Rect, clip tree.Rect) {
 	}
 
 	pal := seriesPalette(*l.Theme)
+	// The baseline is value 0: a y for a vertical chart, an x for a horizontal
+	// bar. It is only drawn when zero is in range, so a chart of positive
+	// numbers does not grow a line along its own edge.
 	if lay.Horizontal {
-		l.hLine(lay.Baseline, lay.Plot.Y, lay.Plot.H, withAlpha(col.Outline, 0.7), cl)
-	} else {
-		l.vLine(lay.Baseline, lay.Plot.Y, lay.Plot.H, withAlpha(col.Outline, 0.7), cl)
+		if lay.Baseline >= lay.Plot.X && lay.Baseline <= lay.Plot.Right() {
+			l.vLine(lay.Baseline, lay.Plot.Y, lay.Plot.H, withAlpha(col.Outline, 0.7), cl)
+		}
+	} else if lay.Baseline >= lay.Plot.Y && lay.Baseline <= lay.Plot.Bottom() {
+		l.hLine(lay.Plot.X, lay.Baseline, lay.Plot.W, withAlpha(col.Outline, 0.7), cl)
 	}
 
 	// Hover band behind the series, so the point the tooltip names reads.

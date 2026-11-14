@@ -404,3 +404,45 @@ func TestChartColorsFromDesign(t *testing.T) {
 		t.Fatal("no bar took the slice's role colour")
 	}
 }
+
+// TestLineChartHasNoStrayVerticalLine is the baseline bug: the zero line of a
+// vertical chart is horizontal, at a y. It used to be drawn as a vertical rule
+// at that y read as an x, so every line chart grew a stray line beside its
+// plot, and a chart of positive values drew one along the left edge.
+func TestLineChartHasNoStrayVerticalLine(t *testing.T) {
+	l := m3list(t, `Window { Column {
+		LineChart {
+			width: 400
+			height: 240
+			categories: ["a", "b", "c"]
+			ChartSeries { values: [10, 20, 15] }
+		}
+	} }`)
+	for _, op := range l.Ops {
+		if op.Kind != Fill {
+			continue
+		}
+		if op.Rect[2] <= 1.5 && op.Rect[3] > 100 {
+			t.Fatalf("a vertical rule at x=%v spans the plot: %v", op.Rect[0], op.Rect)
+		}
+	}
+}
+
+// TestNegativeValuesGetABaseline keeps the zero line when it means something: a
+// chart that crosses zero draws the horizontal rule at zero.
+func TestNegativeValuesGetABaseline(t *testing.T) {
+	l := m3list(t, `Window { Column {
+		LineChart {
+			width: 400
+			height: 240
+			categories: ["a", "b", "c"]
+			ChartSeries { values: [-5, 10, -2] }
+		}
+	} }`)
+	for _, op := range l.Ops {
+		if op.Kind == Fill && op.Rect[3] <= 1.5 && op.Rect[2] > 100 {
+			return
+		}
+	}
+	t.Fatal("a chart that crosses zero has no baseline")
+}
