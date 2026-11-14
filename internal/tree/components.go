@@ -248,11 +248,19 @@ func propsFor(kind string) []string { return componentdef.Props(kind) }
 // type-checked, and each is otherwise empty: all state lives in Component.
 
 // Button is a filled, tonal, elevated, outlined or text button.
-type Button struct{ Component }
+type Button struct {
+	Component
+	// Color overrides the label's colour, and the icon's beside it. Zero keeps
+	// the variant's own foreground.
+	Color Prop[uint32]
+}
 
 // Kind implements Node.
-func (*Button) Kind() string              { return "Button" }
-func (c *Button) namedProps() []NamedProp { return c.props("Button") }
+func (*Button) Kind() string { return "Button" }
+func (c *Button) namedProps() []NamedProp {
+	return append(c.propsExcept("Button", "color"),
+		ColorProp(&c.NodeBase, "color", DirtyPaint, &c.Color))
+}
 
 // IconButton is a button that shows only an icon.
 type IconButton struct{ Component }
@@ -383,11 +391,19 @@ func (c *Slider) OnRange(fn func(lo, hi float64)) (off func()) {
 }
 
 // TextField is a filled or outlined text input.
-type TextField struct{ Component }
+type TextField struct {
+	Component
+	// Color overrides the colour of the value, its label and its placeholder.
+	// Zero keeps the scheme's onSurface.
+	Color Prop[uint32]
+}
 
 // Kind implements Node.
-func (*TextField) Kind() string              { return "TextField" }
-func (c *TextField) namedProps() []NamedProp { return c.props("TextField") }
+func (*TextField) Kind() string { return "TextField" }
+func (c *TextField) namedProps() []NamedProp {
+	return append(c.propsExcept("TextField", "color"),
+		ColorProp(&c.NodeBase, "color", DirtyPaint, &c.Color))
+}
 
 // SearchBar is a rounded search input.
 type SearchBar struct{ Component }

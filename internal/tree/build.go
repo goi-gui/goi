@@ -420,7 +420,7 @@ func newNode(name string) Node {
 			Maximized:     newProp(nil, "maximized", DirtyPaint, false),
 			Fullscreen:    newProp(nil, "fullscreen", DirtyPaint, false),
 		}
-	case "Column", "Row", "Stack", "ClipRRect", "Wrap", "Grid", "TitleBar", "AspectRatio":
+	case "Column", "Row", "Stack", "ClipRRect", "Wrap", "Grid", "TitleBar", "AspectRatio", "GestureDetector":
 		c := Container{
 			NodeBase:   b(),
 			Spacing:    newProp(nil, "spacing", DirtyLayout, 0.0),
@@ -446,6 +446,8 @@ func newNode(name string) Node {
 			}
 		case "AspectRatio":
 			return &AspectRatio{Container: c, Ratio: newProp(nil, "aspectRatio", DirtyLayout, 1.0)}
+		case "GestureDetector":
+			return &GestureDetector{Container: c}
 		default:
 			return &Stack{Container: c}
 		}
@@ -533,7 +535,10 @@ func newNode(name string) Node {
 func newM3Component(name string) Node {
 	switch name {
 	case "Button":
-		return &Button{Component: newComponent()}
+		return &Button{
+			Component: newComponent(),
+			Color:     newProp(nil, "color", DirtyPaint, uint32(0)),
+		}
 	case "IconButton":
 		return &IconButton{Component: newComponent()}
 	case "FAB":

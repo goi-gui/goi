@@ -330,6 +330,21 @@ func (b *NodeBase) BorderColors() [4]uint32 {
 	}
 }
 
+// BorderSet reports whether the design declared a border, uniformly or on a
+// single side. A component whose box the design styled draws that border in
+// place of its own.
+func (b *NodeBase) BorderSet() bool {
+	if b.borderW.Get() > 0 {
+		return true
+	}
+	return b.borderTopW.Get() > 0 || b.borderRightW.Get() > 0 ||
+		b.borderBottomW.Get() > 0 || b.borderLeftW.Get() > 0
+}
+
+// RadiusSet reports whether the design declared a corner radius. A component
+// uses it for the same reason it uses BorderSet.
+func (b *NodeBase) RadiusSet() bool { return b.Radius() > 0 }
+
 // UniformBorder reports whether every side shares one colour and width, which
 // is the case paint can draw with a single rounded op.
 func (b *NodeBase) UniformBorder() bool {

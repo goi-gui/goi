@@ -96,7 +96,7 @@ func Lookup(name string) (Kind, bool) {
 
 // props is the property list per kind, beyond the common box properties.
 var props = map[string][]string{
-	"Button":           {"label", "icon", "variant", "disabled"},
+	"Button":           {"label", "icon", "variant", "color", "disabled"},
 	"IconButton":       {"icon", "variant", "disabled", "selected"},
 	"FAB":              {"label", "icon", "variant", "disabled", "expanded"},
 	"FABMenu":          {"icon", "variant", "disabled", "expanded"},
@@ -109,7 +109,7 @@ var props = map[string][]string{
 	"RadioButton":      {"label", "variant", "disabled", "checked"},
 	"Switch":           {"label", "variant", "disabled", "checked", "icon", "iconOn", "iconOff"},
 	"Slider":           {"variant", "disabled", "value", "end", "center", "min", "max", "step"},
-	"TextField":        {"label", "text", "placeholder", "supporting", "icon", "trailingIcon", "variant", "disabled"},
+	"TextField":        {"label", "text", "placeholder", "supporting", "icon", "trailingIcon", "variant", "color", "disabled"},
 	"SearchBar":        {"label", "text", "placeholder", "icon", "trailingIcon", "variant", "disabled"},
 	"Tooltip":          {"text", "variant"},
 	"Card":             {"label", "supporting", "icon", "variant", "disabled"},

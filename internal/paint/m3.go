@@ -122,6 +122,57 @@ func (l *List) shadowRadii(r tree.Rect, radii [4]float32, dp int, clip tree.Rect
 }
 
 // stateLayer overlays the M3 interaction tint and the press ripple on a shape.
+// componentRadii is the corner radius a component draws with: the design's
+// per-corner radii when it declared one, else the M3 shape's uniform radius.
+func componentRadii(b *tree.NodeBase, fallback float64) [4]float64 {
+	if b.RadiusSet() {
+		return b.Radii()
+	}
+	return [4]float64{fallback, fallback, fallback, fallback}
+}
+
+// radii32 is the renderer's form of the per-corner radii.
+func radii32(r [4]float64) [4]float32 {
+	return [4]float32{float32(r[0]), float32(r[1]), float32(r[2]), float32(r[3])}
+}
+
+// componentFill is the colour and gradient a component fills with: the design's
+// background when it set one, else the component's own container.
+func componentFill(b *tree.NodeBase, fill uint32) (uint32, *tree.Gradient) {
+	if g := b.Gradient("background"); g != nil {
+		return 0, g
+	}
+	if v := b.Background(); v != 0 {
+		return v, nil
+	}
+	return fill, nil
+}
+
+// componentBorder is the border a component draws: the design's when it declared
+// one, else the component's own. The last result says the sides differ, which
+// paint draws as four bands instead of one rounded rect.
+func componentBorder(b *tree.NodeBase, color uint32, width float64) (uint32, float64, bool) {
+	if !b.BorderSet() {
+		return color, width, false
+	}
+	if b.UniformBorder() {
+		return b.BorderColors()[0], b.BorderEdges().Top, false
+	}
+	return 0, 0, true
+}
+
+// componentColor is the `color` a component with its own foreground cell was
+// given, zero when the design left it to the component.
+func componentColor(c *tree.Component) uint32 {
+	switch n := c.Node().(type) {
+	case *tree.Button:
+		return n.Color.Get()
+	case *tree.TextField:
+		return n.Color.Get()
+	}
+	return 0
+}
+
 func (l *List) stateLayer(c *tree.Component, r tree.Rect, radius float64, color uint32, clip tree.Rect) {
 	if c.Disabled.Get() {
 		return
@@ -428,6 +479,14 @@ func (l *List) paintButton(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	if themeRadius := r.H / 2; themeRadius > 0 {
 		radius = themeRadius
 	}
+	// The design may style the box itself: a background, a border and a radius
+	// replace the variant's, and color replaces the label's foreground.
+	radii := componentRadii(c.Base(), radius)
+	bg, gradient := componentFill(c.Base(), bg)
+	border, bw, uneven := componentBorder(c.Base(), border, bw)
+	if v := componentColor(c); v != 0 {
+		fg = v
+	}
 	if c.Disabled.Get() {
 		// M3 dims the label against the page, not against the container's
 		// content colour: onSurface at 38% over onSurface at 12%. Dimming
@@ -438,9 +497,15 @@ func (l *List) paintButton(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		border = withAlpha(col.OnSurface, m3.DisabledContainerOpacity)
 		fg = col.OnSurface
 	}
-	l.shadow(r, radius, elev, clip)
-	l.fillRect(r, bg, radius, border, bw, clip)
-	l.stateLayer(c, r, radius, fg, clip)
+	l.shadowRadii(r, radii32(radii), elev, clip)
+	l.fillShape(r, bg, gradient, radii, border, bw, clip)
+	if uneven {
+		l.paintSideBorders(c.Base(), r, radii, c.Base().BorderEdges(), c.Base().BorderColors(), clip)
+	}
+	if !c.Disabled.Get() {
+		l.ripple(c, r, radii[0], fg, clip)
+		l.tint(c, r, radii32(radii), fg, clip)
+	}
 
 	labelW := r.W
 	if c.Icon.Get() != "" {
@@ -1053,25 +1118,64 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		border = withAlpha(border, m3.DisabledContainerOpacity)
 	}
 
-	radius := m3.ShapeExtraSmall
+	radii := componentRadii(c.Base(), m3.ShapeExtraSmall)
+	if !filled {
+		// An outlined field is transparent until the design gives it a fill, so
+		// its own container colour is no fallback.
+		container = 0
+	}
+	fill, gradient := componentFill(c.Base(), container)
+	border, bw, uneven := componentBorder(c.Base(), border, bw)
+	if !c.Focused {
+		// Focus still thickens the component's own border, but a design border
+		// is the design's decision.
+	}
 	if filled {
-		l.fillRect(r, container, radius, 0, 0, clip)
-		// Active indicator along the bottom.
-		ind := col.OnSurfaceVariant
-		th := 1.0
-		if c.Focused {
-			ind, th = col.Primary, 2.0
+		l.fillShape(r, fill, gradient, radii, 0, 0, clip)
+		switch {
+		case c.Base().BorderSet():
+			// The design's border is the field's outline, so the M3 indicator
+			// would run under it and past the corners.
+			l.fillShape(r, 0, nil, radii, border, bw, clip)
+			if uneven {
+				l.paintSideBorders(c.Base(), r, radii, c.Base().BorderEdges(), c.Base().BorderColors(), clip)
+			}
+		case c.Base().RadiusSet():
+			// A rounded field keeps a focus cue with a border instead: a square
+			// indicator would cut the corners it now has.
+			bc, bwid := col.Outline, 1.0
+			if c.Focused {
+				bc, bwid = col.Primary, 2
+			}
+			if c.Disabled.Get() {
+				bc = withAlpha(bc, m3.DisabledContainerOpacity)
+			}
+			l.fillShape(r, 0, nil, radii, bc, bwid, clip)
+		default:
+			// Active indicator along the bottom.
+			ind := col.OnSurfaceVariant
+			th := 1.0
+			if c.Focused {
+				ind, th = col.Primary, 2.0
+			}
+			l.Ops = append(l.Ops, Op{
+				Kind: Fill, Shape: RoundedRect,
+				Rect:  [4]float32{float32(r.X), float32(r.Bottom() - th), float32(r.W), float32(th)},
+				Color: ind, Clip: clipArr(clip),
+			})
 		}
-		l.Ops = append(l.Ops, Op{
-			Kind: Fill, Shape: RoundedRect,
-			Rect:  [4]float32{float32(r.X), float32(r.Bottom() - th), float32(r.W), float32(th)},
-			Color: ind, Clip: clipArr(clip),
-		})
 	} else {
-		if c.Focused {
+		if c.Focused && !c.Base().BorderSet() {
 			border, bw = col.Primary, 2
 		}
-		l.fillRect(r, 0, radius, border, bw, clip)
+		l.fillShape(r, fill, gradient, radii, border, bw, clip)
+		if uneven {
+			l.paintSideBorders(c.Base(), r, radii, c.Base().BorderEdges(), c.Base().BorderColors(), clip)
+		}
+	}
+	if v := componentColor(c); v != 0 {
+		fg = v
+		hint = withAlpha(v, 0.7)
 	}
 
 	// Floating label: sits above the value once the field has content or focus.
