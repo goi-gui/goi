@@ -38,7 +38,7 @@ func TestMapProjectionsRoundTrip(t *testing.T) {
 // has no more room than that.
 func TestMapBBoxFitsTheView(t *testing.T) {
 	m := newMap()
-	m.BBox.Set("26,36,45,42")
+	m.BBox.Set([]float64{26, 36, 45, 42})
 	m.Prepare(400, 300)
 	lat, lng, zoom := m.View()
 	if zoom < 4 || zoom > 9 {

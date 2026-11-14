@@ -282,16 +282,21 @@ func TypeOf(name string) PropType {
 		return Enum
 	case "textColor", "gridColor", "color":
 		return Color
-	case "categories":
+	case "categories", "bbox":
 		return List
 	}
 	return String
 }
 
 // ListElem is the type of one item of a list property, which is what the
-// checker reads each entry as. Only a chart's categories are a list today, and
-// a label is a string.
-func ListElem(name string) PropType { return String }
+// checker reads each entry as: a chart's categories are labels, a map's bbox is
+// four numbers.
+func ListElem(name string) PropType {
+	if name == "bbox" {
+		return Number
+	}
+	return String
+}
 
 // variantValues narrows the shared variant union where a component paints only
 // a few styles, so completion and the checker do not offer a word the painter

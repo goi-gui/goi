@@ -100,3 +100,36 @@ func TestMapPaintsGeom(t *testing.T) {
 		t.Fatalf("strokes = %d dots = %d, want 4 and 5:\n%s", strokes, dots, l.Dump())
 	}
 }
+
+// TestMapTilesDoNotRoundTheirOwnCorners guards the seam the map's radius used
+// to leave: four adjacent tiles rounded by 16dp cut a star-shaped hole where
+// their corners meet. Only the shared clip may be rounded.
+func TestMapTilesDoNotRoundTheirOwnCorners(t *testing.T) {
+	tr, m, l := mapList(t, `Window {
+		Map {
+			width: 300 height: 200 radius: 16
+			center: "41,29" zoom: 4
+		}
+	}`, 300, 200)
+	tiles := m.ViewTiles()
+	d := &img.Data{W: 256, H: 256, Pix: make([]byte, 256*256*4)}
+	m.SetTile(tiles[0].MapTile, d)
+	l.Build(tr, 300, 200)
+
+	found := false
+	for _, op := range l.Ops {
+		if op.Kind != Bitmap || op.Src != d {
+			continue
+		}
+		found = true
+		if op.Radius != [4]float32{} {
+			t.Fatalf("tile rounds its own corners: %v", op.Radius)
+		}
+		if op.ClipRadius != 16 || op.ClipBox == [4]float32{} {
+			t.Fatalf("tile clip = %v box %v, want the map's 16dp round", op.ClipRadius, op.ClipBox)
+		}
+	}
+	if !found {
+		t.Fatal("no tile painted")
+	}
+}

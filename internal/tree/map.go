@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/goi-gui/goi/internal/img"
+	"github.com/goi-gui/goi/internal/schema"
 )
 
 // Point is one WGS84 position, in degrees. GeoJSON writes longitude first,
@@ -181,8 +183,9 @@ type Map struct {
 	// follow the pointer.
 	Center Prop[string]
 	Zoom   Prop[float64]
-	// BBox is `west,south,east,north` in degrees, which fits the view.
-	BBox Prop[string]
+	// BBox is [west, south, east, north] in degrees. While it has four items it
+	// frames the view and wins over center and zoom.
+	BBox ListProp[float64]
 	// Geom is GeoJSON text, or the path of an asset that holds it.
 	Geom Prop[string]
 	// DisablePan and DisableZoom take the matching pointer gesture away.
@@ -198,7 +201,7 @@ type Map struct {
 	appliedZoom   float64
 	// fitBBox remembers the box and the size the view was fitted to, so a
 	// repaint does not undo a pan.
-	fitBBox    string
+	fitBBox    []float64
 	fitW, fitH float64
 
 	tiles map[MapTile]*img.Data
@@ -208,8 +211,11 @@ type Map struct {
 	// the path does not fight the resolved text.
 	geomSrc  string
 	geomText string
-	geom     *MapGeometry
-	geomErr  error
+	// geomDirect is a boundary set from Go as coordinates, which needs no JSON
+	// round trip. It is used while `geom` is empty.
+	geomDirect *MapGeometry
+	geom       *MapGeometry
+	geomErr    error
 }
 
 // newMap seeds the map's cells. The defaults match componentdef, so the
@@ -221,7 +227,7 @@ func newMap() *Map {
 		Attribution: newProp(nil, "attribution", DirtyPaint, "© OpenStreetMap contributors"),
 		Center:      newProp(nil, "center", DirtyPaint, ""),
 		Zoom:        newProp(nil, "zoom", DirtyPaint, 2.0),
-		BBox:        newProp(nil, "bbox", DirtyPaint, ""),
+		BBox:        ListProp[float64]{parse: listParse[float64](schema.TypeNumber)},
 		Geom:        newProp(nil, "geom", DirtyPaint, ""),
 		DisablePan:  newProp(nil, "disablePan", DirtyPaint, false),
 		DisableZoom: newProp(nil, "disableZoom", DirtyPaint, false),
@@ -239,7 +245,7 @@ func (m *Map) namedProps() []NamedProp {
 		// A view change moves where things are drawn, not how big the map is.
 		StringProp(&m.NodeBase, "center", &m.Center),
 		NumberProp(&m.NodeBase, "zoom", DirtyPaint, &m.Zoom),
-		StringProp(&m.NodeBase, "bbox", &m.BBox),
+		ListPropOf(&m.NodeBase, "bbox", DirtyPaint, &m.BBox),
 		StringProp(&m.NodeBase, "geom", &m.Geom),
 		BoolProp(&m.NodeBase, "disablePan", DirtyPaint, &m.DisablePan),
 		BoolProp(&m.NodeBase, "disableZoom", DirtyPaint, &m.DisableZoom),
@@ -306,16 +312,16 @@ func (m *Map) Prepare(w, h float64) {
 		return
 	}
 	m.w, m.h = w, h
-	if bb := strings.TrimSpace(m.BBox.Get()); bb != "" {
-		if bb != m.fitBBox || w != m.fitW || h != m.fitH {
+	if bb := m.BBox.Get(); len(bb) == 4 {
+		if !slices.Equal(bb, m.fitBBox) || w != m.fitW || h != m.fitH {
 			if p, zoom, ok := fitBounds(bb, w, h); ok {
-				m.fitBBox, m.fitW, m.fitH = bb, w, h
+				m.fitBBox, m.fitW, m.fitH = slices.Clone(bb), w, h
 				m.setView(p.Lat, p.Lng, zoom)
 			}
 		}
 		return
 	}
-	m.fitBBox = ""
+	m.fitBBox = nil
 	center, zoom := m.Center.Get(), clampZoom(m.Zoom.Get())
 	if m.loaded && center == m.appliedCenter && zoom == m.appliedZoom {
 		return
@@ -396,6 +402,17 @@ func (m *Map) Tile(t MapTile) *img.Data {
 	return m.tiles[t]
 }
 
+// SetGeometry draws a boundary that already exists as coordinates, without
+// going through GeoJSON text. It is used while `geom` is empty; setting that
+// property, or clearing it to a path, goes back to the text.
+func (m *Map) SetGeometry(g *MapGeometry) {
+	if m.geomDirect == g {
+		return
+	}
+	m.geomDirect = g
+	m.Base().MarkDirty(DirtyPaint)
+}
+
 // SetGeomText hands the map the GeoJSON behind a `geom` that names a file. The
 // property keeps the path, so a hot reload or an expression can still change it.
 func (m *Map) SetGeomText(text string) {
@@ -411,6 +428,9 @@ func (m *Map) SetGeomText(text string) {
 // Inline GeoJSON answers directly; a path answers with what SetGeomText was
 // given.
 func (m *Map) Geometry() *MapGeometry {
+	if strings.TrimSpace(m.Geom.Get()) == "" && m.geomDirect != nil {
+		return m.geomDirect
+	}
 	src := m.Geom.Get()
 	if !looksLikeJSON(src) && m.geomText != "" {
 		src = m.geomText
@@ -449,8 +469,9 @@ func (m *Map) worldSize() float64 { return mapTileSize * math.Pow(2, m.zoom) }
 
 // The map's tile grid. 256 is the size every raster tile service uses.
 const (
-	mapTileSize = 256.0
-	mapMaxZoom  = 19.0
+	mapTileSize  = 256.0
+	mapMaxZoom   = 19.0
+	mapFitMargin = 0.9
 )
 
 // mercatorX is the Web Mercator world x of a longitude, in 0..1.
@@ -513,18 +534,9 @@ func parseLatLng(s string) (Point, bool) {
 
 // fitBounds turns `west,south,east,north` into the centre and zoom that show
 // the whole box, with a little room so the edges are not under the border.
-func fitBounds(s string, w, h float64) (Point, float64, bool) {
-	parts := strings.Split(s, ",")
-	if len(parts) != 4 {
+func fitBounds(n []float64, w, h float64) (Point, float64, bool) {
+	if len(n) != 4 {
 		return Point{}, 0, false
-	}
-	var n [4]float64
-	for i := range n {
-		v, err := strconv.ParseFloat(strings.TrimSpace(parts[i]), 64)
-		if err != nil {
-			return Point{}, 0, false
-		}
-		n[i] = v
 	}
 	west, south, east, north := n[0], n[1], n[2], n[3]
 	if east < west {
@@ -535,7 +547,9 @@ func fitBounds(s string, w, h float64) (Point, float64, bool) {
 	if x1 <= x0 || y1 <= y0 {
 		return Point{}, 0, false
 	}
-	zoom := math.Log2(math.Min(w/((x1-x0)*mapTileSize), h/((y1-y0)*mapTileSize)))
+	// A tenth of the box stays as a margin, so the boundary a bbox frames is
+	// not drawn on the map's own edge.
+	zoom := math.Log2(mapFitMargin * math.Min(w/((x1-x0)*mapTileSize), h/((y1-y0)*mapTileSize)))
 	return Point{Lat: invMercatorY((y0 + y1) / 2), Lng: wrapLng(invMercatorX((x0 + x1) / 2))},
 		clampZoom(zoom), true
 }

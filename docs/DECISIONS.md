@@ -2053,8 +2053,9 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   stays the app's call.
 - **A map's camera is two properties, and its boundary is strokes, not a path.**
   `center` and `zoom` are what the pointer writes, so `View` needs no separate
-  state and a design that binds either keeps working; `bbox` is a fit rule that
-  runs when the box or the viewport changes, not a third camera value. Geometry
+  state and a design that binds either keeps working; `bbox` is four numbers
+  that fit the view when the box or the viewport changes, not a third camera
+  value. Geometry
   is drawn as one thin rounded quad per segment turned about its midpoint
   because the display list has no path primitive, and adding one for a boundary
   would have meant a new shader and a new instance kind. Polygons are outlines
@@ -2068,3 +2069,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   requirements are in the code: the credit line is drawn unless cleared, only
   two downloads run at a time, results are cached, and the docs point production
   traffic at the app's own tile server.
+- **A bitmap's own corner radius is not its clip radius.** The image renderer
+  used `ClipRadius` for both, which is invisible for a picture clipped to its own
+  box but wrong for a map: every tile carried the map's 16dp radius, and four
+  cut corners meeting at a grid point left a star-shaped hole showing the map
+  background underneath. The bitmap branch now reads the op's `Radius`, while
+  `ClipRadius` stays the rounded clip; `paintBitmap` sets both for an image and
+  the map sets only the clip.

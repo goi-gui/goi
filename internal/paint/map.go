@@ -34,6 +34,7 @@ func (l *List) paintMap(m *tree.Map, r tree.Rect, clip tree.Rect) {
 			Kind: Bitmap, Src: d, UV: [4]float32{0, 0, 1, 1},
 			Rect:       rectArr(tree.Rect{X: r.X + t.Left, Y: r.Y + t.Top, W: t.W + 0.5, H: t.H + 0.5}),
 			Clip:       clipArr(inner),
+			ClipBox:    box,
 			ClipRadius: radius,
 		})
 	}
