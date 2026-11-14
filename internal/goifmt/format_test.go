@@ -236,14 +236,14 @@ func TestFormatShadow(t *testing.T) {
 	src := `Window {
 		Text {
 			text: "x"
-			shadow: 2 2 5 #FF0000, -2 -2 5 primary, 0 0 8 #000000 inset
+			shadow: 2 2 5 #FF0000, -2 -2 5 theme.primary, 0 0 8 #000000 inset
 		}
 	}
 `
 	want := `Window {
 	Text {
 		text:   "x"
-		shadow: 2 2 5 #ff0000, -2 -2 5 primary, 0 0 8 #000000 inset
+		shadow: 2 2 5 #ff0000, -2 -2 5 theme.primary, 0 0 8 #000000 inset
 	}
 }
 `

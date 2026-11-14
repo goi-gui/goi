@@ -56,8 +56,16 @@ func shadowLayers(sh *syntax.Shadow) []ShadowLayer {
 		switch c := l.Color.(type) {
 		case *syntax.Color:
 			out[i].Color = c.RGBA
-		case *syntax.Ident:
-			out[i].Role = c.Val
+		case *syntax.Ref:
+			// The resolver reads the same prefixed name a colour property uses,
+			// so a custom colour may carry a scheme role's spelling without the
+			// two ever meeting.
+			switch c.ID {
+			case "theme":
+				out[i].Role = "theme:" + c.Prop
+			case "customColor":
+				out[i].Role = "custom:" + c.Prop
+			}
 		}
 	}
 	return out

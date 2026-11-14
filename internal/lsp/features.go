@@ -1591,8 +1591,9 @@ func colourItems(elName string) []completionResult {
 		InsertText: `"linear-gradient(90deg, `,
 		Kind:       kindColor, Detail: "CSS gradient",
 		Documentation: &doc{Kind: "markdown", Value: "**linear-gradient(angle, stop, stop …)**\n\n" +
-			"Fills the box along an angle: `90deg` points right, `0deg` up. Every colour position " +
-			"accepts a gradient, so `background`, `borderColor` and a shadow colour all take one."},
+			"Fills the box along an angle: `90deg` points right, `0deg` up. Only " +
+			"`background` takes one, and a stop may be a literal, a CSS name, " +
+			"`theme.<role>` or `customColor.<name>`."},
 	})
 	out = append(out, completionResult{
 		Label:      `"radial-gradient(…)"`,
@@ -2655,7 +2656,8 @@ func propDoc(el string, p schema.Prop) string {
 			"`x y [blur [spread]] [color] [inset]`, and several comma separated. " +
 			"`x y` is the offset, `blur` softens the edge, `spread` grows the shape " +
 			"(box only), and `inset` paints inside it. A colour is a `#rrggbb` " +
-			"literal, a theme role, or left out for the scheme's shadow. " +
+			"literal, a CSS name such as `red`, `theme.<role>` or " +
+			"`customColor.<name>`, or left out for the scheme's shadow. " +
 			"`shadow: none` removes it.")
 	}
 	if p.Name == "template" {

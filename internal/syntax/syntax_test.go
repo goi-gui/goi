@@ -567,9 +567,22 @@ func TestParseShadow(t *testing.T) {
 				t.Fatalf("color = %#v", l.Color)
 			}
 		}},
-		{"shadow: 2 2 primary", 1, func(t *testing.T, l ShadowLayer) {
-			if c, ok := l.Color.(*Ident); !ok || c.Val != "primary" {
+		{"shadow: 2 2 theme.primary", 1, func(t *testing.T, l ShadowLayer) {
+			c, ok := l.Color.(*Ref)
+			if !ok || c.ID != "theme" || c.Prop != "primary" {
 				t.Fatalf("color = %#v", l.Color)
+			}
+		}},
+		{"shadow: 2 2 customColor.brand", 1, func(t *testing.T, l ShadowLayer) {
+			c, ok := l.Color.(*Ref)
+			if !ok || c.ID != "customColor" || c.Prop != "brand" {
+				t.Fatalf("color = %#v", l.Color)
+			}
+		}},
+		{"shadow: 2 2 red", 1, func(t *testing.T, l ShadowLayer) {
+			c, ok := l.Color.(*Color)
+			if !ok || c.RGBA != 0xFF0000FF {
+				t.Fatalf("a CSS name should be a literal: %#v", l.Color)
 			}
 		}},
 		{"shadow: 2 2 5 #000000", 1, func(t *testing.T, l ShadowLayer) {
@@ -646,6 +659,9 @@ func TestParseShadowErrors(t *testing.T) {
 	cases := map[string]string{
 		"shadow: \"2 2\"":                   "starts with two offsets",
 		"shadow: 2":                         "second offset",
+		"shadow: 2 2 primary":               "names its namespace",
+		"shadow: 2 2 customColor":           "expected a colour name",
+		"shadow: 2 2 theme.":                "expected a colour name",
 		"shadow: 2 2 5 12 #000 inset extra": "",
 	}
 	for prop, want := range cases {

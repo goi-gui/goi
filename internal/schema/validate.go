@@ -957,19 +957,26 @@ func (v *validator) checkShadow(e *syntax.Element, pd *Prop, sh *syntax.Shadow) 
 		}
 		switch c := l.Color.(type) {
 		case nil, *syntax.Color:
+		case *syntax.Ref:
+			// `theme.primary` or `customColor.brand`: the namespace is what
+			// keeps the scheme and the app's own names apart. An unknown name is
+			// invisible here and warns at runtime, like a colour property.
+			if c.ID != "theme" && c.ID != "customColor" || c.Prop == "" {
+				v.add(c.At, c.At+syntax.Pos(len(c.ID)+len(c.Prop)+1),
+					fmt.Sprintf("%s.%s: a shadow color names theme.<role> or customColor.<name>", e.Name, pd.Name), "")
+			}
 		case *syntax.String:
 			if _, ok := csscolor.Parse(c.Val); !ok {
 				v.add(c.At, c.At+syntax.Pos(len(c.Val)+2),
 					fmt.Sprintf("%s.%s is not a valid shadow color: %q", e.Name, pd.Name, c.Val), "")
 			}
 		case *syntax.Ident:
-			// A theme role or a name the app defines with ui.SetCustomColor;
-			// the latter is invisible here, so any bare word is accepted and an
-			// unknown one warns at runtime, exactly like a colour property.
-			_ = c
+			v.add(c.At, c.At+syntax.Pos(len(c.Val)),
+				fmt.Sprintf("%s.%s: a shadow color needs its namespace: theme.%s or customColor.<name>",
+					e.Name, pd.Name, c.Val), "")
 		default:
 			v.add(l.At, l.At+1,
-				fmt.Sprintf("%s.%s: a shadow color is a hex literal or a role name", e.Name, pd.Name), "")
+				fmt.Sprintf("%s.%s: a shadow color is a hex literal, a CSS name, or theme.<role>/customColor.<name>", e.Name, pd.Name), "")
 		}
 	}
 }

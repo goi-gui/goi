@@ -204,19 +204,19 @@ Window {
 	}
 }
 
-// TestShadowResolvesItsRole keeps a themed shadow honest: `shadow: 2 2 primary`
-// follows the scheme, and a Go-set shadow reaches the painter.
+// TestShadowResolvesItsRole keeps a themed shadow honest: `shadow: 2 2
+// theme.primary` follows the scheme, and a Go-set shadow reaches the painter.
 func TestShadowResolvesItsRole(t *testing.T) {
 	tr, diag := BuildSource([]byte(`Window {
 	Column {
-		Rectangle { id: box width: 10 height: 10 shadow: 2 2 primary }
+		Rectangle { id: box width: 10 height: 10 shadow: 2 2 theme.primary }
 	}
 }`), nil)
 	if !diag.Empty() {
 		t.Fatalf("%v", diag)
 	}
 	box, _ := tr.ByID("box")
-	if got := box.Base().Shadow(); len(got) != 1 || got[0].Role != "primary" {
+	if got := box.Base().Shadow(); len(got) != 1 || got[0].Role != "theme:primary" {
 		t.Fatalf("shadow = %+v", got)
 	}
 	// The role is not a colour yet.
@@ -224,7 +224,7 @@ func TestShadowResolvesItsRole(t *testing.T) {
 		t.Fatal("a role was resolved before the theme ran")
 	}
 	if !tr.ResolveColors(func(name string) (uint32, bool) {
-		if name == "primary" {
+		if name == "theme:primary" {
 			return 0x6750A4FF, true
 		}
 		return 0, false
@@ -323,5 +323,48 @@ func TestSizeSetsBothAxes(t *testing.T) {
 	split, _ := tr.ByID("split")
 	if w, h := split.Base().Width(), split.Base().Height(); w != 10 || h != 32 {
 		t.Fatalf("size: 32 width: 10 gave %vx%v, want 10x32", w, h)
+	}
+}
+
+// TestGradientStopsResolveTheirRoles is the gradient half of the colour story:
+// a stop written as `theme.primary` follows the scheme, one written as
+// `customColor.brand` follows the app, and a literal beside them stays put.
+func TestGradientStopsResolveTheirRoles(t *testing.T) {
+	tr, diag := BuildSource([]byte(`Window { Column {
+		Rectangle { id: box width: 10 height: 10
+			background: "linear-gradient(90deg, theme.primary, customColor.brand 60%, #ffffff)"
+		}
+	} }`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	box, _ := tr.ByID("box")
+	g := box.Base().Gradient("background")
+	if g == nil || len(g.Stops) != 3 {
+		t.Fatalf("gradient = %+v", g)
+	}
+	if g.Stops[0].Color != 0 {
+		t.Fatalf("a role resolved before the theme ran: %08x", g.Stops[0].Color)
+	}
+	lookup := func(name string) (uint32, bool) {
+		switch name {
+		case "theme:primary":
+			return 0x6750A4FF, true
+		case "custom:brand":
+			return 0x112233FF, true
+		}
+		return 0, false
+	}
+	if !tr.ResolveColors(lookup) {
+		t.Fatal("ResolveColors reported no change")
+	}
+	if g.Stops[0].Color != 0x6750A4FF || g.Stops[1].Color != 0x112233FF {
+		t.Fatalf("resolved stops = %08x %08x", g.Stops[0].Color, g.Stops[1].Color)
+	}
+	if g.Stops[2].Color != 0xFFFFFFFF {
+		t.Fatalf("the literal stop changed: %08x", g.Stops[2].Color)
+	}
+	if _, dirty := box.Base().Dirty(); !dirty {
+		t.Fatal("a resolved gradient did not mark the node")
 	}
 }

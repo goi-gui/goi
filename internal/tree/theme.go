@@ -101,6 +101,14 @@ func (t *Tree) ResolveColors(lookup func(string) (uint32, bool)) bool {
 			changed = true
 		}
 	}
+	// A gradient keeps its roles on the stops, so a theme switch or a changed
+	// custom colour recolours every stop that follows one.
+	for _, b := range t.gradientNodes {
+		if b.resolveGradients(lookup) {
+			b.mark(DirtyPaint)
+			changed = true
+		}
+	}
 	// A chart's series colours are a list, so they have no cell the loop above
 	// could write. A role in one is resolved into the series it belongs to,
 	// which is what makes a custom colour follow SetCustomColor like the rest.

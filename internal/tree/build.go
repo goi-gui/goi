@@ -18,10 +18,12 @@ type Tree struct {
 	// exprNodes lists the nodes with at least one expression property, which
 	// includes a node whose only expression is a conditional modifier.
 	exprNodes []*NodeBase
-	// colorNodes lists the nodes with at least one role-valued color, and
-	// shadowNodes the ones whose shadow names a role.
-	colorNodes  []*NodeBase
-	shadowNodes []*NodeBase
+	// colorNodes lists the nodes with at least one role-valued color,
+	// shadowNodes the ones whose shadow names a role, and gradientNodes the
+	// ones whose gradient stops do.
+	colorNodes    []*NodeBase
+	shadowNodes   []*NodeBase
+	gradientNodes []*NodeBase
 	// viewW and viewH are the last viewport in logical pixels, so an expression
 	// can read window.width and window.height.
 	viewW, viewH float64

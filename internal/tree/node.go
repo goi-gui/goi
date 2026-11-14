@@ -153,8 +153,10 @@ type NodeBase struct {
 	colors      []colorSpec
 	colorListed bool
 	// shadowListed marks a node whose shadow has a role colour, so the frame
-	// loop resolves it with the rest of the theme.
-	shadowListed bool
+	// loop resolves it with the rest of the theme. gradientListed does the same
+	// for a background gradient whose stops name a colour.
+	shadowListed   bool
+	gradientListed bool
 	// scope binds the {#each} loop variables an expression inside this subtree
 	// may read.
 	scope *scope
@@ -470,6 +472,39 @@ func (b *NodeBase) setGradient(name string, g *csscolor.Gradient) {
 		b.gradient = map[string]*csscolor.Gradient{}
 	}
 	b.gradient[name] = g
+	if g.HasRoles() {
+		b.listGradient()
+	}
+}
+
+// listGradient registers the node for gradient stop resolution.
+func (b *NodeBase) listGradient() {
+	if b.tree == nil || b.gradientListed {
+		return
+	}
+	b.gradientListed = true
+	b.tree.gradientNodes = append(b.tree.gradientNodes, b)
+}
+
+// resolveGradients rewrites the stops that name a colour, keeping the name so a
+// later theme change resolves it again.
+func (b *NodeBase) resolveGradients(lookup func(string) (uint32, bool)) bool {
+	changed := false
+	for _, g := range b.gradient {
+		for i := range g.Stops {
+			role := g.Stops[i].Role
+			if role == "" {
+				continue
+			}
+			rgba, ok := lookup(role)
+			if !ok || g.Stops[i].Color == rgba {
+				continue
+			}
+			g.Stops[i].Color = rgba
+			changed = true
+		}
+	}
+	return changed
 }
 
 // Opacity returns the node's opacity, 0 to 1. 1 is fully opaque.

@@ -1,6 +1,10 @@
 package syntax
 
-import "bytes"
+import (
+	"bytes"
+
+	"github.com/goi-gui/goi/internal/csscolor"
+)
 
 // Parse parses src into a File. It always returns as many diagnostics as it can
 // find; File is nil when nothing parseable was produced (no root element).
@@ -1103,11 +1107,36 @@ func (p *parser) parseShadowLayer() (ShadowLayer, bool) {
 			p.next()
 			layer.Color = &Color{At: t.pos, RGBA: t.rgba}
 		case tokIdent:
-			p.next()
-			if t.text == "inset" {
+			switch {
+			case t.text == "inset":
+				p.next()
 				layer.Inset = true
-			} else {
-				layer.Color = &Ident{At: t.pos, Val: t.text}
+			case t.text == "theme" || t.text == "customColor":
+				// A role carries its namespace, so a shadow never guesses between
+				// the scheme and the app's own names.
+				p.next()
+				if p.peek().kind != tokDot {
+					p.errorf(p.peek(), "expected a colour name after `"+t.text+"."+"`")
+					return layer, false
+				}
+				p.next()
+				name := p.peek()
+				if name.kind != tokIdent || !p.sameLine(name.pos) {
+					p.errorf(name, "expected a colour name after `"+t.text+"."+"`")
+					return layer, false
+				}
+				p.next()
+				layer.Color = &Ref{At: t.pos, ID: t.text, Prop: name.text}
+			default:
+				// A bare word is a CSS colour name, never a role: a role must say
+				// which namespace it belongs to.
+				if rgba, ok := csscolor.Parse(t.text); ok {
+					p.next()
+					layer.Color = &Color{At: t.pos, RGBA: rgba}
+					break
+				}
+				p.errorf(t, "a shadow colour names its namespace: theme.<role> or customColor.<name>")
+				return layer, false
 			}
 		}
 	}
