@@ -938,6 +938,26 @@ func TestTextFieldTypeAndMask(t *testing.T) {
 	}
 }
 
+// TestTextFieldMaskEscape: a .goi string spells the mask's backslash twice, and
+// the escaped slot character shows as punctuation.
+func TestTextFieldMaskEscape(t *testing.T) {
+	const src = `Window {
+		Column {
+			padding: 10
+			TextField { id: issue width: 220 height: 56 type: numeric mask: "\\# ###" }
+		}
+	}`
+	_, win, in := inputFixture(t, src, 480, 320)
+	issue := MustByID[*TextField](win, "issue")
+	focusField(t, in, "issue", win)
+	for _, r := range "abc123" {
+		in.Char(r)
+	}
+	if got := issue.Text.Get(); got != "# 123" {
+		t.Fatalf("issue = %q, want # 123", got)
+	}
+}
+
 func TestSelectAllAndTypeReplaces(t *testing.T) {
 	_, win, in := inputFixture(t, inputUI, 480, 320)
 	ti := MustByID[*TextField](win, "field")

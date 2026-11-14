@@ -2575,7 +2575,8 @@ func propDoc(el string, p schema.Prop) string {
 		b.WriteString("\n\nFormats typed text: `#` is a digit, `@` a letter, `*` either, " +
 			"and every other character is a literal the field inserts itself. " +
 			"`mask: \"(###) ###-####\"` turns `5551234567` into `(555) 123-4567`; " +
-			"the value keeps the literals.")
+			"the value keeps the literals. A backslash makes the next character " +
+			"literal, so `\\#` is a hash to show; a `.goi` string spells it `\"\\\\#\"`.")
 	case "numeric":
 		b.WriteString("\n\nRight-aligns the column by default and sorts by the number inside " +
 			"each cell's `value`, so `1,200` orders as 1200.")

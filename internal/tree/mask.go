@@ -123,23 +123,29 @@ func fieldAllows(kind string, r rune) bool {
 }
 
 // maskTokens reads a mask: # is a digit, @ a letter, * either, and every other
-// rune is literal text.
-//
-// shortcut: there is no escape for a literal slot character, so a mask that
-// needs to show #, @ or * must be written differently; add one when a real mask
-// needs it.
+// rune is literal text. A backslash makes the next rune literal, so \#, \@ and
+// \* are punctuation in the mask rather than slots.
 type maskToken struct {
 	lit  rune
 	slot byte
 }
 
 func maskTokens(mask string) []maskToken {
-	out := make([]maskToken, 0, len(mask))
-	for _, r := range mask {
+	runes := []rune(mask)
+	out := make([]maskToken, 0, len(runes))
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		if r == '\\' && i+1 < len(runes) {
+			i++
+			out = append(out, maskToken{lit: runes[i]})
+			continue
+		}
 		switch r {
 		case '#', '@', '*':
 			out = append(out, maskToken{slot: byte(r)})
 		default:
+			// Every other rune is literal, including a trailing backslash,
+			// which has nothing left to escape.
 			out = append(out, maskToken{lit: r})
 		}
 	}

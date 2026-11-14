@@ -151,3 +151,32 @@ func TestInputMaskTruncatesAtTheLastSlot(t *testing.T) {
 		t.Fatalf("mask leaked into the value: %q", got)
 	}
 }
+
+// TestInputMaskEscapes: a backslash makes a slot character literal, and a
+// double backslash is a literal backslash.
+func TestInputMaskEscapes(t *testing.T) {
+	// \# is a hash to show, then # is the digit slot.
+	got, caret := InputInsert("", `\##`, "", 0, 0, "5")
+	if got != "#5" || caret != 2 {
+		t.Fatalf("escaped hash = %q caret %d, want #5", got, caret)
+	}
+	// A digit does not fit the literal, so nothing is entered before the slot.
+	got, _ = InputInsert("", `\#`, "", 0, 0, "5")
+	if got != "" {
+		t.Fatalf("escaped hash took input: %q", got)
+	}
+	// \\ is one literal backslash, then a digit slot.
+	got, _ = InputInsert("", `\\#`, "", 0, 0, "5")
+	if got != `\5` {
+		t.Fatalf("escaped backslash = %q", got)
+	}
+}
+
+// TestInputMaskEscapeSkipsLiteralsOnDelete still treats the escaped rune as a
+// literal: backspace removes the entered digit, never the shown punctuation.
+func TestInputMaskEscapeSkipsLiteralsOnDelete(t *testing.T) {
+	got, caret := InputDelete("", `\##`, "#5", 2, true)
+	if got != "" || caret != 0 {
+		t.Fatalf("backspace = %q caret %d, want the empty value", got, caret)
+	}
+}
