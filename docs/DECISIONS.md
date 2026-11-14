@@ -1936,3 +1936,18 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   colour stores the namespace and name beside the pixel value, and the same
   resolver that rewrites colour cells rewrites those stops, so a theme switch or
   a changed custom colour recolours a gradient without re-parsing its string.
+- **A slot is written once, and its fill carries elements only.** The same passed
+  children cannot land in two places in one tree, and a passed child with an `id`
+  would be declared twice, so a repeated `$name` is an error. A fill is a wrapper
+  with children; a property on it, or a bare marker at a call with no fragment
+  above it, would pass nothing, so both are diagnostics instead of silent holes.
+  A bare slot inside a nested fragment call forwards the enclosing fragment's
+  slot under the same name; `$name { … }` there is the inner call's own argument
+  and is left alone.
+- **A resolved element is never resolved again.** Expansion used to walk the
+  whole body with the fragment's import aliases, including the children the
+  caller passed in, so a child named like one of those aliases (a `Card`
+  component beside `import Card "./Card.goi"`) was read as a second fragment
+  call. Elements now carry a `Resolved` mark once the loader has expanded them,
+  and later passes copy them untouched, which is what "a child resolves its
+  imports in the file it was written in" needs.

@@ -188,7 +188,11 @@ func (l *loader) aliases(f *syntax.File) map[string]string {
 
 // instantiateFile expands a whole file's tree.
 func (l *loader) instantiateFile(f *syntax.File, name string, stack []string) (*syntax.File, syntax.Diagnostics) {
-	root, diag := l.expand(f.Root, l.aliases(f), stack)
+	// A slot in a file the app loads has no caller, so it is a mistake; a
+	// fragment opened on its own is allowed to keep one as an empty hole. A
+	// Window is never a fragment: its root is the window itself.
+	slots := f.IsFragment() && f.Root.Name != "Window"
+	root, diag := l.expand(f.Root, l.aliases(f), stack, slots)
 	if !diag.Empty() {
 		return nil, diag
 	}
@@ -278,29 +282,35 @@ func isNumericName(name string) bool {
 
 // expand walks one element tree, replacing fragment instances with their
 // content. aliases belongs to the file el came from.
-func (l *loader) expand(el *syntax.Element, aliases map[string]string, stack []string) (*syntax.Element, syntax.Diagnostics) {
+func (l *loader) expand(el *syntax.Element, aliases map[string]string, stack []string, slots bool) (*syntax.Element, syntax.Diagnostics) {
+	// An element another pass already resolved is concrete: its imports belong
+	// to the file it was written in, and that file may not be this one.
+	if el.Resolved {
+		return copyElement(el), nil
+	}
 	// A fragment can stand at the root of the expansion too: filling a slot
 	// expands each child on its own, and a fragment may wrap another one.
 	if target, ok := aliases[el.Name]; ok {
 		return l.instance(target, el, aliases, stack)
 	}
 	out := copyElement(el)
-	kids, diag := l.expandMembers(out.Members, aliases, stack)
+	kids, diag := l.expandMembers(out.Members, aliases, stack, slots)
 	if !diag.Empty() {
 		return nil, diag
 	}
 	out.Members = kids
+	out.Resolved = true
 	return out, nil
 }
 
 // expandMembers expands one member list, including the arms of a control block.
-func (l *loader) expandMembers(members []syntax.Member, aliases map[string]string, stack []string) ([]syntax.Member, syntax.Diagnostics) {
+func (l *loader) expandMembers(members []syntax.Member, aliases map[string]string, stack []string, slots bool) ([]syntax.Member, syntax.Diagnostics) {
 	kids := make([]syntax.Member, 0, len(members))
 	for _, m := range members {
 		switch child := m.(type) {
 		case *syntax.Block:
 			for i := range child.Branches {
-				expanded, diag := l.expandMembers(child.Branches[i].Members, aliases, stack)
+				expanded, diag := l.expandMembers(child.Branches[i].Members, aliases, stack, slots)
 				if !diag.Empty() {
 					return nil, diag
 				}
@@ -308,12 +318,27 @@ func (l *loader) expandMembers(members []syntax.Member, aliases map[string]strin
 			}
 			kids = append(kids, child)
 		case *syntax.Element:
-			if strings.HasPrefix(child.Name, "$") {
-				// A slot with no caller: the fragment is being previewed on
-				// its own, so nothing goes there.
+			if child.Resolved {
+				kids = append(kids, copyElement(child))
 				continue
 			}
-			expanded, diag := l.expand(child, aliases, stack)
+			if strings.HasPrefix(child.Name, "$") {
+				if !slots {
+					// A slot is filled by whoever imports the file, and the file
+					// a program loads has nobody above it. Saying so beats
+					// silently dropping what the design meant as a hole.
+					return nil, syntax.Diagnostics{{
+						Pos:     child.NameAt,
+						End:     child.NameAt + syntax.Pos(len(child.Name)),
+						Src:     child.Src,
+						Message: fmt.Sprintf("%s is a slot: only a fragment can declare one, because nothing above the loaded file fills it", child.Name),
+					}}
+				}
+				// A fragment previewed on its own has no caller, so nothing
+				// goes there.
+				continue
+			}
+			expanded, diag := l.expand(child, aliases, stack, slots)
 			if !diag.Empty() {
 				return nil, diag
 			}
@@ -390,6 +415,25 @@ func (l *loader) instance(target string, call *syntax.Element, callerAliases map
 	var unnamed []*syntax.Element
 	for _, k := range call.Children() {
 		if strings.HasPrefix(k.Name, "$") {
+			if k.Open == k.NameAt {
+				// A bare slot is a marker in a fragment body; by the time a call
+				// is expanded, a fragment's own marker has already been filled,
+				// so one here would pass nothing at all.
+				return nil, syntax.Diagnostics{{
+					Pos:     k.NameAt,
+					End:     k.NameAt + syntax.Pos(len(k.Name)),
+					Src:     call.Src,
+					Message: fmt.Sprintf("%s at a call passes nothing: write %s { … } to fill the slot", k.Name, k.Name),
+				}}
+			}
+			if props := k.Props(); len(props) > 0 {
+				return nil, syntax.Diagnostics{{
+					Pos:     props[0].NameAt,
+					End:     props[0].NameAt + syntax.Pos(len(props[0].Name)),
+					Src:     call.Src,
+					Message: fmt.Sprintf("%s takes elements only: a slot is filled with children, not properties", k.Name),
+				}}
+			}
 			if _, ok := slots[k.Name]; !ok {
 				names = append(names, k.Name)
 				namedAt[k.Name] = k.NameAt
@@ -401,7 +445,7 @@ func (l *loader) instance(target string, call *syntax.Element, callerAliases map
 	}
 	slots["$children"] = append(slots["$children"], unnamed...)
 
-	found, diag := l.fillSlot(body, slots, callerAliases, append(stack, target))
+	found, diag := l.fillSlot(body, slots, callerAliases, l.aliases(f), append(stack, target))
 	if !diag.Empty() {
 		return nil, diag
 	}
@@ -427,7 +471,7 @@ func (l *loader) instance(target string, call *syntax.Element, callerAliases map
 		}}
 	}
 
-	expanded, diag := l.expand(body, l.aliases(f), append(stack, target))
+	expanded, diag := l.expand(body, l.aliases(f), append(stack, target), true)
 	if !diag.Empty() {
 		return nil, diag
 	}
@@ -438,9 +482,9 @@ func (l *loader) instance(target string, call *syntax.Element, callerAliases map
 // slot, expanded in the caller's file so their own imports resolve there. A slot
 // anywhere in the fragment body counts, inside a block arm too, which is how a
 // fragment forwards its children. It reports the slots it found.
-func (l *loader) fillSlot(el *syntax.Element, slots map[string][]*syntax.Element, callerAliases map[string]string, stack []string) (map[string]bool, syntax.Diagnostics) {
+func (l *loader) fillSlot(el *syntax.Element, slots map[string][]*syntax.Element, callerAliases, fragAliases map[string]string, stack []string) (map[string]bool, syntax.Diagnostics) {
 	found := map[string]bool{}
-	members, diag := l.fillMembers(el.Members, slots, callerAliases, stack, found)
+	members, diag := l.fillMembers(el.Members, slots, callerAliases, fragAliases, stack, false, found)
 	if !diag.Empty() {
 		return found, diag
 	}
@@ -450,13 +494,13 @@ func (l *loader) fillSlot(el *syntax.Element, slots map[string][]*syntax.Element
 
 // fillMembers fills the slots in one member list, recursing into blocks and
 // nested elements.
-func (l *loader) fillMembers(members []syntax.Member, slots map[string][]*syntax.Element, callerAliases map[string]string, stack []string, found map[string]bool) ([]syntax.Member, syntax.Diagnostics) {
+func (l *loader) fillMembers(members []syntax.Member, slots map[string][]*syntax.Element, callerAliases, fragAliases map[string]string, stack []string, inCall bool, found map[string]bool) ([]syntax.Member, syntax.Diagnostics) {
 	out := make([]syntax.Member, 0, len(members))
 	for _, m := range members {
 		switch x := m.(type) {
 		case *syntax.Block:
 			for i := range x.Branches {
-				arm, diag := l.fillMembers(x.Branches[i].Members, slots, callerAliases, stack, found)
+				arm, diag := l.fillMembers(x.Branches[i].Members, slots, callerAliases, fragAliases, stack, inCall, found)
 				if !diag.Empty() {
 					return nil, diag
 				}
@@ -465,9 +509,59 @@ func (l *loader) fillMembers(members []syntax.Member, slots map[string][]*syntax
 			out = append(out, x)
 		case *syntax.Element:
 			if strings.HasPrefix(x.Name, "$") {
+				if inCall && len(x.Members) > 0 {
+					// Inside a nested fragment call this is that call's argument,
+					// not this fragment's slot: leave it for the inner instance.
+					out = append(out, x)
+					continue
+				}
+				if len(x.Members) > 0 {
+					// The same shape fills a slot at a call, so this reads as one;
+					// inside a fragment it is a slot that cannot take content of
+					// its own.
+					at := x.NameAt
+					if pr := x.Props(); len(pr) > 0 {
+						at = pr[0].NameAt
+					}
+					return nil, syntax.Diagnostics{{
+						Pos:     at,
+						End:     at + syntax.Pos(len(x.Name)),
+						Src:     x.Src,
+						Message: fmt.Sprintf("%s in a fragment takes no properties or children: fill it from the instance as %s { … }", x.Name, x.Name),
+					}}
+				}
+				if found[x.Name] {
+					return nil, syntax.Diagnostics{{
+						Pos:     x.NameAt,
+						End:     x.NameAt + syntax.Pos(len(x.Name)),
+						Src:     x.Src,
+						Message: fmt.Sprintf("%s appears more than once in this fragment: write a slot once, so the elements it receives have one home", x.Name),
+					}}
+				}
 				found[x.Name] = true
+				if inCall {
+					// Forwarding keeps the slot's name: the elements become the
+					// inner call's `$name`, not its plain children, or a named
+					// slot would land in the unnamed one.
+					fill := &syntax.Element{
+						Name: x.Name, NameAt: x.NameAt, Src: x.Src,
+						// A body, even when empty: this is a fill at a call.
+						Open: x.NameAt + 1, Close: x.NameAt + 1,
+					}
+					for _, k := range slots[x.Name] {
+						expanded, diag := l.expand(copyElement(k), callerAliases, stack, true)
+						if !diag.Empty() {
+							return nil, diag
+						}
+						fill.Members = append(fill.Members, expanded)
+					}
+					if len(fill.Members) > 0 {
+						out = append(out, fill)
+					}
+					continue
+				}
 				for _, k := range slots[x.Name] {
-					expanded, diag := l.expand(copyElement(k), callerAliases, stack)
+					expanded, diag := l.expand(copyElement(k), callerAliases, stack, true)
 					if !diag.Empty() {
 						return nil, diag
 					}
@@ -475,7 +569,11 @@ func (l *loader) fillMembers(members []syntax.Member, slots map[string][]*syntax
 				}
 				continue
 			}
-			nested, diag := l.fillMembers(x.Members, slots, callerAliases, stack, found)
+			// A bare slot inside a nested fragment call is how a fragment
+			// forwards its children: fill it here. A slot with content is that
+			// call's own argument, which the rule above leaves alone.
+			_, isCall := fragAliases[x.Name]
+			nested, diag := l.fillMembers(x.Members, slots, callerAliases, fragAliases, stack, inCall || isCall, found)
 			if !diag.Empty() {
 				return nil, diag
 			}
@@ -551,7 +649,7 @@ func substValue(v syntax.Value, props map[string]syntax.Value, src, from string,
 				Pos:     x.At,
 				End:     x.At + syntax.Pos(len(x.ID)+1+len(x.Prop)),
 				Src:     src,
-				Message: fmt.Sprintf("%s has no prop %q: a slice or a map has no zero literal, so the instance must pass one", from, x.Prop),
+				Message: fmt.Sprintf("props.%s is not set: a slice or a map has no literal default, so %s must pass one", x.Prop, from),
 			})
 			return x, diag
 		}
@@ -638,12 +736,13 @@ func applyOverrides(el *syntax.Element, props []*syntax.Property) {
 // not share AST pointers.
 func copyElement(el *syntax.Element) *syntax.Element {
 	out := &syntax.Element{
-		Name:    el.Name,
-		NameAt:  el.NameAt,
-		Open:    el.Open,
-		Close:   el.Close,
-		Src:     el.Src,
-		Members: copyMembers(el.Members),
+		Name:     el.Name,
+		NameAt:   el.NameAt,
+		Open:     el.Open,
+		Close:    el.Close,
+		Src:      el.Src,
+		Members:  copyMembers(el.Members),
+		Resolved: el.Resolved,
 	}
 	return out
 }

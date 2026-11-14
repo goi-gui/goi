@@ -72,7 +72,10 @@ func main() {
 			fail = true
 			continue
 		}
-		if b.File.IsFragment() || b.File.Root.Name != "Window" {
+		// The root decides: a Window is a program's entry point whatever slots
+		// its children pass, and anything else is part of a design. A file that
+		// fills an empty slot is not a fragment for this.
+		if b.File.Root.Name != "Window" {
 			if !*checkLayout && !*ops {
 				fmt.Printf("%s: ok (fragment, %d props, %d files)\n", file, len(b.File.Props), len(b.Files))
 				continue

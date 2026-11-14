@@ -12,8 +12,14 @@ type Kind struct {
 	Container bool
 }
 
-// Kinds lists every Material 3 component, in the order they appear in docs.
+// Kinds lists every Material 3 component, in the order the docs group them.
 var Kinds = []Kind{
+	// Layout and structure.
+	{"Divider", false},
+	// Content: components that are plain nodes with behaviour.
+	{"Code", false},
+	{"Markdown", false},
+	// Actions.
 	{"Button", false},
 	{"IconButton", false},
 	{"FAB", false},
@@ -22,28 +28,33 @@ var Kinds = []Kind{
 	{"SplitButton", false},
 	{"SegmentedButton", false},
 	{"Chip", false},
-	{"Badge", false},
+	{"Toolbar", true},
+	// Selection controls.
 	{"Checkbox", false},
 	{"RadioButton", false},
 	{"Switch", false},
 	{"Slider", false},
+	// Text input.
 	{"TextField", false},
 	{"SearchBar", false},
-	{"Tooltip", true},
+	{"TextArea", false},
+	// Containment.
 	{"Card", true},
 	{"Dialog", true},
 	{"BottomSheet", true},
 	{"SideSheet", true},
-	{"Divider", false},
 	{"List", true},
 	{"ListItem", false},
+	{"Menu", true},
+	{"MenuItem", false},
+	{"Snackbar", false},
+	{"Tooltip", true},
 	{"Table", true},
 	{"TableColumn", false},
 	{"TableRow", true},
 	{"TableCell", true},
-	{"Menu", true},
-	{"MenuItem", false},
-	{"Snackbar", false},
+	{"Carousel", true},
+	// Navigation.
 	{"TopAppBar", false},
 	{"NavigationBar", true},
 	{"NavigationRail", true},
@@ -51,16 +62,15 @@ var Kinds = []Kind{
 	{"NavigationItem", false},
 	{"Tabs", true},
 	{"Tab", false},
+	// Status and progress.
+	{"Badge", false},
 	{"LinearProgress", false},
 	{"CircularProgress", false},
 	{"LoadingIndicator", false},
+	// Date and time.
 	{"DatePicker", true},
 	{"TimePicker", true},
-	{"Carousel", true},
-	{"Toolbar", true},
-	{"TextArea", false},
-	{"Code", false},
-	{"Markdown", false},
+	// Charts.
 	{"LineChart", false},
 	{"AreaChart", false},
 	{"BarChart", false},
@@ -157,7 +167,8 @@ func Flow(kind string) bool {
 	switch kind {
 	case "ButtonGroup", "Toolbar", "Carousel", "FABMenu", "Tabs",
 		"NavigationBar", "NavigationRail", "NavigationDrawer", "List", "Menu",
-		"Card", "Dialog", "BottomSheet", "SideSheet", "DatePicker", "TimePicker":
+		"Card", "Dialog", "BottomSheet", "SideSheet", "DatePicker", "TimePicker",
+		"Tooltip":
 		return true
 	}
 	return false

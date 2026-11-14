@@ -1122,3 +1122,25 @@ func TestMultilineStringDiagnostics(t *testing.T) {
 		t.Fatalf("diagnostic = %v", diag)
 	}
 }
+
+// TestEmptySlotBodyIsADeclaration is the form the docs use: `$children {}` and
+// the bare `$children` both declare an insertion point, so both make the file a
+// fragment. A body with content in it fills a slot instead.
+func TestEmptySlotBodyIsADeclaration(t *testing.T) {
+	for _, src := range []string{`Column { $children }`, `Column { $children {} }`, `Column { $header {} }`} {
+		f, diag := Parse([]byte(src))
+		if !diag.Empty() {
+			t.Fatalf("%q: %v", src, diag)
+		}
+		if !f.IsFragment() {
+			t.Fatalf("%q did not mark a fragment", src)
+		}
+	}
+	f, diag := Parse([]byte(`Window { Card { $header { Text { text: "x" } } } }`))
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	if f.IsFragment() {
+		t.Fatal("filling a slot made the caller a fragment")
+	}
+}

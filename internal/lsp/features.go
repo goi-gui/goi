@@ -560,10 +560,10 @@ func listVars(file *syntax.File) []string {
 }
 
 // slotItems offers `$children` inside an element body. Only a container can
-// hold it, and only once, since a second slot is almost always a typo.
+// hold one, and a fragment writes each slot once.
 func slotItems(file *syntax.File, src []byte, off int) []completionResult {
 	if el, ok := schema.Lookup(enclosingElementName(file, src, off)); ok {
-		if !el.Children || hasSlot(elementAt(file, off)) {
+		if !el.Children {
 			return nil
 		}
 	}
@@ -571,22 +571,9 @@ func slotItems(file *syntax.File, src []byte, off int) []completionResult {
 		Label:         "$children",
 		Kind:          kindKeyword,
 		Detail:        "slot",
-		Snippet:       "$children {\n\t$0\n}",
+		Snippet:       "$children",
 		Documentation: &doc{Kind: "markdown", Value: slotDoc},
 	}}
-}
-
-// hasSlot reports whether an element already writes `$children`.
-func hasSlot(el *syntax.Element) bool {
-	if el == nil {
-		return false
-	}
-	for _, k := range el.Children() {
-		if k.Name == "$children" {
-			return true
-		}
-	}
-	return false
 }
 
 // globalItems lists the members of a reserved namespace. A design can read

@@ -906,7 +906,7 @@ func TestNonWindowRootIsNotAnEntryError(t *testing.T) {
 }
 
 // TestCompletionOffersChildrenSlot keeps the slot discoverable where it is
-// valid: a container body, once, and never inside a leaf.
+// valid: a container body, and never inside a leaf.
 func TestCompletionOffersChildrenSlot(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()

@@ -793,6 +793,12 @@ func (p *parser) parseSlot() *Element {
 	ml := p.parseMembers()
 	el.Members = ml.members
 	el.Close = ml.close
+	// An empty body is how the documentation has always written a declaration
+	// (`$children {}`), so it marks a fragment exactly like the bare form. A
+	// body with anything in it is a call filling the slot.
+	if len(el.Members) == 0 {
+		p.slot = true
+	}
 	return el
 }
 

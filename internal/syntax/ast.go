@@ -295,6 +295,11 @@ type Element struct {
 	// Members preserves source order so instantiation and error messages are
 	// predictable. Use Props/Children to read them by kind.
 	Members []Member
+	// Resolved marks an element the loader has finished with: its imports are
+	// expanded and its instance is a concrete schema element. A later pass must
+	// not resolve it again, or a child written in one file could be read as a
+	// fragment call of the file it was passed into.
+	Resolved bool
 }
 
 // Props returns the element's properties in source order.
