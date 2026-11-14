@@ -49,7 +49,10 @@ func TestColorPickerPaintsTheControls(t *testing.T) {
 		}
 	}
 	if texts["#ff0000"] != 2 {
-		t.Fatalf("hex appears %d times, want the header and the footer", texts["#ff0000"])
+		t.Fatalf("hex appears %d times, want the header and the field", texts["#ff0000"])
+	}
+	if texts["Cancel"] != 1 || texts["OK"] != 1 {
+		t.Fatalf("actions = Cancel %d OK %d", texts["Cancel"], texts["OK"])
 	}
 	if !square {
 		t.Fatal("no hue square")
@@ -71,7 +74,7 @@ func TestColorPickerPaintsTheControls(t *testing.T) {
 // TestColorLayoutHitMapping: the square maps to saturation and value, the bar
 // to hue, and both clamp outside their box.
 func TestColorLayoutHitMapping(t *testing.T) {
-	cl := ColorLayoutOf(tree.Rect{X: 100, Y: 100, W: 328, H: 300})
+	cl := ColorLayoutOf(tree.Rect{X: 100, Y: 100, W: 328, H: 372})
 	s, v := cl.SVAt(cl.SV.X, cl.SV.Y)
 	if s != 0 || v != 1 {
 		t.Fatalf("top-left = %v %v, want 0 1", s, v)

@@ -10,7 +10,7 @@ import (
 const colorPickerUI = `Window {
 	Column {
 		padding: 10
-		ColorPicker { id: color width: 328 height: 300 text: "#ff0000" }
+		ColorPicker { id: color width: 328 height: 372 text: "#ff0000" }
 	}
 }`
 
@@ -99,5 +99,111 @@ func TestColorPickerKeyboard(t *testing.T) {
 	in.key(tree.KeyEnter, noMods)
 	if submits != 1 {
 		t.Fatalf("Enter submits = %d", submits)
+	}
+}
+
+// TestColorPickerHexInput types a colour into the field, reports it once it
+// parses, and OK normalizes and submits it.
+func TestColorPickerHexInput(t *testing.T) {
+	_, win, in := inputFixture(t, colorPickerUI, 480, 450)
+	cp := MustByID[*ColorPicker](win, "color")
+	cl := paint.ColorLayoutOf(absoluteRect(cp))
+	edits, submits, oks := 0, 0, 0
+	var last string
+	cp.OnEdit(func(v string) { edits++; last = v })
+	cp.OnSubmit(func(v string) { submits++; last = v })
+	cp.OnOK(func(v string) { oks++; last = v })
+
+	// Focus the field, select the whole value and type a new one without the
+	// leading hash.
+	in.MouseDown(cl.Hex.X+cl.Hex.W/2, cl.Hex.Y+cl.Hex.H/2, 0, false)
+	in.MouseUp(cl.Hex.X+cl.Hex.W/2, cl.Hex.Y+cl.Hex.H/2, 0)
+	in.key(tree.KeyA, tree.Mods{Ctrl: true})
+	for _, r := range "00ff00" {
+		in.Char(r)
+	}
+	if got := cp.Text.Get(); got != "00ff00" {
+		t.Fatalf("typed text = %q", got)
+	}
+	// The three-digit prefix parses too, so the last edit is the full colour.
+	if edits == 0 || last != "#00ff00" {
+		t.Fatalf("edits = %d last = %q", edits, last)
+	}
+	in.key(tree.KeyEnter, noMods)
+	if got := cp.Text.Get(); got != "#00ff00" {
+		t.Fatalf("Enter did not normalize: %q", got)
+	}
+	if submits != 1 || oks != 1 || last != "#00ff00" {
+		t.Fatalf("submits = %d OKs = %d last = %q", submits, oks, last)
+	}
+}
+
+// TestColorPickerActions: Cancel and OK report their own events, and OK also
+// submits; a click on the field does not leak into an action.
+func TestColorPickerActions(t *testing.T) {
+	_, win, in := inputFixture(t, colorPickerUI, 480, 450)
+	cp := MustByID[*ColorPicker](win, "color")
+	cl := paint.ColorLayoutOf(absoluteRect(cp))
+	cancels, submits, oks := 0, 0, 0
+	var last string
+	cp.OnCancel(func(v string) { cancels++; last = v })
+	cp.OnSubmit(func(v string) { submits++; last = v })
+	cp.OnOK(func(v string) { oks++; last = v })
+
+	click := func(box tree.Rect) {
+		x, y := box.X+box.W/2, box.Y+box.H/2
+		in.MouseDown(x, y, 0, false)
+		in.MouseUp(x, y, 0)
+	}
+	click(cl.OK)
+	if oks != 1 || submits != 1 || last != "#ff0000" {
+		t.Fatalf("OK = %d submits = %d last = %q", oks, submits, last)
+	}
+	click(cl.Cancel)
+	if cancels != 1 || last != "#ff0000" {
+		t.Fatalf("Cancel = %d last = %q", cancels, last)
+	}
+}
+
+// TestColorPickerHexFilters: only hex digits and the hash reach the field.
+func TestColorPickerHexFilters(t *testing.T) {
+	_, win, in := inputFixture(t, colorPickerUI, 480, 450)
+	cp := MustByID[*ColorPicker](win, "color")
+	cl := paint.ColorLayoutOf(absoluteRect(cp))
+	in.MouseDown(cl.Hex.X+cl.Hex.W/2, cl.Hex.Y+cl.Hex.H/2, 0, false)
+	in.MouseUp(cl.Hex.X+cl.Hex.W/2, cl.Hex.Y+cl.Hex.H/2, 0)
+	in.key(tree.KeyA, tree.Mods{Ctrl: true})
+	for _, r := range "zz!gg" {
+		in.Char(r)
+	}
+	if got := cp.Text.Get(); got != "#ff0000" {
+		t.Fatalf("non-hex text changed the value: %q", got)
+	}
+}
+
+// TestColorPickerTypingFromTheCard: with the picker itself focused, a hex
+// character starts editing and replaces the old value; a committed run takes the
+// same path.
+func TestColorPickerTypingFromTheCard(t *testing.T) {
+	_, win, in := inputFixture(t, colorPickerUI, 480, 450)
+	cp := MustByID[*ColorPicker](win, "color")
+	in.setKbd(cp)
+	for _, r := range "ff8800" {
+		in.Char(r)
+	}
+	if !cp.HexActive {
+		t.Fatal("typing did not enter the hex field")
+	}
+	if got := cp.Text.Get(); got != "ff8800" {
+		t.Fatalf("typed = %q", got)
+	}
+	if h, _, _ := cp.HSV(); h < 30 || h > 45 {
+		t.Fatalf("hue = %v, want orange", h)
+	}
+
+	in.setFocus(nil)
+	in.CommitText("#00ff00")
+	if got := cp.Text.Get(); got != "#00ff00" {
+		t.Fatalf("committed = %q", got)
 	}
 }

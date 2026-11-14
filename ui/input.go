@@ -629,6 +629,10 @@ func (i *interactor) pointerAt(hit tree.Node) {
 		i.pointer(platform.CursorPointer)
 		return
 	}
+	if _, _, _, ok := colorFieldAt(hit, i.cursorX, i.cursorY); ok {
+		i.pointer(platform.CursorText)
+		return
+	}
 	if n, _, ok := colorAt(hit, i.cursorX, i.cursorY); ok && n != nil {
 		i.pointer(platform.CursorCrosshair)
 		return
@@ -743,6 +747,21 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 
 	if hit == nil {
 		return
+	}
+	// The picker's hex field is a text field inside the card: focus it, put the
+	// caret where the press landed, and drag a selection from there.
+	if button == 0 {
+		if n, c, cp, ok := colorFieldAt(hit, x, y); ok {
+			i.scrollNode = nil
+			i.setKbd(n)
+			i.beginColorHex(cp, false)
+			c.FocusRing = false
+			i.textField = c
+			i.selecting = true
+			i.dragX = x
+			i.pressText(c, x, y, shift)
+			return
+		}
 	}
 	// The dial is dragged, not clicked once: the press moves the hand to the
 	// pointer and every move follows, so any minute is reachable.
@@ -927,6 +946,8 @@ func (i *interactor) activate(n tree.Node, c *tree.Component, x, y float64) {
 		i.pickDate(n, c, x, y)
 	case "TimePicker":
 		i.pickTime(n, c, x, y)
+	case "ColorPicker":
+		i.pickColorAction(n, x, y)
 	}
 	c.Click.Emit(tree.ClickEvent{X: x, Y: y})
 	i.markDirty()
@@ -1316,6 +1337,51 @@ func (i *interactor) finishPick(n tree.Node, c *tree.Component, tp *tree.TimePic
 	i.markDirty()
 }
 
+// colorFieldAt returns the ColorPicker whose hex field holds the point.
+func colorFieldAt(hit tree.Node, x, y float64) (tree.Node, *tree.Component, *tree.ColorPicker, bool) {
+	for ; hit != nil; hit = hit.Base().Parent() {
+		if _, ok := hit.(*tree.ColorPicker); ok {
+			break
+		}
+	}
+	if hit == nil {
+		return nil, nil, nil, false
+	}
+	cp, _ := hit.(*tree.ColorPicker)
+	c := comp(hit)
+	if cp == nil || c == nil {
+		return nil, nil, nil, false
+	}
+	cl := paint.ColorLayoutOf(absoluteRect(hit))
+	if !hitRect(cl.Hex, x, y) {
+		return nil, nil, nil, false
+	}
+	return hit, c, cp, true
+}
+
+// beginColorHex makes the picker's field the text focus. Typing from the card
+// selects the old value so the first character replaces it.
+func (i *interactor) beginColorHex(cp *tree.ColorPicker, selectAll bool) {
+	n := cp.Base().Node()
+	c := comp(n)
+	if c == nil {
+		return
+	}
+	cp.HexActive = true
+	if cp.Text.Get() != "" {
+		cp.Text.Set(cp.Hex())
+	}
+	i.setFocus(c)
+	if selectAll {
+		cp.SelectAll()
+	} else {
+		cp.Caret = len(cp.Text.Get())
+		cp.ClearSelection()
+	}
+	cp.Base().MarkDirty(tree.DirtyPaint)
+	i.markDirty()
+}
+
 // colorAt returns the ColorPicker whose square or hue bar holds the point, and
 // whether it is the hue bar. A few pixels around the thin bar still grab it.
 func colorAt(hit tree.Node, x, y float64) (tree.Node, bool, bool) {
@@ -1335,6 +1401,46 @@ func colorAt(hit tree.Node, x, y float64) (tree.Node, bool, bool) {
 		return hit, true, true
 	}
 	return nil, false, false
+}
+
+// pickColorAction runs the Cancel and OK actions a press on the picker releases.
+func (i *interactor) pickColorAction(n tree.Node, x, y float64) {
+	cp, _ := n.(*tree.ColorPicker)
+	if cp == nil {
+		return
+	}
+	cl := paint.ColorLayoutOf(absoluteRect(n))
+	switch {
+	case hitRect(cl.Cancel, x, y):
+		i.colorCancel(cp)
+	case hitRect(cl.OK, x, y):
+		i.colorOK(cp)
+	}
+}
+
+// colorOK reports the normalized value through onSubmit and onOK, then leaves
+// the hex field.
+func (i *interactor) colorOK(cp *tree.ColorPicker) {
+	hex := cp.CommitHex()
+	cp.HexActive = false
+	if c := comp(cp); c != nil {
+		c.Submit.Emit(hex)
+	}
+	cp.OK.Emit(hex)
+	i.setFocus(nil)
+	cp.Base().MarkDirty(tree.DirtyPaint)
+	i.markDirty()
+}
+
+// colorCancel reports the current value through onCancel and closes the hex
+// field; the app decides whether that means reverting.
+func (i *interactor) colorCancel(cp *tree.ColorPicker) {
+	hex := cp.CommitHex()
+	cp.HexActive = false
+	cp.Cancel.Emit(hex)
+	i.setFocus(nil)
+	cp.Base().MarkDirty(tree.DirtyPaint)
+	i.markDirty()
 }
 
 // dragColor follows the pointer on the control the press took, so leaving the
@@ -1395,8 +1501,10 @@ func (i *interactor) colorKey(n tree.Node, k tree.Key, mods tree.Mods) bool {
 			v -= step / 100
 		}
 	case tree.KeyEnter:
-		c.Submit.Emit(cp.Hex())
-		i.markDirty()
+		i.colorOK(cp)
+		return true
+	case tree.KeyEscape:
+		i.colorCancel(cp)
 		return true
 	default:
 		return false
@@ -2194,11 +2302,15 @@ func (i *interactor) key(k tree.Key, mods tree.Mods) {
 		// value, which is what submitting a form means.
 		if isMultiline(f) {
 			i.insert(f, "\n")
+		} else if cp := colorPickerOf(f); cp != nil {
+			i.colorOK(cp)
 		} else {
 			f.Submit.Emit(f.Text.Get())
 		}
 	case tree.KeyEscape:
-		if _, _, ok := f.Selection(); ok {
+		if cp := colorPickerOf(f); cp != nil {
+			i.colorCancel(cp)
+		} else if _, _, ok := f.Selection(); ok {
 			f.ClearSelection()
 			f.Base().MarkDirty(tree.DirtyPaint)
 		}
@@ -2212,6 +2324,13 @@ func (i *interactor) Char(r rune) {
 	i.event("Char", "rune", string(r))
 	if i.pickerText(string(r)) {
 		return
+	}
+	if i.focus == nil && r >= 32 {
+		if cp, ok := i.kbd.(*tree.ColorPicker); ok && strings.ContainsRune(colorHexRunes, r) {
+			i.beginColorHex(cp, true)
+			i.insert(comp(cp), string(r))
+			return
+		}
 	}
 	f := i.focus
 	if f == nil || r < 32 {
@@ -2240,6 +2359,13 @@ func (i *interactor) CommitText(text string) {
 	// the keyboard, and every platform delivers them here.
 	if i.pickerText(text) {
 		return
+	}
+	if i.focus == nil {
+		if cp, ok := i.kbd.(*tree.ColorPicker); ok && hasColorHexRune(text) {
+			i.beginColorHex(cp, true)
+			i.insert(comp(cp), text)
+			return
+		}
 	}
 	f := i.focus
 	if f == nil || !isTextField(f) {
@@ -2278,7 +2404,13 @@ func minInt(a, b int) int {
 // isTextField reports whether the component takes IME input.
 func isTextField(c *tree.Component) bool {
 	n := c.Base().Node()
-	return n != nil && (n.Kind() == "TextField" || n.Kind() == "SearchBar" || n.Kind() == "TextArea")
+	if n == nil {
+		return false
+	}
+	if cp, ok := n.(*tree.ColorPicker); ok {
+		return cp.HexActive
+	}
+	return n.Kind() == "TextField" || n.Kind() == "SearchBar" || n.Kind() == "TextArea"
 }
 
 // imeSync tells the platform input method whether a field is focused and where
@@ -2291,6 +2423,14 @@ func (i *interactor) imeSync() {
 	// A time picker's input variant takes digits from the keyboard too, so the
 	// platform's text input has to stay on for it, anchored to the active field.
 	if i.focus == nil {
+		// A colour picker takes letters even when its hex field is not open yet:
+		// the first one opens the field. Keeping the platform input on anchored
+		// to that field is what lets the browser deliver the character.
+		if _, ok := i.kbd.(*tree.ColorPicker); ok {
+			cl := paint.ColorLayoutOf(absoluteRect(i.kbd))
+			d.win.SetTextInput(true, cl.Hex.X+cl.Hex.W/2, cl.Hex.Y+cl.Hex.H/2, 2, 20)
+			return
+		}
 		if tp, ok := i.kbd.(*tree.TimePicker); ok && tp.Variant.Get() == "input" {
 			format := 12
 			if tp.HourFormat.Get() == 24 {
@@ -2515,6 +2655,10 @@ func (i *interactor) setFocus(c *tree.Component) {
 		// Leaving a field ends its composition: the input method will not
 		// commit text for a field the user has left.
 		i.focus.ClearPreedit()
+		if cp := colorPickerOf(i.focus); cp != nil && cp.HexActive {
+			cp.HexActive = false
+			cp.CommitHex()
+		}
 		i.focus.Focused = false
 		i.focus.Base().MarkDirty(tree.DirtyPaint)
 	}
@@ -2750,6 +2894,8 @@ func (i *interactor) deleteRange(f *tree.Component, a, b int) {
 	ns, caret := s[:a]+s[b:], a
 	if tf := textField(f); tf != nil {
 		ns, caret = tree.InputRemove(tf.Type.Get(), tf.Mask.Get(), s, a, b)
+	} else if colorPickerOf(f) != nil {
+		ns, caret = tree.InputRemove(colorHexRunes, "", s, a, b)
 	}
 	i.applyEdit(f, ns, caret)
 }
@@ -2764,6 +2910,8 @@ func (i *interactor) deleteBefore(f *tree.Component) {
 	ns, caret := s[:p]+s[c:], p
 	if tf := textField(f); tf != nil {
 		ns, caret = tree.InputDelete(tf.Type.Get(), tf.Mask.Get(), s, c, true)
+	} else if colorPickerOf(f) != nil {
+		ns, caret = tree.InputDelete(colorHexRunes, "", s, c, true)
 	}
 	i.applyEdit(f, ns, caret)
 }
@@ -2778,8 +2926,34 @@ func (i *interactor) deleteAfter(f *tree.Component) {
 	ns, caret := s[:c]+s[n:], c
 	if tf := textField(f); tf != nil {
 		ns, caret = tree.InputDelete(tf.Type.Get(), tf.Mask.Get(), s, c, false)
+	} else if colorPickerOf(f) != nil {
+		ns, caret = tree.InputDelete(colorHexRunes, "", s, c, false)
 	}
 	i.applyEdit(f, ns, caret)
+}
+
+// colorHexRunes is what the picker's hex field accepts: the hash and hex digits
+// in either case.
+const colorHexRunes = "0123456789abcdefABCDEF#"
+
+// hasColorHexRune reports whether text contains a character the hex field takes,
+// which is what starts editing when the card itself has keyboard focus.
+func hasColorHexRune(text string) bool {
+	for _, r := range text {
+		if strings.ContainsRune(colorHexRunes, r) {
+			return true
+		}
+	}
+	return false
+}
+
+// colorPickerOf returns the ColorPicker behind an editing component, or nil.
+func colorPickerOf(c *tree.Component) *tree.ColorPicker {
+	if c == nil {
+		return nil
+	}
+	cp, _ := c.Base().Node().(*tree.ColorPicker)
+	return cp
 }
 
 // textField returns the TextField behind an editing component, or nil.
@@ -2791,13 +2965,21 @@ func textField(c *tree.Component) *tree.TextField {
 	return tf
 }
 
-// applyEdit writes an edit back and reports it through onEdit.
+// applyEdit writes an edit back and reports it through onEdit. A colour picker's
+// field reports the colour only once the text parses, so a half-typed hex does
+// not reach the app.
 func (i *interactor) applyEdit(f *tree.Component, s string, caret int) {
 	f.Text.Set(s)
 	f.Caret = caret
 	f.ClearSelection()
 	f.Base().MarkDirty(tree.DirtyPaint)
-	f.Edit.Emit(s)
+	if cp := colorPickerOf(f); cp != nil {
+		if hex, ok := cp.ValidHex(); ok {
+			f.Edit.Emit(hex)
+		}
+	} else {
+		f.Edit.Emit(s)
+	}
 	i.markDirty()
 }
 
@@ -2927,6 +3109,10 @@ func fieldTextStart(n tree.Node) float64 {
 // 52dp search inset.
 func fieldTextBox(n tree.Node) tree.Rect {
 	box := absoluteRect(n)
+	if n.Kind() == "ColorPicker" {
+		field := paint.ColorLayoutOf(box).Hex
+		return tree.Rect{X: field.X + 12, Y: field.Y, W: field.W - 24, H: field.H}
+	}
 	if n.Kind() == "SearchBar" {
 		return tree.Rect{X: box.X + 52, Y: box.Y, W: box.W - 104, H: box.H}
 	}
@@ -3132,6 +3318,8 @@ func (i *interactor) insert(f *tree.Component, text string) {
 	ns, caret := s[:a]+text+s[b:], a+len(text)
 	if tf := textField(f); tf != nil {
 		ns, caret = tree.InputInsert(tf.Type.Get(), tf.Mask.Get(), s, a, b, text)
+	} else if colorPickerOf(f) != nil {
+		ns, caret = tree.InputInsert(colorHexRunes, "", s, a, b, text)
 	}
 	if ns == s {
 		return
@@ -3145,13 +3333,7 @@ func (i *interactor) deleteSelection(f *tree.Component) bool {
 	if !ok {
 		return false
 	}
-	s := f.Text.Get()
-	f.Text.Set(s[:a] + s[b:])
-	f.Caret = a
-	f.ClearSelection()
-	f.Base().MarkDirty(tree.DirtyPaint)
-	f.Edit.Emit(f.Text.Get())
-	i.markDirty()
+	i.deleteRange(f, a, b)
 	return true
 }
 

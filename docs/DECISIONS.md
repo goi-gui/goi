@@ -2041,3 +2041,12 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   `onSubmit` carry a string a design can print. Picking is opaque on purpose;
   an alpha control would need its own channel and checkerboard, so it is not
   there yet.
+- **The colour picker's hex field edits the same text the square does, and the
+  actions are events.** The field is not a second value: it writes `text` and
+  the square reads it, so a pick and a typed hex converge. Its characters are
+  filtered to `#` and hex digits while it is focused, but the text stays exactly
+  what was typed until OK or blur, when it is normalized to `#rrggbb`; a partial
+  value never reaches the app through `onEdit`, and an unparseable one falls
+  back to the last colour that parsed. Cancel and OK follow the time picker:
+  they report the current value rather than deciding whether to revert, which
+  stays the app's call.

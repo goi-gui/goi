@@ -176,8 +176,7 @@ var eventDefs = []EventDef{
 	{Name: "onPlay", Type: TypeNumber, HasValue: true, Component: true},
 	{Name: "onPause", Type: TypeNumber, HasValue: true, Component: true},
 	{Name: "onEnd", Type: TypeNumber, HasValue: true, Component: true},
-	// The pickers' actions; only a TimePicker has them today. The value is the
-	// time the picker holds.
+	// The pickers' actions; the value is the time or colour the picker holds.
 	{Name: "onCancel", Type: TypeString},
 	{Name: "onOK", Type: TypeString},
 	// Gestures: a GestureDetector reports them, and they carry no scalar a
@@ -540,7 +539,7 @@ var elements = func() []Element {
 				"onDoubleTap", "onLongPress", "onPanStart", "onPanUpdate", "onPanEnd")
 			continue
 		}
-		if out[i].Name == "TimePicker" {
+		if out[i].Name == "TimePicker" || out[i].Name == "ColorPicker" {
 			out[i].Events = append(out[i].Events, "onCancel", "onOK")
 		}
 		if _, ok := componentdef.Lookup(out[i].Name); ok {

@@ -9,39 +9,48 @@ import (
 // and time pickers, its cells are not nodes, so the geometry lives here and the
 // input layer reads it back through ColorLayoutOf.
 const (
-	colorPad      = 24.0
-	colorTitleTop = 16.0
-	colorValueTop = 36.0
-	colorSVTop    = 72.0
-	colorSVH      = 140.0
-	colorHueTop   = 224.0
-	colorHueH     = 12.0
-	colorFootTop  = 248.0
-	colorSwatch   = 40.0
+	colorPad       = 24.0
+	colorTitleTop  = 16.0
+	colorValueTop  = 36.0
+	colorSVTop     = 72.0
+	colorSVH       = 140.0
+	colorHueTop    = 224.0
+	colorHueH      = 12.0
+	colorInputTop  = 252.0
+	colorInputH    = 44.0
+	colorActionTop = 316.0
+	colorActionH   = 40.0
+	colorSwatch    = 40.0
 )
 
-// ColorLayout is where a ColorPicker draws its square, hue bar and preview.
+// ColorLayout is where a ColorPicker draws its square, hue bar, hex field and
+// actions.
 type ColorLayout struct {
 	SV     tree.Rect // the saturation/value square
 	Hue    tree.Rect // the hue bar
 	Swatch tree.Rect // the round preview
-	Hex    tree.Rect // the value text beside it
+	Hex    tree.Rect // the editable hex field
+	Cancel tree.Rect
+	OK     tree.Rect
 }
 
 // ColorLayoutOf places the controls inside the picker's box. It is a pure
 // function of the box, so paint and hit testing cannot drift.
 func ColorLayoutOf(r tree.Rect) ColorLayout {
 	w := r.W - 2*colorPad
+	ok := tree.Rect{X: r.Right() - colorPad - 48, Y: r.Y + colorActionTop, W: 48, H: colorActionH}
 	return ColorLayout{
 		SV:     tree.Rect{X: r.X + colorPad, Y: r.Y + colorSVTop, W: w, H: colorSVH},
 		Hue:    tree.Rect{X: r.X + colorPad, Y: r.Y + colorHueTop, W: w, H: colorHueH},
-		Swatch: tree.Rect{X: r.X + colorPad, Y: r.Y + colorFootTop, W: colorSwatch, H: colorSwatch},
+		Swatch: tree.Rect{X: r.X + colorPad, Y: r.Y + colorInputTop + (colorInputH-colorSwatch)/2, W: colorSwatch, H: colorSwatch},
 		Hex: tree.Rect{
 			X: r.X + colorPad + colorSwatch + 12,
-			Y: r.Y + colorFootTop,
+			Y: r.Y + colorInputTop,
 			W: w - colorSwatch - 12,
-			H: colorSwatch,
+			H: colorInputH,
 		},
+		Cancel: tree.Rect{X: ok.X - 8 - 64, Y: ok.Y, W: 64, H: colorActionH},
+		OK:     ok,
 	}
 }
 
@@ -109,7 +118,61 @@ func (l *List) paintColorPicker(c *tree.Component, r tree.Rect, clip tree.Rect) 
 	l.fillRect(tree.Rect{X: hx - 8, Y: hy - 8, W: 16, H: 16}, 0, 8, 0xFFFFFFFF, 2, clip)
 
 	l.fillRect(cl.Swatch, tree.HSVColor(h, s, v), colorSwatch/2, col.OutlineVariant, 1, clip)
-	l.textIn(hex, l.style("titleMedium"), col.OnSurface, cl.Hex, AlignStart, clip)
+
+	// The hex field: editable, so it shows the raw text while the header keeps
+	// the last colour that parsed.
+	style := l.style("bodyLarge")
+	border, borderW := col.Outline, 1.0
+	if cp.HexActive {
+		border, borderW = col.Primary, 2
+	}
+	l.fillRect(cl.Hex, col.Surface, 8, border, borderW, clip)
+	textX, textW := cl.Hex.X+12, cl.Hex.W-24
+	raw := c.Text.Get()
+	shown, fg := raw, col.OnSurface
+	if raw == "" {
+		shown, fg = "#rrggbb", col.OnSurfaceVariant
+	}
+	c.TextScroll = 0
+	if cp.HexActive {
+		c.TextScroll = textShift(fieldCaretX(l, c, style), textW)
+	}
+	shift := c.TextScroll
+	textClip := intersect(clip, tree.Rect{X: textX, Y: cl.Hex.Y, W: textW, H: cl.Hex.H})
+	if cp.HexActive {
+		if a, b, ok := c.Selection(); ok {
+			x0 := textX - shift + textWidth(l, raw[:a], style)
+			x1 := textX - shift + textWidth(l, raw[:b], style)
+			l.Ops = append(l.Ops, Op{
+				Kind: Fill, Shape: RoundedRect,
+				Rect:   [4]float32{float32(x0), float32(cl.Hex.Y + 10), float32(x1 - x0), 24},
+				Radius: [4]float32{2, 2, 2, 2},
+				Color:  withAlpha(col.Primary, m3.SelectionOpacity),
+				Clip:   clipArr(textClip),
+			})
+		}
+	}
+	l.textIn(shown, style, fg,
+		tree.Rect{X: textX - shift, Y: cl.Hex.Y, W: textW + shift, H: cl.Hex.H},
+		AlignStart, textClip)
+	if cp.HexActive {
+		if c.Preedit != "" {
+			n := minInt(c.Caret, len(raw))
+			px := textX - shift + textWidth(l, raw[:n], style)
+			l.preedit(c.Preedit, px, cl.Hex.Y, style, fg, cl.Hex.Bottom()-8, textClip)
+		}
+		caretX := textX - shift + fieldCaretX(l, c, style)
+		l.Ops = append(l.Ops, Op{
+			Kind: Fill, Shape: RoundedRect,
+			Rect:  [4]float32{float32(caretX), float32(cl.Hex.Y + 12), 2, 20},
+			Color: col.Primary, Clip: clipArr(textClip),
+		})
+	}
+
+	// Actions, right-aligned like the time picker's.
+	action := l.style("labelLarge")
+	l.textIn("Cancel", action, col.Primary, cl.Cancel, AlignCenter, clip)
+	l.textIn("OK", action, col.Primary, cl.OK, AlignCenter, clip)
 }
 
 // hueGradient is the spectrum the hue bar shows, red at both ends.

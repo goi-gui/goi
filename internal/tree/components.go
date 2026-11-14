@@ -693,12 +693,19 @@ func (*DatePicker) Kind() string              { return "DatePicker" }
 func (c *DatePicker) namedProps() []NamedProp { return c.props("DatePicker") }
 
 // ColorPicker picks an opaque sRGB colour from a saturation/value square and a
-// hue bar. The value is a `#rrggbb` string in Text.
+// hue bar. The value is a `#rrggbb` string in Text; the hex field edits it.
 type ColorPicker struct {
 	Component
 	// Hue, Sat and Val are the HSV the controls show. Hue survives a black or
 	// grey value, which the hex alone cannot express.
 	Hue, Sat, Val float64
+	// HexActive is true while the hex field takes typing, which is when the
+	// component is also the interactor's text focus.
+	HexActive bool
+	// Cancel fires when Cancel is pressed and OK when OK or Enter confirms,
+	// both with the current value.
+	Cancel Event[string]
+	OK     Event[string]
 	// picked is the Text the HSV above was read from, so a value set from Go
 	// re-seeds the controls once instead of on every frame.
 	picked string
@@ -707,6 +714,12 @@ type ColorPicker struct {
 // Kind implements Node.
 func (*ColorPicker) Kind() string              { return "ColorPicker" }
 func (c *ColorPicker) namedProps() []NamedProp { return c.props("ColorPicker") }
+
+// OnCancel subscribes to Cancel, with the current value.
+func (c *ColorPicker) OnCancel(fn func(string)) (off func()) { return c.Cancel.On(fn) }
+
+// OnOK subscribes to OK, with the picked value.
+func (c *ColorPicker) OnOK(fn func(string)) (off func()) { return c.OK.On(fn) }
 
 // HSV returns the colour the controls show, following Text when the design or
 // the app changed it.
@@ -744,6 +757,34 @@ func (c *ColorPicker) SetHSV(h, s, v float64) string {
 func (c *ColorPicker) Hex() string {
 	h, s, v := c.HSV()
 	return hsvHex(h, s, v)
+}
+
+// ValidHex reads the typed value as a colour, accepting a missing `#` on a bare
+// hex run. It updates HSV when it parses and returns the normalized spelling.
+func (c *ColorPicker) ValidHex() (string, bool) {
+	text := strings.TrimSpace(c.Text.Get())
+	if text != "" && text[0] != '#' && isHexRun(text) {
+		text = "#" + text
+	}
+	h, s, v, ok := hexHSV(text)
+	if !ok {
+		return "", false
+	}
+	c.Hue, c.Sat, c.Val = h, s, v
+	c.picked = c.Text.Get()
+	return hsvHex(h, s, v), true
+}
+
+// CommitHex normalizes the field to a full `#rrggbb`, falling back to the last
+// colour that parsed. It is what OK, blur and a wrong-length value end on.
+func (c *ColorPicker) CommitHex() string {
+	hex, ok := c.ValidHex()
+	if !ok {
+		hex = c.Hex()
+	}
+	c.picked = hex
+	c.Text.Set(hex)
+	return hex
 }
 
 // TimePicker picks a time. Variant "dial" shows the clock and "input" the two

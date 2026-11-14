@@ -89,3 +89,19 @@ func clamp01(v float64) float64 {
 	}
 	return v
 }
+
+// isHexRun reports whether s is a bare hex colour: 3, 4, 6 or 8 hex digits
+// with no leading #.
+func isHexRun(s string) bool {
+	switch len(s) {
+	case 3, 4, 6, 8:
+	default:
+		return false
+	}
+	for _, r := range s {
+		if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f' || r >= 'A' && r <= 'F') {
+			return false
+		}
+	}
+	return true
+}

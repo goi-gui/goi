@@ -254,7 +254,7 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 		}
 		return Metrics{W: 328, H: h, Top: 56, Right: 24, Bottom: 24, Left: 24}
 	case "ColorPicker":
-		return Metrics{W: 328, H: 300, Top: 56, Right: 24, Bottom: 24, Left: 24}
+		return Metrics{W: 328, H: 372, Top: 56, Right: 24, Bottom: 24, Left: 24}
 	case "Carousel":
 		return Metrics{W: 0, H: 200, FillW: true}
 	}

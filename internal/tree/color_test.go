@@ -84,3 +84,37 @@ func TestColorPickerFollowsText(t *testing.T) {
 		t.Fatalf("hue at the right edge = %v, want 360", cp.Hue)
 	}
 }
+
+// TestColorPickerHexField: a typed value may leave out the hash, and CommitHex
+// normalizes it; an unparseable value falls back to the last colour that did.
+func TestColorPickerHexField(t *testing.T) {
+	tr, diag := BuildSource([]byte(`Window { ColorPicker { id: pick text: "#ff0000" } }`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	var cp *ColorPicker
+	tr.Walk(func(n Node) {
+		if c, ok := n.(*ColorPicker); ok {
+			cp = c
+		}
+	})
+	cp.Text.Set("00ff00")
+	if hex, ok := cp.ValidHex(); !ok || hex != "#00ff00" {
+		t.Fatalf("ValidHex = %q %v", hex, ok)
+	}
+	if h, s, v := cp.HSV(); h != 120 || s != 1 || v != 1 {
+		t.Fatalf("HSV = %v %v %v", h, s, v)
+	}
+	if got := cp.CommitHex(); got != "#00ff00" || cp.Text.Get() != "#00ff00" {
+		t.Fatalf("CommitHex = %q text %q", got, cp.Text.Get())
+	}
+
+	// A broken value does not reach the app: it commits the last good colour.
+	cp.Text.Set("zz")
+	if _, ok := cp.ValidHex(); ok {
+		t.Fatal("zz parsed")
+	}
+	if got := cp.CommitHex(); got != "#00ff00" {
+		t.Fatalf("fallback = %q", got)
+	}
+}
