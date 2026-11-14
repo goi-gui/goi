@@ -149,6 +149,12 @@ func (l *List) paintMediaFrame(m *tree.Media, r tree.Rect, clip tree.Rect) {
 // paintVideoFrame draws the current frame of a video into its box.
 func (l *List) paintVideoFrame(v *tree.Video, r tree.Rect, clip tree.Rect) {
 	if v.Data == nil || v.Data.W <= 0 || v.Data.H <= 0 {
+		// A design that named a surface colour owns the loading area, so it is
+		// painted as written instead of the breathing wash.
+		if surface := v.SurfaceColor.Get(); surface != 0 {
+			l.fillRect(r, surface, v.Base().Radii()[0], 0, 0, clip)
+			return
+		}
 		// A player still waiting for its probe breathes, so the space reads as
 		// loading instead of broken, the same wash a remote image gets.
 		if v.Loading || v.Buffering {
@@ -332,12 +338,20 @@ func (l *List) paintMediaError(m *tree.Media, r tree.Rect, clip tree.Rect) {
 func (l *List) paintMediaBar(m *tree.Media, r tree.Rect, lay MediaLayout, clip tree.Rect) {
 	col := l.Theme.Colors
 	// A video draws the bar over its picture, so it needs a scrim to stay
-	// readable; an audio element is a surface of its own.
+	// readable; an audio element is a surface of its own. A design that named a
+	// surface colour gets exactly that, alpha included.
 	if _, isVideo := m.Base().Node().(*tree.Video); isVideo {
-		l.fillRect(lay.Bar, withAlpha(col.Scrim, 0.45), 0, 0, 0, intersect(clip, lay.Bar))
+		surface := withAlpha(col.Scrim, 0.45)
+		if v := m.SurfaceColor.Get(); v != 0 {
+			surface = v
+		}
+		l.fillRect(lay.Bar, surface, 0, 0, 0, intersect(clip, lay.Bar))
 	} else {
-		l.fillRect(lay.Bar, withAlpha(col.SurfaceContainerHighest, 0.7), 0, 0, 0,
-			intersect(intersect(clip, r), lay.Bar))
+		surface := withAlpha(col.SurfaceContainerHighest, 0.7)
+		if v := m.SurfaceColor.Get(); v != 0 {
+			surface = v
+		}
+		l.fillRect(lay.Bar, surface, 0, 0, 0, intersect(intersect(clip, r), lay.Bar))
 	}
 	// A recoloured bar keeps its shape: the text, the icons and the scrubber each
 	// fall back to the theme's own colour when the design left them at 0. A

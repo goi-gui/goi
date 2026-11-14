@@ -23,6 +23,10 @@ type Media struct {
 	// Color tints the scrubber's played part and handle, and the loading ring.
 	// Zero keeps the scheme's primary, or white over a video picture.
 	Color Prop[uint32]
+	// SurfaceColor is the background of the control bar and of a video's
+	// loading area, which are translucent by default. Zero keeps the theme's
+	// scrim or container colour.
+	SurfaceColor Prop[uint32]
 	NodeBase
 
 	Src Prop[string]
@@ -152,6 +156,7 @@ func mediaProps(m *Media) []NamedProp {
 		NumberProp(&m.NodeBase, "buffer", DirtyPaint, &m.Buffer),
 		EnumProp(&m.NodeBase, "variant", DirtyPaint, &m.Variant, "normal", "wavy"),
 		ColorProp(&m.NodeBase, "color", DirtyPaint, &m.Color),
+		ColorProp(&m.NodeBase, "surfaceColor", DirtyPaint, &m.SurfaceColor),
 		StringProp(&m.NodeBase, "subtitles", &m.Subtitles),
 		NumberProp(&m.NodeBase, "audioTrack", DirtyPaint, &m.AudioTrack),
 		NumberProp(&m.NodeBase, "subtitleFontSize", DirtyLayout, &m.SubtitleFontSize),
@@ -240,8 +245,10 @@ func newMedia() Media {
 		Controls: newProp(nil, "controls", DirtyLayout, true),
 		// The player's style: a plain bar, or a ribbon drawn as a wave.
 		Variant: newProp(nil, "variant", DirtyPaint, "normal"),
-		StartAt: newProp(nil, "startAt", DirtyPaint, 0.0),
-		Buffer:  newProp(nil, "buffer", DirtyPaint, DefaultBufferSeconds),
+		// A translucent surface by default; a design may paint its own.
+		SurfaceColor: newProp(nil, "surfaceColor", DirtyPaint, uint32(0)),
+		StartAt:      newProp(nil, "startAt", DirtyPaint, 0.0),
+		Buffer:       newProp(nil, "buffer", DirtyPaint, DefaultBufferSeconds),
 		// The bar starts visible and hides on its own after the pointer rests.
 		ControlsShown: true,
 	}

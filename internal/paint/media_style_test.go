@@ -526,3 +526,64 @@ func TestMediaVariantAndColour(t *testing.T) {
 		t.Fatal("the played part did not take color")
 	}
 }
+
+// TestSurfaceColourPaintsTheBarAndLoadingArea: surfaceColor replaces the
+// translucent bar background and a video's loading wash, alpha included; the
+// spinner's plate keeps its scrim so the ring stays readable.
+func TestSurfaceColourPaintsTheBarAndLoadingArea(t *testing.T) {
+	surface := uint32(0x11223344)
+	tr, diag := tree.BuildSource([]byte(`Window { Column {
+		Audio { id: a width: 300 height: 64 controls: true surfaceColor: #11223344 }
+		Video { id: v width: 300 height: 200 controls: false surfaceColor: #11223344 }
+	} }`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	var audio, video *tree.Media
+	for _, n := range tr.All() {
+		if m, ok := tree.MediaNode(n); ok {
+			switch n.Kind() {
+			case "Audio":
+				audio = m
+			case "Video":
+				video = m
+			}
+		}
+	}
+	audio.ControlsShown = true
+	video.Loading = true
+	layout.New(nil).Layout(tr.Root, 480, 400)
+	l := &List{}
+	l.Build(tr, 480, 400)
+
+	bars, loading := 0, 0
+	for _, op := range l.Ops {
+		if op.Kind != Fill || op.Color != surface {
+			continue
+		}
+		if op.Rect[2] > 250 && op.Rect[3] > 20 {
+			if op.Rect[3] > 48 {
+				loading++
+			} else {
+				bars++
+			}
+		}
+	}
+	// One bar (audio) plus one for the video, whose bar is off.
+	if bars != 1 {
+		t.Fatalf("surfaceColor painted %d control bars, want the audio one", bars)
+	}
+	if loading != 1 {
+		t.Fatalf("surfaceColor painted %d loading areas, want the video one", loading)
+	}
+	// The spinner's own plate is still the scheme scrim, not the surface.
+	plate := false
+	for _, op := range l.Ops {
+		if op.Kind == Fill && op.Shape == Circle && op.Color == withAlpha(m3.Light().Colors.Scrim, 0.38) {
+			plate = true
+		}
+	}
+	if !plate {
+		t.Fatal("the spinner lost its contrast plate")
+	}
+}

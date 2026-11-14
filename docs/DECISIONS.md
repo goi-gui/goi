@@ -1968,6 +1968,11 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   child keeps its own size in the middle instead of filling the box, because the
   usual child is a percentage or an icon that would look wrong stretched to the
   stroke. A child that declares 100% still fills.
+- **A player's chrome is the design's to paint.** `surfaceColor` is the bar's
+  background and, on a video, the loading area, used exactly as written so an
+  `#rrggbbaa` value keeps its own translucency; unset keeps the theme's scrim or
+  container. The spinner's small plate stays the scheme scrim rather than the
+  surface, because its job is to keep the ring readable on any picture.
 - **One `variant` styles a player's scrubber and its loading ring.** They are the
   same design decision — plain or a ribbon — so one property carries both, and
   the same for `color`: the played part, its handle and the ring are one accent.
