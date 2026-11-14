@@ -329,9 +329,10 @@ func (l *List) paintMediaBar(m *tree.Media, r tree.Rect, lay MediaLayout, clip t
 	if m.Duration > 0 {
 		frac = math.Max(0, math.Min(1, float64(m.Position)/float64(m.Duration)))
 	}
-	// A wavy seekbar is a ribbon only while the player runs, and only for the
-	// part already played: what is still ahead stays a dim, flat track, and a
-	// paused player looks like the normal bar again.
+	// A wavy seekbar is a ribbon only while the player runs. The dark part, wavy
+	// or flat, stops at the handle and the dim track starts after it, so the two
+	// never touch and the handle has a band of its own — the rule the slider's
+	// own segments follow.
 	ripple := m.Seekbar.Get() == "wavy" && m.Playing && !m.Paused && frac > 0
 	flat := tree.Rect{X: lay.Track.X, Y: lay.Track.Y + lay.Track.H/2 - 2, W: lay.Track.W, H: 4}
 	buffered := withAlpha(fallback, 0.42)
@@ -342,48 +343,51 @@ func (l *List) paintMediaBar(m *tree.Media, r tree.Rect, lay MediaLayout, clip t
 	if m.Buffered > 0 && m.Duration > 0 {
 		bufferedEnd = math.Min(1, frac+float64(m.Buffered)/float64(m.Duration))
 	}
-	if ripple {
-		// The wavy part is the ribbon alone: no dim fill runs under it, the way
-		// the wavy progress leaves the track out behind its ribbon. The track
-		// starts after a gap, so the two never touch.
-		playedEnd := flat.X + flat.W*frac
-		l.mediaWave(flat.X, playedEnd, flat.Y+flat.H/2, playedColor, clip)
-		// The thumb sits at the end of the ribbon, so the gap is measured past
-		// the thumb's edge, not from its centre.
-		restX := playedEnd + lay.Thumb.W/2 + mediaWaveGap
-		if bufferedEnd > frac {
-			end := flat.X + flat.W*bufferedEnd
-			if end > restX {
-				l.fillRect(tree.Rect{X: restX, Y: flat.Y, W: end - restX, H: flat.H},
-					buffered, 2, 0, 0, clip)
-			}
-		}
-		if rest := flat.X + flat.W - restX; rest > 0 {
-			l.fillRect(tree.Rect{X: restX, Y: flat.Y, W: rest, H: flat.H},
-				track, 2, 0, 0, clip)
-		}
-	} else {
-		l.fillRect(flat, track, 2, 0, 0, clip)
-		// The buffered span sits behind the played part, so a reader can see how
-		// far ahead the decoder is before the picture stalls.
-		if bufferedEnd > 0 {
-			l.fillRect(tree.Rect{X: flat.X, Y: flat.Y, W: flat.W * bufferedEnd, H: flat.H},
-				buffered, 2, 0, 0, clip)
-		}
-		if frac > 0 {
-			l.fillRect(tree.Rect{X: flat.X, Y: flat.Y, W: flat.W * frac, H: flat.H},
+	playedX := flat.X + flat.W*frac
+	darkEnd := playedX - seekEdge
+	restX := playedX + seekEdge
+	if darkEnd > flat.X {
+		if ripple {
+			l.mediaWave(flat.X, darkEnd, flat.Y+flat.H/2, playedColor, clip)
+		} else {
+			l.fillRect(tree.Rect{X: flat.X, Y: flat.Y, W: darkEnd - flat.X, H: flat.H},
 				playedColor, 2, 0, 0, clip)
 		}
 	}
-	l.fillRect(lay.Thumb, playedColor, lay.Thumb.W/2, 0, 0, clip)
+	// The buffered span sits behind the played part, so a reader can see how far
+	// ahead the decoder is before the picture stalls.
+	if bufferedEnd > 0 {
+		end := flat.X + flat.W*bufferedEnd
+		if end > restX {
+			l.fillRect(tree.Rect{X: restX, Y: flat.Y, W: end - restX, H: flat.H},
+				buffered, 2, 0, 0, clip)
+		}
+	}
+	if rest := flat.X + flat.W - restX; rest > 0 {
+		l.fillRect(tree.Rect{X: restX, Y: flat.Y, W: rest, H: flat.H}, track, 2, 0, 0, clip)
+	}
+	// The handle is the slider's: a slim vertical pill, not a dot.
+	h := minf(seekHandleH, lay.Bar.H-20)
+	if h < 12 {
+		h = 12
+	}
+	l.fillRect(tree.Rect{X: playedX - seekHandleW/2, Y: flat.Y + flat.H/2 - h/2,
+		W: seekHandleW, H: h}, playedColor, seekHandleW/2, 0, 0, clip)
 
 	l.textIn(MediaClock(m.Position)+" / "+MediaClock(m.Duration), st, textColor,
 		lay.Time, AlignEnd, clip)
 }
 
-// mediaWaveGap is the distance between the played ribbon and the dim track, so
-// the two parts of the bar never touch.
-const mediaWaveGap = 5.0
+// Seekbar handle geometry: a 4dp slider handle with a 6dp gap on each side, the
+// rule the slider follows, so the played part and the track never touch it.
+const (
+	seekHandleW = 4.0
+	seekHandleH = 28.0
+	seekGap     = 6.0
+	// seekEdge is where the dark part ends and the dim track begins, measured
+	// from the handle's centre.
+	seekEdge = seekHandleW/2 + seekGap
+)
 
 // mediaWave draws one scrubber segment as a moving sine ribbon with round joins:
 // the same shape the wavy progress uses, at the bar's own scale.

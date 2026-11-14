@@ -95,6 +95,9 @@ type Media struct {
 	// clock and hides the bar, so paint and hit-testing only read the result.
 	ControlsShown bool
 	ControlsIdle  time.Duration
+	// Scrubbing is true while the pointer drags the scrubber: the position is
+	// the pointer's until the release seeks the decoder there.
+	Scrubbing bool
 	// Live marks a network stream with no length: it cannot be seeked, it never
 	// reaches an end, and its control bar shows LIVE instead of a scrubber.
 	Live    bool

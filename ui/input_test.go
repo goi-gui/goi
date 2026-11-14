@@ -1401,3 +1401,44 @@ func TestGestureDetectorPan(t *testing.T) {
 
 // uiPanEvent is the two numbers a pan step carries, so a test can compare them.
 type uiPanEvent struct{ dx, dy float64 }
+
+// TestSeekbarDragScrubsOnRelease: a press on the scrubber starts a scrub, the
+// thumb follows the pointer without reopening the decoder, and the release is
+// the one seek.
+func TestSeekbarDragScrubsOnRelease(t *testing.T) {
+	_, win, in := inputFixture(t, `Window { Video { id: v width: 320 height: 200 } }`, 480, 320)
+	v := MustByID[*Video](win, "v")
+	v.Duration = 100 * time.Second
+	v.ControlsShown = true
+	seeks := 0
+	var seeked time.Duration
+	v.Seeked.On(func(at time.Duration) { seeks++; seeked = at })
+
+	r := absoluteRect(v)
+	lay := paint.MediaLayoutOf(&v.Media, r)
+	if lay.Track.W == 0 {
+		t.Fatal("the bar laid out empty")
+	}
+	midY := lay.Track.Y + lay.Track.H/2
+	x25 := lay.Track.X + lay.Track.W*0.25
+	x75 := lay.Track.X + lay.Track.W*0.75
+
+	in.MouseDown(x25, midY, 0, false)
+	if !v.Media.Scrubbing || v.Position < 24*time.Second || v.Position > 26*time.Second {
+		t.Fatalf("press: scrubbing=%v position=%v", v.Media.Scrubbing, v.Position)
+	}
+	in.MouseMove(x75, midY)
+	if v.Position < 74*time.Second || v.Position > 76*time.Second {
+		t.Fatalf("drag position = %v, want 75s", v.Position)
+	}
+	if seeks != 0 {
+		t.Fatalf("the drag sought %d times before the release", seeks)
+	}
+	in.MouseUp(x75, midY, 0)
+	if v.Media.Scrubbing {
+		t.Fatal("the scrub did not end")
+	}
+	if seeks != 1 || seeked < 74*time.Second || seeked > 76*time.Second {
+		t.Fatalf("release seeks=%d at=%v, want one seek to 75s", seeks, seeked)
+	}
+}

@@ -446,6 +446,10 @@ func (a *App) tickMedia(dt float64) (bool, time.Duration) {
 			changed = true
 			continue
 		}
+		if m.Scrubbing {
+			// The pointer owns the position until it lets go.
+			continue
+		}
 		// The element is the clock: copying its time each tick is what keeps the
 		// scrubber honest when the browser stalls or buffers.
 		pos := time.Duration(p.el.Get("currentTime").Float() * float64(time.Second))

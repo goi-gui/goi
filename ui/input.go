@@ -126,6 +126,10 @@ type interactor struct {
 	gestureTimer  *time.Timer
 	lastGesture   tree.Node
 	lastGestureAt time.Time
+
+	// seekNode is the player whose scrubber the pointer is dragging. The
+	// position follows the pointer and only the release seeks the decoder.
+	seekNode tree.Node
 }
 
 // Gesture timings, the ones Flutter uses: a press that stays inside the slop for
@@ -445,6 +449,12 @@ func (i *interactor) MouseMove(x, y float64) {
 		return
 	}
 	hit := i.hit(x, y)
+	if i.seekNode != nil {
+		if m, ok := tree.MediaNode(i.seekNode); ok {
+			i.scrubTo(i.seekNode, m, x)
+		}
+		return
+	}
 	// Any movement over a player brings its bar back and restarts the clock
 	// that hides it again.
 	i.showMediaControls(mediaAt(hit))
@@ -747,6 +757,7 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 
 func (i *interactor) MouseUp(x, y float64, button int) {
 	i.event("MouseUp", "x", x, "y", y, "button", button)
+	i.finishSeek()
 	swallow := i.gestureRelease(x, y)
 	defer func() {
 		i.pressed = nil
@@ -921,13 +932,46 @@ func (i *interactor) pressMediaBar(n tree.Node, x, y float64) bool {
 	case hitRect(lay.Button, x, y):
 		i.toggleMediaPlayback(n, m)
 	case hitRect(lay.Track, x, y) || hitRect(lay.Thumb, x, y):
-		if f, ok := lay.MediaSeekFraction(x); ok && m.Duration > 0 {
-			i.seekMedia(n, time.Duration(f*float64(m.Duration)))
+		if m.Duration > 0 {
+			// A press starts a scrub: the thumb follows the pointer and the
+			// decoder is only moved once, on release, so a drag does not reopen
+			// the file at every step.
+			i.seekNode = n
+			m.Scrubbing = true
+			i.scrubTo(n, m, x)
 		}
 	default:
 		return true // the bar swallows the press, it is not the picture
 	}
 	return true
+}
+
+// scrubTo moves the displayed position to the pointer without seeking yet.
+func (i *interactor) scrubTo(n tree.Node, m *tree.Media, x float64) {
+	lay := paint.MediaLayoutOf(m, i.mediaRect(n))
+	f, ok := lay.MediaSeekFraction(x)
+	if !ok || m.Duration <= 0 {
+		return
+	}
+	m.Position = time.Duration(f * float64(m.Duration))
+	m.Base().MarkDirty(tree.DirtyPaint)
+	i.markDirty()
+}
+
+// finishSeek commits the dragged position to the decoder and ends the scrub.
+func (i *interactor) finishSeek() {
+	n := i.seekNode
+	i.seekNode = nil
+	if n == nil {
+		return
+	}
+	m, ok := tree.MediaNode(n)
+	if !ok {
+		return
+	}
+	m.Scrubbing = false
+	i.seekMedia(n, m.Position)
+	i.markDirty()
 }
 
 // pressFullscreenMedia handles a press on a fullscreen picture, outside the bar:

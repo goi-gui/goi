@@ -1,6 +1,7 @@
 package paint
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -131,7 +132,7 @@ func TestControlColoursRecolourTheBar(t *testing.T) {
 		case Fill:
 			if op.Color == 0x0000ffff {
 				track = true
-				if op.Rect[2] == 12 {
+				if op.Rect[2] == seekHandleW {
 					thumb = true
 				}
 			}
@@ -285,7 +286,8 @@ func TestSeekbarWavyIsOnlyThePlayedPart(t *testing.T) {
 			t.Fatalf("a ribbon segment at %v is past the played part (ends %v)", x, playEnd)
 		}
 	}
-	// The dim track starts after the gap, and no dim fill runs under the ribbon.
+	// The dim track starts after the handle's gap, and no dim fill runs under
+	// the ribbon.
 	track := withAlpha(m3.Light().Colors.OnSurface, 0.24)
 	dimStart := 0.0
 	for _, op := range l.Ops {
@@ -293,7 +295,7 @@ func TestSeekbarWavyIsOnlyThePlayedPart(t *testing.T) {
 			continue
 		}
 		x := float64(op.Rect[0])
-		if x < playEnd+lay.Thumb.W/2+mediaWaveGap-0.5 {
+		if x < playEnd+seekEdge-0.5 {
 			t.Fatalf("the dim track starts at %v, inside the ribbon (ends %v)", x, playEnd)
 		}
 		if dimStart == 0 || x < dimStart {
@@ -321,4 +323,59 @@ func mustPainted(t *testing.T, paint func(string, bool, time.Duration) (*List, M
 	t.Helper()
 	l, _, _ := paint(seekbar, playing, 0)
 	return l
+}
+
+// TestSeekbarGapAndHandleWhenFlat: a paused or normal seekbar follows the same
+// rule as the wavy one — the dark part stops at the handle, the dim track starts
+// after it — and the thumb is the slider's slim pill, not a dot.
+func TestSeekbarGapAndHandleWhenFlat(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window { Audio {
+		width: 360 height: 64 seekbar: normal
+	} }`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	var m *tree.Media
+	for _, n := range tr.All() {
+		if mm, ok := tree.MediaNode(n); ok {
+			m = mm
+		}
+	}
+	m.Duration = 100 * time.Second
+	m.Position = 40 * time.Second
+	layout.New(nil).Layout(tr.Root, 400, 200)
+	l := &List{}
+	l.Build(tr, 400, 200)
+
+	lay := MediaLayoutOf(m, tree.Rect{X: 0, Y: 0, W: 360, H: 64})
+	playedX := lay.Track.X + lay.Track.W*0.4
+	col := m3.Light().Colors
+	track := withAlpha(col.OnSurface, 0.24)
+	var playedEnd, dimStart, handle float64
+	for _, op := range l.Ops {
+		if op.Kind != Fill {
+			continue
+		}
+		x, w, h := float64(op.Rect[0]), float64(op.Rect[2]), float64(op.Rect[3])
+		switch {
+		case op.Color == col.Primary && h <= 5 && w > 50:
+			playedEnd = x + w
+		case op.Color == track && h <= 5 && w > 50:
+			dimStart = x
+		case w == seekHandleW && h == seekHandleH:
+			handle = x + w/2
+		}
+	}
+	if got, want := playedEnd, playedX-seekEdge; math.Abs(got-want) > 1 {
+		t.Fatalf("played part ends at %v, want %v", got, want)
+	}
+	if got, want := dimStart, playedX+seekEdge; math.Abs(got-want) > 1 {
+		t.Fatalf("dim track starts at %v, want %v", got, want)
+	}
+	if math.Abs(handle-playedX) > 1 {
+		t.Fatalf("handle centre %v, want %v", handle, playedX)
+	}
+	if dimStart-(playedEnd) < 2*seekEdge-2 {
+		t.Fatalf("the gap is %v, want at least %v", dimStart-playedEnd, 2*seekEdge-2)
+	}
 }

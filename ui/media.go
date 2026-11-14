@@ -997,6 +997,10 @@ func (a *App) tickMedia(dt float64) (bool, time.Duration) {
 		if !m.Playing || m.Paused {
 			continue
 		}
+		if m.Scrubbing {
+			// The pointer owns the position until it lets go.
+			continue
+		}
 		m.Position += time.Duration(dt * float64(time.Second))
 		if m.Duration > 0 && m.Position >= m.Duration {
 			if m.Loop.Get() {

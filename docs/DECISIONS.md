@@ -1972,7 +1972,11 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   ribbon is the part already heard or watched; the part still ahead stays a dim
   flat track, and a paused or stopped player falls back to the normal bar. The
   wave travels while playing, because the bar is showing a process that is still
-  running. The ribbon stands alone — no dim fill runs under it — and the track
-  starts past the thumb plus a gap, the rule the wavy progress follows. Its hit
-  strip grows to the wave's height so the crests are as pressable as the flat
-  track, and the flat bar inside that strip stays 4dp tall.
+  running. The ribbon stands alone — no dim fill runs under it — and in every
+  state, playing or not, the dark part stops at the handle and the track starts
+  after a 6dp gap, which is the slider's own rule and the wavy progress's. The
+  handle is the slider's slim pill rather than a dot, and dragging it updates the
+  position on the pointer with the decoder seeked once on release, so a drag does
+  not reopen the file at every step. Its hit strip grows to the wave's height so
+  the crests are as pressable as the flat track, and the flat bar inside that
+  strip stays 4dp tall.
