@@ -420,6 +420,8 @@ func (l *List) paintComponent(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		l.paintTimePicker(c, r, clip)
 	case "ColorPicker":
 		l.paintColorPicker(c, r, clip)
+	case "Mermaid":
+		l.paintMermaid(c, r, clip)
 	case "TextArea":
 		l.paintTextArea(c, r, clip)
 	case "Code":

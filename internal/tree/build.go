@@ -669,6 +669,11 @@ func newM3Component(name string) Node {
 		return &Code{Component: newComponent()}
 	case "Markdown":
 		return &Markdown{Component: newComponent()}
+	case "Mermaid":
+		return &Mermaid{
+			Component: newComponent(),
+			Src:       newProp(nil, "src", DirtyLayout, ""),
+		}
 	case "LineChart":
 		return &LineChart{Chart: newChart()}
 	case "AreaChart":

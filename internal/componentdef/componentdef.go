@@ -19,6 +19,7 @@ var Kinds = []Kind{
 	// Content: components that are plain nodes with behaviour.
 	{"Code", false},
 	{"Markdown", false},
+	{"Mermaid", false},
 	// Actions.
 	{"Button", false},
 	{"IconButton", false},
@@ -145,6 +146,7 @@ var props = map[string][]string{
 	"TextArea":         {"label", "text", "placeholder", "supporting", "variant", "disabled"},
 	"Code":             {"text", "language", "variant", "showCopy"},
 	"Markdown":         {"text"},
+	"Mermaid":          {"text", "src"},
 	"LineChart":        {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "smooth", "points", "min", "max"},
 	"AreaChart":        {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "smooth", "points", "stacked", "min", "max"},
 	"BarChart":         {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "stacked", "horizontal", "min", "max"},
