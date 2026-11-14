@@ -692,13 +692,16 @@ type DatePicker struct{ Component }
 func (*DatePicker) Kind() string              { return "DatePicker" }
 func (c *DatePicker) namedProps() []NamedProp { return c.props("DatePicker") }
 
-// ColorPicker picks an opaque sRGB colour from a saturation/value square and a
-// hue bar. The value is a `#rrggbb` string in Text; the hex field edits it.
+// ColorPicker picks a colour from a saturation/value square, a hue bar and an
+// alpha bar. The value is `#rrggbb`, or `#rrggbbaa` when translucent, in Text;
+// the hex field edits it.
 type ColorPicker struct {
 	Component
 	// Hue, Sat and Val are the HSV the controls show. Hue survives a black or
 	// grey value, which the hex alone cannot express.
 	Hue, Sat, Val float64
+	// Alpha is 0 (transparent) to 1 (opaque).
+	Alpha float64
 	// HexActive is true while the hex field takes typing, which is when the
 	// component is also the interactor's text focus.
 	HexActive bool
@@ -725,19 +728,22 @@ func (c *ColorPicker) OnOK(fn func(string)) (off func()) { return c.OK.On(fn) }
 // the app changed it.
 func (c *ColorPicker) HSV() (h, s, v float64) {
 	if text := c.Text.Get(); text != c.picked {
-		if h, s, v, ok := hexHSV(text); ok {
-			c.Hue, c.Sat, c.Val = h, s, v
+		if h, s, v, a, ok := hexHSVA(text); ok {
+			c.Hue, c.Sat, c.Val, c.Alpha = h, s, v, a
 		}
 		c.picked = text
 	}
 	return c.Hue, c.Sat, c.Val
 }
 
-// SetHSV writes the colour as `#rrggbb` and returns it. Picking is opaque:
-//
-// shortcut: an alpha in the old value is dropped. Add an alpha control when
-// translucent picking is needed.
+// SetHSV writes the colour and returns it, keeping the alpha it already has.
 func (c *ColorPicker) SetHSV(h, s, v float64) string {
+	return c.SetHSVA(h, s, v, c.Alpha)
+}
+
+// SetHSVA writes the colour with an alpha and returns it, as `#rrggbb` when
+// opaque and `#rrggbbaa` otherwise.
+func (c *ColorPicker) SetHSVA(h, s, v, a float64) string {
 	// Keep 360 rather than folding it to 0 so the marker stays at the right
 	// edge of the hue bar; the conversions treat it as the same red.
 	if h < 0 || h > 360 {
@@ -746,17 +752,17 @@ func (c *ColorPicker) SetHSV(h, s, v float64) string {
 			h += 360
 		}
 	}
-	c.Hue, c.Sat, c.Val = h, clamp01(s), clamp01(v)
-	hex := hsvHex(c.Hue, c.Sat, c.Val)
+	c.Hue, c.Sat, c.Val, c.Alpha = h, clamp01(s), clamp01(v), clamp01(a)
+	hex := hsvHex(c.Hue, c.Sat, c.Val, c.Alpha)
 	c.picked = hex
 	c.Text.Set(hex)
 	return hex
 }
 
-// Hex is the current colour as `#rrggbb`, read the way the picker shows it.
+// Hex is the current colour, read the way the picker shows it.
 func (c *ColorPicker) Hex() string {
 	h, s, v := c.HSV()
-	return hsvHex(h, s, v)
+	return hsvHex(h, s, v, c.Alpha)
 }
 
 // ValidHex reads the typed value as a colour, accepting a missing `#` on a bare
@@ -766,13 +772,13 @@ func (c *ColorPicker) ValidHex() (string, bool) {
 	if text != "" && text[0] != '#' && isHexRun(text) {
 		text = "#" + text
 	}
-	h, s, v, ok := hexHSV(text)
+	h, s, v, a, ok := hexHSVA(text)
 	if !ok {
 		return "", false
 	}
-	c.Hue, c.Sat, c.Val = h, s, v
+	c.Hue, c.Sat, c.Val, c.Alpha = h, s, v, a
 	c.picked = c.Text.Get()
-	return hsvHex(h, s, v), true
+	return hsvHex(h, s, v, a), true
 }
 
 // CommitHex normalizes the field to a full `#rrggbb`, falling back to the last

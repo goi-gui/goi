@@ -8,9 +8,19 @@ import (
 	"github.com/goi-gui/goi/internal/csscolor"
 )
 
-// HSVColor packs an HSV colour into opaque 0xRRGGBBAA. Hue is in degrees, with
+// HSVColor packs an opaque HSV colour into 0xRRGGBBAA. Hue is in degrees, with
 // 0 and 360 both red.
 func HSVColor(h, s, v float64) uint32 {
+	return HSVColorA(h, s, v, 1)
+}
+
+// HSVColorA is HSVColor with an alpha, 0 transparent to 1 opaque.
+func HSVColorA(h, s, v, a float64) uint32 {
+	c := hsvRGB(h, s, v)
+	return c&0xFFFFFF00 | uint32(clamp01(a)*255+0.5)
+}
+
+func hsvRGB(h, s, v float64) uint32 {
 	h = math.Mod(h, 360)
 	if h < 0 {
 		h += 360
@@ -37,20 +47,25 @@ func HSVColor(h, s, v float64) uint32 {
 	return uint32((r+m)*255+0.5)<<24 | uint32((g+m)*255+0.5)<<16 | uint32((b+m)*255+0.5)<<8 | 0xFF
 }
 
-// hsvHex formats an HSV colour the way the picker shows it.
-func hsvHex(h, s, v float64) string {
+// hsvHex formats an HSV colour the way the picker shows it: six digits when it
+// is opaque, eight with the alpha when it is not.
+func hsvHex(h, s, v, a float64) string {
 	c := HSVColor(h, s, v)
-	return fmt.Sprintf("#%02x%02x%02x", c>>24, (c>>16)&0xFF, (c>>8)&0xFF)
+	ab := uint32(clamp01(a)*255 + 0.5)
+	if ab >= 255 {
+		return fmt.Sprintf("#%02x%02x%02x", c>>24, (c>>16)&0xFF, (c>>8)&0xFF)
+	}
+	return fmt.Sprintf("#%02x%02x%02x%02x", c>>24, (c>>16)&0xFF, (c>>8)&0xFF, ab)
 }
 
-// hexHSV reads any CSS colour into HSV. Alpha is ignored.
-func hexHSV(text string) (h, s, v float64, ok bool) {
+// hexHSVA reads any CSS colour into HSV and alpha.
+func hexHSVA(text string) (h, s, v, a float64, ok bool) {
 	c, ok := csscolor.Parse(strings.TrimSpace(text))
 	if !ok {
-		return 0, 0, 0, false
+		return 0, 0, 0, 0, false
 	}
 	h, s, v = rgbToHSV(c>>24, (c>>16)&0xFF, (c>>8)&0xFF)
-	return h, s, v, true
+	return h, s, v, float64(c&0xFF) / 255, true
 }
 
 // rgbToHSV converts 8-bit sRGB to hue, saturation and value.

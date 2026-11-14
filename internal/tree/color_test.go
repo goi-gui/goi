@@ -24,19 +24,22 @@ func TestHSVColor(t *testing.T) {
 
 // TestHexHSV reads a CSS colour back into the controls, and formats it again.
 func TestHexHSV(t *testing.T) {
-	h, s, v, ok := hexHSV("#00ff00")
-	if !ok || h != 120 || s != 1 || v != 1 {
-		t.Fatalf("hexHSV green = %v %v %v %v", h, s, v, ok)
+	h, s, v, a, ok := hexHSVA("#00ff00")
+	if !ok || h != 120 || s != 1 || v != 1 || a != 1 {
+		t.Fatalf("hexHSVA green = %v %v %v %v %v", h, s, v, a, ok)
 	}
-	if got := hsvHex(h, s, v); got != "#00ff00" {
+	if got := hsvHex(h, s, v, a); got != "#00ff00" {
 		t.Fatalf("hsvHex = %q", got)
 	}
-	// A name parses too; the picker shows its hex spelling.
-	h, s, v, ok = hexHSV("red")
-	if !ok || h != 0 || s != 1 || v != 1 {
-		t.Fatalf("hexHSV red = %v %v %v %v", h, s, v, ok)
+	if got := hsvHex(0, 1, 1, 0.5); got != "#ff000080" {
+		t.Fatalf("half alpha = %q", got)
 	}
-	if _, _, _, ok := hexHSV("not a colour"); ok {
+	// A name parses too; the picker shows its hex spelling.
+	h, s, v, a, ok = hexHSVA("red")
+	if !ok || h != 0 || s != 1 || v != 1 || a != 1 {
+		t.Fatalf("hexHSVA red = %v %v %v %v %v", h, s, v, a, ok)
+	}
+	if _, _, _, _, ok := hexHSVA("not a colour"); ok {
 		t.Fatal("a bad value parsed")
 	}
 }
@@ -116,5 +119,21 @@ func TestColorPickerHexField(t *testing.T) {
 	}
 	if got := cp.CommitHex(); got != "#00ff00" {
 		t.Fatalf("fallback = %q", got)
+	}
+
+	// An eight-digit value carries its alpha through parse and format.
+	cp.Text.Set("#11223380")
+	if hex, ok := cp.ValidHex(); !ok || hex != "#11223380" {
+		t.Fatalf("alpha value = %q %v", hex, ok)
+	}
+	if cp.Alpha < 0.49 || cp.Alpha > 0.51 {
+		t.Fatalf("alpha = %v", cp.Alpha)
+	}
+	if got := cp.SetHSVA(30, 1, 1, 0.25); got != "#ff800040" {
+		t.Fatalf("SetHSVA = %q", got)
+	}
+	// A hue or square pick keeps the opacity the controls already have.
+	if got := cp.SetHSV(120, 1, 1); got != "#00ff0040" {
+		t.Fatalf("SetHSV kept alpha = %q", got)
 	}
 }

@@ -2568,9 +2568,10 @@ func propDoc(el string, p schema.Prop) string {
 				"at the size of the run, so a line can mix text and emoji.")
 		}
 		if el == "ColorPicker" {
-			b.WriteString("\n\nThe value as `#rrggbb`. Any CSS colour is read, and picking " +
-				"or typing in the hex field rewrites it in hex; `onEdit` fires on every " +
-				"change, `onSubmit` on release and `onOK`/`onCancel` on the actions.")
+			b.WriteString("\n\nThe value as `#rrggbb`, or `#rrggbbaa` when translucent. Any CSS " +
+				"colour is read, and picking, typing in the hex field or moving the alpha " +
+				"bar rewrites it; `onEdit` fires on every change, `onSubmit` on release and " +
+				"`onOK`/`onCancel` on the actions.")
 		}
 	case "type":
 		b.WriteString("\n\nFilters what reaches the value: `text` (default), `numeric`, " +

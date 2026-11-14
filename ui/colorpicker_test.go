@@ -10,7 +10,7 @@ import (
 const colorPickerUI = `Window {
 	Column {
 		padding: 10
-		ColorPicker { id: color width: 328 height: 372 text: "#ff0000" }
+		ColorPicker { id: color width: 328 height: 392 text: "#ff0000" }
 	}
 }`
 
@@ -95,6 +95,10 @@ func TestColorPickerKeyboard(t *testing.T) {
 	in.key(tree.KeyDown, tree.Mods{Ctrl: true})
 	if edits != 2 {
 		t.Fatalf("ctrl+down did not edit: %d", edits)
+	}
+	in.key(tree.KeyLeft, tree.Mods{Ctrl: true})
+	if edits != 3 || cp.Alpha >= 1 {
+		t.Fatalf("ctrl+left alpha = %v edits %d", cp.Alpha, edits)
 	}
 	in.key(tree.KeyEnter, noMods)
 	if submits != 1 {
@@ -205,5 +209,34 @@ func TestColorPickerTypingFromTheCard(t *testing.T) {
 	in.CommitText("#00ff00")
 	if got := cp.Text.Get(); got != "#00ff00" {
 		t.Fatalf("committed = %q", got)
+	}
+}
+
+// TestColorPickerAlpha: the alpha bar writes the opacity into the value, and a
+// transparent colour keeps its alpha in the hex string.
+func TestColorPickerAlpha(t *testing.T) {
+	_, win, in := inputFixture(t, colorPickerUI, 480, 470)
+	cp := MustByID[*ColorPicker](win, "color")
+	cp.Text.Set("#ff000080")
+	cp.HSV()
+	if cp.Alpha < 0.5 || cp.Alpha > 0.51 {
+		t.Fatalf("parsed alpha = %v", cp.Alpha)
+	}
+	cl := paint.ColorLayoutOf(absoluteRect(cp))
+	var last string
+	cp.OnEdit(func(v string) { last = v })
+
+	in.MouseDown(cl.Alpha.X+cl.Alpha.W*0.25, cl.Alpha.Y+cl.Alpha.H/2, 0, false)
+	in.MouseUp(cl.Alpha.X+cl.Alpha.W*0.25, cl.Alpha.Y+cl.Alpha.H/2, 0)
+	if got := cp.Text.Get(); got != "#ff000040" {
+		t.Fatalf("alpha pick = %q, want #ff000040", got)
+	}
+	if last != "#ff000040" {
+		t.Fatalf("onEdit = %q", last)
+	}
+	// Opaque again drops the alpha digits.
+	cp.SetHSVA(0, 1, 1, 1)
+	if got := cp.Text.Get(); got != "#ff0000" {
+		t.Fatalf("opaque = %q", got)
 	}
 }

@@ -137,10 +137,10 @@ type interactor struct {
 	pickNode  tree.Node
 	pickField int
 
-	// colorNode is the picker whose square or hue bar the pointer drags, and
-	// colorHue says which of the two the drag belongs to.
+	// colorNode is the picker whose square, hue bar or alpha bar the pointer
+	// drags, and colorMode says which of the three the drag belongs to.
 	colorNode tree.Node
-	colorHue  bool
+	colorMode int
 }
 
 // Gesture timings, the ones Flutter uses: a press that stays inside the slop for
@@ -777,10 +777,10 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 	// A colour picker's square and hue bar are dragged the same way: the press
 	// picks the point and every move follows, clamped to that control.
 	if button == 0 {
-		if n, hue, ok := colorAt(hit, x, y); ok {
+		if n, mode, ok := colorAt(hit, x, y); ok {
 			i.scrollNode = nil
 			i.setKbd(n)
-			i.colorNode, i.colorHue = n, hue
+			i.colorNode, i.colorMode = n, mode
 			i.dragColor(x, y)
 			return
 		}
@@ -1382,25 +1382,35 @@ func (i *interactor) beginColorHex(cp *tree.ColorPicker, selectAll bool) {
 	i.markDirty()
 }
 
-// colorAt returns the ColorPicker whose square or hue bar holds the point, and
-// whether it is the hue bar. A few pixels around the thin bar still grab it.
-func colorAt(hit tree.Node, x, y float64) (tree.Node, bool, bool) {
+// Colour-picker drag modes: the square, the hue bar and the alpha bar.
+const (
+	colorSV = iota
+	colorHue
+	colorAlpha
+)
+
+// colorAt returns the ColorPicker whose square, hue bar or alpha bar holds the
+// point, and which one. A few pixels around a thin bar still grab it, but the
+// bars sit four pixels apart so their padded hit areas do not overlap.
+func colorAt(hit tree.Node, x, y float64) (tree.Node, int, bool) {
 	for ; hit != nil; hit = hit.Base().Parent() {
 		if _, ok := hit.(*tree.ColorPicker); ok {
 			break
 		}
 	}
 	if hit == nil {
-		return nil, false, false
+		return nil, 0, false
 	}
 	cl := paint.ColorLayoutOf(absoluteRect(hit))
-	if hitRect(cl.SV, x, y) {
-		return hit, false, true
+	switch {
+	case hitRect(cl.SV, x, y):
+		return hit, colorSV, true
+	case x >= cl.Hue.X && x <= cl.Hue.Right() && y >= cl.Hue.Y-4 && y <= cl.Hue.Bottom()+4:
+		return hit, colorHue, true
+	case x >= cl.Alpha.X && x <= cl.Alpha.Right() && y >= cl.Alpha.Y-4 && y <= cl.Alpha.Bottom()+4:
+		return hit, colorAlpha, true
 	}
-	if x >= cl.Hue.X && x <= cl.Hue.Right() && y >= cl.Hue.Y-8 && y <= cl.Hue.Bottom()+8 {
-		return hit, true, true
-	}
-	return nil, false, false
+	return nil, 0, false
 }
 
 // pickColorAction runs the Cancel and OK actions a press on the picker releases.
@@ -1457,12 +1467,19 @@ func (i *interactor) dragColor(x, y float64) {
 	}
 	cl := paint.ColorLayoutOf(absoluteRect(n))
 	h, s, v := cp.HSV()
-	if i.colorHue {
+	switch i.colorMode {
+	case colorHue:
 		h = cl.HueAt(x)
-	} else {
+	case colorAlpha:
+		cp.Alpha = cl.AlphaAt(x)
+		c.Edit.Emit(cp.SetHSVA(h, s, v, cp.Alpha))
+		n.Base().MarkDirty(tree.DirtyPaint)
+		i.markDirty()
+		return
+	default:
 		s, v = cl.SVAt(x, y)
 	}
-	c.Edit.Emit(cp.SetHSV(h, s, v))
+	c.Edit.Emit(cp.SetHSVA(h, s, v, cp.Alpha))
 	n.Base().MarkDirty(tree.DirtyPaint)
 	i.markDirty()
 }
@@ -1483,11 +1500,20 @@ func (i *interactor) colorKey(n tree.Node, k tree.Key, mods tree.Mods) bool {
 		step = 10
 	}
 	h, s, v := cp.HSV()
+	a := cp.Alpha
 	switch k {
 	case tree.KeyLeft:
-		h -= step
+		if mods.Control() {
+			a -= step / 100
+		} else {
+			h -= step
+		}
 	case tree.KeyRight:
-		h += step
+		if mods.Control() {
+			a += step / 100
+		} else {
+			h += step
+		}
 	case tree.KeyUp:
 		if mods.Control() {
 			s += step / 100
@@ -1509,7 +1535,7 @@ func (i *interactor) colorKey(n tree.Node, k tree.Key, mods tree.Mods) bool {
 	default:
 		return false
 	}
-	c.Edit.Emit(cp.SetHSV(h, s, v))
+	c.Edit.Emit(cp.SetHSVA(h, s, v, a))
 	n.Base().MarkDirty(tree.DirtyPaint)
 	i.markDirty()
 	return true

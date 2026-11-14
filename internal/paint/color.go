@@ -1,6 +1,8 @@
 package paint
 
 import (
+	"math"
+
 	"github.com/goi-gui/goi/internal/m3"
 	"github.com/goi-gui/goi/internal/tree"
 )
@@ -16,9 +18,11 @@ const (
 	colorSVH       = 140.0
 	colorHueTop    = 224.0
 	colorHueH      = 12.0
-	colorInputTop  = 252.0
+	colorAlphaTop  = 244.0
+	colorAlphaH    = 12.0
+	colorInputTop  = 272.0
 	colorInputH    = 44.0
-	colorActionTop = 316.0
+	colorActionTop = 336.0
 	colorActionH   = 40.0
 	colorSwatch    = 40.0
 )
@@ -28,6 +32,7 @@ const (
 type ColorLayout struct {
 	SV     tree.Rect // the saturation/value square
 	Hue    tree.Rect // the hue bar
+	Alpha  tree.Rect // the opacity bar
 	Swatch tree.Rect // the round preview
 	Hex    tree.Rect // the editable hex field
 	Cancel tree.Rect
@@ -42,6 +47,7 @@ func ColorLayoutOf(r tree.Rect) ColorLayout {
 	return ColorLayout{
 		SV:     tree.Rect{X: r.X + colorPad, Y: r.Y + colorSVTop, W: w, H: colorSVH},
 		Hue:    tree.Rect{X: r.X + colorPad, Y: r.Y + colorHueTop, W: w, H: colorHueH},
+		Alpha:  tree.Rect{X: r.X + colorPad, Y: r.Y + colorAlphaTop, W: w, H: colorAlphaH},
 		Swatch: tree.Rect{X: r.X + colorPad, Y: r.Y + colorInputTop + (colorInputH-colorSwatch)/2, W: colorSwatch, H: colorSwatch},
 		Hex: tree.Rect{
 			X: r.X + colorPad + colorSwatch + 12,
@@ -71,6 +77,14 @@ func (c ColorLayout) HueAt(x float64) float64 {
 		return 0
 	}
 	return clamp01((x-c.Hue.X)/c.Hue.W) * 360
+}
+
+// AlphaAt returns the opacity at a point on the alpha bar.
+func (c ColorLayout) AlphaAt(x float64) float64 {
+	if c.Alpha.W <= 0 {
+		return 1
+	}
+	return clamp01((x - c.Alpha.X) / c.Alpha.W)
 }
 
 func (l *List) paintColorPicker(c *tree.Component, r tree.Rect, clip tree.Rect) {
@@ -117,7 +131,21 @@ func (l *List) paintColorPicker(c *tree.Component, r tree.Rect, clip tree.Rect) 
 	l.fillRect(tree.Rect{X: hx - 9, Y: hy - 9, W: 18, H: 18}, 0, 9, 0x000000FF, 1, clip)
 	l.fillRect(tree.Rect{X: hx - 8, Y: hy - 8, W: 16, H: 16}, 0, 8, 0xFFFFFFFF, 2, clip)
 
-	l.fillRect(cl.Swatch, tree.HSVColor(h, s, v), colorSwatch/2, col.OutlineVariant, 1, clip)
+	// The alpha bar sits on a checkerboard so transparent reads as transparent,
+	// then fades the picked colour from clear to solid.
+	l.colorChecker(cl.Alpha, clip)
+	alphaGradient := &tree.Gradient{Kind: tree.LinearKind, Angle: 90, Stops: []tree.GradientStop{
+		{At: 0, Color: tree.HSVColorA(h, s, v, 0)},
+		{At: 1, Color: tree.HSVColorA(h, s, v, 1)},
+	}}
+	l.fillShape(cl.Alpha, 0, alphaGradient, [4]float64{6, 6, 6, 6}, 0, 0, clip)
+	ax := clampf(cl.Alpha.X+cp.Alpha*cl.Alpha.W, cl.Alpha.X+8, cl.Alpha.Right()-8)
+	ay := cl.Alpha.Y + cl.Alpha.H/2
+	l.fillRect(tree.Rect{X: ax - 9, Y: ay - 9, W: 18, H: 18}, 0, 9, 0x000000FF, 1, clip)
+	l.fillRect(tree.Rect{X: ax - 8, Y: ay - 8, W: 16, H: 16}, 0, 8, 0xFFFFFFFF, 2, clip)
+
+	l.fillRect(cl.Swatch, col.Surface, colorSwatch/2, 0, 0, clip)
+	l.fillRect(cl.Swatch, tree.HSVColorA(h, s, v, cp.Alpha), colorSwatch/2, col.OutlineVariant, 1, clip)
 
 	// The hex field: editable, so it shows the raw text while the header keeps
 	// the last colour that parsed.
@@ -173,6 +201,24 @@ func (l *List) paintColorPicker(c *tree.Component, r tree.Rect, clip tree.Rect) 
 	action := l.style("labelLarge")
 	l.textIn("Cancel", action, col.Primary, cl.Cancel, AlignCenter, clip)
 	l.textIn("OK", action, col.Primary, cl.OK, AlignCenter, clip)
+}
+
+// colorChecker paints the transparency checkerboard behind the alpha bar.
+func (l *List) colorChecker(r tree.Rect, clip tree.Rect) {
+	const cell = 6.0
+	col := l.Theme.Colors
+	l.fillRect(r, col.Surface, 6, 0, 0, clip)
+	for y := 0.0; y < r.H; y += cell {
+		for x := 0.0; x < r.W; x += cell {
+			if int(x/cell+y/cell)%2 == 0 {
+				continue
+			}
+			w, h := math.Min(cell, r.W-x), math.Min(cell, r.H-y)
+			l.fillRect(tree.Rect{X: r.X + x, Y: r.Y + y, W: w, H: h},
+				col.SurfaceContainerHighest, 0, 0, 0, clip)
+		}
+	}
+	l.fillRect(r, 0, 6, col.OutlineVariant, 1, clip)
 }
 
 // hueGradient is the spectrum the hue bar shows, red at both ends.

@@ -649,7 +649,7 @@ func newM3Component(name string) Node {
 	case "DatePicker":
 		return &DatePicker{Component: newComponent()}
 	case "ColorPicker":
-		return &ColorPicker{Component: newComponent()}
+		return &ColorPicker{Component: newComponent(), Alpha: 1}
 	case "TimePicker":
 		tp := &TimePicker{
 			Component:  newComponent(),

@@ -2030,22 +2030,23 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   instead of deleting characters one byte at a time. The filters run in `tree`
   over the text and caret, not in paint, so pasted and IME-committed text takes
   the same path as a keystroke; a starting `text` is left as written.
-- **A colour picker is a saturation/value square plus a hue bar, and its value
-  is a hex string.** M3 defines no colour picker, so the controls follow the
-  pickers that do exist: a card with a label, a preview and a value the
-  component owns. Saturation and value share one square instead of two sliders
-  because they are one choice; hue stays separate because it is what survives
-  when the value is black or grey, and the HSV is kept beside the hex so
-  dragging value to zero does not reset the hue. The value is `#rrggbb` in
-  `text`, the same string `DatePicker` and `TimePicker` use, so `onEdit` and
-  `onSubmit` carry a string a design can print. Picking is opaque on purpose;
-  an alpha control would need its own channel and checkerboard, so it is not
-  there yet.
+- **A colour picker is a saturation/value square, a hue bar and an alpha bar,
+  and its value is a hex string.** M3 defines no colour picker, so the controls
+  follow the pickers that do exist: a card with a label, a preview and a value
+  the component owns. Saturation and value share one square instead of two
+  sliders because they are one choice; hue stays separate because it is what
+  survives when the value is black or grey, and the HSV is kept beside the hex
+  so dragging value to zero does not reset the hue. Opacity gets its own bar
+  because it is independent of all three, and a checkerboard is the only
+  truthful backdrop for it. The value is `#rrggbb`, or `#rrggbbaa` when
+  translucent, in `text`, the same string `DatePicker` and `TimePicker` use, so
+  `onEdit` and `onSubmit` carry a string a design can print.
 - **The colour picker's hex field edits the same text the square does, and the
   actions are events.** The field is not a second value: it writes `text` and
   the square reads it, so a pick and a typed hex converge. Its characters are
   filtered to `#` and hex digits while it is focused, but the text stays exactly
-  what was typed until OK or blur, when it is normalized to `#rrggbb`; a partial
+  what was typed until OK or blur, when it is normalized to `#rrggbb` or
+  `#rrggbbaa`; a partial
   value never reaches the app through `onEdit`, and an unparseable one falls
   back to the last colour that parsed. Cancel and OK follow the time picker:
   they report the current value rather than deciding whether to revert, which

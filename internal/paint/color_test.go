@@ -20,14 +20,18 @@ func TestColorPickerPaintsTheControls(t *testing.T) {
 	l := &List{}
 	l.Build(tr, 480, 900)
 
-	var square, hue, preview bool
+	var square, hue, preview, alphaBar bool
 	var blackFade, whiteFade bool
 	var fades int
 	texts := map[string]int{}
 	for _, op := range l.Ops {
 		switch {
 		case op.Kind == Fill && op.Shape == CSSGradient:
-			hue = true
+			if op.Gradient != nil && len(op.Gradient.Stops) >= 2 && op.Gradient.Stops[0].Color&0xFF == 0 {
+				alphaBar = true
+			} else {
+				hue = true
+			}
 		case op.Kind == Fill && op.Shape == Gradient:
 			fades++
 			switch op.Color {
@@ -66,6 +70,9 @@ func TestColorPickerPaintsTheControls(t *testing.T) {
 	if !hue {
 		t.Fatal("no hue spectrum")
 	}
+	if !alphaBar {
+		t.Fatal("no alpha fade")
+	}
 	if !preview {
 		t.Fatal("no round preview of the value")
 	}
@@ -74,7 +81,7 @@ func TestColorPickerPaintsTheControls(t *testing.T) {
 // TestColorLayoutHitMapping: the square maps to saturation and value, the bar
 // to hue, and both clamp outside their box.
 func TestColorLayoutHitMapping(t *testing.T) {
-	cl := ColorLayoutOf(tree.Rect{X: 100, Y: 100, W: 328, H: 372})
+	cl := ColorLayoutOf(tree.Rect{X: 100, Y: 100, W: 328, H: 392})
 	s, v := cl.SVAt(cl.SV.X, cl.SV.Y)
 	if s != 0 || v != 1 {
 		t.Fatalf("top-left = %v %v, want 0 1", s, v)
@@ -92,5 +99,14 @@ func TestColorLayoutHitMapping(t *testing.T) {
 	}
 	if h := cl.HueAt(cl.Hue.Right() + 50); h != 360 {
 		t.Fatalf("clamped hue = %v, want 360", h)
+	}
+	if a := cl.AlphaAt(cl.Alpha.X); a != 0 {
+		t.Fatalf("left alpha = %v, want 0", a)
+	}
+	if a := cl.AlphaAt(cl.Alpha.X + cl.Alpha.W/2); a != 0.5 {
+		t.Fatalf("middle alpha = %v, want 0.5", a)
+	}
+	if a := cl.AlphaAt(cl.Alpha.Right() + 50); a != 1 {
+		t.Fatalf("clamped alpha = %v, want 1", a)
 	}
 }
