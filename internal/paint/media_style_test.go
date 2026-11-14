@@ -192,3 +192,34 @@ func TestVideoBarInkDefaultsToWhite(t *testing.T) {
 		}
 	}
 }
+
+// TestAudioNeverHidesItsBar: the bar is the whole audio player, so it is always
+// laid out and drawn; a video's hides with its controls.
+func TestAudioNeverHidesItsBar(t *testing.T) {
+	media := func(kind string) *tree.Media {
+		tr, diag := tree.BuildSource([]byte(`Window { `+kind+` { width: 300 height: 80 } }`), nil)
+		if !diag.Empty() {
+			t.Fatalf("%v", diag)
+		}
+		for _, n := range tr.All() {
+			if m, ok := tree.MediaNode(n); ok {
+				return m
+			}
+		}
+		t.Fatalf("no %s node", kind)
+		return nil
+	}
+	r := tree.Rect{X: 0, Y: 0, W: 300, H: 80}
+	if got := MediaLayoutOf(media("Audio"), r); got.Bar.H == 0 {
+		t.Fatal("an audio bar laid out as empty while off-hover")
+	}
+	video := media("Video")
+	video.ControlsShown = false
+	if got := MediaLayoutOf(video, r); got.Bar.H != 0 {
+		t.Fatal("a resting video kept its bar")
+	}
+	video.ControlsShown = true
+	if got := MediaLayoutOf(video, r); got.Bar.H == 0 {
+		t.Fatal("a video with its bar shown laid out as empty")
+	}
+}

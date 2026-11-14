@@ -35,11 +35,24 @@ type MediaLayout struct {
 	Time tree.Rect
 }
 
+// mediaBarOn reports whether a player's bar is on screen. A video hides its
+// chrome three seconds after the pointer rests; an audio player keeps it, since
+// the bar is the whole picture and there is nothing to watch behind it.
+func mediaBarOn(m *tree.Media) bool {
+	if !m.Controls.Get() {
+		return false
+	}
+	if _, ok := m.Base().Node().(*tree.Audio); ok {
+		return true
+	}
+	return m.ControlsShown
+}
+
 // MediaLayoutOf lays out the controls of an Audio or Video in its box. A bar
 // that auto-hid lays out as empty, so paint and hit-testing agree there is
 // nothing to press until the pointer comes back.
 func MediaLayoutOf(m *tree.Media, r tree.Rect) MediaLayout {
-	if !m.Controls.Get() || !m.ControlsShown || r.W < 120 || r.H < 24 {
+	if !mediaBarOn(m) || r.W < 120 || r.H < 24 {
 		return MediaLayout{}
 	}
 	bar := tree.Rect{X: r.X, Y: r.Bottom() - mediaBarH, W: r.W, H: mediaBarH}
@@ -169,7 +182,7 @@ func (l *List) paintSubtitle(m *tree.Media, r tree.Rect, clip tree.Rect) {
 	shadow := l.subtitleShadow(m)
 	lh := st.Size * 1.3
 	bottom := r.Bottom() - 12
-	if m.Controls.Get() && m.ControlsShown && r.W >= 120 && r.H >= 24 {
+	if mediaBarOn(m) && r.W >= 120 && r.H >= 24 {
 		bottom = r.Bottom() - mediaBarH - 8
 	}
 	for i := len(lines) - 1; i >= 0; i-- {

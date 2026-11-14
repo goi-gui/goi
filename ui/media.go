@@ -975,7 +975,7 @@ func (a *App) tickMedia(dt float64) (bool, time.Duration) {
 		// rested on the picture or left it for controlsHide. The remaining time
 		// is the loop's wake-up, so a paused player still drops its bar without
 		// needing input.
-		if m.ControlsShown {
+		if m.ControlsShown && isVideo(m.Base().Node()) {
 			m.ControlsIdle += time.Duration(dt * float64(time.Second))
 			if m.ControlsIdle >= controlsHide {
 				m.ControlsShown = false

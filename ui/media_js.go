@@ -416,7 +416,7 @@ func (a *App) tickMedia(dt float64) (bool, time.Duration) {
 	for i := 0; i < len(a.media); i++ {
 		p := a.media[i]
 		m := p.m
-		if m.ControlsShown {
+		if m.ControlsShown && isVideo(m.Base().Node()) {
 			m.ControlsIdle += time.Duration(dt * float64(time.Second))
 			if m.ControlsIdle >= controlsHide {
 				m.ControlsShown = false

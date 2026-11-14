@@ -13,6 +13,14 @@ import (
 	"github.com/goi-gui/goi/internal/tree"
 )
 
+// isVideo reports whether a player draws a picture. A video's chrome hides so the
+// picture reads on its own; an audio player has no picture behind its bar, so the
+// bar stays and stays pressable.
+func isVideo(n tree.Node) bool {
+	_, ok := n.(*tree.Video)
+	return ok
+}
+
 // mediaCursorIdle hides the pointer once a video's controls rest, which is the
 // same three seconds that hide the bar. A driver-less build has no pointer.
 func (a *App) mediaCursorIdle(n tree.Node) {
