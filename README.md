@@ -249,10 +249,12 @@ every element.
 ## Building
 
 goi builds on Linux, Windows and macOS. The Go packages above `internal/platform`
-are pure Go, so they cross-compile as they are; the platform layer is cgo over
-SDL3, so each target needs a C compiler, `pkg-config` and SDL3's development
-files. There is no build tag to pick a platform: the same binary asks SDL which
-driver it got and hands the matching native handle to the renderer.
+are pure Go, so they cross-compile as they are. The platform layer is cgo over
+SDL3 by default, so that build needs a C compiler, `pkg-config` and SDL3's
+development files; a `CGO_ENABLED=0` build uses the purego backend and needs only
+the SDL3 runtime library. There is no build tag to pick a platform: the same
+binary asks SDL which driver it got and hands the matching native handle to the
+renderer.
 
 ```sh
 # Linux (also needs SDL3's own deps: libwayland-dev, libdecor-0-dev,
@@ -267,11 +269,16 @@ go build ./...
 # Windows (MSYS2, MINGW64 shell, so cgo finds gcc and pkg-config)
 pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-pkgconf mingw-w64-x86_64-SDL3
 go build ./...
+
+# Any of the three, without a C toolchain or SDL development files
+CGO_ENABLED=0 go build -tags nofakecgo ./...
 ```
 
-`-ldflags=-linkmode=internal` is Linux-only: goffi's dynamic imports and the cgo
-SDL shim cannot share the external linker. Add `-ldflags="-H windowsgui"` on
-Windows for a program without a console window.
+`-ldflags=-linkmode=internal` is Linux-only for the cgo build: goffi's dynamic
+imports and the cgo SDL shim cannot share the external linker. The purego build
+needs no cgo flag; `nofakecgo` lets goffi and purego share one fake C runtime.
+Add `-ldflags="-H windowsgui"` on Windows for a program without a console
+window.
 
 The renderer picks its backend from the surface it is given: Vulkan through
 Wayland or X11, Direct3D 12 on Windows, Metal on macOS. All four go through
