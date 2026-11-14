@@ -1980,3 +1980,9 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   not reopen the file at every step. Its hit strip grows to the wave's height so
   the crests are as pressable as the flat track, and the flat bar inside that
   strip stays 4dp tall.
+- **A loading video turns a ring in the middle.** The placeholder wash alone read
+  as a still frame, especially on a live stream that stalls between segments, so
+  the video draws an indeterminate circular-progress arc (270°, one turn per
+  1.1s) over the picture while the probe or the decoder is waiting. It is white,
+  like the rest of the video chrome, and asks for frames so it keeps turning
+  when no media frame arrives.

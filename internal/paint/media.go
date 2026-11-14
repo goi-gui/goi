@@ -128,6 +128,12 @@ func (l *List) paintMediaFrame(m *tree.Media, r tree.Rect, clip tree.Rect) {
 	if v, ok := m.Base().Node().(*tree.Video); ok {
 		l.paintVideoFrame(v, r, clip)
 		l.paintSubtitle(m, r, clip)
+		// A spinner says the player is working. Loading is the probe, and
+		// Buffering is the decoder waiting for a frame — which is also what a
+		// live stream shows between segments.
+		if (v.Loading || v.Buffering) && m.LoadErr == nil {
+			l.videoSpinner(r, clip)
+		}
 	}
 	if m.LoadErr != nil {
 		l.paintMediaError(m, r, clip)
@@ -157,6 +163,41 @@ func (l *List) paintVideoFrame(v *tree.Video, r tree.Rect, clip tree.Rect) {
 		return
 	}
 	l.paintBitmap(v.Data, v.Fit.Get(), v.Base(), false, 0, r, clip)
+}
+
+// videoSpinner draws an indeterminate ring in the middle of a video that is
+// fetching or buffering. It is the circular-progress shape, turning a little
+// faster than the expressive loading indicator so a waiting picture reads as
+// activity rather than as a still frame.
+func (l *List) videoSpinner(r tree.Rect, clip tree.Rect) {
+	d := 40.0
+	if lim := minf(r.W, r.H) * 0.6; lim < d {
+		d = lim
+	}
+	if d < 12 {
+		return
+	}
+	cx, cy := r.X+r.W/2, r.Y+r.H/2
+	phase := float32(l.Clock.Seconds() * 2 * math.Pi / 1.1)
+	// A dark plate under the ring keeps white readable on a pale placeholder
+	// and on a bright frame alike.
+	plate := d * 1.7
+	l.Ops = append(l.Ops, Op{
+		Kind: Fill, Shape: Circle,
+		Rect:  rectArr(tree.Rect{X: cx - plate/2, Y: cy - plate/2, W: plate, H: plate}),
+		Color: withAlpha(l.Theme.Colors.Scrim, 0.38),
+		Clip:  clipArr(clip),
+	})
+	l.Ops = append(l.Ops, Op{
+		Kind: Fill, Shape: Arc,
+		Rect:       rectArr(tree.Rect{X: cx - d/2, Y: cy - d/2, W: d, H: d}),
+		Color:      videoBarInk,
+		Thickness:  float32(d * 0.11),
+		StartAngle: phase,
+		EndAngle:   phase + 3*math.Pi/2,
+		Clip:       clipArr(clip),
+	})
+	l.Animating = true
 }
 
 // paintSubtitle draws the caption playing now: centered near the bottom of the

@@ -379,3 +379,58 @@ func TestSeekbarGapAndHandleWhenFlat(t *testing.T) {
 		t.Fatalf("the gap is %v, want at least %v", dimStart-playedEnd, 2*seekEdge-2)
 	}
 }
+
+// TestVideoSpinnerWhileLoading: a video that is probing or buffering — a live
+// stream between segments included — draws a turning circular-progress ring in
+// the middle and asks for frames; a settled video draws none.
+func TestVideoSpinnerWhileLoading(t *testing.T) {
+	build := func(loading, buffering bool) (*List, tree.Rect) {
+		tr, diag := tree.BuildSource([]byte(`Window {
+			Video { id: v width: 320 height: 200 controls: false }
+		}`), nil)
+		if !diag.Empty() {
+			t.Fatalf("%v", diag)
+		}
+		var m *tree.Media
+		for _, n := range tr.All() {
+			if mm, ok := tree.MediaNode(n); ok {
+				m = mm
+			}
+		}
+		m.Loading, m.Buffering = loading, buffering
+		layout.New(nil).Layout(tr.Root, 480, 320)
+		l := &List{}
+		l.Build(tr, 480, 320)
+		return l, tree.Rect{W: 320, H: 200}
+	}
+	spinner := func(l *List, box tree.Rect) *Op {
+		for i := range l.Ops {
+			op := &l.Ops[i]
+			if op.Kind == Fill && op.Shape == Arc && op.Color == videoBarInk {
+				if math.Abs(float64(op.Rect[0])+float64(op.Rect[2])/2-(box.X+box.W/2)) < 1 &&
+					math.Abs(float64(op.Rect[1])+float64(op.Rect[3])/2-(box.Y+box.H/2)) < 1 {
+					return op
+				}
+			}
+		}
+		return nil
+	}
+	for _, state := range []struct{ loading, buffering bool }{
+		{true, false}, {false, true}, {true, true},
+	} {
+		l, box := build(state.loading, state.buffering)
+		op := spinner(l, box)
+		if op == nil {
+			t.Fatalf("loading=%v buffering=%v: no spinner", state.loading, state.buffering)
+		}
+		if op.Thickness <= 0 || op.EndAngle-op.StartAngle < 3 {
+			t.Fatalf("spinner geometry = %+v", op)
+		}
+		if !l.Animating {
+			t.Fatalf("loading=%v buffering=%v: the spinner did not ask for frames", state.loading, state.buffering)
+		}
+	}
+	if l, box := build(false, false); spinner(l, box) != nil || l.Animating {
+		t.Fatal("a settled video drew a spinner")
+	}
+}
