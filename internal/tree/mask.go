@@ -124,6 +124,10 @@ func fieldAllows(kind string, r rune) bool {
 
 // maskTokens reads a mask: # is a digit, @ a letter, * either, and every other
 // rune is literal text.
+//
+// shortcut: there is no escape for a literal slot character, so a mask that
+// needs to show #, @ or * must be written differently; add one when a real mask
+// needs it.
 type maskToken struct {
 	lit  rune
 	slot byte
