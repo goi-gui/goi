@@ -2,7 +2,6 @@ package text
 
 import (
 	"bytes"
-	_ "embed"
 	"fmt"
 	"image"
 	"image/png"
@@ -16,8 +15,7 @@ import (
 // offline"; a build that does not want it can drop the file and the node falls
 // back to the text face's monochrome glyphs.
 //
-//go:embed fonts/noto-color-emoji.ttf
-var notoEmoji []byte
+// notoEmoji is the embedded font, or nil in a noemoji build.
 
 // HasEmoji reports whether the colour emoji font parsed.
 func (l *Library) HasEmoji() bool { return l.emoji != nil }
