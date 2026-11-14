@@ -228,3 +228,45 @@ func TestListPropertiesReadBridgeSlices(t *testing.T) {
 		t.Fatalf("point coordinate = %v", c)
 	}
 }
+
+type testGeomData struct {
+	Data []float64 `goi:"data"`
+}
+
+// TestGeomDataFromLoop covers the shape the map example uses: the polygon data
+// comes from a loop row's field, not from a bridge variable directly.
+func TestGeomDataFromLoop(t *testing.T) {
+	tr, diag := BuildSource([]byte(`bridge {
+		Geoms []GeomData
+	}
+	type GeomData {
+		Data []float64
+	}
+	Window {
+		Map {
+			width: 200 height: 200
+			for _, g := range bridge.Geoms {
+				Geom { data: g.Data }
+			}
+		}
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	tr.SetData("Geoms", []testGeomData{{Data: []float64{28, 40, 30, 40, 30, 42}}})
+	tr.ApplyExpressions()
+	found := false
+	for _, n := range tr.All() {
+		g, ok := n.(*Geom)
+		if !ok {
+			continue
+		}
+		found = true
+		if got := g.Data.Get(); len(got) != 6 || got[0] != 28 || got[5] != 42 {
+			t.Fatalf("geom data = %v, want the loop row's ring", got)
+		}
+	}
+	if !found {
+		t.Fatal("no Geom built from the loop")
+	}
+}

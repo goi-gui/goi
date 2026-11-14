@@ -470,7 +470,7 @@ func dataValue(item any, field string) (any, bool) {
 		if !ok {
 			return nil, false
 		}
-		return normalize(v)
+		return normalizeData(v)
 	}
 	rv := reflect.ValueOf(item)
 	for rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
@@ -488,7 +488,7 @@ func dataValue(item any, field string) (any, bool) {
 				continue
 			}
 			if fieldMatches(dataFieldName(f), field) {
-				return normalize(rv.Field(i).Interface())
+				return normalizeData(rv.Field(i).Interface())
 			}
 		}
 	case reflect.Map:
@@ -499,7 +499,7 @@ func dataValue(item any, field string) (any, bool) {
 		if !ok {
 			return nil, false
 		}
-		return normalize(got)
+		return normalizeData(got)
 	}
 	return nil, false
 }
