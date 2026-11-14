@@ -1964,3 +1964,12 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   long press or a double tap suppresses the click that would otherwise run the
   same action twice. A pan owns the gesture, so a scroll area under the
   detector does not also scroll.
+- **A progress ring centres its children.** The ring is a container now, and a
+  child keeps its own size in the middle instead of filling the box, because the
+  usual child is a percentage or an icon that would look wrong stretched to the
+  stroke. A child that declares 100% still fills.
+- **A wavy seekbar is a ribbon, not an animation.** The scrubber's wave is drawn
+  from the same sine-ribbon helper the wavy progress uses, but with a fixed phase:
+  a seekbar marks a position, and a wave that never stops moving would read as
+  still loading. Its hit strip grows to the wave's height so the crests are as
+  pressable as the flat track.
