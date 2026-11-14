@@ -18,6 +18,9 @@ func TestInputTypeFilters(t *testing.T) {
 		{"alphanumeric", "a1-_b2", "a1b2"},
 		{"abc", "adbc", "abc"},
 		{"0123456789.", "a1.2,b3", "1.23"},
+		// The set is case-sensitive: a lowercase hex field drops #FF.
+		{"0123456789abcdef", "#FF00", "00"},
+		{"0123456789abcdefABCDEF#", "#FF00", "#FF00"},
 	}
 	for _, c := range cases {
 		got, caret := InputInsert(c.kind, "", "", 0, 0, c.in)
