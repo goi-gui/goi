@@ -1926,3 +1926,13 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   blend of a cosine star and a superellipse, because a star blended with a circle
   cannot give the square's flat sides, and a four-lobed cosine reads as a clover
   rather than a square.
+- **A colour variable always names its namespace.** A shadow colour and a
+  gradient stop have no property type to tell a role from a literal, so
+  `theme.primary` and `customColor.brand` are the only spellings for a variable;
+  a bare word is a CSS colour name. That is also why a custom colour may reuse a
+  scheme role's name: `theme.primary` and `customColor.primary` are two
+  different values in different namespaces, so nothing has to be reserved.
+- **A gradient keeps its unresolved stops on the node.** A stop that names a
+  colour stores the namespace and name beside the pixel value, and the same
+  resolver that rewrites colour cells rewrites those stops, so a theme switch or
+  a changed custom colour recolours a gradient without re-parsing its string.
