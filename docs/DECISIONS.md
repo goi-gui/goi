@@ -2010,3 +2010,8 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   digits from the platform's text path, so a focused picker turns the text input
   on anchored to its active field, the same way a text field does — otherwise a
   browser types into nothing and SDL never starts text input.
+- **A time picker's hour format is a display choice, not a value.** The stored
+  time stays 24-hour `HH:MM`, so `hourFormat: 24` only hides the AM/PM switch,
+  changes the spelling and gives the dial its second ring. The chip on the action
+  row is both the label of the current clock and its switch, which keeps the
+  visual toggle out of the header the design is using for the time itself.

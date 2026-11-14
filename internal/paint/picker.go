@@ -113,16 +113,22 @@ type TimeLayout struct {
 	Field   int    // 0 the hour, 1 the minutes
 	Hour    int    // 0..23
 	Minute  int
-	AM      bool
+	// Format is 12 (AM/PM, the default) or 24. The value stays 24-hour either
+	// way; only the display, the dial and the AM/PM switch follow it.
+	Format int
+	AM     bool
 
 	Title   tree.Rect
 	HourBox tree.Rect
 	MinBox  tree.Rect
 	// HourLabel and MinuteLabel sit under the fields in the input variant.
 	HourLabel, MinuteLabel tree.Rect
-	AMBox, PMBox           tree.Rect
-	Dial                   tree.Rect
-	Switch, Cancel, OK     tree.Rect
+	// AMBox and PMBox are empty in the 24-hour format, which has no half-day.
+	AMBox, PMBox tree.Rect
+	Dial         tree.Rect
+	// FormatToggle is the small `12h`/`24h` switch beside the variant icon.
+	FormatToggle       tree.Rect
+	Switch, Cancel, OK tree.Rect
 }
 
 // Time picker geometry, in the card's own logical pixels.
@@ -138,23 +144,28 @@ const (
 
 // TimeLayoutOf lays out value, defaulting to now, with field active. variant is
 // "dial" for the clock and "input" for the text fields.
-func TimeLayoutOf(r tree.Rect, value string, field int, variant string) TimeLayout {
+func TimeLayoutOf(r tree.Rect, value string, field int, variant string, format int) TimeLayout {
 	if variant != "input" {
 		variant = "dial"
+	}
+	if format != 24 {
+		format = 12
 	}
 	h, m := parseClock(value)
 	tl := TimeLayout{
 		Value: pad2(h) + ":" + pad2(m), Variant: variant, Field: field,
-		Hour: h, Minute: m, AM: h < 12,
+		Hour: h, Minute: m, Format: format, AM: h < 12,
 	}
 	left := r.X + timePad
 	top := r.Y + timeHeaderTop
 	tl.Title = tree.Rect{X: left, Y: r.Y + timeTitleTop, W: r.W - 2*timePad, H: 16}
 	tl.HourBox = tree.Rect{X: left, Y: top, W: timeFieldW, H: timeFieldH}
 	tl.MinBox = tree.Rect{X: left + timeFieldW + 24, Y: top, W: timeFieldW, H: timeFieldH}
-	ampmX := tl.MinBox.Right() + 12
-	tl.AMBox = tree.Rect{X: ampmX, Y: top, W: timeAMPMW, H: timeFieldH / 2}
-	tl.PMBox = tree.Rect{X: ampmX, Y: top + timeFieldH/2, W: timeAMPMW, H: timeFieldH / 2}
+	if format == 12 {
+		ampmX := tl.MinBox.Right() + 12
+		tl.AMBox = tree.Rect{X: ampmX, Y: top, W: timeAMPMW, H: timeFieldH / 2}
+		tl.PMBox = tree.Rect{X: ampmX, Y: top + timeFieldH/2, W: timeAMPMW, H: timeFieldH / 2}
+	}
 	tl.HourLabel = tree.Rect{X: tl.HourBox.X, Y: tl.HourBox.Bottom() + 4, W: timeFieldW, H: 16}
 	tl.MinuteLabel = tree.Rect{X: tl.MinBox.X, Y: tl.MinBox.Bottom() + 4, W: timeFieldW, H: 16}
 
@@ -162,6 +173,7 @@ func TimeLayoutOf(r tree.Rect, value string, field int, variant string) TimeLayo
 	// toggle on the left and the two buttons on the right.
 	actionY := r.Bottom() - timePad - timeActionH
 	tl.Switch = tree.Rect{X: left, Y: actionY, W: 32, H: timeActionH}
+	tl.FormatToggle = tree.Rect{X: tl.Switch.Right() + 8, Y: actionY, W: 44, H: timeActionH}
 	tl.OK = tree.Rect{X: r.Right() - timePad - 48, Y: actionY, W: 48, H: timeActionH}
 	tl.Cancel = tree.Rect{X: tl.OK.X - 8 - 72, Y: actionY, W: 72, H: timeActionH}
 
@@ -191,6 +203,24 @@ func parseClock(value string) (int, int) {
 // DialRadius is the ring the numbers sit on, measured from the centre.
 func (t TimeLayout) DialRadius() float64 { return t.Dial.W/2 - 24 }
 
+// InnerRadius is the second ring of a 24-hour dial, which is where 13-00 live.
+func (t TimeLayout) InnerRadius() float64 { return t.DialRadius() * 0.62 }
+
+// HourText is the hour as the chosen format spells it: 07 on a 24-hour clock,
+// 7 on a 12-hour one.
+func (t TimeLayout) HourText() string {
+	if t.Format == 24 {
+		return pad2(t.Hour)
+	}
+	return pad12(t.Hour)
+}
+
+// DialInner reports whether the selected hour sits on the inner ring, which
+// only a 24-hour dial has.
+func (t TimeLayout) DialInner() bool {
+	return t.Format == 24 && t.Field == 0 && (t.Hour == 0 || t.Hour >= 13)
+}
+
 // TimeAt maps a point on the dial to a value, and reports which field the next
 // pick should set: the hour ring hands over to the minutes.
 func (t TimeLayout) TimeAt(x, y float64) (string, int, bool) {
@@ -208,7 +238,22 @@ func (t TimeLayout) TimeAt(x, y float64) (string, int, bool) {
 	}
 	idx := int(ang/(math.Pi/6)+0.5) % 12
 	if t.Field == 0 {
-		// The dial shows 12 hours; AM/PM decides which half of the day it is.
+		if t.Format == 24 {
+			// Two rings: 1-12 outside, 13-00 inside.
+			if math.Hypot(dx, dy) >= (t.DialRadius()+t.InnerRadius())/2 {
+				h := idx
+				if h == 0 {
+					h = 12
+				}
+				return pad2(h) + ":" + pad2(t.Minute), 1, true
+			}
+			h := 0
+			if idx != 0 {
+				h = idx + 12
+			}
+			return pad2(h) + ":" + pad2(t.Minute), 1, true
+		}
+		// A 12-hour dial: AM/PM decides which half of the day it is.
 		h := idx
 		if h == 0 {
 			h = 12
@@ -225,12 +270,21 @@ func (t TimeLayout) TimeAt(x, y float64) (string, int, bool) {
 // DialIndex is the position of the current value on the active dial.
 func (t TimeLayout) DialIndex() int {
 	if t.Field == 0 {
+		if t.Format == 24 {
+			if t.Hour == 0 {
+				return 0
+			}
+			if t.Hour >= 13 {
+				return t.Hour - 12
+			}
+			return t.Hour % 12
+		}
 		return t.Hour % 12
 	}
 	return t.Minute / 5
 }
 
-// DialLabel is the text at dial position i.
+// DialLabel is the text at dial position i on the outer ring.
 func (t TimeLayout) DialLabel(i int) string {
 	if t.Field == 0 {
 		if i == 0 {
@@ -239,6 +293,14 @@ func (t TimeLayout) DialLabel(i int) string {
 		return itoa(i)
 	}
 	return pad2(i * 5)
+}
+
+// DialInnerLabel is the inner-ring label of a 24-hour dial: 13-23, then 00.
+func (t TimeLayout) DialInnerLabel(i int) string {
+	if i == 0 {
+		return "00"
+	}
+	return itoa(i + 12)
 }
 
 // ---------------------------------------------------------------- paint
@@ -288,7 +350,11 @@ func (l *List) paintTimePicker(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	l.shadow(r, m3.ShapeExtraLarge, m3.Elevation3, clip)
 	l.fillRect(r, col.SurfaceContainerHigh, m3.ShapeExtraLarge, 0, 0, clip)
 
-	t := TimeLayoutOf(r, c.Text.Get(), c.PickerField, c.Variant.Get())
+	format := 12
+	if tp, ok := c.Node().(*tree.TimePicker); ok && tp.HourFormat.Get() == 24 {
+		format = 24
+	}
+	t := TimeLayoutOf(r, c.Text.Get(), c.PickerField, c.Variant.Get(), format)
 	label := c.Label.Get()
 	if label == "" {
 		if t.Variant == "input" {
@@ -324,35 +390,38 @@ func (l *List) paintTimePicker(c *tree.Component, r tree.Rect, clip tree.Rect) {
 			})
 		}
 	}
-	field(t.HourBox, pad12(t.Hour), t.Field == 0)
+	field(t.HourBox, t.HourText(), t.Field == 0)
 	field(t.MinBox, pad2(t.Minute), t.Field == 1)
 
 	colon := l.style("displayMedium")
 	l.textIn(":", colon, col.OnSurface,
 		tree.Rect{X: t.HourBox.Right() + 4, Y: t.HourBox.Y, W: 16, H: timeFieldH}, AlignCenter, clip)
 
-	// AM/PM: one bordered control split in two, the chosen half filled.
-	l.fillRect(tree.Rect{X: t.AMBox.X, Y: t.AMBox.Y, W: t.AMBox.W, H: t.AMBox.H * 2},
-		col.Surface, 8, col.Outline, 1, clip)
-	ampm := l.style("labelMedium")
-	for _, half := range []struct {
-		box   tree.Rect
-		text  string
-		on    bool
-		radii [4]float32
-	}{
-		{t.AMBox, "AM", t.AM, [4]float32{7, 7, 0, 0}},
-		{t.PMBox, "PM", !t.AM, [4]float32{0, 0, 7, 7}},
-	} {
-		fg := col.OnSurface
-		if half.on {
-			l.Ops = append(l.Ops, Op{
-				Kind: Fill, Shape: RoundedRect, Rect: rectArr(half.box),
-				Radius: half.radii, Color: col.TertiaryContainer, Clip: clipArr(clip),
-			})
-			fg = col.OnTertiaryContainer
+	// AM/PM: one bordered control split in two, the chosen half filled. A
+	// 24-hour clock has no half-day, so the control is absent there.
+	if t.Format == 12 {
+		l.fillRect(tree.Rect{X: t.AMBox.X, Y: t.AMBox.Y, W: t.AMBox.W, H: t.AMBox.H * 2},
+			col.Surface, 8, col.Outline, 1, clip)
+		ampm := l.style("labelMedium")
+		for _, half := range []struct {
+			box   tree.Rect
+			text  string
+			on    bool
+			radii [4]float32
+		}{
+			{t.AMBox, "AM", t.AM, [4]float32{7, 7, 0, 0}},
+			{t.PMBox, "PM", !t.AM, [4]float32{0, 0, 7, 7}},
+		} {
+			fg := col.OnSurface
+			if half.on {
+				l.Ops = append(l.Ops, Op{
+					Kind: Fill, Shape: RoundedRect, Rect: rectArr(half.box),
+					Radius: half.radii, Color: col.TertiaryContainer, Clip: clipArr(clip),
+				})
+				fg = col.OnTertiaryContainer
+			}
+			l.textIn(half.text, ampm, fg, half.box, AlignCenter, clip)
 		}
-		l.textIn(half.text, ampm, fg, half.box, AlignCenter, clip)
 	}
 
 	if t.Variant == "dial" {
@@ -368,6 +437,11 @@ func (l *List) paintTimePicker(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		icon = "schedule"
 	}
 	l.iconIn(icon, 22, col.OnSurfaceVariant, t.Switch.X+t.Switch.W/2, t.Switch.Y+t.Switch.H/2, clip)
+	// The format chip is both a label and the switch: it says which clock is
+	// showing and flips it on click.
+	l.fillRect(t.FormatToggle, col.Surface, 8, col.OutlineVariant, 1, clip)
+	l.textIn(itoa(t.Format)+"h", l.style("labelSmall"), col.OnSurfaceVariant,
+		t.FormatToggle, AlignCenter, clip)
 	action := l.style("labelLarge")
 	l.textIn("Cancel", action, col.Primary, t.Cancel, AlignCenter, clip)
 	l.textIn("OK", action, col.Primary, t.OK, AlignCenter, clip)
@@ -383,16 +457,44 @@ func (l *List) paintTimeDial(t TimeLayout, clip tree.Rect) {
 		Color: col.SurfaceContainerHighest, Clip: clipArr(clip),
 	})
 	numbers := l.style("bodyLarge")
+	innerNumbers := l.style("bodyMedium")
 	selected := t.DialIndex()
-	for i := 0; i < 12; i++ {
-		if i == selected {
-			continue // its filled circle is drawn below, on top
-		}
-		lx, ly := dialPoint(dcx, dcy, t.DialRadius(), i)
-		l.textIn(t.DialLabel(i), numbers, col.OnSurface,
-			tree.Rect{X: lx - 20, Y: ly - 14, W: 40, H: 28}, AlignCenter, clip)
+	selRadius := t.DialRadius()
+	if t.DialInner() {
+		selRadius = t.InnerRadius()
 	}
-	sx, sy := dialPoint(dcx, dcy, t.DialRadius(), selected)
+	// A 24-hour clock labels both rings: 1-12 outside, 13-00 inside. The minute
+	// dial and a 12-hour clock have one ring.
+	rings := []struct {
+		radius float64
+		inner  bool
+	}{{t.DialRadius(), false}}
+	if t.Format == 24 && t.Field == 0 {
+		rings = append(rings, struct {
+			radius float64
+			inner  bool
+		}{t.InnerRadius(), true})
+	}
+	for _, ring := range rings {
+		size := 40.0
+		style := numbers
+		if ring.inner {
+			size, style = 30, innerNumbers
+		}
+		for i := 0; i < 12; i++ {
+			if i == selected && ring.inner == t.DialInner() {
+				continue // its filled circle is drawn below, on top
+			}
+			label := t.DialLabel(i)
+			if ring.inner {
+				label = t.DialInnerLabel(i)
+			}
+			lx, ly := dialPoint(dcx, dcy, ring.radius, i)
+			l.textIn(label, style, col.OnSurface,
+				tree.Rect{X: lx - size/2, Y: ly - 14, W: size, H: 28}, AlignCenter, clip)
+		}
+	}
+	sx, sy := dialPoint(dcx, dcy, selRadius, selected)
 	// The hand: a 2dp rule from the centre dot to the picked number.
 	dx, dy := sx-dcx, sy-dcy
 	l.Ops = append(l.Ops, Op{
@@ -412,7 +514,11 @@ func (l *List) paintTimeDial(t TimeLayout, clip tree.Rect) {
 		Rect:  [4]float32{float32(sx - 18), float32(sy - 18), 36, 36},
 		Color: col.Primary, Clip: clipArr(clip),
 	})
-	l.textIn(t.DialLabel(selected), numbers, col.OnPrimary,
+	selLabel := t.DialLabel(selected)
+	if t.DialInner() {
+		selLabel = t.DialInnerLabel(selected)
+	}
+	l.textIn(selLabel, numbers, col.OnPrimary,
 		tree.Rect{X: sx - 20, Y: sy - 14, W: 40, H: 28}, AlignCenter, clip)
 }
 

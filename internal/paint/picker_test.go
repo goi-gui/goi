@@ -105,3 +105,33 @@ func hasIcon(l *List, name string) bool {
 	}
 	return false
 }
+
+// TestTimePicker24HourPaint: a 24-hour dial labels both rings, the AM/PM switch
+// is gone, and the action row carries the `24h` chip.
+func TestTimePicker24HourPaint(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window { Column {
+		TimePicker { width: 328 height: 420 variant: dial hourFormat: 24 text: "19:30" }
+	} }`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 480, 900)
+	l := &List{}
+	l.Build(tr, 480, 900)
+	texts := map[string]bool{}
+	chip := false
+	for _, op := range l.Ops {
+		if op.Kind == Text && !op.Icon {
+			texts[op.Text] = true
+		}
+	}
+	for _, want := range []string{"19", "13", "23", "00", "12", "24h"} {
+		if !texts[want] {
+			t.Fatalf("24-hour picker missing %q: %v", want, texts)
+		}
+	}
+	if texts["AM"] || texts["PM"] {
+		t.Fatal("the 24-hour picker still draws the AM/PM switch")
+	}
+	_ = chip
+}

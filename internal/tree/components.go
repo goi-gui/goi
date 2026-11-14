@@ -686,6 +686,9 @@ func (c *DatePicker) namedProps() []NamedProp { return c.props("DatePicker") }
 // text fields.
 type TimePicker struct {
 	Component
+	// HourFormat is 12 (the default, with an AM/PM switch) or 24. The value is
+	// always stored as 24-hour; only the display and the dial change.
+	HourFormat Prop[float64]
 	// PickBuffer and PickDigits are the digits typed into the active field
 	// since it was focused, which is what lets a second digit complete "07".
 	PickBuffer, PickDigits int
@@ -696,8 +699,12 @@ type TimePicker struct {
 }
 
 // Kind implements Node.
-func (*TimePicker) Kind() string              { return "TimePicker" }
-func (c *TimePicker) namedProps() []NamedProp { return c.props("TimePicker") }
+func (*TimePicker) Kind() string { return "TimePicker" }
+func (c *TimePicker) namedProps() []NamedProp {
+	return append(c.props("TimePicker"),
+		NumberProp(&c.NodeBase, "hourFormat", DirtyPaint, &c.HourFormat),
+	)
+}
 
 // OnCancel subscribes to the Cancel action of a time picker.
 func (c *TimePicker) OnCancel(fn func(string)) (off func()) { return c.Cancel.On(fn) }

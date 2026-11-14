@@ -64,7 +64,7 @@ func TestTimePickerClick(t *testing.T) {
 	tp := MustByID[*TimePicker](win, "time")
 	tp.Text.Set("10:30")
 	r := absoluteRect(tp)
-	layout := paint.TimeLayoutOf(r, "10:30", 0, "dial")
+	layout := paint.TimeLayoutOf(r, "10:30", 0, "dial", 12)
 
 	// Click at three o'clock on the dial: hour 3, and the minutes become active.
 	x := layout.Dial.X + layout.Dial.W/2 + layout.DialRadius()
@@ -97,7 +97,7 @@ func TestTimePickerClick(t *testing.T) {
 // the AM/PM state decides which half of the day it lands in.
 func TestTimeLayoutDialPositions(t *testing.T) {
 	r := tree.Rect{W: 328, H: 420}
-	tl := paint.TimeLayoutOf(r, "12:00", 0, "dial") // noon, so PM
+	tl := paint.TimeLayoutOf(r, "12:00", 0, "dial", 12) // noon, so PM
 	cx, cy := tl.Dial.X+tl.Dial.W/2, tl.Dial.Y+tl.Dial.H/2
 	radius := tl.DialRadius()
 	seen := map[int]bool{}
@@ -132,7 +132,7 @@ func TestTimePickerHalfOfDay(t *testing.T) {
 	_, win, in := inputFixture(t, pickerUI, 480, 900)
 	tp := MustByID[*TimePicker](win, "time")
 	tp.Text.Set("10:30")
-	layout := paint.TimeLayoutOf(absoluteRect(tp), "10:30", 0, "dial")
+	layout := paint.TimeLayoutOf(absoluteRect(tp), "10:30", 0, "dial", 12)
 
 	click := func(r tree.Rect) {
 		in.MouseDown(r.X+r.W/2, r.Y+r.H/2, 0, false)
@@ -148,7 +148,7 @@ func TestTimePickerHalfOfDay(t *testing.T) {
 	}
 	// Midnight and noon are the two edge cases.
 	tp.Text.Set("00:05")
-	tl := paint.TimeLayoutOf(absoluteRect(tp), "00:05", 0, "dial")
+	tl := paint.TimeLayoutOf(absoluteRect(tp), "00:05", 0, "dial", 12)
 	click(tl.PMBox)
 	if got := tp.Text.Get(); got != "12:05" {
 		t.Fatalf("midnight to PM = %q, want 12:05", got)
@@ -160,7 +160,7 @@ func TestTimePickerVariantSwitch(t *testing.T) {
 	_, win, in := inputFixture(t, pickerUI, 480, 900)
 	tp := MustByID[*TimePicker](win, "time")
 	tp.Text.Set("08:15")
-	layout := paint.TimeLayoutOf(absoluteRect(tp), "08:15", 0, "dial")
+	layout := paint.TimeLayoutOf(absoluteRect(tp), "08:15", 0, "dial", 12)
 	in.MouseDown(layout.Switch.X+10, layout.Switch.Y+10, 0, false)
 	in.MouseUp(layout.Switch.X+10, layout.Switch.Y+10, 0)
 	if got := tp.Variant.Get(); got != "input" {
@@ -171,7 +171,7 @@ func TestTimePickerVariantSwitch(t *testing.T) {
 	if kind, dirty := tp.Base().Dirty(); !dirty || kind != tree.DirtyLayout {
 		t.Fatalf("the variant switch marked dirty=%v kind=%v, want a layout change", dirty, kind)
 	}
-	inLayout := paint.TimeLayoutOf(absoluteRect(tp), "08:15", 0, "input")
+	inLayout := paint.TimeLayoutOf(absoluteRect(tp), "08:15", 0, "input", 12)
 	in.MouseDown(inLayout.Switch.X+10, inLayout.Switch.Y+10, 0, false)
 	in.MouseUp(inLayout.Switch.X+10, inLayout.Switch.Y+10, 0)
 	if got := tp.Variant.Get(); got != "dial" {
@@ -188,7 +188,7 @@ func TestTimePickerActions(t *testing.T) {
 	tp.OnSubmit(func(v string) { submitted = append(submitted, v) })
 	tp.OnCancel(func(v string) { cancelled = append(cancelled, v) })
 	tp.OnOK(func(v string) { confirmed = append(confirmed, v) })
-	layout := paint.TimeLayoutOf(absoluteRect(tp), "06:45", 0, "dial")
+	layout := paint.TimeLayoutOf(absoluteRect(tp), "06:45", 0, "dial", 12)
 
 	click := func(r tree.Rect) {
 		in.MouseDown(r.X+r.W/2, r.Y+r.H/2, 0, false)
@@ -217,7 +217,7 @@ func TestTimePickerTyping(t *testing.T) {
 	r := absoluteRect(tp)
 
 	// Press the hour box: it takes focus, so the interactor routes keys here.
-	layout := paint.TimeLayoutOf(r, "00:00", 0, "input")
+	layout := paint.TimeLayoutOf(r, "00:00", 0, "input", 12)
 	in.MouseDown(layout.HourBox.X+10, layout.HourBox.Y+10, 0, false)
 	in.MouseUp(layout.HourBox.X+10, layout.HourBox.Y+10, 0)
 	if in.kbd != tp.Base().Node() {
@@ -247,5 +247,72 @@ func TestTimePickerTyping(t *testing.T) {
 	}
 	if len(confirmed) != 1 || confirmed[0] != "07:45" {
 		t.Fatalf("onOK = %v, want [07:45]", confirmed)
+	}
+}
+
+// TestTimePicker24Hour: hourFormat 24 drops the AM/PM switch, spells the hour
+// 00-23, and turns the dial into the two-ring 24-hour one.
+func TestTimePicker24Hour(t *testing.T) {
+	_, win, in := inputFixture(t, pickerUI, 480, 900)
+	tp := MustByID[*TimePicker](win, "time")
+	tp.Text.Set("15:30")
+	tp.HourFormat.Set(24)
+	r := absoluteRect(tp)
+	tl := paint.TimeLayoutOf(r, "15:30", 0, "dial", 24)
+	if tl.AMBox.W != 0 || tl.PMBox.W != 0 {
+		t.Fatal("a 24-hour picker still laid out the AM/PM switch")
+	}
+	if got := tl.HourText(); got != "15" {
+		t.Fatalf("hour text = %q, want 15", got)
+	}
+	cx, cy := tl.Dial.X+tl.Dial.W/2, tl.Dial.Y+tl.Dial.H/2
+	at := func(radius float64, hour int) string {
+		ang := float64(hour%12) * math.Pi / 6
+		v, _, _ := tl.TimeAt(cx+radius*math.Sin(ang), cy-radius*math.Cos(ang))
+		return v
+	}
+	if got := at(tl.DialRadius(), 3); got != "03:30" {
+		t.Fatalf("outer 3 = %q, want 03:30", got)
+	}
+	if got := at(tl.InnerRadius(), 3); got != "15:30" {
+		t.Fatalf("inner 3 = %q, want 15:30", got)
+	}
+	if got := at(tl.InnerRadius(), 0); got != "00:30" {
+		t.Fatalf("inner 0 = %q, want 00:30", got)
+	}
+	if got := at(tl.DialRadius(), 0); got != "12:30" {
+		t.Fatalf("outer 0 = %q, want 12:30", got)
+	}
+
+	// The format chip on the action row flips the clock without touching the
+	// value.
+	in.MouseDown(tl.FormatToggle.X+tl.FormatToggle.W/2, tl.FormatToggle.Y+tl.FormatToggle.H/2, 0, false)
+	in.MouseUp(tl.FormatToggle.X+tl.FormatToggle.W/2, tl.FormatToggle.Y+tl.FormatToggle.H/2, 0)
+	if got := tp.HourFormat.Get(); got != 12 {
+		t.Fatalf("hourFormat = %v, want 12 after the chip", got)
+	}
+	if got := tp.Text.Get(); got != "15:30" {
+		t.Fatalf("the format switch changed the value to %q", got)
+	}
+}
+
+// TestTimePicker24HourDialMarksTheInnerRing: 15:30 highlights 15 on the inner
+// ring, and midnight does too.
+func TestTimePicker24HourDialMarksTheInnerRing(t *testing.T) {
+	for _, c := range []struct {
+		value string
+		inner bool
+		index int
+	}{
+		{"15:30", true, 3},
+		{"00:10", true, 0},
+		{"23:59", true, 11},
+		{"09:00", false, 9},
+		{"12:00", false, 0},
+	} {
+		tl := paint.TimeLayoutOf(tree.Rect{W: 328, H: 420}, c.value, 0, "dial", 24)
+		if got := tl.DialInner(); got != c.inner || tl.DialIndex() != c.index {
+			t.Errorf("%s: inner=%v index=%d, want %v/%d", c.value, got, tl.DialIndex(), c.inner, c.index)
+		}
 	}
 }

@@ -649,7 +649,10 @@ func newM3Component(name string) Node {
 	case "DatePicker":
 		return &DatePicker{Component: newComponent()}
 	case "TimePicker":
-		tp := &TimePicker{Component: newComponent()}
+		tp := &TimePicker{
+			Component:  newComponent(),
+			HourFormat: newProp(nil, "hourFormat", DirtyPaint, 12.0),
+		}
 		// The variant picks the card's size, so a Go-side switch has to lay the
 		// tree out again; the shared cell is built for a repaint.
 		tp.Variant.dirty = DirtyLayout

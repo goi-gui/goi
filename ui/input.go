@@ -1138,7 +1138,11 @@ func (i *interactor) pickDate(n tree.Node, c *tree.Component, x, y float64) {
 func (i *interactor) pickTime(n tree.Node, c *tree.Component, x, y float64) {
 	tp, _ := n.(*tree.TimePicker)
 	r := absoluteRect(n)
-	t := paint.TimeLayoutOf(r, c.Text.Get(), c.PickerField, c.Variant.Get())
+	format := 12
+	if tp != nil && tp.HourFormat.Get() == 24 {
+		format = 24
+	}
+	t := paint.TimeLayoutOf(r, c.Text.Get(), c.PickerField, c.Variant.Get(), format)
 	switch {
 	case hitRect(t.Switch, x, y):
 		// The corner icon is the way between the clock and the fields, the same
@@ -1158,10 +1162,17 @@ func (i *interactor) pickTime(n tree.Node, c *tree.Component, x, y float64) {
 		if tp != nil {
 			tp.OK.Emit(c.Text.Get())
 		}
-	case hitRect(t.AMBox, x, y):
+	case t.Format == 12 && hitRect(t.AMBox, x, y):
 		i.setPickHalf(c, true)
-	case hitRect(t.PMBox, x, y):
+	case t.Format == 12 && hitRect(t.PMBox, x, y):
 		i.setPickHalf(c, false)
+	case hitRect(t.FormatToggle, x, y):
+		// The chip is the visual way between the clocks.
+		if t.Format == 24 {
+			tp.HourFormat.Set(12)
+		} else {
+			tp.HourFormat.Set(24)
+		}
 	case hitRect(t.HourBox, x, y):
 		i.focusPickField(tp, c, 0)
 	case hitRect(t.MinBox, x, y):
@@ -2063,7 +2074,11 @@ func (i *interactor) imeSync() {
 	// platform's text input has to stay on for it, anchored to the active field.
 	if i.focus == nil {
 		if tp, ok := i.kbd.(*tree.TimePicker); ok && tp.Variant.Get() == "input" {
-			t := paint.TimeLayoutOf(absoluteRect(i.kbd), tp.Text.Get(), tp.PickerField, "input")
+			format := 12
+			if tp.HourFormat.Get() == 24 {
+				format = 24
+			}
+			t := paint.TimeLayoutOf(absoluteRect(i.kbd), tp.Text.Get(), tp.PickerField, "input", format)
 			box := t.HourBox
 			if tp.PickerField == 1 {
 				box = t.MinBox

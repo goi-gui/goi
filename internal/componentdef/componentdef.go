@@ -137,7 +137,7 @@ var props = map[string][]string{
 	"CircularProgress": {"variant", "value", "min", "max", "thickness"},
 	"LoadingIndicator": {"variant", "color"},
 	"DatePicker":       {"label", "text", "variant"},
-	"TimePicker":       {"label", "text", "variant"},
+	"TimePicker":       {"label", "text", "variant", "hourFormat"},
 	"Carousel":         {"variant"},
 	"Toolbar":          {"variant"},
 	"TextArea":         {"label", "text", "placeholder", "supporting", "variant", "disabled"},
@@ -251,7 +251,7 @@ func TypeOf(name string) PropType {
 		"sortable", "numeric", "striped", "showHeader", "stickyHeader", "sortAscending",
 		"grid", "axis", "legend", "values", "stacked", "horizontal", "smooth", "points":
 		return Bool
-	case "value", "end", "center", "min", "max", "step", "spacing", "gap", "size",
+	case "value", "end", "center", "min", "max", "step", "spacing", "gap", "size", "hourFormat",
 		"rowHeight", "headerHeight", "sortColumn", "selectedRow",
 		"innerRadius", "startAngle", "thickness":
 		return Number
