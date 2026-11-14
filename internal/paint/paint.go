@@ -55,9 +55,10 @@ const (
 	// CSSGradient fills a shape with a CSS linear or radial gradient, using the
 	// op's Gradient field for its stops.
 	CSSGradient
-	// Loading is the M3 loading shape: a six-lobed rounded star whose lobes
-	// deepen and flatten while it turns. StartAngle is the turn, Depth the lobe
-	// depth at this moment (0 flat, 1 a deep star).
+	// Loading is the M3 loading shape: a rounded star that turns while it
+	// morphs to a four-lobed rounded square and back. StartAngle is the turn,
+	// Depth the lobe depth (0 flat, 1 a deep star) and Square how far it has
+	// morphed to the square.
 	Loading
 )
 
@@ -108,6 +109,11 @@ type Op struct {
 
 	// Depth is a Loading shape's lobe depth, 0 (round) to 1 (a deep star).
 	Depth float32
+	// Square is how far a Loading shape has morphed from its twelve-lobed star
+	// to the four-lobed rounded square, 0..1. Squash narrows that square along
+	// one axis, which is how the M3 shape becomes its pill.
+	Square float32
+	Squash float32
 
 	// Clip is the intersection of every ancestor's content box, as x, y, w, h.
 	// Ops outside it are still emitted; the renderer discards those fragments.

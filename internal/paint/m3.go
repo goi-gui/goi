@@ -1822,6 +1822,8 @@ func (l *List) paintLoadingIndicator(c *tree.Component, r tree.Rect, clip tree.R
 		// The turn rides the list's clock, like a wave's phase.
 		StartAngle: float32(l.loadingTurn()),
 		Depth:      float32(l.loadingDepth()),
+		Square:     float32(l.loadingSquare()),
+		Squash:     float32(l.loadingSquash()),
 		Clip:       clipArr(clip),
 	})
 }
@@ -1830,12 +1832,27 @@ func (l *List) paintLoadingIndicator(c *tree.Component, r tree.Rect, clip tree.R
 // timing the M3 indicator morphs on.
 const loadingMorphDur = 4.55
 
-// loadingDepth is how deep the star's lobes are at this moment: a cosine wave
-// between a deep star and a nearly round shape, so the animation breathes
-// instead of looping with a jump.
-func (l *List) loadingDepth() float64 {
+// loadingSquare is how far the shape has moved from its twelve-lobed star to
+// the four-lobed rounded square: a cosine breath, so the two shapes trade places
+// once a cycle without a jump at the seam.
+func (l *List) loadingSquare() float64 {
 	s := l.Clock.Seconds() / loadingMorphDur * 2 * math.Pi
 	return 0.5 - 0.5*math.Cos(s)
+}
+
+// loadingSquash narrows the shape only while it is the square: a cubic keeps
+// the star untouched and turns the square into the M3 indicator's pill.
+func (l *List) loadingSquash() float64 {
+	s := l.loadingSquare()
+	return 0.34 * s * s * s
+}
+
+// loadingDepth is how deep the lobes are at this moment. The M3 indicator's
+// depth runs about twice as fast as its shape morph, which is what makes a
+// turning shape read as breathing rather than as a slow pulse.
+func (l *List) loadingDepth() float64 {
+	s := l.Clock.Seconds() / (loadingMorphDur / 2) * 2 * math.Pi
+	return 0.85 - 0.15*math.Cos(s)
 }
 
 // loadingTurn is the shape's rotation: 900 degrees every six seconds, which is

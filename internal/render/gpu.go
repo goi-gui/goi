@@ -145,14 +145,39 @@ fn sd_round_rect(p: vec2f, s: vec2f, r: f32) -> f32 {
 
 const PI = 3.14159265359;
 
-// loading_star is the radius of one loading lobe at angle a, as a fraction of
-// the shape's outer radius. Six shares of a cosine make six lobes, and depth
-// (0..1) says how deep their valleys run, so the same function draws a nearly
-// round shape and a deep star. It is a polar curve rather than a polygon, which
-// is what keeps every lobe round at any size.
+// loading_star is the radius of the twelve-lobed star at angle a, as a fraction
+// of its outer radius. A plain cosine rather than an absolute one keeps the
+// lobes and the valleys alike round; the creases an absolute value leaves at
+// every valley read as spikes. depth (0..1) runs the valleys from shallow to
+// the M3 indicator's deep star.
 fn loading_star(a: f32, depth: f32) -> f32 {
-	let k = 0.12 + 0.24 * depth;
-	return (1.0 - k) + k * abs(cos(3.0 * a));
+	let k = mix(0.06, 0.46, depth);
+	return 1.0 - 0.5 * k * (1.0 - cos(12.0 * a));
+}
+
+// loading_square is a rounded square's radius at angle a, normalised so a corner
+// reaches 1. A superellipse's flat sides are what a star blended with a circle
+// cannot give, and the pill is this shape squeezed.
+fn loading_square(a: f32) -> f32 {
+	let c = abs(cos(a));
+	let s = abs(sin(a));
+	return pow(pow(c, 3.0) + pow(s, 3.0), -0.3333333) * 0.7937005;
+}
+
+// loading_radius blends the star and the rounded square by squareness.
+fn loading_radius(a: f32, depth: f32, square: f32) -> f32 {
+	return mix(loading_star(a, depth), loading_square(a), square);
+}
+
+// loading_at is the loading radius at angle a with the pill's squeeze applied:
+// a shape scaled along one axis is sampled at the angle that lands
+// on the same boundary point, so the squeeze stays a smooth polar curve.
+fn loading_at(a: f32, depth: f32, square: f32, squash: f32) -> f32 {
+	let ax = 1.0 - squash;
+	let src = atan2(ax * sin(a), cos(a));
+	let nx = ax * cos(src);
+	let ny = sin(src);
+	return loading_radius(src, depth, square) * sqrt(nx * nx + ny * ny);
 }
 
 // gradient_color samples a CSS gradient. Each record is 6 vec4: header
@@ -229,13 +254,15 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 		let rho = max(length(q), 0.0001);
 		let th = atan2(q.y, q.x) - in.params.z;
 		let depth = in.misc.x;
+		let square = in.misc.y;
+		let squash = in.misc.w;
 		let outer = min(in.size.x, in.size.y) * 0.40;
-		let r = loading_star(th, depth) * outer;
+		let r = loading_at(th, depth, square, squash) * outer;
 		// The polar radius is not a distance: dividing by the surface's own
 		// slope turns it into one, so the fade is a pixel wide on the lobes'
 		// sides as well as at their tips.
 		let e = 0.02;
-		let dr = (loading_star(th + e, depth) - loading_star(th - e, depth)) / (2.0 * e) * outer;
+		let dr = (loading_at(th + e, depth, square, squash) - loading_at(th - e, depth, square, squash)) / (2.0 * e) * outer;
 		let d = (rho - r) / sqrt(1.0 + (dr * dr) / (rho * rho));
 		let cov = 1.0 - smoothstep(-aa, aa, d);
 		if (cov <= 0.0) { discard; }
@@ -1122,7 +1149,7 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 			params := [4]float32{shapeKind(op.Shape), 0, op.StartAngle, op.EndAngle}
 			misc := [4]float32{op.Thickness, 0, op.ClipRadius, 0}
 			if op.Shape == paint.Loading {
-				misc = [4]float32{op.Depth, 0, op.ClipRadius, 0}
+				misc = [4]float32{op.Depth, op.Square, op.ClipRadius, op.Squash}
 			}
 			if op.Gradient != nil {
 				// A CSS gradient: kind 9 linear, 10 radial, params.y its record.

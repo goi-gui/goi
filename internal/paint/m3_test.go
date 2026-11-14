@@ -1035,6 +1035,17 @@ func TestLoadingIndicatorIsNativeShape(t *testing.T) {
 	if ops[0].Depth < 0 || ops[0].Depth > 1 {
 		t.Fatalf("depth = %v, want 0..1", ops[0].Depth)
 	}
+	if ops[0].Square < 0 || ops[0].Square > 1 || ops[0].Squash < 0 || ops[0].Squash > 0.5 {
+		t.Fatalf("morph = square %v squash %v, want 0..1 and a mild squeeze",
+			ops[0].Square, ops[0].Squash)
+	}
+	// The square phase is the one that squeezes into the pill, so a squeeze
+	// without squareness would be a shape the reference never draws.
+	for _, op := range ops {
+		if op.Squash > 0 && op.Square <= 0 {
+			t.Fatalf("squash %v at squareness %v", op.Squash, op.Square)
+		}
+	}
 
 	// A later frame has turned the shape and moved its morph on.
 	first := ops[0]

@@ -1917,9 +1917,12 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   the same name (sm/md/lg) that only a few components' metrics read and that
   everybody else ignored, so the language has one `size` and it means a number.
 - **The loading indicator is a polar signed distance, not a bitmap.** The M3
-  shape is a six-lobed rounded star whose lobes deepen and flatten while it
-  turns; drawing it from a distance field keeps it sharp at any size and display
-  scale, needs one quad a frame and no atlas, and lets the design tint it with
-  `color`. The gallery's SVG was the reference for the motion, not the
-  implementation: morphing 200 lines of path per frame would have cost a
-  rasterization a frame and blurred at large sizes.
+  shape turns while morphing from its twelve-lobed star to a rounded square,
+  squeezes into a pill and comes back; drawing it from a distance field keeps it
+  sharp at any size and display scale, needs one quad a frame and no atlas, and
+  lets the design tint it with `color`. The gallery's SVG was the reference for
+  the motion, not the implementation: morphing 200 lines of path per frame would
+  have cost a rasterization a frame and blurred at large sizes. The radius is a
+  blend of a cosine star and a superellipse, because a star blended with a circle
+  cannot give the square's flat sides, and a four-lobed cosine reads as a clover
+  rather than a square.
