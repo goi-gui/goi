@@ -50,18 +50,25 @@ func TestCustomColorsMap(t *testing.T) {
 	}
 }
 
-// TestReservedCustomColorIsRejected keeps a scheme role owned by the scheme: a
-// custom colour may not shadow `primary`, so a design that names it keeps
-// following the theme.
-func TestReservedCustomColorIsRejected(t *testing.T) {
-	a, w := reloadApp(t, `Window { Rectangle { id: box background: primary } }`)
-	box := MustByID[*Rectangle](w, "box")
+// TestCustomColorMayReuseARoleName is why nothing is reserved: a design says
+// `theme.primary` for the scheme and `customColor.primary` for the app's own, so
+// the two names live in different namespaces and never meet.
+func TestCustomColorMayReuseARoleName(t *testing.T) {
+	a, w := reloadApp(t, `Window {
+		Rectangle { id: themed background: theme.primary }
+		Rectangle { id: own background: customColor.primary }
+	}`)
+	themed := MustByID[*Rectangle](w, "themed")
+	own := MustByID[*Rectangle](w, "own")
 
 	w.SetCustomColor("primary", 0xFF0000FF)
 	a.resolveColors()
 
-	if got := box.Background(); got != m3.Light().Colors.Primary {
-		t.Fatalf("background = %08x, a reserved name shadowed the scheme", got)
+	if got := themed.Background(); got != m3.Light().Colors.Primary {
+		t.Fatalf("theme.primary = %08x, want the scheme's role", got)
+	}
+	if got := own.Background(); got != 0xFF0000FF {
+		t.Fatalf("customColor.primary = %08x, want the app's colour", got)
 	}
 }
 

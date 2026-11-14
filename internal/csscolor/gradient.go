@@ -18,6 +18,11 @@ const (
 type Stop struct {
 	At    float64
 	Color uint32
+	// Role is a theme or custom colour the stop follows instead of a literal,
+	// written `theme.primary` or `customColor.brand` and stored with its
+	// namespace ("theme:primary", "custom:brand"). Color stays zero until the
+	// caller resolves it.
+	Role string
 }
 
 // Gradient is a CSS gradient value: a linear one along an angle, or a radial one
@@ -28,6 +33,17 @@ type Gradient struct {
 	// clockwise, the way CSS `90deg` points right.
 	Angle float64
 	Stops []Stop
+}
+
+// HasRoles reports whether any stop follows a theme or custom colour instead of
+// a literal, which is what makes a gradient worth resolving again per frame.
+func (g *Gradient) HasRoles() bool {
+	for _, st := range g.Stops {
+		if st.Role != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // IsGradient reports whether s looks like a gradient function, so a caller can
@@ -187,11 +203,12 @@ func parseStop(s string) (Stop, bool) {
 	if end == len(s) {
 		colorText, rest = colorAndRest(s)
 	}
+	role, isRole := roleRef(colorText)
 	c, ok := Parse(colorText)
-	if !ok {
+	if !ok && !isRole {
 		return Stop{}, false
 	}
-	st := Stop{Color: c, At: -1}
+	st := Stop{Color: c, Role: role, At: -1}
 	if rest != "" {
 		fields := strings.Fields(rest)
 		if f, ok := parsePosition(fields[0]); ok {
@@ -201,12 +218,16 @@ func parseStop(s string) (Stop, bool) {
 	return st, true
 }
 
-// colorAndRest splits "red 40%" without a function in it.
+// colorAndRest splits "red 40%" or "theme.primary 60%" without a function in
+// it.
 func colorAndRest(s string) (string, string) {
 	fields := strings.Fields(s)
 	for i := len(fields); i > 0; i-- {
 		cand := strings.Join(fields[:i], " ")
 		if _, ok := Parse(cand); ok {
+			return cand, strings.Join(fields[i:], " ")
+		}
+		if _, ok := roleRef(cand); ok {
 			return cand, strings.Join(fields[i:], " ")
 		}
 	}
@@ -223,9 +244,43 @@ func looksLikeColor(s string) bool {
 	if _, ok := names[strings.ToLower(s)]; ok {
 		return true
 	}
+	if _, ok := roleRef(s); ok {
+		return true
+	}
 	// `red 40%` is a stop, not a direction.
 	_, rest := colorAndRest(s)
 	return rest != ""
+}
+
+// roleRef reads a colour variable: `theme.primary` or `customColor.brand`. The
+// name is returned with its namespace, the form a tree resolver reads, so a
+// custom colour may be spelled like a scheme role without the two colliding.
+func roleRef(s string) (string, bool) {
+	s = strings.TrimSpace(s)
+	for prefix, ns := range map[string]string{"theme.": "theme:", "customColor.": "custom:"} {
+		name := strings.TrimPrefix(s, prefix)
+		if name == s || !isRefName(name) {
+			continue
+		}
+		return ns + name, true
+	}
+	return "", false
+}
+
+// isRefName reports whether s is a single `.goi` identifier.
+func isRefName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, r := range s {
+		switch {
+		case r == '_' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z':
+		case i > 0 && r >= '0' && r <= '9':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func parsePosition(s string) (float64, bool) {

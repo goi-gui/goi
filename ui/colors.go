@@ -9,8 +9,7 @@ import (
 )
 
 // SetCustomColors defines several design-side colour names at once. It is
-// SetCustomColor for a map, so the same rules apply: a name the Material scheme
-// already owns is reserved and rejected.
+// SetCustomColor for a map, so the same rules apply.
 //
 //	win.SetCustomColors(map[string]uint32{
 //		"myBrand":   0x411F89FF,
@@ -31,10 +30,12 @@ func (w *Window) SetCustomColors(colors map[string]uint32) {
 //
 // Calling it again with the same name updates the value and repaints whatever
 // uses it, which is how a theme switch or a runtime accent colour reaches the
-// design. The name must be a `.goi` identifier and must not be a Material role
-// (`primary`, `onSurface`, ...): those belong to the scheme, and the call logs an
-// error and does nothing. A name the design uses but nobody defines logs a
-// warning once and falls back to the scheme's onSurface colour.
+// design. The name must be a `.goi` identifier.
+//
+// A name may repeat a Material role: a design reaches the scheme with
+// `theme.primary` and the app's colour with `customColor.primary`, so the two
+// never meet and nothing needs to be reserved. A name the design uses but nobody
+// defines logs a warning once and falls back to the scheme's onSurface colour.
 //
 // It may be called from any goroutine; the colour resolves on the next frame.
 func (w *Window) SetCustomColor(name string, color uint32) {
@@ -44,11 +45,6 @@ func (w *Window) SetCustomColor(name string, color uint32) {
 	if !validColorName(name) {
 		logg().Error(logCtx, "ui: invalid custom colour name",
 			"name", name, "reason", "not a .goi identifier")
-		return
-	}
-	if _, reserved := (m3.Colors{}).Role(name); reserved {
-		logg().Error(logCtx, "ui: custom colour name is reserved",
-			"name", name, "reason", "the Material scheme already has this role")
 		return
 	}
 	w.colorMu.Lock()
