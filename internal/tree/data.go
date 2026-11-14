@@ -605,6 +605,19 @@ func normalize(v any) (any, bool) {
 		return float64(rv.Uint()), true
 	case reflect.Float32, reflect.Float64:
 		return rv.Float(), true
+	case reflect.Array:
+		// A fixed array is a coordinate, [lon, lat], which a list reads as a
+		// nested list. A slice is not normalized here: a loop walks it, and
+		// normalizeData decides when it is a value.
+		out := make([]any, rv.Len())
+		for i := range out {
+			n, ok := normalize(rv.Index(i).Interface())
+			if !ok {
+				return nil, false
+			}
+			out[i] = n
+		}
+		return out, true
 	case reflect.Pointer:
 		if rv.IsNil() {
 			return nil, false
@@ -636,10 +649,19 @@ func scopeValue(sc *scope, name, field string) (any, bool) {
 }
 
 // normalizeData turns a data variable into the type the expression engine uses.
-// A list is not a value; a loop walks it.
+// A list becomes a list value, so a list property can read it (a coordinate
+// list from an API); the loop path does not use this, it walks the raw slice.
 func normalizeData(v any) (any, bool) {
-	if _, isList := sliceItems(v); isList {
-		return nil, false
+	if items, isList := sliceItems(v); isList {
+		out := make([]any, len(items))
+		for i, it := range items {
+			n, ok := normalize(it)
+			if !ok {
+				return nil, false
+			}
+			out[i] = n
+		}
+		return out, true
 	}
 	return normalize(v)
 }

@@ -19,7 +19,10 @@ var Kinds = []Kind{
 	// Content: components that are plain nodes with behaviour.
 	{"Code", false},
 	{"Markdown", false},
-	{"Map", false},
+	{"Map", true},
+	{"Geom", false},
+	{"Point", true},
+	{"Path", false},
 	// Actions.
 	{"Button", false},
 	{"IconButton", false},
@@ -146,7 +149,10 @@ var props = map[string][]string{
 	"TextArea":         {"label", "text", "placeholder", "supporting", "variant", "disabled"},
 	"Code":             {"text", "language", "variant", "showCopy"},
 	"Markdown":         {"text"},
-	"Map":              {"tiles", "attribution", "center", "zoom", "bbox", "geom", "lineColor", "fillColor", "reverseTileColors", "disablePan", "disableZoom"},
+	"Map":              {"tiles", "attribution", "center", "zoom", "bbox", "reverseTileColors", "disablePan", "disableZoom"},
+	"Geom":             {"data", "lineColor", "fillColor"},
+	"Point":            {"coordinate"},
+	"Path":             {"coordinates", "lineColor"},
 	"LineChart":        {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "smooth", "points", "min", "max"},
 	"AreaChart":        {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "smooth", "points", "stacked", "min", "max"},
 	"BarChart":         {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "stacked", "horizontal", "min", "max"},
@@ -205,6 +211,8 @@ const (
 	Color
 	// List is a list literal, `[1, 2, 3]`, whose items ListElem types.
 	List
+	// Coords is a list of [lon, lat] pairs, which a Path's coordinates take.
+	Coords
 )
 
 // defaults are the component properties whose initial value is not the Go zero
@@ -282,7 +290,7 @@ func TypeOf(name string) PropType {
 		return Enum
 	case "textColor", "gridColor", "color", "lineColor", "fillColor":
 		return Color
-	case "categories", "bbox":
+	case "categories", "bbox", "data", "coordinate", "coordinates":
 		return List
 	}
 	return String
@@ -292,8 +300,11 @@ func TypeOf(name string) PropType {
 // checker reads each entry as: a chart's categories are labels, a map's bbox is
 // four numbers.
 func ListElem(name string) PropType {
-	if name == "bbox" {
+	switch name {
+	case "bbox", "data", "coordinate":
 		return Number
+	case "coordinates":
+		return Coords
 	}
 	return String
 }

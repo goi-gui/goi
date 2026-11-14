@@ -607,6 +607,9 @@ func (v *validator) checkPropRef(e *syntax.Element, pd *Prop, x *syntax.Ref, at,
 		if pd == lenProp {
 			return // len and cap take a list
 		}
+		if pd.Type == TypeList && listSliceFits(pr.Type, pd.Elem) {
+			return
+		}
 		v.add(at, end,
 			fmt.Sprintf("%s.%s: props.%s is not a value; walk it with for i, row := range props.%s", e.Name, pd.Name, pr.Name, pr.Name), "")
 		return
@@ -1407,6 +1410,9 @@ func (v *validator) checkDataRef(e *syntax.Element, pd *Prop, x *syntax.Ref, at,
 		if pd == lenProp {
 			return // len and cap take a list
 		}
+		if pd.Type == TypeList && listSliceFits(dv.Type, pd.Elem) {
+			return
+		}
 		v.add(at, end,
 			fmt.Sprintf("%s.%s: %s.%s is not a value; walk it with for i, row := range %s.%s",
 				e.Name, pd.Name, x.ID, x.Prop, x.ID, x.Prop), "")
@@ -1440,6 +1446,9 @@ func (v *validator) checkFieldRef(e *syntax.Element, pd *Prop, x *syntax.Ref, sh
 		return
 	}
 	if (field.Type.Kind == syntax.TypeSlice || field.Type.Kind == syntax.TypeMap) && pd != lenProp {
+		if pd.Type == TypeList && listSliceFits(field.Type, pd.Elem) {
+			return
+		}
 		v.add(at, end,
 			fmt.Sprintf("%s.%s: %s.%s is not a value; walk it with for i, row := range %s.%s",
 				e.Name, pd.Name, sh.Name, x.Prop, x.ID, x.Prop), "")
@@ -1463,6 +1472,24 @@ func isComparison(op string) bool {
 
 // typesFit reports whether a data field type can feed a property type. A string
 // may feed an enum and the other way round, as with id references.
+// listSliceFits reports whether a bridge slice can feed a list property: the
+// slice's element type must be the list's element type. A coordinate list also
+// accepts a slice of two-number slices, which is how a GIS export writes pairs.
+func listSliceFits(t syntax.Type, elem ValueType) bool {
+	if t.Kind != syntax.TypeSlice || t.Elem == nil {
+		return false
+	}
+	if elem == TypeCoords {
+		if t.Elem.Kind != syntax.TypeSlice || t.Elem.Elem == nil {
+			return false
+		}
+		ft, ok := TypeOf(t.Elem.Elem)
+		return ok && typesFit(ft, TypeNumber)
+	}
+	ft, ok := TypeOf(t.Elem)
+	return ok && typesFit(ft, elem)
+}
+
 func typesFit(from, to ValueType) bool {
 	if from == to {
 		return true
@@ -1577,6 +1604,8 @@ func listExample(elem ValueType) string {
 		return "[42, 27, 18]"
 	case TypeColor:
 		return "[theme.primary, theme.tertiary, #c62828]"
+	case TypeCoords:
+		return "[[28.97, 41.01], [29.06, 41.08]]"
 	}
 	return `["Direct", "Search"]`
 }

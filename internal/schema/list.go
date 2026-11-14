@@ -7,6 +7,17 @@ import (
 	"github.com/goi-gui/goi/internal/syntax"
 )
 
+// Coord is one position of a coordinate list, as [lon, lat]. GeoJSON order is
+// the one every place API writes, and the type keeps it apart from a
+// latitude-first display string.
+type Coord [2]float64
+
+// Lon returns the longitude.
+func (c Coord) Lon() float64 { return c[0] }
+
+// Lat returns the latitude.
+func (c Coord) Lat() float64 { return c[1] }
+
 // ListColor is one colour of a colour list: a literal, or the theme role it
 // names, which the painter resolves against the scheme it draws with. A role is
 // written with its namespace, `theme.primary`, the way every other colour
@@ -25,6 +36,17 @@ func ListItem(elem ValueType, v syntax.Value) (any, error) {
 			return n.Val, nil
 		}
 		return nil, fmt.Errorf("expected a number")
+	case TypeCoords:
+		list, ok := v.(*syntax.List)
+		if !ok || len(list.Items) != 2 {
+			return nil, fmt.Errorf("expected [lon, lat]")
+		}
+		lon, ok1 := list.Items[0].(*syntax.Number)
+		lat, ok2 := list.Items[1].(*syntax.Number)
+		if !ok1 || !ok2 {
+			return nil, fmt.Errorf("expected [lon, lat]")
+		}
+		return Coord{lon.Val, lat.Val}, nil
 	case TypeColor:
 		switch c := v.(type) {
 		case *syntax.Color:

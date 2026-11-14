@@ -1,8 +1,6 @@
 package tree
 
 import (
-	"encoding/json"
-	"fmt"
 	"math"
 	"slices"
 	"strconv"
@@ -12,146 +10,8 @@ import (
 	"github.com/goi-gui/goi/internal/schema"
 )
 
-// Point is one WGS84 position, in degrees. GeoJSON writes longitude first,
-// while every map URL and every pair people copy writes latitude first; the
-// field names are what keeps the two apart.
-type Point struct {
-	Lat, Lng float64
-}
-
-// MapGeometry is what a Map's `geom` draws: polygon outlines, open lines and
-// single points. A polygon's outer ring and its holes are kept together, so a
-// lake inside a region stays a hole in the outline.
-type MapGeometry struct {
-	Polys  [][][]Point
-	Lines  [][]Point
-	Points []Point
-}
-
-// Empty reports whether there is nothing to draw.
-func (g *MapGeometry) Empty() bool {
-	return g == nil || (len(g.Polys) == 0 && len(g.Lines) == 0 && len(g.Points) == 0)
-}
-
-// ParseGeoJSON reads a GeoJSON geometry, Feature, FeatureCollection or
-// GeometryCollection. Coordinates are in GeoJSON order: longitude, latitude.
-func ParseGeoJSON(s string) (*MapGeometry, error) {
-	var root geoJSON
-	if err := json.Unmarshal([]byte(s), &root); err != nil {
-		return nil, fmt.Errorf("map: geom: %w", err)
-	}
-	if root.Type == "" {
-		return nil, fmt.Errorf("map: geom: no GeoJSON type")
-	}
-	g := &MapGeometry{}
-	if err := addGeoJSON(&root, g, 0); err != nil {
-		return nil, err
-	}
-	return g, nil
-}
-
-// geoJSON is the subset of the format a boundary needs. Coordinates stay raw
-// until the type says how deep the nesting goes.
-type geoJSON struct {
-	Type        string          `json:"type"`
-	Coordinates json.RawMessage `json:"coordinates"`
-	Geometry    json.RawMessage `json:"geometry"`
-	Geometries  []geoJSON       `json:"geometries"`
-	Features    []geoJSON       `json:"features"`
-}
-
-func addGeoJSON(n *geoJSON, g *MapGeometry, depth int) error {
-	if depth > 8 {
-		return fmt.Errorf("map: geom: nested too deep")
-	}
-	switch n.Type {
-	case "Feature":
-		if len(n.Geometry) == 0 || string(n.Geometry) == "null" {
-			return nil
-		}
-		var f geoJSON
-		if err := json.Unmarshal(n.Geometry, &f); err != nil {
-			return fmt.Errorf("map: geom: %w", err)
-		}
-		return addGeoJSON(&f, g, depth+1)
-	case "FeatureCollection":
-		for i := range n.Features {
-			if err := addGeoJSON(&n.Features[i], g, depth+1); err != nil {
-				return err
-			}
-		}
-		return nil
-	case "GeometryCollection":
-		for i := range n.Geometries {
-			if err := addGeoJSON(&n.Geometries[i], g, depth+1); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	var v any
-	if err := json.Unmarshal(n.Coordinates, &v); err != nil {
-		return fmt.Errorf("map: geom: %s coordinates: %w", n.Type, err)
-	}
-	switch n.Type {
-	case "Point":
-		if p, ok := asPoint(v); ok {
-			g.Points = append(g.Points, p)
-		}
-	case "MultiPoint":
-		g.Points = append(g.Points, asRing(v)...)
-	case "LineString":
-		g.Lines = append(g.Lines, asRing(v))
-	case "MultiLineString":
-		g.Lines = append(g.Lines, asRings(v)...)
-	case "Polygon":
-		g.Polys = append(g.Polys, asRings(v))
-	case "MultiPolygon":
-		g.Polys = append(g.Polys, asPolys(v)...)
-	default:
-		return fmt.Errorf("map: geom: unsupported type %q", n.Type)
-	}
-	return nil
-}
-
-func asPoint(v any) (Point, bool) {
-	a, ok := v.([]any)
-	if !ok || len(a) < 2 {
-		return Point{}, false
-	}
-	lon, ok1 := a[0].(float64)
-	lat, ok2 := a[1].(float64)
-	return Point{Lat: lat, Lng: lon}, ok1 && ok2
-}
-
-func asRing(v any) []Point {
-	a, _ := v.([]any)
-	out := make([]Point, 0, len(a))
-	for _, e := range a {
-		if p, ok := asPoint(e); ok {
-			out = append(out, p)
-		}
-	}
-	return out
-}
-
-func asRings(v any) [][]Point {
-	a, _ := v.([]any)
-	out := make([][]Point, 0, len(a))
-	for _, e := range a {
-		out = append(out, asRing(e))
-	}
-	return out
-}
-
-func asPolys(v any) [][][]Point {
-	a, _ := v.([]any)
-	out := make([][][]Point, 0, len(a))
-	for _, e := range a {
-		out = append(out, asRings(e))
-	}
-	return out
-}
+// LatLng is one WGS84 position, in degrees.
+type LatLng struct{ Lat, Lng float64 }
 
 // MapTile is one tile in the slippy-map scheme: a zoom level and an x/y index
 // inside it.
@@ -164,9 +24,9 @@ type MapTileView struct {
 	Left, Top, W, H float64
 }
 
-// Map draws a slippy map from tiles and can draw GeoJSON boundaries over it. By
-// default the tiles come from OpenStreetMap; `tiles` takes any `{z}/{x}/{y}`
-// template.
+// Map draws a slippy map from tiles, with Geom, Path and Point children drawn
+// over it. By default the tiles come from OpenStreetMap; `tiles` takes any
+// `{z}/{x}/{y}` template.
 //
 // The camera lives in two properties, `center` and `zoom`, which the pointer
 // writes as the user pans and zooms. `bbox` overrides both while it is set: the
@@ -186,12 +46,6 @@ type Map struct {
 	// BBox is [west, south, east, north] in degrees. While it has four items it
 	// frames the view and wins over center and zoom.
 	BBox ListProp[float64]
-	// Geom is GeoJSON text, or the path of an asset that holds it.
-	Geom Prop[string]
-	// LineColor paints the boundary; 0 takes the scheme's primary.
-	LineColor Prop[uint32]
-	// FillColor fills the polygons; 0 leaves them unfilled.
-	FillColor Prop[uint32]
 	// ReverseTileColors inverts the tile RGB after decoding, which is what a
 	// dark theme over a light raster service needs.
 	ReverseTileColors Prop[bool]
@@ -212,25 +66,6 @@ type Map struct {
 	fitW, fitH float64
 
 	tiles map[MapTile]*img.Data
-
-	// fill is the rasterized polygon fill, rebuilt only when the geometry or
-	// the colour changes; fillBox is its [west, north, east, south] world box,
-	// in normalized Mercator coordinates.
-	fillSrc   *MapGeometry
-	fillColor uint32
-	fill      *img.Data
-	fillBox   [4]float64
-
-	// geomText is the text of a `geom` that names an asset; the ui layer reads
-	// it and keeps the property itself untouched, so an expression that returns
-	// the path does not fight the resolved text.
-	geomSrc  string
-	geomText string
-	// geomDirect is a boundary set from Go as coordinates, which needs no JSON
-	// round trip. It is used while `geom` is empty.
-	geomDirect *MapGeometry
-	geom       *MapGeometry
-	geomErr    error
 }
 
 // newMap seeds the map's cells. The defaults match componentdef, so the
@@ -243,9 +78,6 @@ func newMap() *Map {
 		Center:            newProp(nil, "center", DirtyPaint, ""),
 		Zoom:              newProp(nil, "zoom", DirtyPaint, 2.0),
 		BBox:              ListProp[float64]{parse: listParse[float64](schema.TypeNumber)},
-		Geom:              newProp(nil, "geom", DirtyPaint, ""),
-		LineColor:         newProp(nil, "lineColor", DirtyPaint, uint32(0)),
-		FillColor:         newProp(nil, "fillColor", DirtyPaint, uint32(0)),
 		ReverseTileColors: newProp(nil, "reverseTileColors", DirtyPaint, false),
 		DisablePan:        newProp(nil, "disablePan", DirtyPaint, false),
 		DisableZoom:       newProp(nil, "disableZoom", DirtyPaint, false),
@@ -257,16 +89,13 @@ func (*Map) Kind() string { return "Map" }
 
 func (m *Map) namedProps() []NamedProp {
 	return append(m.propsExcept("Map",
-		"tiles", "attribution", "center", "zoom", "bbox", "geom", "disablePan", "disableZoom"),
+		"tiles", "attribution", "center", "zoom", "bbox", "disablePan", "disableZoom"),
 		StringProp(&m.NodeBase, "tiles", &m.Tiles),
 		StringProp(&m.NodeBase, "attribution", &m.Attribution),
 		// A view change moves where things are drawn, not how big the map is.
 		StringProp(&m.NodeBase, "center", &m.Center),
 		NumberProp(&m.NodeBase, "zoom", DirtyPaint, &m.Zoom),
 		ListPropOf(&m.NodeBase, "bbox", DirtyPaint, &m.BBox),
-		StringProp(&m.NodeBase, "geom", &m.Geom),
-		ColorProp(&m.NodeBase, "lineColor", DirtyPaint, &m.LineColor),
-		ColorProp(&m.NodeBase, "fillColor", DirtyPaint, &m.FillColor),
 		BoolProp(&m.NodeBase, "reverseTileColors", DirtyPaint, &m.ReverseTileColors),
 		BoolProp(&m.NodeBase, "disablePan", DirtyPaint, &m.DisablePan),
 		BoolProp(&m.NodeBase, "disableZoom", DirtyPaint, &m.DisableZoom),
@@ -389,8 +218,8 @@ func (m *Map) ViewTiles() []MapTileView {
 
 // Project turns a position into a point relative to the map's top-left corner.
 // A position outside the visible area is still projected; the caller clips it.
-func (m *Map) Project(p Point) (x, y float64) {
-	return m.ProjectWorld(mercatorX(p.Lng), mercatorY(p.Lat))
+func (m *Map) Project(lat, lng float64) (x, y float64) {
+	return m.ProjectWorld(mercatorX(lng), mercatorY(lat))
 }
 
 // ProjectWorld is Project for a normalized Mercator point, which is what a
@@ -399,6 +228,18 @@ func (m *Map) ProjectWorld(x, y float64) (sx, sy float64) {
 	scale := m.worldSize()
 	return (x-mercatorX(m.lng))*scale + m.w/2,
 		(y-mercatorY(m.lat))*scale + m.h/2
+}
+
+// PointAnchor is where a Point child of this map lands, relative to the map's
+// top-left corner. ok is false until the coordinate has two numbers, which is
+// how a marker with no selection stays off the map.
+func (m *Map) PointAnchor(p *Point) (x, y float64, ok bool) {
+	c := p.Coordinate.Get()
+	if len(c) < 2 {
+		return 0, 0, false
+	}
+	x, y = m.Project(c[1], c[0])
+	return x, y, true
 }
 
 // ResetTiles clears the bitmaps of the previous frame. The ui layer fills them
@@ -428,58 +269,6 @@ func (m *Map) Tile(t MapTile) *img.Data {
 	}
 	return m.tiles[t]
 }
-
-// SetGeometry draws a boundary that already exists as coordinates, without
-// going through GeoJSON text. It is used while `geom` is empty; setting that
-// property, or clearing it to a path, goes back to the text.
-func (m *Map) SetGeometry(g *MapGeometry) {
-	if m.geomDirect == g {
-		return
-	}
-	m.geomDirect = g
-	m.Base().MarkDirty(DirtyPaint)
-}
-
-// SetGeomText hands the map the GeoJSON behind a `geom` that names a file. The
-// property keeps the path, so a hot reload or an expression can still change it.
-func (m *Map) SetGeomText(text string) {
-	if m.geomText == text {
-		return
-	}
-	m.geomText = text
-	m.geomSrc = ""
-	m.Base().MarkDirty(DirtyPaint)
-}
-
-// Geometry returns the parsed `geom`, reparsing it only when the text changes.
-// Inline GeoJSON answers directly; a path answers with what SetGeomText was
-// given.
-func (m *Map) Geometry() *MapGeometry {
-	if strings.TrimSpace(m.Geom.Get()) == "" && m.geomDirect != nil {
-		return m.geomDirect
-	}
-	src := m.Geom.Get()
-	if !looksLikeJSON(src) && m.geomText != "" {
-		src = m.geomText
-	}
-	if src != m.geomSrc {
-		m.geomSrc = src
-		m.geom, m.geomErr = nil, nil
-		if strings.TrimSpace(src) != "" {
-			m.geom, m.geomErr = ParseGeoJSON(src)
-		}
-	}
-	return m.geom
-}
-
-// looksLikeJSON distinguishes GeoJSON text from a path to it.
-func looksLikeJSON(s string) bool {
-	s = strings.TrimSpace(s)
-	return strings.HasPrefix(s, "{") || strings.HasPrefix(s, "[")
-}
-
-// GeomError reports why the last `geom` did not parse, or nil.
-func (m *Map) GeomError() error { return m.geomErr }
 
 func (m *Map) setView(lat, lng, zoom float64) {
 	m.lat, m.lng = clampLat(lat), wrapLng(lng)
@@ -546,24 +335,24 @@ func formatLatLng(lat, lng float64) string {
 }
 
 // parseLatLng reads the `lat,lon` form people copy from a map.
-func parseLatLng(s string) (Point, bool) {
+func parseLatLng(s string) (LatLng, bool) {
 	parts := strings.Split(strings.TrimSpace(s), ",")
 	if len(parts) != 2 {
-		return Point{}, false
+		return LatLng{}, false
 	}
 	lat, err1 := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
 	lng, err2 := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
 	if err1 != nil || err2 != nil || math.Abs(lat) > 90 || math.Abs(lng) > 360 {
-		return Point{}, false
+		return LatLng{}, false
 	}
-	return Point{Lat: lat, Lng: wrapLng(lng)}, true
+	return LatLng{Lat: lat, Lng: wrapLng(lng)}, true
 }
 
 // fitBounds turns `west,south,east,north` into the centre and zoom that show
 // the whole box, with a little room so the edges are not under the border.
-func fitBounds(n []float64, w, h float64) (Point, float64, bool) {
+func fitBounds(n []float64, w, h float64) (LatLng, float64, bool) {
 	if len(n) != 4 {
-		return Point{}, 0, false
+		return LatLng{}, 0, false
 	}
 	west, south, east, north := n[0], n[1], n[2], n[3]
 	if east < west {
@@ -572,11 +361,11 @@ func fitBounds(n []float64, w, h float64) (Point, float64, bool) {
 	x0, x1 := mercatorX(west), mercatorX(east)
 	y0, y1 := mercatorY(north), mercatorY(south)
 	if x1 <= x0 || y1 <= y0 {
-		return Point{}, 0, false
+		return LatLng{}, 0, false
 	}
 	// A tenth of the box stays as a margin, so the boundary a bbox frames is
 	// not drawn on the map's own edge.
 	zoom := math.Log2(mapFitMargin * math.Min(w/((x1-x0)*mapTileSize), h/((y1-y0)*mapTileSize)))
-	return Point{Lat: invMercatorY((y0 + y1) / 2), Lng: wrapLng(invMercatorX((x0 + x1) / 2))},
+	return LatLng{Lat: invMercatorY((y0 + y1) / 2), Lng: wrapLng(invMercatorX((x0 + x1) / 2))},
 		clampZoom(zoom), true
 }

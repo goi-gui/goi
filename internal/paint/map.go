@@ -6,9 +6,9 @@ import (
 	"github.com/goi-gui/goi/internal/tree"
 )
 
-// paintMap draws the tile layer, the boundary overlay and the credit line. The
-// tiles and the geometry share one clip, rounded to the map's own corners, so a
-// `radius` on the map cuts the tiles as well as its background.
+// paintMap draws the tile layer, the credit line and the map's own border. Its
+// Geom, Path and Point children paint themselves on top: they are overlays, not
+// content, so they receive the whole map box from layout.
 func (l *List) paintMap(m *tree.Map, r tree.Rect, clip tree.Rect) {
 	if r.W <= 0 || r.H <= 0 {
 		return
@@ -39,8 +39,6 @@ func (l *List) paintMap(m *tree.Map, r tree.Rect, clip tree.Rect) {
 			Invert:     m.ReverseTileColors.Get(),
 		})
 	}
-	l.paintMapFill(m, r, inner, radius, box)
-	l.paintMapGeom(m, r, inner, radius, box)
 	l.paintMapAttribution(m, r, inner)
 	// The border goes last: the tiles are full bleed, so one drawn with the
 	// background would never be seen.
@@ -54,12 +52,33 @@ func (l *List) paintMap(m *tree.Map, r tree.Rect, clip tree.Rect) {
 	}
 }
 
-// paintMapFill draws the rasterized polygon fill under the boundary. The mask
-// is baked in Mercator world coordinates, so panning only moves its quad; the
-// part outside the map is cropped with the op's UV, which keeps a zoomed-in
-// polygon from packing a whole-country bitmap at screen size.
-func (l *List) paintMapFill(m *tree.Map, r tree.Rect, clip tree.Rect, radius float32, box [4]float32) {
-	d, wb := m.PolygonFill()
+// paintGeom draws one polygon: its rasterized fill first, then the ring as one
+// thin rounded quad per segment. The map supplies the camera; the Geom's own
+// bounds are the whole map box, so r is also the map's box.
+func (l *List) paintGeom(g *tree.Geom, r tree.Rect, clip tree.Rect) {
+	m := mapParent(g.Base())
+	if m == nil || r.W <= 0 || r.H <= 0 {
+		return
+	}
+	radius := float32(m.Base().Radius())
+	box := rectArr(r)
+	l.paintGeomFill(g, m, r, clip, radius, box)
+	color := l.Theme.Colors.Primary
+	if c := g.LineColor.Get(); c != 0 {
+		color = c
+	}
+	ring := g.Ring()
+	for i := 1; i < len(ring); i++ {
+		l.mapSegment(m, r, clip, radius, box, ring[i-1], ring[i], color)
+	}
+}
+
+// paintGeomFill draws the polygon's mask. It is baked in Mercator world
+// coordinates, so panning only moves its quad; the part outside the map is
+// cropped with the op's UV, which keeps a zoomed-in polygon from packing a
+// whole-country bitmap at screen size.
+func (l *List) paintGeomFill(g *tree.Geom, m *tree.Map, r tree.Rect, clip tree.Rect, radius float32, box [4]float32) {
+	d, wb := g.Fill()
 	if d == nil {
 		return
 	}
@@ -83,91 +102,63 @@ func (l *List) paintMapFill(m *tree.Map, r tree.Rect, clip tree.Rect, radius flo
 	})
 }
 
-// paintMapGeom strokes each ring and line as one thin rounded rectangle per
-// segment, turned about its own midpoint. The renderer already rotates a quad,
-// so a line needs no path primitive; a dot at every vertex rounds the joins and
-// makes a boundary read as one stroke.
-func (l *List) paintMapGeom(m *tree.Map, r tree.Rect, clip tree.Rect, radius float32, box [4]float32) {
-	g := m.Geometry()
-	if g.Empty() {
+// paintPath strokes an open polyline between its coordinates.
+func (l *List) paintPath(p *tree.Path, r tree.Rect, clip tree.Rect) {
+	m := mapParent(p.Base())
+	if m == nil || r.W <= 0 || r.H <= 0 {
 		return
 	}
-	const width = 2.0
+	radius := float32(m.Base().Radius())
+	box := rectArr(r)
 	color := l.Theme.Colors.Primary
-	if c := m.LineColor.Get(); c != 0 {
+	if c := p.LineColor.Get(); c != 0 {
 		color = c
 	}
-	stroke := func(a, b tree.Point) {
-		x1, y1 := m.Project(a)
-		x2, y2 := m.Project(b)
-		x1, y1 = r.X+x1, r.Y+y1
-		x2, y2 = r.X+x2, r.Y+y2
-		dx, dy := x2-x1, y2-y1
-		length := math.Hypot(dx, dy)
-		if length < 0.5 {
-			return
-		}
-		// One bounding-box test for the whole segment; a long boundary is
-		// mostly offscreen and this is what keeps that cheap.
-		if !segmentVisible(x1, y1, x2, y2, r, width) {
-			return
-		}
-		cx, cy := (x1+x2)/2, (y1+y2)/2
-		l.Ops = append(l.Ops, Op{
-			Kind: Fill,
-			Rect: [4]float32{
-				float32(cx - length/2), float32(cy - width/2),
-				float32(length), float32(width),
-			},
-			Radius:     [4]float32{width / 2, width / 2, width / 2, width / 2},
-			Color:      color,
-			Clip:       clipArr(clip),
-			ClipRadius: radius,
-			ClipBox:    box,
-			Rotate:     float32(math.Atan2(dy, dx)),
-			PivotX:     float32(cx),
-			PivotY:     float32(cy),
-		})
+	pts := p.Points()
+	for i := 1; i < len(pts); i++ {
+		l.mapSegment(m, r, clip, radius, box, pts[i-1], pts[i], color)
 	}
-	dot := func(p tree.Point) {
-		x, y := m.Project(p)
-		x, y = r.X+x, r.Y+y
-		if x < r.X-width || x > r.Right()+width || y < r.Y-width || y > r.Bottom()+width {
-			return
-		}
-		l.Ops = append(l.Ops, Op{
-			Kind: Fill, Shape: Circle,
-			Rect:       [4]float32{float32(x - width), float32(y - width), float32(width * 2), float32(width * 2)},
-			Color:      color,
-			Clip:       clipArr(clip),
-			ClipRadius: radius,
-			ClipBox:    box,
-		})
+}
+
+// mapSegment appends one line segment as a thin, turned rounded rectangle. The
+// renderer already rotates a quad, so a boundary needs no path primitive.
+func (l *List) mapSegment(m *tree.Map, r tree.Rect, clip tree.Rect, radius float32, box [4]float32, a, b tree.LatLng, color uint32) {
+	const width = 2.0
+	x1, y1 := m.Project(a.Lat, a.Lng)
+	x2, y2 := m.Project(b.Lat, b.Lng)
+	x1, y1 = r.X+x1, r.Y+y1
+	x2, y2 = r.X+x2, r.Y+y2
+	dx, dy := x2-x1, y2-y1
+	length := math.Hypot(dx, dy)
+	if length < 0.5 || !segmentVisible(x1, y1, x2, y2, r, width) {
+		return
 	}
-	for _, poly := range g.Polys {
-		for _, ring := range poly {
-			for i := 1; i < len(ring); i++ {
-				stroke(ring[i-1], ring[i])
-			}
-			if len(ring) > 2 {
-				last := ring[len(ring)-1]
-				if last != ring[0] {
-					stroke(last, ring[0])
-				}
-			}
-			for _, p := range ring {
-				dot(p)
-			}
+	cx, cy := (x1+x2)/2, (y1+y2)/2
+	l.Ops = append(l.Ops, Op{
+		Kind: Fill,
+		Rect: [4]float32{
+			float32(cx - length/2), float32(cy - width/2),
+			float32(length), float32(width),
+		},
+		Radius:     [4]float32{width / 2, width / 2, width / 2, width / 2},
+		Color:      color,
+		Clip:       clipArr(clip),
+		ClipRadius: radius,
+		ClipBox:    box,
+		Rotate:     float32(math.Atan2(dy, dx)),
+		PivotX:     float32(cx),
+		PivotY:     float32(cy),
+	})
+}
+
+// mapParent is the Map a Geom or Path belongs to.
+func mapParent(b *tree.NodeBase) *tree.Map {
+	for p := b.Parent(); p != nil; p = p.Base().Parent() {
+		if m, ok := p.(*tree.Map); ok {
+			return m
 		}
 	}
-	for _, line := range g.Lines {
-		for i := 1; i < len(line); i++ {
-			stroke(line[i-1], line[i])
-		}
-	}
-	for _, p := range g.Points {
-		dot(p)
-	}
+	return nil
 }
 
 // segmentVisible reports whether a segment can touch the map, with its stroke

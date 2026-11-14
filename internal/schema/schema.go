@@ -31,6 +31,8 @@ const (
 	TypeRotate
 	// TypeList is a list literal, `[1, 2, 3]`, whose items Elem types.
 	TypeList
+	// TypeCoords is one item of a coordinate list: `[lon, lat]`.
+	TypeCoords
 )
 
 func (t ValueType) String() string {
@@ -53,6 +55,8 @@ func (t ValueType) String() string {
 		return "string, number or bool"
 	case TypeRotate:
 		return "a rotate value"
+	case TypeCoords:
+		return "a [lon, lat] pair"
 	}
 	return "unknown"
 }
@@ -588,6 +592,8 @@ func listElemType(t componentdef.PropType) ValueType {
 		return TypeNumber
 	case componentdef.Color:
 		return TypeColor
+	case componentdef.Coords:
+		return TypeCoords
 	}
 	return TypeString
 }

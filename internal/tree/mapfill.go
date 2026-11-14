@@ -12,35 +12,14 @@ import (
 // only move the quad the mask is drawn into.
 const fillPixels = 1024
 
-// PolygonFill returns the rasterized `fillColor` for the polygons in `geom`,
-// with the normalized Mercator box it covers: [west, north, east, south]. It
-// returns nil when there is no colour or nothing to fill.
-//
-// The mask is cached on the geometry pointer, so a paint can call this every
-// frame and only the first one does any work.
-func (m *Map) PolygonFill() (*img.Data, [4]float64) {
-	color := m.FillColor.Get()
-	g := m.Geometry()
-	if color&0xFF == 0 || g.Empty() || len(g.Polys) == 0 {
-		m.fill, m.fillSrc, m.fillColor = nil, nil, 0
-		return nil, [4]float64{}
-	}
-	if m.fillSrc == g && m.fillColor == color {
-		return m.fill, m.fillBox
-	}
-	m.fillSrc, m.fillColor = g, color
-	m.fill, m.fillBox = fillMask(g, color)
-	return m.fill, m.fillBox
-}
-
 // fillMask rasterizes polygons with an even-odd scanline fill, which turns a
 // ring and its holes into one mask. Longitudes and latitudes become Mercator
 // world coordinates first, so the quad the mask is drawn into stays linear
 // under the map's own projection.
-func fillMask(g *MapGeometry, color uint32) (*img.Data, [4]float64) {
+func fillMask(polys [][][]LatLng, color uint32) (*img.Data, [4]float64) {
 	minX, minY := 1.0, 1.0
 	maxX, maxY := 0.0, 0.0
-	for _, poly := range g.Polys {
+	for _, poly := range polys {
 		for _, ring := range poly {
 			for _, p := range ring {
 				x, y := mercatorX(p.Lng), mercatorY(p.Lat)
@@ -66,7 +45,7 @@ func fillMask(g *MapGeometry, color uint32) (*img.Data, [4]float64) {
 		// Sample at the pixel centre, so a shape that fills its own box keeps
 		// the whole edge row.
 		wy := minY + (float64(row)+0.5)/float64(ph)*dy
-		for _, poly := range g.Polys {
+		for _, poly := range polys {
 			xs = xs[:0]
 			for _, ring := range poly {
 				n := len(ring)

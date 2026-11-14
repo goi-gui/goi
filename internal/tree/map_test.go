@@ -3,6 +3,8 @@ package tree
 import (
 	"math"
 	"testing"
+
+	"github.com/goi-gui/goi/internal/schema"
 )
 
 func testMap(center string, zoom float64, w, h float64) *Map {
@@ -18,13 +20,13 @@ func testMap(center string, zoom float64, w, h float64) *Map {
 // centre is the middle of the map.
 func TestMapProjectionsRoundTrip(t *testing.T) {
 	m := testMap("41.0082,28.9784", 11, 400, 300)
-	x, y := m.Project(Point{Lat: 41.0082, Lng: 28.9784})
+	x, y := m.Project(41.0082, 28.9784)
 	if math.Abs(x-200) > 1e-6 || math.Abs(y-150) > 1e-6 {
 		t.Fatalf("centre projects to %v,%v, want the middle", x, y)
 	}
-	for _, p := range []Point{{41, 29}, {-33.9, 151.2}, {0, 0}, {60, -120}} {
-		x, y := m.Project(p)
-		back := Point{
+	for _, p := range []LatLng{{41, 29}, {-33.9, 151.2}, {0, 0}, {60, -120}} {
+		x, y := m.Project(p.Lat, p.Lng)
+		back := LatLng{
 			Lat: invMercatorY(mercatorY(m.lat) + (y-m.h/2)/(mapTileSize*math.Pow(2, m.zoom))),
 			Lng: invMercatorX(mercatorX(m.lng) + (x-m.w/2)/(mapTileSize*math.Pow(2, m.zoom))),
 		}
@@ -47,8 +49,8 @@ func TestMapBBoxFitsTheView(t *testing.T) {
 	if lat < 36 || lat > 42 || lng < 26 || lng > 45 {
 		t.Fatalf("centre %v,%v is outside the box", lat, lng)
 	}
-	x0, y0 := m.Project(Point{Lat: 42, Lng: 26})
-	x1, y1 := m.Project(Point{Lat: 36, Lng: 45})
+	x0, y0 := m.Project(42, 26)
+	x1, y1 := m.Project(36, 45)
 	if x0 < -0.5 || y0 < -0.5 || x1 > 400.5 || y1 > 300.5 {
 		t.Fatalf("box corners at %v,%v..%v,%v leave the map", x0, y0, x1, y1)
 	}
@@ -103,10 +105,10 @@ func TestMapPanAndZoom(t *testing.T) {
 		t.Fatalf("a pan changed the zoom: %v -> %v", zoom0, zoom1)
 	}
 
-	anchor := Point{Lat: 40, Lng: 28}
-	x, y := m.Project(anchor)
+	anchor := LatLng{Lat: 40, Lng: 28}
+	x, y := m.Project(anchor.Lat, anchor.Lng)
 	m.ZoomAt(x, y, 1.5)
-	bx, by := m.Project(anchor)
+	bx, by := m.Project(anchor.Lat, anchor.Lng)
 	if math.Abs(bx-x) > 0.01 || math.Abs(by-y) > 0.01 {
 		t.Fatalf("anchor moved from %v,%v to %v,%v while zooming", x, y, bx, by)
 	}
@@ -132,94 +134,97 @@ func TestMapZoomClamps(t *testing.T) {
 	}
 }
 
-// TestParseGeoJSON covers the shapes a boundary file uses, including the
-// Feature and FeatureCollection wrappers.
-func TestParseGeoJSON(t *testing.T) {
-	src := `{"type":"FeatureCollection","features":[
-		{"type":"Feature","geometry":{"type":"Polygon","coordinates":[
-			[[26,36],[45,36],[45,42],[26,42],[26,36]],
-			[[29,39],[31,39],[31,41],[29,41],[29,39]]
-		]}},
-		{"type":"Feature","geometry":{"type":"LineString","coordinates":[[26,36],[45,42]]}},
-		{"type":"Feature","geometry":{"type":"Point","coordinates":[29,41]}}
-	]}`
-	g, err := ParseGeoJSON(src)
-	if err != nil {
-		t.Fatal(err)
+// TestGeomRingAndFill covers the Geom component: data is flat [lon, lat], the
+// ring closes itself, and a fill colour rasterizes the inside while a hole-free
+// polygon keeps its corners clear.
+func TestGeomRingAndFill(t *testing.T) {
+	g := newGeom(NodeBase{})
+	g.Data.Set([]float64{28, 40, 30, 40, 30, 42, 28, 42})
+	ring := g.Ring()
+	if len(ring) != 5 {
+		t.Fatalf("ring = %d points, want the four corners plus the closing point", len(ring))
 	}
-	if len(g.Polys) != 1 || len(g.Polys[0]) != 2 || len(g.Polys[0][0]) != 5 {
-		t.Fatalf("polygons = %d, want one with an outer ring and a hole", len(g.Polys))
+	if ring[0] != (LatLng{Lat: 40, Lng: 28}) || ring[4] != ring[0] {
+		t.Fatalf("ring = %v", ring)
 	}
-	// GeoJSON writes longitude first; the point keeps latitude in Lat.
-	if got := g.Polys[0][0][0]; got != (Point{Lat: 36, Lng: 26}) {
-		t.Fatalf("first vertex = %v, want lat 36 lon 26", got)
+	if d, _ := g.Fill(); d != nil {
+		t.Fatal("a Geom with no fill colour produced a mask")
 	}
-	if len(g.Lines) != 1 || len(g.Lines[0]) != 2 {
-		t.Fatalf("lines = %d", len(g.Lines))
-	}
-	if len(g.Points) != 1 || g.Points[0] != (Point{Lat: 41, Lng: 29}) {
-		t.Fatalf("points = %v", g.Points)
-	}
-	if _, err := ParseGeoJSON(`{"type":"Nope"}`); err == nil {
-		t.Fatal("an unsupported geometry type parsed")
-	}
-}
-
-// TestMapGeomReparsesOnChange checks that the geometry is cached until the text
-// changes, which is what keeps a per-frame paint from parsing JSON.
-func TestMapGeomReparsesOnChange(t *testing.T) {
-	m := newMap()
-	m.Geom.Set(`{"type":"Point","coordinates":[29,41]}`)
-	if g := m.Geometry(); len(g.Points) != 1 {
-		t.Fatalf("points = %d", len(g.Points))
-	}
-	first := m.Geometry()
-	if first != m.Geometry() {
-		t.Fatal("the geometry was parsed again without a change")
-	}
-	m.Geom.Set(`{"type":"Point","coordinates":[30,42]}`)
-	if g := m.Geometry(); g.Points[0].Lng != 30 {
-		t.Fatalf("stale geometry: %v", g.Points)
-	}
-}
-
-// TestMapFillMasksPolygons checks the rasterized fill: a polygon's inside takes
-// the colour, a hole stays clear, and the mask is reused until the geometry or
-// the colour changes.
-func TestMapFillMasksPolygons(t *testing.T) {
-	m := newMap()
-	m.Geom.Set(`{"type":"Polygon","coordinates":[
-		[[0,0],[10,0],[10,10],[0,10],[0,0]],
-		[[4,4],[6,4],[6,6],[4,6],[4,4]]
-	]}`)
-	m.FillColor.Set(0x11223344)
-	d, box := m.PolygonFill()
+	g.FillColor.Set(0x11223344)
+	d, box := g.Fill()
 	if d == nil || d.W <= 0 || d.H <= 0 {
 		t.Fatal("no fill mask")
 	}
 	if !(box[0] < box[2] && box[1] < box[3]) {
 		t.Fatalf("fill box = %v", box)
 	}
-	at := func(lat, lng float64) byte {
-		px := int((mercatorX(lng) - box[0]) / (box[2] - box[0]) * float64(d.W))
-		py := int((mercatorY(lat) - box[1]) / (box[3] - box[1]) * float64(d.H))
-		return d.Pix[(py*d.W+px)*4+3]
+	center := ((d.H/2)*d.W + d.W/2) * 4
+	if d.Pix[center+3] != 0x44 {
+		t.Fatalf("centre alpha = %#x, want the fill's 0x44", d.Pix[center+3])
 	}
-	if a := at(1, 1); a != 0x44 {
-		t.Fatalf("inside alpha = %#x, want 0x44", a)
+	// Changing the data rebuilds both the ring and the mask.
+	g.Data.Set([]float64{28, 40, 30, 40, 30, 42})
+	if len(g.Ring()) != 4 {
+		t.Fatalf("a changed ring kept its old cache: %v", g.Ring())
 	}
-	if a := at(5, 5); a != 0 {
-		t.Fatalf("hole alpha = %#x, want transparent", a)
+}
+
+// TestPointAndPathCoordinates checks the two coordinate shapes: a Point takes
+// [lon, lat] and anchors at the map's projected pixel, a Path takes pairs.
+func TestPointAndPathCoordinates(t *testing.T) {
+	m := testMap("41,29", 5, 400, 300)
+	p := newPoint(NodeBase{})
+	if _, _, ok := p.Anchor(m); ok {
+		t.Fatal("an empty coordinate anchored")
 	}
-	if again, _ := m.PolygonFill(); again != d {
-		t.Fatal("the mask was rebuilt without a change")
+	p.Coordinate.Set([]float64{28, 40})
+	x, y, ok := p.Anchor(m)
+	if !ok {
+		t.Fatal("a two-number coordinate did not anchor")
 	}
-	m.FillColor.Set(0x44556677)
-	if next, _ := m.PolygonFill(); next == d || next.Pix[0] == d.Pix[0] {
-		t.Fatal("a colour change did not rebuild the mask")
+	wx, wy := m.Project(40, 28)
+	if x != wx || y != wy {
+		t.Fatalf("anchor = %v,%v, want %v,%v", x, y, wx, wy)
 	}
-	m.FillColor.Set(0)
-	if none, _ := m.PolygonFill(); none != nil {
-		t.Fatal("a zero fill colour still produced a mask")
+
+	path := newPath(NodeBase{})
+	path.Coordinates.Set([]schema.Coord{{28, 40}, {29, 41}})
+	pts := path.Points()
+	if len(pts) != 2 || pts[0] != (LatLng{Lat: 40, Lng: 28}) || pts[1] != (LatLng{Lat: 41, Lng: 29}) {
+		t.Fatalf("path points = %v", pts)
+	}
+}
+
+// TestListPropertiesReadBridgeSlices checks the shape an API demo needs: a
+// Geom's data and a Point's coordinate are filled from a bridge slice, not a
+// literal, so the loop can build one polygon per API row.
+func TestListPropertiesReadBridgeSlices(t *testing.T) {
+	tr, diag := BuildSource([]byte(`bridge {
+		Data   []float64
+		Marker []float64
+	}
+	Window {
+		Map {
+			width: 200 height: 200
+			Geom { id: g data: bridge.Data }
+			Point { id: p coordinate: bridge.Marker }
+		}
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	tr.SetData("Data", []float64{28, 40, 30, 40, 30, 42})
+	tr.SetData("Marker", []float64{29, 41})
+	tr.ApplyExpressions()
+
+	g, _ := tr.ByID("g")
+	geom := g.(*Geom)
+	if ring := geom.Ring(); len(ring) != 4 || ring[0] != (LatLng{Lat: 40, Lng: 28}) {
+		t.Fatalf("geom ring = %v", ring)
+	}
+	p, _ := tr.ByID("p")
+	point := p.(*Point)
+	if c := point.Coordinate.Get(); len(c) != 2 || c[0] != 29 || c[1] != 41 {
+		t.Fatalf("point coordinate = %v", c)
 	}
 }

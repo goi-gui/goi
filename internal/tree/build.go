@@ -516,6 +516,12 @@ func newNode(name string) Node {
 			Wrap:     newProp(nil, "wrap", DirtyLayout, false),
 			Role:     newProp(nil, "role", DirtyLayout, "bodyMedium"),
 		}}
+	case "Geom":
+		return newGeom(b())
+	case "Point":
+		return newPoint(b())
+	case "Path":
+		return newPath(b())
 	case "ChartSeries":
 		return &ChartSeries{
 			NodeBase: b(),

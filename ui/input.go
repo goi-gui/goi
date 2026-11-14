@@ -2708,6 +2708,15 @@ func walkHit(b *tree.NodeBase, ox, oy float64, x, y float64, clip tree.Rect, fou
 		kx, ky := b.ChildScrollShift(kids[n])
 		kb.X += kx
 		kb.Y += ky
+		if m, ok := b.Node().(*tree.Map); ok {
+			if p, ok := kids[n].Node().(*tree.Point); ok {
+				if ax, ay, ok := p.Anchor(m); ok {
+					kb.X, kb.Y = ax-kb.W/2, ay-kb.H/2
+				} else {
+					continue
+				}
+			}
+		}
 		walkHitOffset(kids[n], ox, oy, kb, x, y, b.ChildClip(kids[n], box, kidClip), found)
 		if *found != nil {
 			return
@@ -2736,6 +2745,15 @@ func walkHitOffset(b *tree.NodeBase, ox, oy float64, bounds tree.Rect, x, y floa
 		kx, ky := b.ChildScrollShift(kids[n])
 		kb.X += kx
 		kb.Y += ky
+		if m, ok := b.Node().(*tree.Map); ok {
+			if p, ok := kids[n].Node().(*tree.Point); ok {
+				if ax, ay, ok := p.Anchor(m); ok {
+					kb.X, kb.Y = ax-kb.W/2, ay-kb.H/2
+				} else {
+					continue
+				}
+			}
+		}
 		walkHitOffset(kids[n], ox, oy, kb, x, y, b.ChildClip(kids[n], box, kidClip), found)
 		if *found != nil {
 			return

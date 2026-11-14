@@ -149,6 +149,11 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 	if len(kids) == 0 {
 		return
 	}
+	// A map's children are overlays on the map, not content in its padding.
+	if b.Node().Kind() == "Map" {
+		e.mapChildren(b, kids, w, h)
+		return
+	}
 	pe, be := b.PaddingEdges(), b.BorderEdges()
 	cw := maxf(w-pe.Left-pe.Right-be.Left-be.Right, 0)
 	ch := maxf(h-pe.Top-pe.Bottom-be.Top-be.Bottom, 0)
@@ -367,6 +372,28 @@ func (e *Engine) linear(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH,
 		}
 		k.SetBounds(r)
 		e.children(k, r.W, r.H)
+	}
+}
+
+// mapChildren places a map's overlays: a Geom or Path covers the map so its
+// painter can project anywhere, while a Point keeps the size of its children
+// and is moved to its coordinate at paint time.
+func (e *Engine) mapChildren(b *tree.NodeBase, kids []*tree.NodeBase, w, h float64) {
+	for _, k := range kids {
+		if k.Node().Kind() == "Geom" || k.Node().Kind() == "Path" {
+			k.SetBounds(tree.Rect{W: w, H: h})
+			e.children(k, w, h)
+			continue
+		}
+		cw, ch := e.natural(k, w, h)
+		if v := k.Width(); v >= 0 {
+			cw = v
+		}
+		if v := k.Height(); v >= 0 {
+			ch = v
+		}
+		k.SetBounds(tree.Rect{W: cw, H: ch})
+		e.children(k, cw, ch)
 	}
 }
 
@@ -1328,7 +1355,7 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 			e.gridHeight(kids, innerW, cols, spacing) + insetH
 	}
 
-	stack := kind == "Stack" || kind == "GestureDetector"
+	stack := kind == "Stack" || kind == "GestureDetector" || kind == "Point"
 	var mainSum, maxW, maxH float64
 	for i, c := range kids {
 		var cw, ch float64
@@ -1360,7 +1387,7 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 	if kind == "Row" || kind == "TitleBar" {
 		return mainSum + insetW, maxH + insetH
 	}
-	if kind == "Stack" {
+	if kind == "Stack" || kind == "Point" {
 		return maxf(maxW, mainSum) + insetW, maxH + insetH
 	}
 	return maxW + insetW, mainSum + insetH

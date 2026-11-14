@@ -1,6 +1,7 @@
 package paint
 
 import (
+	"math"
 	"testing"
 
 	"github.com/goi-gui/goi/internal/img"
@@ -72,32 +73,57 @@ func TestMapPaintsTilesAndAttribution(t *testing.T) {
 	}
 }
 
-// TestMapPaintsGeom checks that a polygon reaches the display list as strokes
-// that turn, which is how a line is drawn without a path primitive.
+// TestMapPaintsGeom checks that a Geom child reaches the display list as one
+// stroke per segment, in the polygon's own order.
 func TestMapPaintsGeom(t *testing.T) {
 	src := `Window {
 		Map {
 			width: 300 height: 200
 			center: "41,29" zoom: 5
-			geom: "{\"type\":\"Polygon\",\"coordinates\":[[[28,40],[30,40],[30,42],[28,42],[28,40]]]}"
+			Geom { data: [28, 40, 30, 40, 30, 42, 28, 42] }
 		}
 	}`
 	_, _, l := mapList(t, src, 300, 200)
-	strokes, dots := 0, 0
+	strokes := 0
 	for _, op := range l.Ops {
-		if op.Kind != Fill {
-			continue
-		}
-		switch {
-		case op.Shape == Circle:
-			dots++
-		case op.Rect[3] == 2: // the boundary stroke width
+		if op.Kind == Fill && op.Rect[3] == 2 {
 			strokes++
 		}
 	}
-	// Four sides; the ring repeats its first vertex, which also takes a dot.
-	if strokes != 4 || dots != 5 {
-		t.Fatalf("strokes = %d dots = %d, want 4 and 5:\n%s", strokes, dots, l.Dump())
+	if strokes != 4 {
+		t.Fatalf("strokes = %d, want four sides:\n%s", strokes, l.Dump())
+	}
+}
+
+// TestMapColorsAndFill checks the Geom colours: the ring takes lineColor and a
+// fillColor produces one rasterized fill under the strokes.
+func TestMapColorsAndFill(t *testing.T) {
+	src := `Window {
+		Map {
+			width: 300 height: 200
+			center: "41,29" zoom: 5
+			Geom {
+				data:      [28, 40, 30, 40, 30, 42, 28, 42]
+				lineColor: #ff0000
+				fillColor: #00ff0044
+			}
+		}
+	}`
+	_, _, l := mapList(t, src, 300, 200)
+	var strokes, fills int
+	for _, op := range l.Ops {
+		switch {
+		case op.Kind == Bitmap && op.Src != nil:
+			fills++
+		case op.Kind == Fill && op.Rect[3] == 2:
+			strokes++
+			if op.Color != 0xFF0000FF {
+				t.Fatalf("line colour = %#x, want #ff0000", op.Color)
+			}
+		}
+	}
+	if strokes != 4 || fills != 1 {
+		t.Fatalf("strokes = %d fills = %d, want 4 and 1:\n%s", strokes, fills, l.Dump())
 	}
 }
 
@@ -134,39 +160,7 @@ func TestMapTilesDoNotRoundTheirOwnCorners(t *testing.T) {
 	}
 }
 
-// TestMapColorsAndFill checks the two colour properties: the boundary takes
-// lineColor, the polygon gets a fill bitmap in fillColor, and a design that
-// leaves lineColor unset keeps the scheme's primary.
-func TestMapColorsAndFill(t *testing.T) {
-	src := `Window {
-		Map {
-			width: 300 height: 200
-			center: "41,29" zoom: 5
-			lineColor: #ff0000
-			fillColor: #00ff0044
-			geom: "{\"type\":\"Polygon\",\"coordinates\":[[[28,40],[30,40],[30,42],[28,42],[28,40]]]}"
-		}
-	}`
-	_, _, l := mapList(t, src, 300, 200)
-	var strokes, fills int
-	for _, op := range l.Ops {
-		switch {
-		case op.Kind == Bitmap && op.Src != nil:
-			fills++
-		case op.Kind == Fill && op.Rect[3] == 2:
-			strokes++
-			if op.Color != 0xFF0000FF {
-				t.Fatalf("line colour = %#x, want #ff0000", op.Color)
-			}
-		}
-	}
-	if strokes != 4 || fills != 1 {
-		t.Fatalf("strokes = %d fills = %d, want 4 and 1:\n%s", strokes, fills, l.Dump())
-	}
-}
-
-// TestMapReverseTileColors checks that the invert switch reaches the tile op
-// and only the tile op.
+// TestMapReverseTileColors checks that the invert switch reaches the tile op.
 func TestMapReverseTileColors(t *testing.T) {
 	tr, m, l := mapList(t, `Window {
 		Map {
@@ -189,5 +183,66 @@ func TestMapReverseTileColors(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("no tile painted")
+	}
+}
+
+// TestMapPointIsAnchored checks the marker overlay: a Point's child is drawn
+// centred on its coordinate, not at the map's origin.
+func TestMapPointIsAnchored(t *testing.T) {
+	src := `Window {
+		Map {
+			width: 300 height: 200 center: "41,29" zoom: 5
+			Point {
+				coordinate: [28, 40]
+				Rectangle { width: 10 height: 10 background: #ff0000 }
+			}
+		}
+	}`
+	_, m, l := mapList(t, src, 300, 200)
+	wantX, wantY := m.Project(40, 28)
+	found := false
+	for _, op := range l.Ops {
+		if op.Kind != Fill || op.Color != 0xFF0000FF {
+			continue
+		}
+		found = true
+		cx := float64(op.Rect[0]) + float64(op.Rect[2])/2
+		cy := float64(op.Rect[1]) + float64(op.Rect[3])/2
+		if math.Abs(cx-wantX) > 0.01 || math.Abs(cy-wantY) > 0.01 {
+			t.Fatalf("marker at %v,%v, want the projected %v,%v", cx, cy, wantX, wantY)
+		}
+	}
+	if !found {
+		t.Fatal("the marker was not painted")
+	}
+}
+
+// TestMapPathStrokes checks that a Path becomes one stroke per pair of
+// coordinates.
+func TestMapPathStrokes(t *testing.T) {
+	src := `Window {
+		Map {
+			id:     map
+			width:  300 height: 200
+			center: "41,29" zoom: 5
+			Path { id: route }
+		}
+	}`
+	tr, _, l := mapList(t, src, 300, 200)
+	n, ok := tree.Find(tr.Root, "route")
+	if !ok {
+		t.Fatal("the route path was not found")
+	}
+	path := n.(*tree.Path)
+	path.Coordinates.Set([]tree.Coord{{28, 40}, {29, 40}, {30, 41}})
+	l.Build(tr, 300, 200)
+	strokes := 0
+	for _, op := range l.Ops {
+		if op.Kind == Fill && op.Rect[3] == 2 {
+			strokes++
+		}
+	}
+	if strokes != 2 {
+		t.Fatalf("path strokes = %d, want two segments:\n%s", strokes, l.Dump())
 	}
 }

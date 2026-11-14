@@ -181,9 +181,11 @@ type (
 	Code             = tree.Code
 	Markdown         = tree.Markdown
 	Map              = tree.Map
-	MapTile          = tree.MapTile
-	MapGeometry      = tree.MapGeometry
+	Geom             = tree.Geom
 	Point            = tree.Point
+	Path             = tree.Path
+	MapTile          = tree.MapTile
+	Coord            = tree.Coord
 	Carousel         = tree.Carousel
 	Toolbar          = tree.Toolbar
 	AspectRatio      = tree.AspectRatio

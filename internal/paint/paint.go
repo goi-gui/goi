@@ -262,6 +262,15 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 		kx, ky := b.ChildScrollShift(k)
 		kb.X += kx
 		kb.Y += ky
+		if m, ok := b.Node().(*tree.Map); ok {
+			if p, ok := k.Node().(*tree.Point); ok {
+				if ax, ay, ok := p.Anchor(m); ok {
+					kb.X, kb.Y = ax-kb.W/2, ay-kb.H/2
+				} else {
+					continue
+				}
+			}
+		}
 		l.walkOffset(k, x, y, kb, b.ChildClip(k, r, childClip))
 	}
 	frame := b.ScrollViewport(r)
@@ -343,6 +352,15 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 		kx, ky := b.ChildScrollShift(k)
 		kb.X += kx
 		kb.Y += ky
+		if m, ok := b.Node().(*tree.Map); ok {
+			if p, ok := k.Node().(*tree.Point); ok {
+				if ax, ay, ok := p.Anchor(m); ok {
+					kb.X, kb.Y = ax-kb.W/2, ay-kb.H/2
+				} else {
+					continue
+				}
+			}
+		}
 		l.walkOffset(k, x, y, kb, b.ChildClip(k, r, childClip))
 	}
 	frame := b.ScrollViewport(r)
@@ -393,6 +411,12 @@ func (l *List) paintContent(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
 	}
 	if s, ok := b.Node().(*tree.SVG); ok {
 		l.paintSVG(s, r, clip)
+	}
+	if g, ok := b.Node().(*tree.Geom); ok {
+		l.paintGeom(g, r, clip)
+	}
+	if p, ok := b.Node().(*tree.Path); ok {
+		l.paintPath(p, r, clip)
 	}
 }
 

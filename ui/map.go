@@ -32,7 +32,6 @@ func (a *App) syncMaps() {
 		}
 		b := m.Bounds()
 		m.Prepare(b.W, b.H)
-		a.loadMapGeom(m)
 		m.ResetTiles()
 		for _, t := range m.ViewTiles() {
 			url := tileURL(m.Tiles.Get(), t.MapTile)
@@ -44,30 +43,6 @@ func (a *App) syncMaps() {
 		}
 	})
 	a.pumpTiles()
-}
-
-// loadMapGeom reads a `geom` that names an asset or a file. The node parses
-// GeoJSON itself, so the resolved text goes beside the path rather than over it.
-func (a *App) loadMapGeom(m *tree.Map) {
-	src := strings.TrimSpace(m.Geom.Get())
-	if src == "" || strings.HasPrefix(src, "{") || strings.HasPrefix(src, "[") {
-		return
-	}
-	if text, ok := a.mapGeom[src]; ok {
-		m.SetGeomText(text)
-		return
-	}
-	b, err := a.readSrc(src)
-	if err != nil {
-		m.SetGeomText("") // a stale boundary from the previous path would lie
-		return
-	}
-	if a.mapGeom == nil {
-		a.mapGeom = map[string]string{}
-	}
-	text := string(b)
-	a.mapGeom[src] = text
-	m.SetGeomText(text)
 }
 
 // wantTile queues a tile URL once. A failed URL stays failed: the tile really is

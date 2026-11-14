@@ -268,6 +268,10 @@ func plainValue(pd Prop) syntax.Value {
 	case TypeList:
 		item := plainValue(Prop{Type: pd.Elem})
 		return &syntax.List{Items: []syntax.Value{item}}
+	case TypeCoords:
+		return &syntax.List{Items: []syntax.Value{
+			&syntax.Number{Val: 28}, &syntax.Number{Val: 41},
+		}}
 	case TypeScalar:
 		return &syntax.String{Val: "x"}
 	case TypeRotate:

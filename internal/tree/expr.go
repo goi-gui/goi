@@ -163,6 +163,19 @@ func (b *NodeBase) writeExpr(name string, v any) {
 // exprLiteral turns a resolved value back into the literal the property writer
 // reads: a number, a string, a bool, a colour, a colour role, or a list of them.
 func exprLiteral(v any) (syntax.Value, bool) {
+	// A bridge slice or a fixed coordinate array is a list value for a list
+	// property, which is how a design walks API coordinates into a Geom.
+	if items, ok := sliceItems(v); ok {
+		out := make([]syntax.Value, len(items))
+		for i, it := range items {
+			lit, ok := exprLiteral(it)
+			if !ok {
+				return nil, false
+			}
+			out[i] = lit
+		}
+		return &syntax.List{Items: out}, true
+	}
 	switch x := v.(type) {
 	case float64:
 		return &syntax.Number{Val: x}, true
@@ -189,16 +202,6 @@ func exprLiteral(v any) (syntax.Value, bool) {
 			id = "customColor"
 		}
 		return &syntax.Ref{ID: id, Prop: x.role}, true
-	case []any:
-		items := make([]syntax.Value, len(x))
-		for i, it := range x {
-			lit, ok := exprLiteral(it)
-			if !ok {
-				return nil, false
-			}
-			items[i] = lit
-		}
-		return &syntax.List{Items: items}, true
 	}
 	return nil, false
 }

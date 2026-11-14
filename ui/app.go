@@ -116,9 +116,6 @@ type App struct {
 	mapFailed   map[string]bool
 	mapKeys     []string
 	mapInFlight int
-	// mapGeom caches a `geom` asset's text by path, so a reload does not read
-	// the file again.
-	mapGeom map[string]string
 	// hasSVGAnim is true while the tree holds an animated SVG document.
 	hasSVGAnim bool
 	// pending holds the URLs with a fetch in flight, so two nodes with the same

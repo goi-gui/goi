@@ -2051,18 +2051,33 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   back to the last colour that parsed. Cancel and OK follow the time picker:
   they report the current value rather than deciding whether to revert, which
   stays the app's call.
-- **A map's camera is two properties, and its boundary is strokes, not a path.**
-  `center` and `zoom` are what the pointer writes, so `View` needs no separate
-  state and a design that binds either keeps working; `bbox` is four numbers
-  that fit the view when the box or the viewport changes, not a third camera
-  value. Geometry
-  is drawn as one thin rounded quad per segment turned about its midpoint
+- **A map's overlays are children, and its camera is two properties.** `Geom`,
+  `Path` and `Point` are elements, so an API's polygons come from a loop and the
+  design carries no geometry JSON string; one `Geom` is one polygon, its `data`
+  a flat `[lon, lat, …]` ring because that is the only list shape a property
+  holds today. A `Path` takes a list of pairs, which needed one new list element
+  type (`TypeCoords`) rather than a second parallel property system. `center` and
+  `zoom` are what the pointer writes, so `View` needs no separate state and a
+  design that binds either keeps working; `bbox` is four numbers that fit the
+  view when the box or the viewport changes, not a third camera value. Overlays
+  are drawn as one thin rounded quad per segment turned about its midpoint
   because the display list has no path primitive, and adding one for a boundary
   would have meant a new shader and a new instance kind. A polygon fill is a
   raster mask baked once in Mercator space and drawn through the same bitmap
   path, so panning only moves its quad and the display list still has one
   primitive fewer. Tiles live in the image cache and the node, not in a second
   GPU path, so a map is one more consumer of the bitmap atlas.
+- **A bridge slice can feed a list property.** A loop already walks a bridge
+  list, but a `Geom`'s `data` needs the whole slice as one value. `exprLiteral`
+  now turns any slice or fixed array into a list literal, and `normalizeData`
+  accepts one, so `data: g.Data` and `coordinate: bridge.Marker` work without an
+  `Instantiate` dance. A slice of structs still fails to normalize, which keeps
+  a ticket list a loop-only value rather than a property value.
+- **A marker is positioned when it paints, not when it lays out.** A Point knows
+  its coordinate, but the camera changes every frame, so layout gives it the
+  size of its children and the painter shifts the subtree to the projected
+  pixel; hit-testing applies the same shift. This keeps the map's overlays out
+  of the layout engine's flow and needs no absolute-position variant of it.
 - **Map gestures follow the platform, except the wheel.** A double click zooms
   one level around the click, a pinch applies SDL's relative scale, and both
   respect `disableZoom`. SDL's pinch event carries no position, so the pointer is
