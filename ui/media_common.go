@@ -13,6 +13,14 @@ import (
 	"github.com/goi-gui/goi/internal/tree"
 )
 
+// mediaCursorIdle hides the pointer once a video's controls rest, which is the
+// same three seconds that hide the bar. A driver-less build has no pointer.
+func (a *App) mediaCursorIdle(n tree.Node) {
+	if d, ok := a.driver.(*gpuDriver); ok && d.input != nil {
+		d.input.hideMediaCursor(n)
+	}
+}
+
 const (
 	// DefaultBuffer is how far ahead a player decodes when the design does not
 	// say. Long enough to ride out a hiccup, short enough to seek quickly.

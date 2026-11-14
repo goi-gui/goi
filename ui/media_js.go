@@ -421,6 +421,7 @@ func (a *App) tickMedia(dt float64) (bool, time.Duration) {
 			if m.ControlsIdle >= controlsHide {
 				m.ControlsShown = false
 				m.Base().MarkDirty(tree.DirtyPaint)
+				a.mediaCursorIdle(m.Base().Node())
 				changed = true
 			} else if d := controlsHide - m.ControlsIdle; wait == 0 || d < wait {
 				wait = d

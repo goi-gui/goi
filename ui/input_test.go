@@ -1268,3 +1268,35 @@ func TestTooltipHoversWithItsChild(t *testing.T) {
 		t.Fatal("the tooltip stayed hovered after the pointer left")
 	}
 }
+
+// TestVideoHidesTheCursorWhenIdle is the picture rule: a pointer that rests on a
+// video for the control bar's three seconds disappears, so it stops sitting on
+// the film, and the next move brings it back.
+func TestVideoHidesTheCursorWhenIdle(t *testing.T) {
+	_, win, in := inputFixture(t, `Window { Video { id: v width: 200 height: 120 } }`, 480, 320)
+	v := MustByID[*Video](win, "v")
+	var got platform.Cursor
+	in.setCursor = func(c platform.Cursor) { got = c }
+
+	b := absoluteRect(v)
+	in.MouseMove(b.X+5, b.Y+5)
+	if got == platform.CursorNone {
+		t.Fatal("the cursor hid on a move")
+	}
+	in.hideMediaCursor(v)
+	if got != platform.CursorNone {
+		t.Fatalf("cursor = %v after idle, want it hidden", got)
+	}
+	in.MouseMove(b.X+6, b.Y+5)
+	if got == platform.CursorNone {
+		t.Fatal("the cursor stayed hidden after a move")
+	}
+
+	// Another element's idle clock must not hide a pointer that is elsewhere.
+	outside := MustByID[*Video](win, "v")
+	in.MouseMove(2, 300)
+	in.hideMediaCursor(outside.Node())
+	if got == platform.CursorNone {
+		t.Fatal("a video away from the pointer hid it")
+	}
+}

@@ -715,6 +715,19 @@ func mediaAt(n tree.Node) tree.Node {
 	return nil
 }
 
+// hideMediaCursor hides the pointer while a video plays untouched: a picture is
+// watched, not pointed at. Only the video under the pointer counts, and the next
+// move brings the cursor back through pointerAt.
+func (i *interactor) hideMediaCursor(n tree.Node) {
+	if i.hover == nil || n == nil || mediaAt(i.hover) != n {
+		return
+	}
+	if _, ok := n.(*tree.Video); !ok {
+		return
+	}
+	i.pointer(platform.CursorNone)
+}
+
 // showMediaControls brings a player's bar back and restarts the idle clock that
 // hides it again. The ui layer advances that clock and hides the bar, so the
 // bar disappears whether the pointer rested on the picture or left it.
