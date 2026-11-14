@@ -1239,10 +1239,34 @@ func (l *List) paintSearchBar(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	}
 }
 
+// paintTooltip draws the hint above the child the tooltip wraps, on hover. It
+// is the only component whose box is its content: the bubble floats outside it,
+// so hovering the child is what brings it out and the layout never reserves
+// room for text that is not there.
 func (l *List) paintTooltip(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	if !c.Hover || c.Text.Get() == "" {
+		return
+	}
 	col := l.Theme.Colors
-	l.fillRect(r, col.InverseSurface, radiusFor(m3.ShapeExtraSmall, r), 0, 0, clip)
-	l.textIn(c.Label.Get(), l.style("bodySmall"), col.InverseOnSurface, r, AlignCenter, clip)
+	st := l.style("bodySmall")
+	const padX, gap, h = 8.0, 6.0, 24.0
+	w := textWidth(l, c.Text.Get(), st) + padX*2
+	x := r.X + r.W/2 - w/2
+	// A bubble that would leave the window slides back in, so a tooltip on a
+	// control near the edge stays readable instead of being half cut off.
+	if min := clip.X + 2; x < min {
+		x = min
+	}
+	if max := clip.X + clip.W - w - 2; x > max && max > clip.X {
+		x = max
+	}
+	y := r.Y - h - gap
+	if y < clip.Y+2 {
+		y = r.Y + r.H + gap
+	}
+	box := tree.Rect{X: x, Y: y, W: w, H: h}
+	l.fillRect(box, col.InverseSurface, radiusFor(m3.ShapeExtraSmall, box), 0, 0, clip)
+	l.textIn(c.Text.Get(), st, col.InverseOnSurface, box, AlignCenter, clip)
 }
 
 // ---------------------------------------------------------------- containment

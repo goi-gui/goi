@@ -341,7 +341,10 @@ func (i *interactor) MouseMove(x, y float64) {
 		if c == nil {
 			return
 		}
-		want := isDescendantOf(hit, n) && interactive(n)
+		// A tooltip is not a control, so it takes no focus and no press, but it
+		// follows the pointer the way a control does: its hint is shown while
+		// any part of the child under it is hovered.
+		want := isDescendantOf(hit, n) && (interactive(n) || n.Kind() == "Tooltip")
 		if c.Hover != want {
 			c.Hover = want
 			c.Base().MarkDirty(tree.DirtyPaint)

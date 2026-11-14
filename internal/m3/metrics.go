@@ -148,7 +148,9 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 	case "SearchBar":
 		return Metrics{W: 360, H: 56}
 	case "Tooltip":
-		return Metrics{W: labelWidth(m, kind, label) + 16, H: 24}
+		// The bubble is an overlay, not flow: the box is exactly the child it
+		// floats above, so the text does not widen anything.
+		return Metrics{}
 	case "Card":
 		return Metrics{W: 200, H: 0, Top: 16, Right: 16, Bottom: 16, Left: 16}
 	case "Dialog":

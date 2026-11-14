@@ -1061,3 +1061,70 @@ func TestLoadingIndicatorIsNativeShape(t *testing.T) {
 	}
 	t.Fatal("no loading shape in the later frame")
 }
+
+// TestTooltipIsAContainer pins the tooltip contract: the box is exactly its
+// child, nothing is drawn at rest, and hovering the child brings a bubble above
+// it that is not part of the layout.
+func TestTooltipIsAContainer(t *testing.T) {
+	// The padding leaves room above, which is where a tooltip belongs.
+	const src = `Window { Column {
+		padding: 60
+		Tooltip { id: tip text: "Saves to your library"
+			Text { id: label text: "Hover me" }
+		}
+	} }`
+	build := func(hover bool) (*List, tree.Rect) {
+		tr, diag := tree.BuildSource([]byte(src), nil)
+		if !diag.Empty() {
+			t.Fatalf("%v", diag)
+		}
+		layout.New(nil).Layout(tr.Root, 400, 400)
+		n, _ := tr.ByID("tip")
+		kid, _ := tr.ByID("label")
+		if n == nil || kid == nil {
+			t.Fatal("nodes missing")
+		}
+		nb, kb := n.Base().Bounds(), kid.Base().Bounds()
+		if nb.W != kb.W || nb.H != kb.H {
+			t.Fatalf("tooltip %v does not wrap its child %v", nb, kb)
+		}
+		if hover {
+			n.(*tree.Tooltip).M3().Hover = true
+		}
+		l := &List{}
+		l.Build(tr, 400, 400)
+		return l, n.Base().Bounds()
+	}
+	rest, _ := build(false)
+	if n := countBubble(rest); n != 0 {
+		t.Fatalf("bubble drawn without hover: %d fills\n%s", n, rest.Dump())
+	}
+	hovered, wrapped := build(true)
+	if n := countBubble(hovered); n != 1 {
+		t.Fatalf("bubbles on hover = %d, want 1\n%s", n, hovered.Dump())
+	}
+	box := bubbleBox(hovered)
+	if box.Y+box.H > wrapped.Y+1 {
+		t.Fatalf("bubble %v does not sit above the child %v", box, wrapped)
+	}
+}
+
+func countBubble(l *List) int {
+	n := 0
+	for _, op := range l.Ops {
+		if op.Kind == Fill && op.Color == m3.Light().Colors.InverseSurface {
+			n++
+		}
+	}
+	return n
+}
+
+func bubbleBox(l *List) tree.Rect {
+	for _, op := range l.Ops {
+		if op.Kind == Fill && op.Color == m3.Light().Colors.InverseSurface {
+			return tree.Rect{X: float64(op.Rect[0]), Y: float64(op.Rect[1]),
+				W: float64(op.Rect[2]), H: float64(op.Rect[3])}
+		}
+	}
+	return tree.Rect{}
+}
