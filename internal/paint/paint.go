@@ -675,12 +675,14 @@ func (l *List) paintBitmap(d *img.Data, fit string, base *tree.NodeBase, loading
 			float32((sw + visW) / 2 / sw), float32((sh + visH) / 2 / sh),
 		}
 	}
-	// Clipping to the node's own box with its radius is what rounds the image;
-	// the shader already knows how to round a clip.
+	// The bitmap's own radius rounds its crop; the clip radius rounds the
+	// visible box. They are the same number for an image, but a map tile has no
+	// rounding of its own and must take the map's corner from the clip.
+	r0 := float32(base.Radius())
 	l.Ops = append(l.Ops, Op{
 		Kind: Bitmap, Rect: rectArr(quad), Clip: clipArr(intersect(clip, r)),
-		ClipRadius: float32(base.Radius()),
-		Src:        d, UV: uv,
+		Radius: [4]float32{r0, r0, r0, r0}, ClipRadius: r0,
+		Src: d, UV: uv,
 	})
 }
 

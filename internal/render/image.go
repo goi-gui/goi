@@ -188,9 +188,11 @@ func (t *imageRenderer) addOp(op paint.Op) {
 		Color:   [4]float32{1, 1, 1, 1},
 		Clip:    clipVec(op.Clip),
 		ClipBox: clipVec(op.ClipBox),
-		// params.y rounds the bitmap's own crop; misc.xy is the UV far corner
-		// and misc.z the rounded clip, which the bitmap branch does not touch.
-		Params: [4]float32{5, op.ClipRadius, cu0 + uv[0]*(cu1-cu0), cv0 + uv[1]*(cv1-cv0)},
+		// params.y rounds the bitmap's own crop, which is the op's radius, not
+		// its clip radius: map tiles share one rounded clip and must not round
+		// each tile, or the four cut corners meeting at a grid point would leave
+		// a star-shaped hole. misc.xy is the UV far corner and misc.z the clip.
+		Params: [4]float32{5, op.Radius[0], cu0 + uv[0]*(cu1-cu0), cv0 + uv[1]*(cv1-cv0)},
 		Misc:   [4]float32{cu0 + uv[2]*(cu1-cu0), cv0 + uv[3]*(cv1-cv0), op.ClipRadius, 0},
 		Rot:    [4]float32{op.Rotate, op.PivotX, op.PivotY, 0},
 	})

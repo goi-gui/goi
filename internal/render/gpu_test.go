@@ -269,3 +269,25 @@ func TestTurnedFillIsNotSnapped(t *testing.T) {
 		t.Fatalf("turned rect = %v, want the exact box", got)
 	}
 }
+
+// TestBitmapRoundsItselfFromItsRadius keeps the map's tile rounding honest: the
+// bitmap's own corner comes from the op's Radius, and ClipRadius only rounds
+// the shared clip. Using the clip radius for both cut a star out of every tile
+// grid point.
+func TestBitmapRoundsItselfFromItsRadius(t *testing.T) {
+	at := newTestImageRenderer(64)
+	d := &img.Data{W: 8, H: 8, Pix: make([]byte, 8*8*4)}
+	op := paint.Op{
+		Kind: paint.Bitmap, Src: d, Rect: [4]float32{0, 0, 8, 8},
+		Radius: [4]float32{2, 2, 2, 2}, ClipRadius: 4,
+	}
+	at.prepare(&paint.List{Ops: []paint.Op{op}})
+	at.addOp(op)
+	inst := at.gpu.instances[len(at.gpu.instances)-1]
+	if inst.Params[1] != 2 {
+		t.Fatalf("bitmap radius = %v, want the op's 2", inst.Params[1])
+	}
+	if inst.Misc[2] != 4 {
+		t.Fatalf("clip radius = %v, want 4", inst.Misc[2])
+	}
+}
