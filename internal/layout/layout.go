@@ -175,7 +175,7 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 	switch b.Node().Kind() {
 	case "Row", "TitleBar":
 		e.linear(b, kids, cw, ch, pe.Left+be.Left, true, pe.Top+be.Top)
-	case "Stack", "ClipRRect", "Positioned":
+	case "Stack", "ClipRRect", "Positioned", "AspectRatio":
 		e.stackChildren(b, w, h, pe.Left+be.Left, pe.Top+be.Top, pe.Right+be.Right, pe.Bottom+be.Bottom)
 	case "Wrap":
 		e.wrap(b, kids, cw, ch, pe.Left+be.Left, pe.Top+be.Top)
@@ -303,15 +303,45 @@ func (e *Engine) linear(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH,
 			cs = cross
 		}
 		cs = clampSize(cs, minSize(k, !horizontal), maxSize(k, !horizontal))
+		// An AspectRatio takes its width from the parent and derives its height,
+		// or its height in a Row and derives its width. A declared dimension
+		// still wins for its own axis, and the other follows the ratio.
+		if k.Node().Kind() == "AspectRatio" {
+			r := aspectRatio(k)
+			if horizontal {
+				h := cs
+				if v := k.Height(); v >= 0 {
+					h = v
+				}
+				w := h * r
+				if v := k.Width(); v >= 0 {
+					w = v
+				}
+				sz, cs = w, h
+			} else {
+				w := cs
+				if v := k.Width(); v >= 0 {
+					w = v
+				}
+				h := w / r
+				if v := k.Height(); v >= 0 {
+					h = v
+				}
+				cs, sz = w, h
+			}
+		}
 		// A Wrap or Grid wraps to the width it actually gets, which may be a
 		// declared one rather than the parent's, so its height follows cs.
 		if !horizontal && k.Height() < 0 && (k.Node().Kind() == "Wrap" || k.Node().Kind() == "Grid") {
 			pe, be := k.PaddingEdges(), k.BorderEdges()
 			inner := maxf(cs-pe.Left-pe.Right-be.Left-be.Right, 0)
 			insetH := pe.Top + pe.Bottom + be.Top + be.Bottom
-			if k.Node().Kind() == "Wrap" {
+			switch {
+			case k.Node().Kind() == "Wrap":
 				sz = e.wrapHeight(visibleChildren(k), inner, containerOf(k).Spacing.Get()) + insetH
-			} else {
+			case gridVariant(k) == "masonry":
+				sz = e.masonryHeight(visibleChildren(k), inner, gridColumns(k), containerOf(k).Spacing.Get()) + insetH
+			default:
 				sz = e.gridHeight(visibleChildren(k), inner, gridColumns(k), containerOf(k).Spacing.Get()) + insetH
 			}
 		}
@@ -414,6 +444,10 @@ func (e *Engine) wrap(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH, o
 // grid places children in equal-width columns; each row is as tall as its
 // tallest child. A container child fills the cell, a sized one is aligned in it.
 func (e *Engine) grid(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH, offsetX, offsetY float64) {
+	if gridVariant(b) == "masonry" {
+		e.masonry(b, kids, availW, offsetX, offsetY)
+		return
+	}
 	c := containerOf(b)
 	cols := gridColumns(b)
 	spacing := c.Spacing.Get()
@@ -476,6 +510,49 @@ func (e *Engine) grid(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH, o
 }
 
 // gridColumns reads the column count, defaulting to one for a bad value.
+// aspectRatio is the ratio an AspectRatio node asks for; anything else, or a
+// ratio the design left at zero, reads as 1.
+func aspectRatio(b *tree.NodeBase) float64 {
+	if a, ok := b.Node().(*tree.AspectRatio); ok {
+		if r := a.Ratio.Get(); r > 0 {
+			return r
+		}
+	}
+	return 1
+}
+
+// aspectNatural is the intrinsic size of an AspectRatio: the declared axis wins,
+// and the other follows the ratio. With neither declared, the parent's width
+// decides; a width-unbounded context falls back to the height.
+func (e *Engine) aspectNatural(k *tree.NodeBase, availW, availH float64) (float64, float64) {
+	r := aspectRatio(k)
+	w, h := k.Width(), k.Height()
+	switch {
+	case w >= 0 && h < 0:
+		h = w / r
+	case h >= 0 && w < 0:
+		w = h * r
+	case w < 0 && h < 0:
+		if availW > 0 {
+			w, h = availW, availW/r
+		} else if availH > 0 {
+			w, h = availH*r, availH
+		}
+	}
+	return clampSize(w, minSize(k, true), maxSize(k, true)),
+		clampSize(h, minSize(k, false), maxSize(k, false))
+}
+
+// gridVariant reads a Grid's layout style: "normal" unless the design asks for
+// masonry.
+func gridVariant(b *tree.NodeBase) string {
+	g, ok := b.Node().(*tree.Grid)
+	if !ok || g.Variant.Get() == "" {
+		return "normal"
+	}
+	return g.Variant.Get()
+}
+
 func gridColumns(b *tree.NodeBase) int {
 	g, ok := b.Node().(*tree.Grid)
 	if !ok {
@@ -510,6 +587,76 @@ func (e *Engine) wrapHeight(kids []*tree.NodeBase, availW, spacing float64) floa
 		total += run
 	}
 	return total
+}
+
+// masonry places each child in the shortest column top to bottom, so boxes of
+// mixed heights pack without the ragged rows a normal grid forces. A child keeps
+// its natural height at the column width; the columns share the width and the
+// gap between them.
+func (e *Engine) masonry(b *tree.NodeBase, kids []*tree.NodeBase, availW, offsetX, offsetY float64) {
+	c := containerOf(b)
+	cols := gridColumns(b)
+	spacing := c.Spacing.Get()
+	cellW := (availW - spacing*float64(cols-1)) / float64(cols)
+	if cellW < 0 {
+		cellW = 0
+	}
+	colH := make([]float64, cols)
+	for _, k := range kids {
+		col := 0
+		for i := 1; i < cols; i++ {
+			if colH[i] < colH[col] {
+				col = i
+			}
+		}
+		w := cellW
+		if v := k.Width(); v >= 0 {
+			w = minf(v, cellW)
+		}
+		_, h := e.natural(k, w, 0)
+		if v := k.Height(); v >= 0 {
+			h = v
+		}
+		me := k.MarginEdges()
+		x := offsetX + float64(col)*(cellW+spacing)
+		y := offsetY + colH[col]
+		k.SetBounds(tree.Rect{X: x + me.Left, Y: y + me.Top, W: w, H: h})
+		e.children(k, w, h)
+		colH[col] += h + me.Top + me.Bottom + spacing
+	}
+}
+
+// masonryHeight is the tallest column, which is the height a masonry grid needs
+// at the given width.
+func (e *Engine) masonryHeight(kids []*tree.NodeBase, availW float64, cols int, spacing float64) float64 {
+	cellW := (availW - spacing*float64(cols-1)) / float64(cols)
+	if cellW < 0 {
+		cellW = 0
+	}
+	colH := make([]float64, cols)
+	for _, k := range kids {
+		col := 0
+		for i := 1; i < cols; i++ {
+			if colH[i] < colH[col] {
+				col = i
+			}
+		}
+		w := cellW
+		if v := k.Width(); v >= 0 {
+			w = minf(v, cellW)
+		}
+		_, h := e.natural(k, w, 0)
+		if v := k.Height(); v >= 0 {
+			h = v
+		}
+		me := k.MarginEdges()
+		colH[col] += h + me.Top + me.Bottom + spacing
+	}
+	tallest := 0.0
+	for _, h := range colH {
+		tallest = maxf(tallest, h-spacing)
+	}
+	return maxf(tallest, 0)
 }
 
 // gridHeight is the total height of the grid rows at the given width.
@@ -765,6 +912,9 @@ func (e *Engine) naturalSize(k *tree.NodeBase, availW, availH float64) (float64,
 	if k.Node().Kind() == "Table" {
 		return e.tableNatural(k, availW, availH)
 	}
+	if k.Node().Kind() == "AspectRatio" {
+		return e.aspectNatural(k, availW, availH)
+	}
 	if cv, ok := e.componentOf(k); ok {
 		mt := e.metricsFor(k, cv)
 		w, h := mt.W, mt.H
@@ -960,6 +1110,8 @@ func containerOf(b *tree.NodeBase) *tree.Container {
 		return &n.Container
 	case *tree.Grid:
 		return &n.Container
+	case *tree.AspectRatio:
+		return &n.Container
 	}
 	// A node that is not a container has no spacing or alignment of its own.
 	// Its zero value answers both questions; sharing one avoids an allocation
@@ -985,6 +1137,8 @@ func containerKind(b *tree.NodeBase) (*tree.Container, bool) {
 	case *tree.Wrap:
 		return &n.Container, true
 	case *tree.Grid:
+		return &n.Container, true
+	case *tree.AspectRatio:
 		return &n.Container, true
 	}
 	return nil, false
@@ -1140,6 +1294,10 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 		return minf(total, innerW) + insetW, e.wrapHeight(kids, innerW, spacing) + insetH
 	case "Grid":
 		cols := gridColumns(k)
+		if gridVariant(k) == "masonry" {
+			return minf(e.gridNaturalWidth(kids, innerW, cols, spacing), innerW) + insetW,
+				e.masonryHeight(kids, innerW, cols, spacing) + insetH
+		}
 		return minf(e.gridNaturalWidth(kids, innerW, cols, spacing), innerW) + insetW,
 			e.gridHeight(kids, innerW, cols, spacing) + insetH
 	}
@@ -1188,6 +1346,7 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 func isContainer(k *tree.NodeBase) bool {
 	switch k.Node().Kind() {
 	case "Window", "Column", "Row", "TitleBar", "Stack", "Positioned", "Wrap", "Grid",
+		"AspectRatio",
 		"Card", "Dialog", "BottomSheet", "SideSheet", "List", "Menu",
 		"NavigationDrawer", "NavigationBar", "NavigationRail", "Tabs",
 		"ButtonGroup", "Carousel":

@@ -282,6 +282,26 @@ func (*Wrap) Kind() string { return "Wrap" }
 type Grid struct {
 	Container
 	Columns Prop[float64]
+	// Variant is "normal" (rows of equal height) or "masonry" (each child in the
+	// shortest column, so a page of mixed heights packs like a pinboard).
+	Variant Prop[string]
+}
+
+// AspectRatio sizes its box from a ratio: the width comes from the parent and
+// the height follows, the way Flutter's AspectRatio does. Its children fill the
+// box, so a picture keeps its shape and the layout around it only sees one size.
+type AspectRatio struct {
+	Container
+	Ratio Prop[float64]
+}
+
+// Kind implements Node.
+func (*AspectRatio) Kind() string { return "AspectRatio" }
+
+func (a *AspectRatio) namedProps() []NamedProp {
+	return append(a.Container.namedProps(),
+		NumberProp(&a.NodeBase, "aspectRatio", DirtyLayout, &a.Ratio),
+	)
 }
 
 // Kind implements Node.
@@ -291,6 +311,7 @@ func (g *Grid) namedProps() []NamedProp {
 	return append(
 		g.Container.namedProps(),
 		NumberProp(&g.NodeBase, "columns", DirtyLayout, &g.Columns),
+		EnumProp(&g.NodeBase, "variant", DirtyLayout, &g.Variant, "normal", "masonry"),
 	)
 }
 

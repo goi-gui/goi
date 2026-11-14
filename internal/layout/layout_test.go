@@ -900,3 +900,95 @@ func TestWrapMainAxisAlignPerRun(t *testing.T) {
 		t.Fatalf("c.X = %v, want the start of its own run", got)
 	}
 }
+
+// TestMasonryPacksTheShortestColumn is the pinboard rule: each child goes to the
+// column with the least height so far, and keeps its own height at the column
+// width instead of stretching to its row's tallest box.
+func TestMasonryPacksTheShortestColumn(t *testing.T) {
+	tr := build(t, `Window {
+		Grid {
+			columns: 2
+			spacing: 10
+			variant: masonry
+			Rectangle { id: a height: 100 }
+			Rectangle { id: b height: 40 }
+			Rectangle { id: c height: 60 }
+			Rectangle { id: d height: 20 }
+		}
+	}`)
+	New(nil).Layout(tr.Root, 210, 400)
+	// Columns are (210-10)/2 = 100 wide.
+	want(t, bounds(t, tr, "a"), 0, 0, 100, 100)
+	want(t, bounds(t, tr, "b"), 110, 0, 100, 40)
+	// c goes under b, because that column is the shorter one (40 < 100).
+	want(t, bounds(t, tr, "c"), 110, 50, 100, 60)
+	// d goes under a (100 + 10 > 110), so the left column is the short one again.
+	want(t, bounds(t, tr, "d"), 0, 110, 100, 20)
+}
+
+// TestMasonryHeightFollowsTheTallestColumn guards a masonry grid inside a
+// Column: its auto height is the tallest column, not the sum of every box.
+func TestMasonryHeightFollowsTheTallestColumn(t *testing.T) {
+	tr := build(t, `Window {
+		Column {
+			Grid {
+				id: g
+				columns: 2
+				spacing: 10
+				variant: masonry
+				Rectangle { id: a height: 100 }
+				Rectangle { id: b height: 40 }
+				Rectangle { id: c height: 30 }
+			}
+		}
+	}`)
+	New(nil).Layout(tr.Root, 210, 400)
+	// Left column: 100. Right column: 40 + 10 + 30 = 80. The grid is 100 tall.
+	if got := bounds(t, tr, "g").H; got != 100 {
+		t.Fatalf("masonry height = %v, want the tallest column 100", got)
+	}
+}
+
+// TestAspectRatioDerivesTheOtherAxis is the Flutter contract: the width comes
+// from the parent and the height follows the ratio, a declared axis wins, and a
+// child fills the box.
+func TestAspectRatioDerivesTheOtherAxis(t *testing.T) {
+	tr := build(t, `Window {
+		Column {
+			AspectRatio {
+				id: half
+				aspectRatio: 2
+				Rectangle { id: fill }
+			}
+			AspectRatio {
+				id: fixed
+				aspectRatio: 1.5
+				width: 300
+				Rectangle {}
+			}
+		}
+	}`)
+	New(nil).Layout(tr.Root, 200, 400)
+	want(t, bounds(t, tr, "half"), 0, 0, 200, 100)
+	want(t, bounds(t, tr, "fill"), 0, 0, 200, 100)
+	want(t, bounds(t, tr, "fixed"), 0, 100, 300, 200)
+}
+
+// TestAspectRatioInARowDerivesItsWidth is the other direction: the row's height
+// is the cross axis, so the width follows from it.
+func TestAspectRatioInARowDerivesItsWidth(t *testing.T) {
+	tr := build(t, `Window {
+		Column {
+			Row {
+				height: 90
+				AspectRatio {
+					id: wide
+					height: 60
+					aspectRatio: 2
+				}
+			}
+		}
+	}`)
+	New(nil).Layout(tr.Root, 400, 400)
+	want(t, bounds(t, tr, "wide"), 0, 0, 120, 60)
+}

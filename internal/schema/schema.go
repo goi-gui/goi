@@ -337,8 +337,13 @@ var elements = func() []Element {
 			Prop{Name: "crossAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
 			Prop{Name: "mainAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "spaceBetween", "spaceAround", "spaceEvenly"}, Default: "start"},
 		)},
+		{Name: "AspectRatio", Children: true, Attrs: withCommon(
+			// The width comes from the parent; the height is width / ratio.
+			Prop{Name: "aspectRatio", Type: TypeNumber, Dirty: DirtyLayout, Default: 1.0},
+		)},
 		{Name: "Grid", Children: true, Attrs: withCommon(
 			Prop{Name: "columns", Type: TypeNumber, Dirty: DirtyLayout, Default: 2.0},
+			Prop{Name: "variant", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"normal", "masonry"}, Default: "normal"},
 			Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
 			Prop{Name: "gap", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
 			Prop{Name: "crossAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},

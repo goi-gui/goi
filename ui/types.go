@@ -181,6 +181,7 @@ type (
 	Markdown         = tree.Markdown
 	Carousel         = tree.Carousel
 	Toolbar          = tree.Toolbar
+	AspectRatio      = tree.AspectRatio
 )
 
 // Event types.
