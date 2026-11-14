@@ -675,12 +675,24 @@ type DatePicker struct{ Component }
 func (*DatePicker) Kind() string              { return "DatePicker" }
 func (c *DatePicker) namedProps() []NamedProp { return c.props("DatePicker") }
 
-// TimePicker picks a time.
-type TimePicker struct{ Component }
+// TimePicker picks a time. Variant "dial" shows the clock and "input" the two
+// text fields.
+type TimePicker struct {
+	Component
+	// PickBuffer and PickDigits are the digits typed into the active field
+	// since it was focused, which is what lets a second digit complete "07".
+	PickBuffer, PickDigits int
+	// Cancel fires when the Cancel action is pressed, with the current value.
+	// Submitting (OK or Enter) uses the component's own Submit event.
+	Cancel Event[string]
+}
 
 // Kind implements Node.
 func (*TimePicker) Kind() string              { return "TimePicker" }
 func (c *TimePicker) namedProps() []NamedProp { return c.props("TimePicker") }
+
+// OnCancel subscribes to the Cancel action of a time picker.
+func (c *TimePicker) OnCancel(fn func(string)) (off func()) { return c.Cancel.On(fn) }
 
 // TextArea is a multiline text field.
 type TextArea struct{ Component }

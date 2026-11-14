@@ -1016,3 +1016,17 @@ func TestCircularProgressCentresItsChild(t *testing.T) {
 		t.Fatalf("label = %v, want it centred in the 64dp ring", lb)
 	}
 }
+
+// TestTimePickerMetricsFollowTheVariant: the clock needs room below the fields;
+// the input variant is only the header, the labels and the actions.
+func TestTimePickerMetricsFollowTheVariant(t *testing.T) {
+	tr := build(t, `Window {
+		Column {
+			TimePicker { id: dial text: "07:00" }
+			TimePicker { id: input variant: input text: "07:00" }
+		}
+	}`)
+	New(nil).Layout(tr.Root, 480, 900)
+	want(t, bounds(t, tr, "dial"), 0, 0, 328, 420)
+	want(t, bounds(t, tr, "input"), 0, 420, 328, 188)
+}

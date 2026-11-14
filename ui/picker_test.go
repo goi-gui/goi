@@ -58,16 +58,16 @@ func TestDatePickerClick(t *testing.T) {
 }
 
 // The dial sets the hour, then hands over to the minutes, so two clicks make a
-// complete time.
+// complete time. The dial is a 12-hour one; AM/PM decides the half of the day.
 func TestTimePickerClick(t *testing.T) {
 	_, win, in := inputFixture(t, pickerUI, 480, 900)
 	tp := MustByID[*TimePicker](win, "time")
 	tp.Text.Set("10:30")
 	r := absoluteRect(tp)
-	layout := paint.TimeLayoutOf(r, "10:30", 0)
+	layout := paint.TimeLayoutOf(r, "10:30", 0, "dial")
 
 	// Click at three o'clock on the dial: hour 3, and the minutes become active.
-	x := layout.Dial.X + layout.Dial.W/2 + layout.Dial.W/2 - 28
+	x := layout.Dial.X + layout.Dial.W/2 + layout.DialRadius()
 	y := layout.Dial.Y + layout.Dial.H/2
 	in.MouseDown(x, y, 0, false)
 	in.MouseUp(x, y, 0)
@@ -79,8 +79,8 @@ func TestTimePickerClick(t *testing.T) {
 	}
 
 	// Six o'clock on the minutes dial is :30.
-	in.MouseDown(layout.Dial.X+layout.Dial.W/2, layout.Dial.Y+layout.Dial.H-28, 0, false)
-	in.MouseUp(layout.Dial.X+layout.Dial.W/2, layout.Dial.Y+layout.Dial.H-28, 0)
+	in.MouseDown(layout.Dial.X+layout.Dial.W/2, layout.Dial.Y+layout.Dial.H/2+layout.DialRadius(), 0, false)
+	in.MouseUp(layout.Dial.X+layout.Dial.W/2, layout.Dial.Y+layout.Dial.H/2+layout.DialRadius(), 0)
 	if got := tp.Text.Get(); got != "03:30" {
 		t.Fatalf("minutes click value = %q, want 03:30", got)
 	}
@@ -93,12 +93,13 @@ func TestTimePickerClick(t *testing.T) {
 	}
 }
 
-// The dial ring must be a full circle: every position maps to its own label.
+// The dial ring must be a full circle: every position maps to its own hour, and
+// the AM/PM state decides which half of the day it lands in.
 func TestTimeLayoutDialPositions(t *testing.T) {
 	r := tree.Rect{W: 328, H: 420}
-	tl := paint.TimeLayoutOf(r, "12:00", 0)
+	tl := paint.TimeLayoutOf(r, "12:00", 0, "dial") // noon, so PM
 	cx, cy := tl.Dial.X+tl.Dial.W/2, tl.Dial.Y+tl.Dial.H/2
-	radius := tl.Dial.W/2 - 28
+	radius := tl.DialRadius()
 	seen := map[int]bool{}
 	for i := 0; i < 12; i++ {
 		ang := float64(i) * math.Pi / 6
@@ -112,44 +113,125 @@ func TestTimeLayoutDialPositions(t *testing.T) {
 			t.Fatalf("position %d hit twice", i)
 		}
 		seen[i] = true
-		_ = v
-	}
-}
-
-// A 24-hour dial needs both rings: outside is 1-12, inside is 13-00.
-func TestTimeLayout24HourRings(t *testing.T) {
-	tl := paint.TimeLayoutOf(tree.Rect{W: 328, H: 420}, "09:15", 0)
-	cx, cy := tl.Dial.X+tl.Dial.W/2, tl.Dial.Y+tl.Dial.H/2
-	at := func(radius float64, hour int) (string, int, bool) {
-		ang := float64(hour%12) * math.Pi / 6
-		return tl.TimeAt(cx+radius*math.Sin(ang), cy-radius*math.Cos(ang))
-	}
-
-	// Three o'clock outside is 03, inside is 15.
-	if v, _, _ := at(tl.OuterRadius(), 3); v != "03:15" {
-		t.Fatalf("outer 3 = %q, want 03:15", v)
-	}
-	if v, _, _ := at(tl.InnerRadius(), 3); v != "15:15" {
-		t.Fatalf("inner 3 = %q, want 15:15", v)
-	}
-	// The top of the inner ring is 00, not 24 or 12.
-	if v, _, _ := at(tl.InnerRadius(), 0); v != "00:15" {
-		t.Fatalf("inner 0 = %q, want 00:15", v)
-	}
-	if v, _, _ := at(tl.OuterRadius(), 0); v != "12:15" {
-		t.Fatalf("outer 0 = %q, want 12:15", v)
-	}
-}
-
-// The selected hour must highlight on the ring that holds it.
-func TestTimeLayoutDialInner(t *testing.T) {
-	for _, c := range []struct {
-		value string
-		inner bool
-	}{{"09:00", false}, {"12:00", false}, {"13:00", true}, {"00:30", true}, {"23:59", true}} {
-		tl := paint.TimeLayoutOf(tree.Rect{W: 328, H: 420}, c.value, 0)
-		if got := tl.DialInner(); got != c.inner {
-			t.Errorf("%s: DialInner = %v, want %v", c.value, got, c.inner)
+		h := i
+		if h == 0 {
+			h = 12
 		}
+		want := h
+		if want != 12 {
+			want += 12 // PM
+		}
+		if v != clockText(want, 0) {
+			t.Fatalf("position %d = %q, want %s", i, v, clockText(want, 0))
+		}
+	}
+}
+
+// The AM/PM switch keeps the 12-hour reading and moves the 24-hour value.
+func TestTimePickerHalfOfDay(t *testing.T) {
+	_, win, in := inputFixture(t, pickerUI, 480, 900)
+	tp := MustByID[*TimePicker](win, "time")
+	tp.Text.Set("10:30")
+	layout := paint.TimeLayoutOf(absoluteRect(tp), "10:30", 0, "dial")
+
+	click := func(r tree.Rect) {
+		in.MouseDown(r.X+r.W/2, r.Y+r.H/2, 0, false)
+		in.MouseUp(r.X+r.W/2, r.Y+r.H/2, 0)
+	}
+	click(layout.PMBox)
+	if got := tp.Text.Get(); got != "22:30" {
+		t.Fatalf("after PM = %q, want 22:30", got)
+	}
+	click(layout.AMBox)
+	if got := tp.Text.Get(); got != "10:30" {
+		t.Fatalf("after AM = %q, want 10:30", got)
+	}
+	// Midnight and noon are the two edge cases.
+	tp.Text.Set("00:05")
+	tl := paint.TimeLayoutOf(absoluteRect(tp), "00:05", 0, "dial")
+	click(tl.PMBox)
+	if got := tp.Text.Get(); got != "12:05" {
+		t.Fatalf("midnight to PM = %q, want 12:05", got)
+	}
+}
+
+// The corner icon swaps the clock for the text fields and back.
+func TestTimePickerVariantSwitch(t *testing.T) {
+	_, win, in := inputFixture(t, pickerUI, 480, 900)
+	tp := MustByID[*TimePicker](win, "time")
+	tp.Text.Set("08:15")
+	layout := paint.TimeLayoutOf(absoluteRect(tp), "08:15", 0, "dial")
+	in.MouseDown(layout.Switch.X+10, layout.Switch.Y+10, 0, false)
+	in.MouseUp(layout.Switch.X+10, layout.Switch.Y+10, 0)
+	if got := tp.Variant.Get(); got != "input" {
+		t.Fatalf("variant = %q, want input", got)
+	}
+	inLayout := paint.TimeLayoutOf(absoluteRect(tp), "08:15", 0, "input")
+	in.MouseDown(inLayout.Switch.X+10, inLayout.Switch.Y+10, 0, false)
+	in.MouseUp(inLayout.Switch.X+10, inLayout.Switch.Y+10, 0)
+	if got := tp.Variant.Get(); got != "dial" {
+		t.Fatalf("variant = %q, want dial", got)
+	}
+}
+
+// The OK button submits and Cancel cancels, both with the current value.
+func TestTimePickerActions(t *testing.T) {
+	_, win, in := inputFixture(t, pickerUI, 480, 900)
+	tp := MustByID[*TimePicker](win, "time")
+	tp.Text.Set("06:45")
+	var submitted, cancelled []string
+	tp.OnSubmit(func(v string) { submitted = append(submitted, v) })
+	tp.OnCancel(func(v string) { cancelled = append(cancelled, v) })
+	layout := paint.TimeLayoutOf(absoluteRect(tp), "06:45", 0, "dial")
+
+	click := func(r tree.Rect) {
+		in.MouseDown(r.X+r.W/2, r.Y+r.H/2, 0, false)
+		in.MouseUp(r.X+r.W/2, r.Y+r.H/2, 0)
+	}
+	click(layout.OK)
+	click(layout.Cancel)
+	if len(submitted) != 1 || submitted[0] != "06:45" {
+		t.Fatalf("submitted = %v, want [06:45]", submitted)
+	}
+	if len(cancelled) != 1 || cancelled[0] != "06:45" {
+		t.Fatalf("cancelled = %v, want [06:45]", cancelled)
+	}
+}
+
+// In the input variant a field takes typed digits: one starts the number, a
+// second completes it and hands the hour over to the minutes.
+func TestTimePickerTyping(t *testing.T) {
+	_, win, in := inputFixture(t, pickerUI, 480, 900)
+	tp := MustByID[*TimePicker](win, "time")
+	tp.Variant.Set("input")
+	tp.Text.Set("00:00")
+	r := absoluteRect(tp)
+
+	// Press the hour box: it takes focus, so the interactor routes keys here.
+	layout := paint.TimeLayoutOf(r, "00:00", 0, "input")
+	in.MouseDown(layout.HourBox.X+10, layout.HourBox.Y+10, 0, false)
+	in.MouseUp(layout.HourBox.X+10, layout.HourBox.Y+10, 0)
+	if in.kbd != tp.Base().Node() {
+		t.Fatal("the picker did not take keyboard focus")
+	}
+	in.Char('0')
+	in.Char('7')
+	if got := tp.Text.Get(); got != "07:00" {
+		t.Fatalf("typed hour = %q, want 07:00", got)
+	}
+	if tp.PickerField != 1 {
+		t.Fatalf("field = %d, want the minutes after two digits", tp.PickerField)
+	}
+	in.Char('4')
+	in.Char('5')
+	if got := tp.Text.Get(); got != "07:45" {
+		t.Fatalf("typed minutes = %q, want 07:45", got)
+	}
+	// Enter is OK.
+	var submitted []string
+	tp.OnSubmit(func(v string) { submitted = append(submitted, v) })
+	in.key(tree.KeyEnter, tree.Mods{})
+	if len(submitted) != 1 || submitted[0] != "07:45" {
+		t.Fatalf("submitted = %v, want [07:45]", submitted)
 	}
 }

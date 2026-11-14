@@ -246,7 +246,13 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 	case "DatePicker":
 		return Metrics{W: 328, H: 400, Top: 56, Right: 24, Bottom: 24, Left: 24}
 	case "TimePicker":
-		return Metrics{W: 328, H: 420, Top: 56, Right: 24, Bottom: 24, Left: 24}
+		// A dial needs the clock below the fields; the input variant is only the
+		// header and the actions.
+		h := 420.0
+		if c.Variant == "input" {
+			h = 188
+		}
+		return Metrics{W: 328, H: h, Top: 56, Right: 24, Bottom: 24, Left: 24}
 	case "Carousel":
 		return Metrics{W: 0, H: 200, FillW: true}
 	}

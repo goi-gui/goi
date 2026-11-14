@@ -1995,3 +1995,11 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   1.1s) over the picture while the probe or the decoder is waiting. It is white,
   like the rest of the video chrome, and asks for frames so it keeps turning
   when no media frame arrives.
+- **A time picker is 12-hour with AM/PM, and its two variants share one model.**
+  The old 24-hour two-ring dial could not show AM/PM, which is what the M3
+  picker's header is for, and a "dial" and an "input" that behave differently
+  would need two sets of state. Both variants read and write one 24-hour
+  `HH:MM`; the dial shows a single 12-hour ring and the switch moves the value
+  by twelve hours. The corner icon flips the variant, so a design can start on
+  either. Cancel and OK are events (`onCancel`, `onSubmit`) rather than
+  behaviour, because whether a picker is a dialog is the app's decision.

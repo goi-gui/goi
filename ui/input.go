@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"math"
 	"strings"
 	"time"
@@ -1135,22 +1136,173 @@ func (i *interactor) pickDate(n tree.Node, c *tree.Component, x, y float64) {
 // pickTime sets the hour or the minutes from where the dial was clicked, and
 // hands the dial over: hour first, then minutes.
 func (i *interactor) pickTime(n tree.Node, c *tree.Component, x, y float64) {
-	t := paint.TimeLayoutOf(absoluteRect(n), c.Text.Get(), c.PickerField)
+	tp, _ := n.(*tree.TimePicker)
+	r := absoluteRect(n)
+	t := paint.TimeLayoutOf(r, c.Text.Get(), c.PickerField, c.Variant.Get())
 	switch {
+	case hitRect(t.Switch, x, y):
+		// The corner icon is the way between the clock and the fields, the same
+		// toggle the M3 picker has.
+		if t.Variant == "input" {
+			c.Variant.Set("dial")
+		} else {
+			c.Variant.Set("input")
+		}
+	case hitRect(t.Cancel, x, y):
+		if tp != nil {
+			tp.Cancel.Emit(c.Text.Get())
+		}
+		i.resetPick(tp)
+	case hitRect(t.OK, x, y):
+		c.Submit.Emit(c.Text.Get())
+	case hitRect(t.AMBox, x, y):
+		i.setPickHalf(c, true)
+	case hitRect(t.PMBox, x, y):
+		i.setPickHalf(c, false)
 	case hitRect(t.HourBox, x, y):
-		c.PickerField = 0
-	case hitRect(t.MinuteBox, x, y):
-		c.PickerField = 1
-	default:
+		i.focusPickField(tp, c, 0)
+	case hitRect(t.MinBox, x, y):
+		i.focusPickField(tp, c, 1)
+	case t.Variant == "dial":
 		v, field, ok := t.TimeAt(x, y)
 		if !ok {
 			return
 		}
 		c.Text.Set(v)
 		c.PickerField = field
+		i.resetPick(tp)
 		c.Submit.Emit(v)
+	default:
+		return
 	}
 	n.Base().MarkDirty(tree.DirtyPaint)
+}
+
+// focusPickField makes one half of the time active and starts its digit buffer
+// from scratch.
+func (i *interactor) focusPickField(tp *tree.TimePicker, c *tree.Component, field int) {
+	c.PickerField = field
+	i.resetPick(tp)
+}
+
+// resetPick drops the digits typed so far, so a new field starts from zero.
+func (i *interactor) resetPick(tp *tree.TimePicker) {
+	if tp != nil {
+		tp.PickBuffer, tp.PickDigits = 0, 0
+	}
+}
+
+// setPickHalf switches the time between AM and PM, keeping the 12-hour reading.
+func (i *interactor) setPickHalf(c *tree.Component, am bool) {
+	h, m := clockOf(c.Text.Get())
+	h %= 12
+	if !am {
+		h += 12
+	}
+	c.Text.Set(clockText(h, m))
+}
+
+// clockOf reads "15:04" as hours and minutes, or now when it does not parse.
+func clockOf(v string) (int, int) {
+	t, err := time.Parse("15:04", v)
+	if err != nil {
+		t = time.Now()
+	}
+	return t.Hour(), t.Minute()
+}
+
+// clockText writes hours and minutes as the picker's value.
+func clockText(h, m int) string { return fmt.Sprintf("%02d:%02d", h, m) }
+
+// clampPick holds a typed number inside the field's range.
+func clampPick(v, lo, hi int) int {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
+// pickTimeDigit types one digit into the active field: a second digit completes
+// the number and moves the hour on to the minutes.
+func (i *interactor) pickTimeDigit(n tree.Node, d int) bool {
+	c := comp(n)
+	tp, _ := n.(*tree.TimePicker)
+	if c == nil || tp == nil || c.Variant.Get() != "input" {
+		return false
+	}
+	if tp.PickDigits >= 2 {
+		tp.PickBuffer, tp.PickDigits = 0, 0
+	}
+	if tp.PickDigits == 0 {
+		tp.PickBuffer = d
+	} else {
+		tp.PickBuffer = tp.PickBuffer*10 + d
+	}
+	tp.PickDigits++
+	h, m := clockOf(c.Text.Get())
+	if c.PickerField == 0 {
+		h = clampPick(tp.PickBuffer, 0, 23)
+	} else {
+		m = clampPick(tp.PickBuffer, 0, 59)
+	}
+	c.Text.Set(clockText(h, m))
+	if tp.PickDigits == 2 {
+		tp.PickDigits = 0
+		if c.PickerField == 0 {
+			c.PickerField = 1
+		}
+	}
+	n.Base().MarkDirty(tree.DirtyPaint)
+	i.markDirty()
+	return true
+}
+
+// pickerKey handles the keys a time picker owns while it has keyboard focus:
+// arrows step and switch fields, Enter is OK and Escape is Cancel.
+func (i *interactor) pickerKey(n tree.Node, k tree.Key, mods tree.Mods) bool {
+	c := comp(n)
+	tp, _ := n.(*tree.TimePicker)
+	if c == nil || tp == nil {
+		return false
+	}
+	h, m := clockOf(c.Text.Get())
+	switch k {
+	case tree.KeyLeft:
+		c.PickerField = 0
+	case tree.KeyRight:
+		c.PickerField = 1
+	case tree.KeyUp:
+		if c.PickerField == 0 {
+			h = (h + 1) % 24
+		} else {
+			m = (m + 1) % 60
+		}
+	case tree.KeyDown:
+		if c.PickerField == 0 {
+			h = (h + 23) % 24
+		} else {
+			m = (m + 59) % 60
+		}
+	case tree.KeyEnter, tree.KeySpace:
+		c.Submit.Emit(c.Text.Get())
+		return true
+	case tree.KeyEscape:
+		tp.Cancel.Emit(c.Text.Get())
+		return true
+	case tree.KeyBackspace:
+		tp.PickBuffer, tp.PickDigits = 0, 0
+		return true
+	default:
+		return false
+	}
+	tp.PickBuffer, tp.PickDigits = 0, 0
+	c.Text.Set(clockText(h, m))
+	n.Base().MarkDirty(tree.DirtyPaint)
+	i.markDirty()
+	return true
 }
 
 // activateDestination selects a navigation destination. Navigation is a radio
@@ -1719,6 +1871,9 @@ func (i *interactor) key(k tree.Key, mods tree.Mods) {
 		if i.kbd.Kind() == "Slider" && i.sliderKey(i.kbd, k, mods) {
 			return
 		}
+		if i.kbd.Kind() == "TimePicker" && i.pickerKey(i.kbd, k, mods) {
+			return
+		}
 		if k == tree.KeyEnter || k == tree.KeySpace {
 			i.activateKey(i.kbd)
 			return
@@ -1804,6 +1959,10 @@ func (i *interactor) key(k tree.Key, mods tree.Mods) {
 // so a composed run is inserted over the selection like typed text.
 func (i *interactor) Char(r rune) {
 	i.event("Char", "rune", string(r))
+	if i.focus == nil && i.kbd != nil && i.kbd.Kind() == "TimePicker" &&
+		r >= '0' && r <= '9' && i.pickTimeDigit(i.kbd, int(r-'0')) {
+		return
+	}
 	f := i.focus
 	if f == nil || r < 32 {
 		return

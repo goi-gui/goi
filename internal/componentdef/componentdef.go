@@ -275,6 +275,7 @@ func ListElem(name string) PropType { return String }
 // would ignore.
 var variantValues = map[string][]string{
 	"Table":            {"outlined", "filled", "plain"},
+	"TimePicker":       {"dial", "input"},
 	"Slider":           {"standard", "centered", "range"},
 	"LinearProgress":   {"normal", "wavy"},
 	"CircularProgress": {"normal", "wavy"},
