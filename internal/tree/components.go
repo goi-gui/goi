@@ -400,6 +400,13 @@ func (c *Slider) OnRange(fn func(lo, hi float64)) (off func()) {
 // TextField is a filled or outlined text input.
 type TextField struct {
 	Component
+	// Type filters typed text: empty or "text" takes everything, "numeric"
+	// digits, "alpha" letters, "alphanumeric" both, and any other value is
+	// read as the set of characters to allow.
+	Type Prop[string]
+	// Mask formats the value: # is a digit, @ a letter, * either, and every
+	// other character is a literal the field inserts itself.
+	Mask Prop[string]
 	// Color overrides the colour of the value, its label and its placeholder.
 	// Zero keeps the scheme's onSurface.
 	Color Prop[uint32]
@@ -408,8 +415,11 @@ type TextField struct {
 // Kind implements Node.
 func (*TextField) Kind() string { return "TextField" }
 func (c *TextField) namedProps() []NamedProp {
-	return append(c.propsExcept("TextField", "color"),
-		ColorProp(&c.NodeBase, "color", DirtyPaint, &c.Color))
+	b := &c.NodeBase
+	return append(c.propsExcept("TextField", "color", "type", "mask"),
+		StringProp(b, "type", &c.Type),
+		StringProp(b, "mask", &c.Mask),
+		ColorProp(b, "color", DirtyPaint, &c.Color))
 }
 
 // SearchBar is a rounded search input.

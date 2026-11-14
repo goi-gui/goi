@@ -2620,12 +2620,11 @@ func (i *interactor) deleteRange(f *tree.Component, a, b int) {
 	if a >= b {
 		return
 	}
-	ns := s[:a] + s[b:]
-	f.Text.Set(ns)
-	f.Caret = a
-	f.ClearSelection()
-	f.Base().MarkDirty(tree.DirtyPaint)
-	f.Edit.Emit(ns)
+	ns, caret := s[:a]+s[b:], a
+	if tf := textField(f); tf != nil {
+		ns, caret = tree.InputRemove(tf.Type.Get(), tf.Mask.Get(), s, a, b)
+	}
+	i.applyEdit(f, ns, caret)
 }
 
 func (i *interactor) deleteBefore(f *tree.Component) {
@@ -2635,11 +2634,11 @@ func (i *interactor) deleteBefore(f *tree.Component) {
 		return
 	}
 	p := prevRune(s, c)
-	ns := s[:p] + s[c:]
-	f.Text.Set(ns)
-	f.Caret = p
-	f.Base().MarkDirty(tree.DirtyPaint)
-	f.Edit.Emit(ns)
+	ns, caret := s[:p]+s[c:], p
+	if tf := textField(f); tf != nil {
+		ns, caret = tree.InputDelete(tf.Type.Get(), tf.Mask.Get(), s, c, true)
+	}
+	i.applyEdit(f, ns, caret)
 }
 
 func (i *interactor) deleteAfter(f *tree.Component) {
@@ -2649,10 +2648,30 @@ func (i *interactor) deleteAfter(f *tree.Component) {
 		return
 	}
 	n := nextRune(s, c)
-	ns := s[:c] + s[n:]
-	f.Text.Set(ns)
+	ns, caret := s[:c]+s[n:], c
+	if tf := textField(f); tf != nil {
+		ns, caret = tree.InputDelete(tf.Type.Get(), tf.Mask.Get(), s, c, false)
+	}
+	i.applyEdit(f, ns, caret)
+}
+
+// textField returns the TextField behind an editing component, or nil.
+func textField(c *tree.Component) *tree.TextField {
+	if c == nil {
+		return nil
+	}
+	tf, _ := c.Base().Node().(*tree.TextField)
+	return tf
+}
+
+// applyEdit writes an edit back and reports it through onEdit.
+func (i *interactor) applyEdit(f *tree.Component, s string, caret int) {
+	f.Text.Set(s)
+	f.Caret = caret
+	f.ClearSelection()
 	f.Base().MarkDirty(tree.DirtyPaint)
-	f.Edit.Emit(ns)
+	f.Edit.Emit(s)
+	i.markDirty()
 }
 
 // drag updates a slider from the pointer position. In range mode it moves the
@@ -2983,12 +3002,14 @@ func (i *interactor) insert(f *tree.Component, text string) {
 	if x, y, ok := f.Selection(); ok {
 		a, b = x, y
 	}
-	f.Text.Set(s[:a] + text + s[b:])
-	f.Caret = a + len(text)
-	f.ClearSelection()
-	f.Base().MarkDirty(tree.DirtyPaint)
-	f.Edit.Emit(f.Text.Get())
-	i.markDirty()
+	ns, caret := s[:a]+text+s[b:], a+len(text)
+	if tf := textField(f); tf != nil {
+		ns, caret = tree.InputInsert(tf.Type.Get(), tf.Mask.Get(), s, a, b, text)
+	}
+	if ns == s {
+		return
+	}
+	i.applyEdit(f, ns, caret)
 }
 
 // deleteSelection removes the selected range and reports whether there was one.

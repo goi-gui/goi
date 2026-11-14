@@ -2022,3 +2022,11 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   minute pick leaves the minutes active: only an hour pick hands over, never
   back. A dial change reports through `onSubmit` like any value change; `onOK`
   is the explicit confirmation and stays with the button and Enter.
+- **A text field's filters are one property, and the mask owns its literals.**
+  `type` names three classes or spells the exact character set, so a hex field
+  and a numeric one use the same property instead of an extra `chars` option.
+  `mask` keeps its literals in the value (`(555) 123-4567`): that is what the
+  field shows and what `onEdit` reports, and it lets backspace skip punctuation
+  instead of deleting characters one byte at a time. The filters run in `tree`
+  over the text and caret, not in paint, so pasted and IME-committed text takes
+  the same path as a keystroke; a starting `text` is left as written.

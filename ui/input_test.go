@@ -894,6 +894,50 @@ func focusField(t *testing.T, in *interactor, id string, win *Window) Rect {
 	return b
 }
 
+// TestTextFieldTypeAndMask: the properties filter what reaches the value, both
+// alone and together, and backspace skips the mask's literals.
+func TestTextFieldTypeAndMask(t *testing.T) {
+	const src = `Window {
+		Column {
+			padding: 10
+			TextField { id: phone width: 220 height: 56 type: numeric mask: "(###) ###-####" }
+			TextField { id: code width: 220 height: 56 type: "ABC123" }
+			TextField { id: plain width: 220 height: 56 }
+		}
+	}`
+	_, win, in := inputFixture(t, src, 480, 320)
+	phone := MustByID[*TextField](win, "phone")
+	focusField(t, in, "phone", win)
+	for _, r := range "5551234567x" {
+		in.Char(r)
+	}
+	if got := phone.Text.Get(); got != "(555) 123-4567" {
+		t.Fatalf("phone = %q", got)
+	}
+	in.key(tree.KeyBackspace, tree.Mods{})
+	if got := phone.Text.Get(); got != "(555) 123-456" {
+		t.Fatalf("phone after backspace = %q", got)
+	}
+
+	code := MustByID[*TextField](win, "code")
+	focusField(t, in, "code", win)
+	for _, r := range "A1x2B3-" {
+		in.Char(r)
+	}
+	if got := code.Text.Get(); got != "A12B3" {
+		t.Fatalf("code = %q", got)
+	}
+
+	plain := MustByID[*TextField](win, "plain")
+	focusField(t, in, "plain", win)
+	for _, r := range "a1-_" {
+		in.Char(r)
+	}
+	if got := plain.Text.Get(); got != "a1-_" {
+		t.Fatalf("plain = %q", got)
+	}
+}
+
 func TestSelectAllAndTypeReplaces(t *testing.T) {
 	_, win, in := inputFixture(t, inputUI, 480, 320)
 	ti := MustByID[*TextField](win, "field")

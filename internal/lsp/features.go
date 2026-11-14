@@ -2567,6 +2567,15 @@ func propDoc(el string, p schema.Prop) string {
 			b.WriteString("\n\nEmoji draw in colour from the embedded Noto Color Emoji font, " +
 				"at the size of the run, so a line can mix text and emoji.")
 		}
+	case "type":
+		b.WriteString("\n\nFilters what reaches the value: `text` (default), `numeric`, " +
+			"`alpha`, `alphanumeric`, or the characters themselves " +
+			"(`type: \"0123456789.\"`). Typed, pasted and IME text all take the same path.")
+	case "mask":
+		b.WriteString("\n\nFormats typed text: `#` is a digit, `@` a letter, `*` either, " +
+			"and every other character is a literal the field inserts itself. " +
+			"`mask: \"(###) ###-####\"` turns `5551234567` into `(555) 123-4567`; " +
+			"the value keeps the literals.")
 	case "numeric":
 		b.WriteString("\n\nRight-aligns the column by default and sorts by the number inside " +
 			"each cell's `value`, so `1,200` orders as 1200.")
