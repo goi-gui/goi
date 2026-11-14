@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/goi-gui/goi/internal/layout"
+	"github.com/goi-gui/goi/internal/m3"
 	"github.com/goi-gui/goi/internal/subtitle"
 	"github.com/goi-gui/goi/internal/tree"
 )
@@ -225,10 +226,11 @@ func TestAudioNeverHidesItsBar(t *testing.T) {
 }
 
 // TestSeekbarWavyIsOnlyThePlayedPart: the ribbon is the part already heard,
-// and only while the player runs. What is still ahead is a dim flat track, and a
-// paused player falls back to the normal bar.
+// and only while the player runs. What is still ahead is a dim flat track that
+// starts after a gap, so the two never touch, and a paused player falls back to
+// the normal bar.
 func TestSeekbarWavyIsOnlyThePlayedPart(t *testing.T) {
-	paint := func(seekbar string, playing bool) (*List, MediaLayout) {
+	paint := func(seekbar string, playing bool, clock time.Duration) (*List, MediaLayout, *tree.Media) {
 		tr, diag := tree.BuildSource([]byte(`Window { Audio {
 			width: 360 height: 64 seekbar: `+seekbar+`
 		} }`), nil)
@@ -246,9 +248,9 @@ func TestSeekbarWavyIsOnlyThePlayedPart(t *testing.T) {
 		m.Playing = playing
 		m.ControlsShown = true
 		layout.New(nil).Layout(tr.Root, 400, 200)
-		l := &List{}
+		l := &List{Clock: clock}
 		l.Build(tr, 400, 200)
-		return l, MediaLayoutOf(m, tree.Rect{X: 0, Y: 0, W: 360, H: 64})
+		return l, MediaLayoutOf(m, tree.Rect{X: 0, Y: 0, W: 360, H: 64}), m
 	}
 	ribbon := func(l *List) []Op {
 		var out []Op
@@ -259,22 +261,55 @@ func TestSeekbarWavyIsOnlyThePlayedPart(t *testing.T) {
 		}
 		return out
 	}
-	// Paused: no ribbon at all, and the played part is a flat fill.
-	if got := ribbon(mustPainted(t, paint, "wavy", false)); len(got) != 0 {
+	// Paused: no ribbon at all, no animation, and the played part is flat.
+	paused, _, _ := paint("wavy", false, 0)
+	if got := ribbon(paused); len(got) != 0 {
 		t.Fatalf("a paused seekbar drew %d ribbon segments", len(got))
 	}
+	if paused.Animating {
+		t.Fatal("a paused seekbar asked for frames")
+	}
+
 	// Playing: a ribbon over the played span and nothing beyond it.
-	l, lay := paint("wavy", true)
+	l, lay, _ := paint("wavy", true, 0)
 	got := ribbon(l)
 	if len(got) < 20 {
 		t.Fatalf("a playing seekbar drew %d ribbon segments, want a ribbon", len(got))
 	}
-	playEnd := lay.Track.X + lay.Track.W*0.4 + 4
+	if !l.Animating {
+		t.Fatal("a playing wavy seekbar did not ask for frames")
+	}
+	playEnd := lay.Track.X + lay.Track.W*0.4
 	for _, op := range got {
-		if x := float64(op.Rect[0]); x > playEnd {
+		if x := float64(op.Rect[0]); x > playEnd+4 {
 			t.Fatalf("a ribbon segment at %v is past the played part (ends %v)", x, playEnd)
 		}
 	}
+	// The dim track starts after the gap, and no dim fill runs under the ribbon.
+	track := withAlpha(m3.Light().Colors.OnSurface, 0.24)
+	dimStart := 0.0
+	for _, op := range l.Ops {
+		if op.Kind != Fill || op.Color != track || op.Rect[3] > 5 {
+			continue
+		}
+		x := float64(op.Rect[0])
+		if x < playEnd+lay.Thumb.W/2+mediaWaveGap-0.5 {
+			t.Fatalf("the dim track starts at %v, inside the ribbon (ends %v)", x, playEnd)
+		}
+		if dimStart == 0 || x < dimStart {
+			dimStart = x
+		}
+	}
+	if dimStart == 0 {
+		t.Fatal("a wavy seekbar has no dim track for the rest")
+	}
+
+	// The wave moves: a later frame draws it at a different phase.
+	later, _, _ := paint("wavy", true, 300*time.Millisecond)
+	if same := ribbon(later); len(same) == 0 || float64(same[0].Rect[1]) == float64(got[0].Rect[1]) {
+		t.Fatalf("the wave did not move between frames: %v vs %v", got[0].Rect, same[0].Rect)
+	}
+
 	// A normal seekbar never waves, playing or not.
 	if got := ribbon(mustPainted(t, paint, "normal", true)); len(got) != 0 {
 		t.Fatalf("a normal seekbar drew %d ribbon segments", len(got))
@@ -282,8 +317,8 @@ func TestSeekbarWavyIsOnlyThePlayedPart(t *testing.T) {
 }
 
 // mustPainted is the awkward bit of building a list through a closure.
-func mustPainted(t *testing.T, paint func(string, bool) (*List, MediaLayout), seekbar string, playing bool) *List {
+func mustPainted(t *testing.T, paint func(string, bool, time.Duration) (*List, MediaLayout, *tree.Media), seekbar string, playing bool) *List {
 	t.Helper()
-	l, _ := paint(seekbar, playing)
+	l, _, _ := paint(seekbar, playing, 0)
 	return l
 }

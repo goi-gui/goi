@@ -334,23 +334,46 @@ func (l *List) paintMediaBar(m *tree.Media, r tree.Rect, lay MediaLayout, clip t
 	// paused player looks like the normal bar again.
 	ripple := m.Seekbar.Get() == "wavy" && m.Playing && !m.Paused && frac > 0
 	flat := tree.Rect{X: lay.Track.X, Y: lay.Track.Y + lay.Track.H/2 - 2, W: lay.Track.W, H: 4}
-	l.fillRect(flat, track, 2, 0, 0, clip)
-	// The buffered span sits behind the played part, so a reader can see how far
-	// ahead the decoder is before the picture stalls.
-	if m.Buffered > 0 && m.Duration > 0 {
-		end := math.Min(1, frac+float64(m.Buffered)/float64(m.Duration))
-		buffered := withAlpha(fallback, 0.42)
-		if trackColor != 0 {
-			buffered = withAlpha(trackColor, 0.55)
-		}
-		l.fillRect(tree.Rect{X: flat.X, Y: flat.Y, W: flat.W * end, H: flat.H},
-			buffered, 2, 0, 0, clip)
+	buffered := withAlpha(fallback, 0.42)
+	if trackColor != 0 {
+		buffered = withAlpha(trackColor, 0.55)
 	}
-	if frac > 0 && ripple {
-		l.mediaWave(flat.X, flat.X+flat.W*frac, flat.Y+flat.H/2, playedColor, clip)
-	} else if frac > 0 {
-		l.fillRect(tree.Rect{X: flat.X, Y: flat.Y, W: flat.W * frac, H: flat.H},
-			playedColor, 2, 0, 0, clip)
+	bufferedEnd := 0.0
+	if m.Buffered > 0 && m.Duration > 0 {
+		bufferedEnd = math.Min(1, frac+float64(m.Buffered)/float64(m.Duration))
+	}
+	if ripple {
+		// The wavy part is the ribbon alone: no dim fill runs under it, the way
+		// the wavy progress leaves the track out behind its ribbon. The track
+		// starts after a gap, so the two never touch.
+		playedEnd := flat.X + flat.W*frac
+		l.mediaWave(flat.X, playedEnd, flat.Y+flat.H/2, playedColor, clip)
+		// The thumb sits at the end of the ribbon, so the gap is measured past
+		// the thumb's edge, not from its centre.
+		restX := playedEnd + lay.Thumb.W/2 + mediaWaveGap
+		if bufferedEnd > frac {
+			end := flat.X + flat.W*bufferedEnd
+			if end > restX {
+				l.fillRect(tree.Rect{X: restX, Y: flat.Y, W: end - restX, H: flat.H},
+					buffered, 2, 0, 0, clip)
+			}
+		}
+		if rest := flat.X + flat.W - restX; rest > 0 {
+			l.fillRect(tree.Rect{X: restX, Y: flat.Y, W: rest, H: flat.H},
+				track, 2, 0, 0, clip)
+		}
+	} else {
+		l.fillRect(flat, track, 2, 0, 0, clip)
+		// The buffered span sits behind the played part, so a reader can see how
+		// far ahead the decoder is before the picture stalls.
+		if bufferedEnd > 0 {
+			l.fillRect(tree.Rect{X: flat.X, Y: flat.Y, W: flat.W * bufferedEnd, H: flat.H},
+				buffered, 2, 0, 0, clip)
+		}
+		if frac > 0 {
+			l.fillRect(tree.Rect{X: flat.X, Y: flat.Y, W: flat.W * frac, H: flat.H},
+				playedColor, 2, 0, 0, clip)
+		}
 	}
 	l.fillRect(lay.Thumb, playedColor, lay.Thumb.W/2, 0, 0, clip)
 
@@ -358,17 +381,24 @@ func (l *List) paintMediaBar(m *tree.Media, r tree.Rect, lay MediaLayout, clip t
 		lay.Time, AlignEnd, clip)
 }
 
-// mediaWave draws one scrubber segment as a sine ribbon with round joins: the
-// same shape the wavy progress uses, at the bar's own scale. It is not animated,
-// because a seekbar marks a position rather than a process still running.
+// mediaWaveGap is the distance between the played ribbon and the dim track, so
+// the two parts of the bar never touch.
+const mediaWaveGap = 5.0
+
+// mediaWave draws one scrubber segment as a moving sine ribbon with round joins:
+// the same shape the wavy progress uses, at the bar's own scale.
 func (l *List) mediaWave(x0, x1, mid float64, color uint32, clip tree.Rect) {
 	if x1-x0 < 1 || color == 0 {
 		return
 	}
 	const stroke, amplitude, wavelength = 3.0, 3.5, 22.0
+	// The wave travels while the player runs, so the bar looks alive without
+	// implying a position it does not have.
+	phase := l.wavePhase()
 	point := func(x float64) chartPoint {
-		return chartPoint{X: x, Y: mid + amplitude*math.Sin(x/wavelength*2*math.Pi)}
+		return chartPoint{X: x, Y: mid + amplitude*math.Sin(x/wavelength*2*math.Pi-phase)}
 	}
+	l.Animating = true
 	step := math.Max(0.75, 2.0/l.deviceScale())
 	var prev chartPoint
 	for x := x0; ; x += step {

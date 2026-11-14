@@ -1968,11 +1968,11 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   child keeps its own size in the middle instead of filling the box, because the
   usual child is a percentage or an icon that would look wrong stretched to the
   stroke. A child that declares 100% still fills.
-- **A wavy seekbar waves only what has played.** The ribbon is the part already
-  heard or watched and only while the player runs; the part still ahead stays a
-  dim flat track, and a paused or stopped player falls back to the normal bar.
-  The wave is drawn from the same sine-ribbon helper the wavy progress uses with
-  a fixed phase: a seekbar marks a position, and a wave that never stops moving
-  would read as still loading. Its hit strip grows to the wave's height so the
-  crests are as pressable as the flat track, and the flat bar inside that strip
-  stays 4dp tall.
+- **A wavy seekbar waves only what has played, and only while it plays.** The
+  ribbon is the part already heard or watched; the part still ahead stays a dim
+  flat track, and a paused or stopped player falls back to the normal bar. The
+  wave travels while playing, because the bar is showing a process that is still
+  running. The ribbon stands alone — no dim fill runs under it — and the track
+  starts past the thumb plus a gap, the rule the wavy progress follows. Its hit
+  strip grows to the wave's height so the crests are as pressable as the flat
+  track, and the flat bar inside that strip stays 4dp tall.
