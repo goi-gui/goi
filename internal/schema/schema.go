@@ -460,6 +460,12 @@ var elements = func() []Element {
 			)
 		}
 		for _, name := range componentdef.Props(k.Name) {
+			// A flow container's layout properties are already typed above,
+			// with their defaults; Props() lists them again for the node tree,
+			// and a second entry would show up twice in completion.
+			if componentdef.Flow(k.Name) && (name == "spacing" || name == "crossAxisAlign" || name == "mainAxisAlign") {
+				continue
+			}
 			p := Prop{Name: name}
 			def, hasDef := componentdef.Default(name)
 			switch componentdef.TypeOfFor(k.Name, name) {

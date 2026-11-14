@@ -196,3 +196,19 @@ func TestProgressNarrowsVariants(t *testing.T) {
 		}
 	}
 }
+
+// TestNoElementRepeatsAProperty is the flow-container bug: Props() adds the
+// layout properties the schema also typed, so every Flow component carried
+// spacing and the two alignments twice. Completion then offered each one twice
+// and the docs table would list them twice.
+func TestNoElementRepeatsAProperty(t *testing.T) {
+	for _, el := range elements {
+		seen := make(map[string]bool, len(el.Attrs))
+		for _, p := range el.Attrs {
+			if seen[p.Name] {
+				t.Errorf("%s: %s appears twice", el.Name, p.Name)
+			}
+			seen[p.Name] = true
+		}
+	}
+}

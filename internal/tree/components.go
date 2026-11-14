@@ -41,7 +41,6 @@ type Component struct {
 
 	// Appearance.
 	Variant Prop[string]
-	Size    Prop[string]
 	// Thickness is the width of a progress stroke; 0 follows the component's
 	// own default, which depends on the variant.
 	Thickness Prop[float64]
@@ -125,7 +124,6 @@ func newComponent() Component {
 		Language:    newProp(nil, "language", DirtyPaint, ""),
 		ShowCopy:    newProp(nil, "showCopy", DirtyPaint, false),
 		Variant:     newProp(nil, "variant", DirtyPaint, ""),
-		Size:        newProp(nil, "size", DirtyLayout, ""),
 		Thickness:   newProp(nil, "thickness", DirtyLayout, 0.0),
 		Disabled:    newProp(nil, "disabled", DirtyPaint, false),
 		Checked:     newProp(nil, "checked", DirtyPaint, false),
