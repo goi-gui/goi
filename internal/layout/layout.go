@@ -928,24 +928,6 @@ func (e *Engine) natural(k *tree.NodeBase, availW, availH float64) (float64, flo
 // valid for the rest of the pass.
 func (e *Engine) naturalSize(k *tree.NodeBase, availW, availH float64) (float64, float64) {
 	k.ResolveSize(availW, availH)
-	if m, ok := k.Node().(*tree.Mermaid); ok {
-		w, h := m.IntrinsicW, m.IntrinsicH
-		if w <= 0 || h <= 0 {
-			// Before the first render (headless layout or an empty source) a
-			// 16:9 placeholder keeps the box measurable.
-			w, h = 320, 180
-		}
-		// A declared width scales the diagram and its height follows; without
-		// one, a diagram wider than the offer shrinks to fit the column.
-		if dw := k.Width(); dw >= 0 {
-			h = dw * h / w
-			w = dw
-		} else if availW > 0 && w > availW {
-			h = availW * h / w
-			w = availW
-		}
-		return w, h
-	}
 	if k.Node().Kind() == "FABMenu" {
 		return e.fabMenuNatural(k, availW, availH)
 	}

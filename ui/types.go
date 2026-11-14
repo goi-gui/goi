@@ -164,7 +164,6 @@ type (
 	TimePicker       = tree.TimePicker
 	ColorPicker      = tree.ColorPicker
 	TextArea         = tree.TextArea
-	Mermaid          = tree.Mermaid
 	Audio            = tree.Audio
 	Video            = tree.Video
 	Media            = tree.Media

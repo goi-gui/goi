@@ -11,7 +11,6 @@ import (
 	"github.com/goi-gui/goi/internal/i18n"
 	"github.com/goi-gui/goi/internal/img"
 	"github.com/goi-gui/goi/internal/m3"
-	"github.com/goi-gui/goi/internal/mermaid"
 	"github.com/goi-gui/goi/internal/svg"
 	"github.com/goi-gui/goi/internal/tree"
 )
@@ -119,11 +118,6 @@ type App struct {
 	clock time.Duration
 	// themes are the schemes a `.goi` file may name, keyed by name.
 	themes map[string]*Theme
-	// mermaid is created on the first visible diagram: compiling resvg's wasm
-	// costs a few hundred milliseconds, and a design without one should not pay
-	// it. mermaidErr remembers a failed start so a frame does not retry it.
-	mermaidEng *mermaid.Engine
-	mermaidErr error
 	// hasMedia is true while the tree holds an Audio or Video, and media holds
 	// the running players, one per playing node.
 	hasMedia bool
@@ -421,10 +415,6 @@ func (a *App) Close() {
 	// The decoders are child processes: leaving them running would keep the
 	// sound playing after the window is gone.
 	a.closeMedia()
-	if a.mermaidEng != nil {
-		_ = a.mermaidEng.Close()
-		a.mermaidEng = nil
-	}
 	if a.watcher != nil {
 		a.watcher.Close()
 		a.watcher = nil

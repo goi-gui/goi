@@ -2483,10 +2483,7 @@ func propDoc(el string, p schema.Prop) string {
 			"`rgb()`/`rgba()` and `hsl()`/`hsla()`. " +
 			"Quote a function or a gradient: `background: \"linear-gradient(90deg, red, blue)\")`.")
 	}
-	if p.Name == "src" && el == "Mermaid" {
-		b.WriteString("\n\nA `.mmd` file in the design's asset container (`goi://path`) or on this " +
-			"machine. `text` wins when both are set.")
-	} else if p.Name == "src" {
+	if p.Name == "src" {
 		b.WriteString("\n\n`goi://path` reads the design's asset container, `./path` or an absolute " +
 			"path reads this machine, and `http(s)://` is fetched in the background.")
 		switch el {
@@ -2575,11 +2572,6 @@ func propDoc(el string, p schema.Prop) string {
 				"colour is read, and picking, typing in the hex field or moving the alpha " +
 				"bar rewrites it; `onEdit` fires on every change, `onSubmit` on release and " +
 				"`onOK`/`onCancel` on the actions.")
-		}
-		if el == "Mermaid" {
-			b.WriteString("\n\nThe Mermaid source. `src` names a `.mmd` file instead; `text` wins " +
-				"when both are set. The diagram is laid out and rasterized in Go and follows " +
-				"the app's colour scheme.")
 		}
 	case "type":
 		b.WriteString("\n\nFilters what reaches the value: `text` (default), `numeric`, " +
