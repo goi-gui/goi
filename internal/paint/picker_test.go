@@ -72,13 +72,9 @@ func TestTimePickerInputPaintsFields(t *testing.T) {
 	l := timePickerList(t, "input")
 	col := m3.Light().Colors
 	texts := map[string]bool{}
-	caret := false
 	for _, op := range l.Ops {
 		if op.Kind == Text && !op.Icon {
 			texts[op.Text] = true
-		}
-		if op.Kind == Fill && op.Rect[2] == 2 && op.Rect[3] == 40 && op.Color == col.Primary {
-			caret = true
 		}
 	}
 	for _, want := range []string{"Enter time", "07", "00", "Hour", "Minute", "AM", "PM", "Cancel", "OK"} {
@@ -92,8 +88,12 @@ func TestTimePickerInputPaintsFields(t *testing.T) {
 	if !hasIcon(l, "schedule") {
 		t.Fatal("the input variant has no clock switch")
 	}
-	if !caret {
-		t.Fatal("the active field has no caret")
+	for _, op := range l.Ops {
+		// The active field is outlined, never marked with a caret over the
+		// number: the border already says which field takes keys.
+		if op.Kind == Fill && op.Rect[2] == 2 && op.Rect[3] == 40 && op.Color == col.Primary {
+			t.Fatal("the active field drew a caret")
+		}
 	}
 }
 

@@ -367,7 +367,7 @@ func (l *List) paintTimePicker(c *tree.Component, r tree.Rect, clip tree.Rect) {
 
 	big := l.style("displayMedium")
 	// A dial's active field is a filled container; the input variant outlines
-	// it and keeps a caret, which is what says "type here".
+	// it instead, which says "type here" without a caret over the digits.
 	field := func(box tree.Rect, text string, active bool) {
 		fg := col.OnSurface
 		if active {
@@ -380,15 +380,6 @@ func (l *List) paintTimePicker(c *tree.Component, r tree.Rect, clip tree.Rect) {
 			l.fillRect(box, col.SurfaceContainerHighest, 12, 0, 0, clip)
 		}
 		l.textIn(text, big, fg, box, AlignCenter, clip)
-		if active && t.Variant == "input" {
-			w := textWidth(l, text, big)
-			x := box.X + box.W/2 + w/2 + 6
-			l.Ops = append(l.Ops, Op{
-				Kind: Fill, Shape: RoundedRect,
-				Rect:  [4]float32{float32(x), float32(box.Y + 12), 2, float32(box.H - 24)},
-				Color: col.Primary, Clip: clipArr(clip),
-			})
-		}
 	}
 	field(t.HourBox, t.HourText(), t.Field == 0)
 	field(t.MinBox, pad2(t.Minute), t.Field == 1)
