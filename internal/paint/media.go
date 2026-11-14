@@ -82,7 +82,7 @@ func MediaLayoutOf(m *tree.Media, r tree.Rect) MediaLayout {
 	// A wavy scrubber is a ribbon, so its hit strip is as tall as the wave and
 	// its thumb rides the midline.
 	trackH := 4.0
-	if m.Seekbar.Get() == "wavy" {
+	if m.Variant.Get() == "wavy" {
 		trackH = 10
 	}
 	l.Track = tree.Rect{X: trackX, Y: bar.Y + bar.H/2 - trackH/2, W: trackW, H: trackH}
@@ -132,7 +132,7 @@ func (l *List) paintMediaFrame(m *tree.Media, r tree.Rect, clip tree.Rect) {
 		// Buffering is the decoder waiting for a frame — which is also what a
 		// live stream shows between segments.
 		if (v.Loading || v.Buffering) && m.LoadErr == nil {
-			l.videoSpinner(r, clip)
+			l.videoSpinner(m, r, clip)
 		}
 	}
 	if m.LoadErr != nil {
@@ -168,8 +168,9 @@ func (l *List) paintVideoFrame(v *tree.Video, r tree.Rect, clip tree.Rect) {
 // videoSpinner draws an indeterminate ring in the middle of a video that is
 // fetching or buffering. It is the circular-progress shape, turning a little
 // faster than the expressive loading indicator so a waiting picture reads as
-// activity rather than as a still frame.
-func (l *List) videoSpinner(r tree.Rect, clip tree.Rect) {
+// activity rather than as a still frame. `variant: wavy` draws the same ring as
+// a ribbon, the way the wavy circular progress does, and `color` tints it.
+func (l *List) videoSpinner(m *tree.Media, r tree.Rect, clip tree.Rect) {
 	d := 40.0
 	if lim := minf(r.W, r.H) * 0.6; lim < d {
 		d = lim
@@ -177,8 +178,12 @@ func (l *List) videoSpinner(r tree.Rect, clip tree.Rect) {
 	if d < 12 {
 		return
 	}
+	color := m.Color.Get()
+	if color == 0 {
+		color = videoBarInk
+	}
 	cx, cy := r.X+r.W/2, r.Y+r.H/2
-	phase := float32(l.Clock.Seconds() * 2 * math.Pi / 1.1)
+	phase := l.Clock.Seconds() * 2 * math.Pi / 1.1
 	// A dark plate under the ring keeps white readable on a pale placeholder
 	// and on a bright frame alike.
 	plate := d * 1.7
@@ -188,13 +193,33 @@ func (l *List) videoSpinner(r tree.Rect, clip tree.Rect) {
 		Color: withAlpha(l.Theme.Colors.Scrim, 0.38),
 		Clip:  clipArr(clip),
 	})
+	if m.Variant.Get() == "wavy" {
+		// A ribbon along the arc: the radius itself ripples while the arc
+		// turns, so the loading shape matches the wavy scrubber beside it.
+		const stroke, span = 4.0, 3 * math.Pi / 2
+		radius := d/2 - stroke
+		step := math.Max(0.04, 2.0/radius/l.deviceScale()) // about 2 device px of arc
+		var prev chartPoint
+		started := false
+		for a := 0.0; a <= span; a += step {
+			theta := -math.Pi/2 + a + phase
+			rr := radius + stroke*0.35*math.Sin(6*a+phase*2)
+			p := chartPoint{X: cx + math.Cos(theta)*rr, Y: cy + math.Sin(theta)*rr}
+			if started {
+				l.chartSegment(prev, p, color, stroke, clip)
+			}
+			prev, started = p, true
+		}
+		l.Animating = true
+		return
+	}
 	l.Ops = append(l.Ops, Op{
 		Kind: Fill, Shape: Arc,
 		Rect:       rectArr(tree.Rect{X: cx - d/2, Y: cy - d/2, W: d, H: d}),
-		Color:      videoBarInk,
+		Color:      color,
 		Thickness:  float32(d * 0.11),
-		StartAngle: phase,
-		EndAngle:   phase + 3*math.Pi/2,
+		StartAngle: float32(phase),
+		EndAngle:   float32(phase + 3*math.Pi/2),
 		Clip:       clipArr(clip),
 	})
 	l.Animating = true
@@ -332,9 +357,14 @@ func (l *List) paintMediaBar(m *tree.Media, r tree.Rect, lay MediaLayout, clip t
 		iconColor = fallback
 	}
 	trackColor := m.ControlsTrackColor.Get()
-	playedColor := col.Primary
-	if trackColor != 0 {
+	// The design's `color` is the played part and the handle; the older
+	// controlsTrackColor still tints the whole scrubber when no colour is set.
+	playedColor := m.Color.Get()
+	if playedColor == 0 && trackColor != 0 {
 		playedColor = trackColor
+	}
+	if playedColor == 0 {
+		playedColor = col.Primary
 	}
 	icon := "play_arrow"
 	if m.Playing && !m.Paused {
@@ -374,7 +404,7 @@ func (l *List) paintMediaBar(m *tree.Media, r tree.Rect, lay MediaLayout, clip t
 	// or flat, stops at the handle and the dim track starts after it, so the two
 	// never touch and the handle has a band of its own — the rule the slider's
 	// own segments follow.
-	ripple := m.Seekbar.Get() == "wavy" && m.Playing && !m.Paused && frac > 0
+	ripple := m.Variant.Get() == "wavy" && m.Playing && !m.Paused && frac > 0
 	flat := tree.Rect{X: lay.Track.X, Y: lay.Track.Y + lay.Track.H/2 - 2, W: lay.Track.W, H: 4}
 	buffered := withAlpha(fallback, 0.42)
 	if trackColor != 0 {

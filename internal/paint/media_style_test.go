@@ -231,9 +231,9 @@ func TestAudioNeverHidesItsBar(t *testing.T) {
 // starts after a gap, so the two never touch, and a paused player falls back to
 // the normal bar.
 func TestSeekbarWavyIsOnlyThePlayedPart(t *testing.T) {
-	paint := func(seekbar string, playing bool, clock time.Duration) (*List, MediaLayout, *tree.Media) {
+	paint := func(variant string, playing bool, clock time.Duration) (*List, MediaLayout, *tree.Media) {
 		tr, diag := tree.BuildSource([]byte(`Window { Audio {
-			width: 360 height: 64 seekbar: `+seekbar+`
+			width: 360 height: 64 variant: `+variant+`
 		} }`), nil)
 		if !diag.Empty() {
 			t.Fatalf("%v", diag)
@@ -319,9 +319,9 @@ func TestSeekbarWavyIsOnlyThePlayedPart(t *testing.T) {
 }
 
 // mustPainted is the awkward bit of building a list through a closure.
-func mustPainted(t *testing.T, paint func(string, bool, time.Duration) (*List, MediaLayout, *tree.Media), seekbar string, playing bool) *List {
+func mustPainted(t *testing.T, paint func(string, bool, time.Duration) (*List, MediaLayout, *tree.Media), variant string, playing bool) *List {
 	t.Helper()
-	l, _, _ := paint(seekbar, playing, 0)
+	l, _, _ := paint(variant, playing, 0)
 	return l
 }
 
@@ -330,7 +330,7 @@ func mustPainted(t *testing.T, paint func(string, bool, time.Duration) (*List, M
 // after it — and the thumb is the slider's slim pill, not a dot.
 func TestSeekbarGapAndHandleWhenFlat(t *testing.T) {
 	tr, diag := tree.BuildSource([]byte(`Window { Audio {
-		width: 360 height: 64 seekbar: normal
+		width: 360 height: 64 variant: normal
 	} }`), nil)
 	if !diag.Empty() {
 		t.Fatalf("%v", diag)
@@ -432,5 +432,97 @@ func TestVideoSpinnerWhileLoading(t *testing.T) {
 	}
 	if l, box := build(false, false); spinner(l, box) != nil || l.Animating {
 		t.Fatal("a settled video drew a spinner")
+	}
+}
+
+// TestMediaVariantAndColour: `variant` drives both the scrubber and the loading
+// ring, and `color` tints the played part, the handle and the ring.
+func TestMediaVariantAndColour(t *testing.T) {
+	build := func(props string, playing, loading bool) *List {
+		tr, diag := tree.BuildSource([]byte(`Window { Video {
+			width: 320 height: 200 `+props+`
+		} }`), nil)
+		if !diag.Empty() {
+			t.Fatalf("%v", diag)
+		}
+		for _, n := range tr.All() {
+			if m, ok := tree.MediaNode(n); ok {
+				m.Loading = loading
+				m.Playing = playing
+				m.Duration = 100 * time.Second
+				m.Position = 40 * time.Second
+				m.ControlsShown = true
+			}
+		}
+		layout.New(nil).Layout(tr.Root, 400, 300)
+		l := &List{}
+		l.Build(tr, 400, 300)
+		return l
+	}
+	red := uint32(0xFF0000FF)
+	// A wavy, red video while loading: the ring is a ribbon in the design's
+	// colour, and no plain arc is drawn.
+	l := build(`variant: wavy color: #ff0000ff controls: false`, false, true)
+	ribbon, arcs := 0, 0
+	for _, op := range l.Ops {
+		if op.Kind != Fill || op.Color != red {
+			continue
+		}
+		if op.Shape == Arc {
+			arcs++
+		}
+		if op.Rotate != 0 {
+			ribbon++
+		}
+	}
+	if ribbon < 20 || arcs != 0 {
+		t.Fatalf("wavy loading ring: %d ribbon segments, %d arcs", ribbon, arcs)
+	}
+	if !l.Animating {
+		t.Fatal("the wavy ring did not ask for frames")
+	}
+
+	// A normal, red video while loading: the plain arc takes the colour.
+	l = build(`variant: normal color: #ff0000ff controls: false`, false, true)
+	arcs = 0
+	for _, op := range l.Ops {
+		if op.Kind == Fill && op.Shape == Arc && op.Color == red {
+			arcs++
+		}
+	}
+	if arcs != 1 {
+		t.Fatalf("normal loading ring drew %d coloured arcs, want 1", arcs)
+	}
+
+	// Playing with a colour: the played part of the scrubber and its handle are
+	// the design's colour, and a wavy scrubber is a ribbon in it.
+	l = build(`variant: wavy color: #ff0000ff controls: true`, true, false)
+	flat, handle, ribbon := 0, 0, 0
+	for _, op := range l.Ops {
+		if op.Kind != Fill || op.Color != red {
+			continue
+		}
+		switch {
+		case op.Rotate != 0:
+			ribbon++
+		case op.Rect[2] == seekHandleW:
+			handle++
+		case op.Rect[3] <= 5:
+			flat++
+		}
+	}
+	if ribbon < 20 || handle != 1 {
+		t.Fatalf("wavy scrubber: %d ribbon segments, %d handles", ribbon, handle)
+	}
+	// A normal scrubber takes the same colour on its flat played part.
+	l = build(`variant: normal color: #ff0000ff controls: true`, true, false)
+	flat = 0
+	for _, op := range l.Ops {
+		if op.Kind == Fill && op.Color == red && op.Rect[3] <= 5 && op.Rect[2] > 50 {
+			flat++
+		}
+	}
+	if flat == 0 {
+		t.Fatal("the played part did not take color")
 	}
 }

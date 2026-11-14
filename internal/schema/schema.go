@@ -418,7 +418,8 @@ var elements = func() []Element {
 		Element{Name: "Audio", Attrs: withCommon(
 			Prop{Name: "src", Type: TypeString, Dirty: DirtyLayout, Default: ""},
 			Prop{Name: "controls", Type: TypeBool, Dirty: DirtyLayout, Default: true},
-			Prop{Name: "seekbar", Type: TypeEnum, Dirty: DirtyPaint, Enum: []string{"normal", "wavy"}, Default: "normal"},
+			Prop{Name: "variant", Type: TypeEnum, Dirty: DirtyPaint, Enum: []string{"normal", "wavy"}, Default: "normal"},
+			Prop{Name: "color", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0)},
 			Prop{Name: "autoplay", Type: TypeBool, Dirty: DirtyPaint, Default: false},
 			Prop{Name: "loop", Type: TypeBool, Dirty: DirtyPaint, Default: false},
 			Prop{Name: "muted", Type: TypeBool, Dirty: DirtyPaint, Default: false},
@@ -439,7 +440,8 @@ var elements = func() []Element {
 		Element{Name: "Video", Attrs: withCommon(
 			Prop{Name: "src", Type: TypeString, Dirty: DirtyLayout, Default: ""},
 			Prop{Name: "controls", Type: TypeBool, Dirty: DirtyLayout, Default: true},
-			Prop{Name: "seekbar", Type: TypeEnum, Dirty: DirtyPaint, Enum: []string{"normal", "wavy"}, Default: "normal"},
+			Prop{Name: "variant", Type: TypeEnum, Dirty: DirtyPaint, Enum: []string{"normal", "wavy"}, Default: "normal"},
+			Prop{Name: "color", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0)},
 			Prop{Name: "autoplay", Type: TypeBool, Dirty: DirtyPaint, Default: false},
 			Prop{Name: "loop", Type: TypeBool, Dirty: DirtyPaint, Default: false},
 			Prop{Name: "muted", Type: TypeBool, Dirty: DirtyPaint, Default: false},

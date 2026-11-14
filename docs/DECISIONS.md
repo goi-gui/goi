@@ -1968,6 +1968,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   child keeps its own size in the middle instead of filling the box, because the
   usual child is a percentage or an icon that would look wrong stretched to the
   stroke. A child that declares 100% still fills.
+- **One `variant` styles a player's scrubber and its loading ring.** They are the
+  same design decision — plain or a ribbon — so one property carries both, and
+  the same for `color`: the played part, its handle and the ring are one accent.
+  Splitting them would double the vocabulary for no gain.
 - **A wavy seekbar waves only what has played, and only while it plays.** The
   ribbon is the part already heard or watched; the part still ahead stays a dim
   flat track, and a paused or stopped player falls back to the normal bar. The
