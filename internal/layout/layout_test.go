@@ -992,3 +992,27 @@ func TestAspectRatioInARowDerivesItsWidth(t *testing.T) {
 	New(nil).Layout(tr.Root, 400, 400)
 	want(t, bounds(t, tr, "wide"), 0, 0, 120, 60)
 }
+
+// TestCircularProgressCentresItsChild is why the ring takes children: a label or
+// an icon inside it keeps its own size and sits in the middle, not at the top.
+func TestCircularProgressCentresItsChild(t *testing.T) {
+	tr := build(t, `Window {
+		Column {
+			CircularProgress {
+				id:     ring
+				value:  0.6
+				width:  64
+				height: 64
+				Rectangle { id: dot width: 20 height: 20 }
+				Text { id: label text: "60" }
+			}
+		}
+	}`)
+	New(nil).Layout(tr.Root, 300, 200)
+	want(t, bounds(t, tr, "dot"), 22, 22, 20, 20)
+	// The text keeps its own line height and is centred on both axes.
+	lb := bounds(t, tr, "label")
+	if lb.X+lb.W/2 < 31 || lb.X+lb.W/2 > 33 || lb.Y < 20 || lb.Y > 34 {
+		t.Fatalf("label = %v, want it centred in the 64dp ring", lb)
+	}
+}

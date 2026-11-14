@@ -162,6 +162,10 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 		switch b.Node().Kind() {
 		case "NavigationBar", "Tabs":
 			e.equalRow(b, kids, cw, ch, insetL, insetT)
+		case "CircularProgress":
+			// A ring's children are a label or an icon inside it, so each one
+			// keeps its own size and sits in the middle.
+			e.centeredChildren(b, kids, cw, ch, insetL, insetT)
 		case "NavigationRail", "NavigationDrawer":
 			e.linear(b, kids, cw, ch, insetL, false, insetT)
 		case "ButtonGroup", "Row", "Toolbar", "Carousel":
@@ -698,6 +702,24 @@ func (e *Engine) gridNaturalWidth(kids []*tree.NodeBase, availW float64, cols in
 		total += w
 	}
 	return total
+}
+
+// centeredChildren places every child at its own size in the middle of the box,
+// which is what a progress ring's icon or label wants.
+func (e *Engine) centeredChildren(b *tree.NodeBase, kids []*tree.NodeBase, w, h, insetL, insetT float64) {
+	for _, k := range kids {
+		mw, mh := e.natural(k, w, h)
+		if v := k.Width(); v >= 0 {
+			mw = v
+		}
+		if v := k.Height(); v >= 0 {
+			mh = v
+		}
+		x := insetL + (w-mw)/2
+		y := insetT + (h-mh)/2
+		k.SetBounds(tree.Rect{X: x, Y: y, W: mw, H: mh})
+		e.children(k, mw, mh)
+	}
 }
 
 // equalRow gives each child an equal share of the row, which is what

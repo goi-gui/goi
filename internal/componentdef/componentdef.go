@@ -65,7 +65,7 @@ var Kinds = []Kind{
 	// Status and progress.
 	{"Badge", false},
 	{"LinearProgress", false},
-	{"CircularProgress", false},
+	{"CircularProgress", true},
 	{"LoadingIndicator", false},
 	// Date and time.
 	{"DatePicker", true},
