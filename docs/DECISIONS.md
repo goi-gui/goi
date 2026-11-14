@@ -1951,3 +1951,16 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   call. Elements now carry a `Resolved` mark once the loader has expanded them,
   and later passes copy them untouched, which is what "a child resolves its
   imports in the file it was written in" needs.
+- **A component's box can be the design's.** Button and TextField draw their
+  fill, border and radius from the variant by default, but when the design sets
+  `background`, a border, a radius or a `color`, those win: the variant is a
+  starting point, not a wall. A design border also replaces the focus colour,
+  because the design chose the look; a filled field with a design border or
+  radius drops the M3 bottom indicator, which would otherwise cut across the
+  rounded corners.
+- **A gesture is a press, not a click.** GestureDetector arms on the press and
+  turns it into a long press (500ms inside an 8dp slop), a pan (leaving the
+  slop), or a tap; a pan carries only deltas so a handler adds them, and a
+  long press or a double tap suppresses the click that would otherwise run the
+  same action twice. A pan owns the gesture, so a scroll area under the
+  detector does not also scroll.
