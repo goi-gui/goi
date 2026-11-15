@@ -371,7 +371,13 @@ func (f *Face) ShapeRuns(s string) []ShapedRun {
 // splitFont cuts a line where the face changes: ordinary text stays with this
 // face, and a rune it does not cover goes to the emoji face.
 func (f *Face) splitFont(s string) []fontSeg {
-	if f.lib == nil || f.lib.emoji == nil || f.emoji {
+	if f.lib == nil || f.emoji {
+		return []fontSeg{{text: s}}
+	}
+	// The first emoji a process draws is what loads the font; asking only
+	// whether it is already parsed would miss that line.
+	f.lib.ensureEmoji()
+	if f.lib.emoji == nil {
 		return []fontSeg{{text: s}}
 	}
 	var out []fontSeg

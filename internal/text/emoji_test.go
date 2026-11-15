@@ -27,6 +27,17 @@ func TestEmojiFallsBack(t *testing.T) {
 	}
 }
 
+// TestEmojiFallsBackOnFirstDraw covers the first line an app paints: the font
+// is still unparsed then, and the fallback must load it there and not miss it.
+func TestEmojiFallsBackOnFirstDraw(t *testing.T) {
+	l := NewLibrary()
+	f := l.Face(16, WeightRegular)
+	runs := f.ShapeRuns("🟢")
+	if len(runs) != 1 || !runs[0].Face.IsEmoji() {
+		t.Fatal("the first emoji of the process did not fall back")
+	}
+}
+
 // TestEmojiSequenceStaysOneGlyph covers a ZWJ sequence: it must shape to one
 // glyph, not a string of separate people.
 func TestEmojiSequenceStaysOneGlyph(t *testing.T) {
