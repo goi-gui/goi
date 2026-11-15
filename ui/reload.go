@@ -117,6 +117,8 @@ func (a *App) swapTree(tr *tree.Tree) {
 		d.input.focus = nil
 		d.input.kbd = nil
 		d.input.textSel = nil
+		// The old detectors are gone, so no leave event should fire on them.
+		d.input.mouseNodes = nil
 		if focusID != "" {
 			if n, ok := tr.ByID(focusID); ok {
 				if k := n.Kind(); k == "TextField" || k == "SearchBar" {

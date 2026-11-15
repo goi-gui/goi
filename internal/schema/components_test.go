@@ -223,3 +223,20 @@ func TestEveryElementTakesClickOutside(t *testing.T) {
 		}
 	}
 }
+
+// TestGestureDetectorTakesMouseEvents keeps the pointer events where the pointer
+// gestures live, and off a plain container that has no detector to report them.
+func TestGestureDetectorTakesMouseEvents(t *testing.T) {
+	def, ok := Lookup("GestureDetector")
+	if !ok {
+		t.Fatal("no GestureDetector")
+	}
+	for _, name := range []string{"onMouseEnter", "onMouseMove", "onMouseLeave"} {
+		if !def.HasEvent(name) {
+			t.Errorf("GestureDetector does not accept %s", name)
+		}
+	}
+	if col, ok := Lookup("Column"); !ok || col.HasEvent("onMouseMove") {
+		t.Error("Column accepted a GestureDetector event")
+	}
+}

@@ -2167,3 +2167,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   reports nothing, so a design that keeps the node mounted while its panel is
   closed does not see every press. Targets are collected before any handler runs,
   so one that rebuilds a list cannot change the walk that found it.
+- **The pointer's enter and leave are the difference between two hit chains.**
+  A `GestureDetector` needs `onMouseEnter`/`Move`/`Leave` without the input layer
+  keeping a per-node hover table: each move walks the hit node's ancestors for
+  detectors, compares that chain with the one from the previous move, and emits
+  leave for what dropped, enter for what arrived and a move for the rest. Hot
+  reload drops the chain, or the first move would send a leave to a detector the
+  old tree owned and run a handler against the tree that is gone.

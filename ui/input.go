@@ -24,6 +24,9 @@ type interactor struct {
 
 	hover   tree.Node
 	pressed tree.Node
+	// mouseNodes are the GestureDetectors under the pointer, innermost first, so
+	// a move can tell which one it entered or left.
+	mouseNodes []*tree.GestureDetector
 	// pressX/Y remember where the button went down, for sliders.
 	pressX, pressY float64
 	// dragging marks a slider drag.
@@ -494,6 +497,7 @@ func (i *interactor) MouseMove(x, y float64) {
 		return
 	}
 	hit := i.hit(x, y)
+	i.trackMouse(hit, x, y)
 	if i.seekNode != nil {
 		if m, ok := tree.MediaNode(i.seekNode); ok {
 			i.scrubTo(i.seekNode, m, x)
@@ -552,6 +556,44 @@ func (i *interactor) MouseMove(x, y float64) {
 	if changed {
 		i.markDirty()
 	}
+}
+
+// trackMouse reports the pointer to the GestureDetectors under it: enter for the
+// ones it just reached, leave for the ones it left, and a move for every one it
+// is over. The chain is innermost first, so a nested detector hears before its
+// parent on the way in and after it on the way out.
+func (i *interactor) trackMouse(hit tree.Node, x, y float64) {
+	var chain []*tree.GestureDetector
+	for n := hit; n != nil; n = n.Base().Parent() {
+		if g, ok := n.(*tree.GestureDetector); ok {
+			chain = append(chain, g)
+		}
+	}
+	ev := tree.MouseEvent{X: x, Y: y}
+	for _, g := range i.mouseNodes {
+		if !hasMouseNode(chain, g) {
+			g.MouseLeave.Emit(ev)
+		}
+	}
+	for k := len(chain) - 1; k >= 0; k-- {
+		if g := chain[k]; !hasMouseNode(i.mouseNodes, g) {
+			g.MouseEnter.Emit(ev)
+		}
+	}
+	for _, g := range chain {
+		g.MouseMove.Emit(ev)
+	}
+	i.mouseNodes = append(i.mouseNodes[:0], chain...)
+}
+
+// hasMouseNode reports whether g is in chain.
+func hasMouseNode(chain []*tree.GestureDetector, g *tree.GestureDetector) bool {
+	for _, c := range chain {
+		if c == g {
+			return true
+		}
+	}
+	return false
 }
 
 // pointer sets the native pointer shape when a driver is attached.
@@ -2313,6 +2355,13 @@ func (i *interactor) MouseLeave() {
 		i.hoverScroll = nil
 	}
 	i.hover = nil
+	if len(i.mouseNodes) > 0 {
+		ev := tree.MouseEvent{X: i.cursorX, Y: i.cursorY}
+		for _, g := range i.mouseNodes {
+			g.MouseLeave.Emit(ev)
+		}
+		i.mouseNodes = i.mouseNodes[:0]
+	}
 	i.markDirty()
 }
 

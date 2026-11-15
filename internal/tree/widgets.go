@@ -234,11 +234,14 @@ func (*Stack) Kind() string { return "Stack" }
 // tap, a long press and a pan beside the click every element already has.
 type GestureDetector struct {
 	Container
-	DoubleTap Event[ClickEvent]
-	LongPress Event[ClickEvent]
-	PanStart  Event[PanEvent]
-	PanUpdate Event[PanEvent]
-	PanEnd    Event[PanEvent]
+	DoubleTap  Event[ClickEvent]
+	LongPress  Event[ClickEvent]
+	PanStart   Event[PanEvent]
+	PanUpdate  Event[PanEvent]
+	PanEnd     Event[PanEvent]
+	MouseEnter Event[MouseEvent]
+	MouseMove  Event[MouseEvent]
+	MouseLeave Event[MouseEvent]
 }
 
 // Kind implements Node.
@@ -264,6 +267,20 @@ func (g *GestureDetector) OnPanUpdate(fn func(PanEvent)) (off func()) {
 
 func (g *GestureDetector) OnPanEnd(fn func(PanEvent)) (off func()) {
 	return g.PanEnd.On(fn)
+}
+
+// OnMouseEnter, OnMouseMove and OnMouseLeave are the pointer's position over the
+// detector; the handler runs once per move, with the window coordinates.
+func (g *GestureDetector) OnMouseEnter(fn func(MouseEvent)) (off func()) {
+	return g.MouseEnter.On(fn)
+}
+
+func (g *GestureDetector) OnMouseMove(fn func(MouseEvent)) (off func()) {
+	return g.MouseMove.On(fn)
+}
+
+func (g *GestureDetector) OnMouseLeave(fn func(MouseEvent)) (off func()) {
+	return g.MouseLeave.On(fn)
 }
 
 // ClipRRect lays its children out like a Stack and cuts them to a rounded box,

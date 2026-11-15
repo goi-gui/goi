@@ -190,6 +190,10 @@ var eventDefs = []EventDef{
 	// design could use, so `event` is not available in their handlers.
 	{Name: "onDoubleTap"},
 	{Name: "onLongPress"},
+	// The pointer's position over a GestureDetector; no scalar payload.
+	{Name: "onMouseEnter"},
+	{Name: "onMouseMove"},
+	{Name: "onMouseLeave"},
 	{Name: "onPanStart"},
 	{Name: "onPanUpdate"},
 	{Name: "onPanEnd"},
@@ -542,7 +546,8 @@ var elements = func() []Element {
 		}
 		if out[i].Name == "GestureDetector" {
 			out[i].Events = append(out[i].Events,
-				"onDoubleTap", "onLongPress", "onPanStart", "onPanUpdate", "onPanEnd")
+				"onDoubleTap", "onLongPress", "onMouseEnter", "onMouseMove", "onMouseLeave",
+				"onPanStart", "onPanUpdate", "onPanEnd")
 			continue
 		}
 		if out[i].Name == "TimePicker" || out[i].Name == "ColorPicker" {

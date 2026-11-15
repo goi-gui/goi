@@ -15,6 +15,13 @@ type PanEvent struct {
 	DX, DY float64
 }
 
+// MouseEvent is a pointer position a GestureDetector reports when the pointer
+// enters, moves over or leaves it. It carries no button: this is where the
+// pointer is, not a press.
+type MouseEvent struct {
+	X, Y float64
+}
+
 // KeyEvent is delivered for key presses and text input.
 type KeyEvent struct {
 	Key  Key

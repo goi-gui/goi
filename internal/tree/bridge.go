@@ -198,7 +198,8 @@ func (t *Tree) bindEvent(b *NodeBase, name string, v syntax.Value) error {
 		} else {
 			tp.OK.On(func(v string) { t.fire(b, name, call, v) })
 		}
-	case "onDoubleTap", "onLongPress", "onPanStart", "onPanUpdate", "onPanEnd":
+	case "onDoubleTap", "onLongPress", "onMouseEnter", "onMouseMove", "onMouseLeave",
+		"onPanStart", "onPanUpdate", "onPanEnd":
 		g, ok := b.node.(*GestureDetector)
 		if !ok {
 			return fmt.Errorf("%s does not have %s", b.node.Kind(), name)
@@ -214,6 +215,12 @@ func (t *Tree) bindEvent(b *NodeBase, name string, v syntax.Value) error {
 			g.PanUpdate.On(func(e PanEvent) { t.fire(b, name, call, nil) })
 		case "onPanEnd":
 			g.PanEnd.On(func(e PanEvent) { t.fire(b, name, call, nil) })
+		case "onMouseEnter":
+			g.MouseEnter.On(func(e MouseEvent) { t.fire(b, name, call, nil) })
+		case "onMouseMove":
+			g.MouseMove.On(func(e MouseEvent) { t.fire(b, name, call, nil) })
+		case "onMouseLeave":
+			g.MouseLeave.On(func(e MouseEvent) { t.fire(b, name, call, nil) })
 		}
 	case "onHover":
 		c := bridgeComponent(b)

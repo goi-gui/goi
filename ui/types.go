@@ -192,6 +192,7 @@ type (
 	AspectRatio      = tree.AspectRatio
 	GestureDetector  = tree.GestureDetector
 	PanEvent         = tree.PanEvent
+	MouseEvent       = tree.MouseEvent
 )
 
 // Event types.
