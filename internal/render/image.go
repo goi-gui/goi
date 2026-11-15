@@ -49,7 +49,17 @@ type imageRenderer struct {
 	scaled *img.Data
 	// resized is set when the atlas grew, so the texture must be rebuilt.
 	resized bool
+	// packed counts the regions created since the last reset. Regions are never
+	// freed from the texture, so once a map has visited several zooms the atlas
+	// fills with dead tiles and new images are downscaled (blurry) and bleed at
+	// their edges. A reset repacks only the current frame's images.
+	packed int
 }
+
+// imageAtlasSoftCap is how many regions may accumulate before a frame with a
+// new image starts the atlas over. A map shows a few dozen tiles; a page of
+// pictures needs more, and the cap sits below the 256 tiles a 4096 atlas holds.
+const imageAtlasSoftCap = 128
 
 // Image atlases are capped so a pathological set cannot allocate without bound.
 const maxImageAtlasDim = 4096
@@ -114,6 +124,28 @@ func (g *GPU) initImages() error {
 // prepare packs every image the frame needs before any quad is emitted, so a
 // growth during packing cannot leave earlier instances pointing at stale UVs.
 func (t *imageRenderer) prepare(list *paint.List) {
+	// Count the keys this frame needs but the atlas does not hold. Starting the
+	// atlas over when the accumulated regions pass the cap is what keeps map
+	// tiles at full resolution; otherwise the shelf fills with tiles from old
+	// zoom levels and later ones are shrunk.
+	seen := make(map[imageKey]struct{}, len(list.Ops))
+	missing := 0
+	for _, op := range list.Ops {
+		if op.Kind != paint.Bitmap || op.Src == nil {
+			continue
+		}
+		key := t.keyFor(op)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		if _, ok := t.regions[key]; !ok {
+			missing++
+		}
+	}
+	if missing > 0 && t.packed+missing > imageAtlasSoftCap {
+		t.reset()
+	}
 	for _, op := range list.Ops {
 		if op.Kind != paint.Bitmap || op.Src == nil {
 			continue
@@ -131,6 +163,36 @@ func (t *imageRenderer) prepare(list *paint.List) {
 		}
 		t.pack(op.Src, key)
 	}
+}
+
+// reset empties the atlas and repacks nothing itself; prepare runs again with
+// the current display list. Old image pointers are dropped here, so a map that
+// visited many zooms does not keep them alive through the regions map.
+func (t *imageRenderer) reset() {
+	t.regions = map[imageKey]imageSlot{}
+	t.shelf = img.Shelf{W: t.w, H: t.h}
+	t.packed = 0
+	clear(t.pix)
+	t.dirty = true
+	t.dirtyY0, t.dirtyY1 = 0, t.h
+}
+
+// uv is a region's sampled bounds, half a texel in from each edge. Without the
+// inset a linear sample at the quad's edge reaches the neighbouring atlas entry
+// (a different tile, or empty space), which is the dark line a tiled map shows
+// on every tile boundary.
+func (t *imageRenderer) uv(r img.Region) (u0, v0, u1, v1 float32) {
+	u0 = (float32(r.X) + 0.5) / float32(t.w)
+	v0 = (float32(r.Y) + 0.5) / float32(t.h)
+	u1 = (float32(r.X+r.W) - 0.5) / float32(t.w)
+	v1 = (float32(r.Y+r.H) - 0.5) / float32(t.h)
+	if u1 < u0 {
+		u1 = u0
+	}
+	if v1 < v0 {
+		v1 = v0
+	}
+	return
 }
 
 // keyFor is the atlas key one op asks for: the image, packed at a size close to
@@ -175,8 +237,7 @@ func (t *imageRenderer) addOp(op paint.Op) {
 		slot = imageSlot{r: r, gen: d.Gen}
 	}
 	r := slot.r
-	u0, v0 := float32(r.X)/float32(t.w), float32(r.Y)/float32(t.h)
-	u1, v1 := float32(r.X+r.W)/float32(t.w), float32(r.Y+r.H)/float32(t.h)
+	u0, v0, u1, v1 := t.uv(r)
 	// The op's UV is a crop of the whole image; map it into the packed rect.
 	// params.zw holds the near corner and misc.xy the far one, the same layout
 	// a glyph quad uses, so the vertex shader needs no change.
@@ -248,6 +309,7 @@ func (t *imageRenderer) pack(d *img.Data, key imageKey) (img.Region, bool) {
 	t.writeRegion(src, r)
 	slot := imageSlot{r: r, gen: d.Gen}
 	t.regions[key] = slot
+	t.packed++
 	if key.w != w || key.h != h {
 		// The atlas was too full for the requested size: the same shrunken copy
 		// answers that key too, so nothing repacks it every frame.

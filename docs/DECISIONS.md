@@ -2109,3 +2109,11 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   them. The block now remembers its index and refill moves the new rows back to
   it, so source order is paint order whether the list arrives at build time or
   from `SetData`.
+- **The image atlas holds the current frame, not every image it ever saw.**
+  Regions were permanent, and map tiles from every zoom filled the 4096 texture;
+  later tiles were packed at half size (the whole map went blurry) and a linear
+  sample at a region's edge reached the neighbouring atlas entry (a dark line on
+  every tile boundary). `prepare` now counts the frame's new keys and, once the
+  accumulated regions pass a soft cap, clears the atlas and repacks the current
+  display list, which also releases the old `img.Data` pointers. Atlas UVs are
+  inset half a texel so the sampler cannot read outside its own region.

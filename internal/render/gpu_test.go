@@ -306,3 +306,40 @@ func TestBitmapInvertFlag(t *testing.T) {
 		t.Fatalf("invert flag = %v, want 1", inst.Misc[3])
 	}
 }
+
+// TestImageAtlasStartsOverWhenFull is the map's scratch guard: old zoom levels
+// used to fill the atlas, so new tiles were packed smaller (blurry) and bled
+// into their neighbours. The atlas now drops the old regions and repacks the
+// current frame.
+func TestImageAtlasStartsOverWhenFull(t *testing.T) {
+	at := newTestImageRenderer(64)
+	old := &img.Data{W: 8, H: 8, Pix: make([]byte, 8*8*4)}
+	at.prepare(&paint.List{Ops: []paint.Op{{Kind: paint.Bitmap, Src: old, Rect: [4]float32{0, 0, 8, 8}}}})
+	at.packed = imageAtlasSoftCap
+
+	fresh := &img.Data{W: 8, H: 8, Pix: make([]byte, 8*8*4)}
+	op := paint.Op{Kind: paint.Bitmap, Src: fresh, Rect: [4]float32{0, 0, 8, 8}}
+	at.prepare(&paint.List{Ops: []paint.Op{op}})
+	if len(at.regions) != 1 {
+		t.Fatalf("atlas kept %d regions, want only the current image", len(at.regions))
+	}
+	if _, ok := at.regions[at.keyFor(op)]; !ok {
+		t.Fatal("the current image was not repacked")
+	}
+}
+
+// TestImageUVsAreInset checks the half-texel inset that stops a linear sample at
+// a tile edge from reading the neighbouring atlas entry.
+func TestImageUVsAreInset(t *testing.T) {
+	at := newTestImageRenderer(64)
+	d := &img.Data{W: 8, H: 8, Pix: make([]byte, 8*8*4)}
+	op := paint.Op{Kind: paint.Bitmap, Src: d, Rect: [4]float32{0, 0, 8, 8}, UV: [4]float32{0, 0, 1, 1}}
+	at.prepare(&paint.List{Ops: []paint.Op{op}})
+	at.addOp(op)
+	inst := at.gpu.instances[len(at.gpu.instances)-1]
+	want0 := float32(0.5) / 64
+	want1 := float32(7.5) / 64
+	if inst.Params[2] != want0 || inst.Misc[0] != want1 {
+		t.Fatalf("uv = %v..%v, want %v..%v", inst.Params[2], inst.Misc[0], want0, want1)
+	}
+}

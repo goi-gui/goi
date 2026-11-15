@@ -382,11 +382,7 @@ func (t *textRenderer) emit(i int) {
 				}
 				slot = imageSlot{r: packed, gen: q.data.Gen}
 			}
-			r := slot.r
-			u0 := float32(r.X) / float32(g.images.w)
-			v0 := float32(r.Y) / float32(g.images.h)
-			u1 := float32(r.X+r.W) / float32(g.images.w)
-			v1 := float32(r.Y+r.H) / float32(g.images.h)
+			u0, v0, u1, v1 := g.images.uv(slot.r)
 			g.instances = append(g.instances, gpuInstance{
 				Rect:    q.rect,
 				Color:   [4]float32{1, 1, 1, 1},
