@@ -646,3 +646,30 @@ func TestRotateComposesNested(t *testing.T) {
 	}
 	t.Fatalf("no rectangle op:\n%s", l.Dump())
 }
+
+// TestSkeletonDrawsABaseAndASweep: the placeholder is one block plus the
+// highlight band, and only the banded form keeps the frame loop awake.
+func TestSkeletonDrawsABaseAndASweep(t *testing.T) {
+	const win = 400.0
+	l := listAt(t, `Window {
+		Skeleton { width: 200 height: 20 radius: 10 }
+	}`, win, 200, 500*time.Millisecond)
+	if len(l.Ops) != 2 {
+		t.Fatalf("ops = %d, want a base and a sweep:\n%s", len(l.Ops), l.Dump())
+	}
+	if l.Ops[1].Shape != CSSGradient || l.Ops[1].Gradient == nil {
+		t.Fatalf("the sweep is %v, want a CSS gradient", l.Ops[1].Shape)
+	}
+	if !l.Animating {
+		t.Fatal("an animated skeleton did not ask for the next frame")
+	}
+	still := listAt(t, `Window {
+		Skeleton { width: 200 height: 20 animated: false }
+	}`, win, 200, 500*time.Millisecond)
+	if len(still.Ops) != 1 {
+		t.Fatalf("a still skeleton drew %d ops, want only its block", len(still.Ops))
+	}
+	if still.Animating {
+		t.Fatal("a still skeleton asked for the next frame")
+	}
+}

@@ -2208,3 +2208,35 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   gone too: the purego path maps SDL's event union directly. The clipboard can be
   reached before a window exists (a test, or a copy before the first frame), so
   it loads the library on demand and no-ops when the machine has no SDL.
+- **A slot is declared bare, and only an instance put braces on it.** Both forms
+  used to mean "declare": `$children` and `$children {}`. That made one shape
+  serve two purposes, and the loader had to guess whether an empty body was a
+  marker or a fill that passed nothing. Braces now always mean a fill, so the
+  parser can drop the `p.slot` guess, the loader reports the braced form in a
+  fragment body with the bare one as its hint, and goifmt can print a slot
+  without inventing an empty body. The old form is an error, not a warning,
+  because a silently empty slot is the bug the rule prevents.
+- **`len($slot)` is resolved while the fragment is instantiated, not per frame.**
+  What an instance passes to a slot is fixed structure: it cannot change without
+  the tree around it changing too. The loader counts the fill's direct elements
+  and replaces the call with a number literal before props are substituted, so
+  the tree and the expression evaluator never learn a new value kind beyond the
+  `SlotRef` the parser makes for the call. A preview of a fragment has no caller,
+  so every slot reads `0` and the `if len($children) > 0` guard collapses to a
+  hidden arm instead of erroring. Lexical order matters: substituting before
+  props keeps a caller's `len($slot)` in a prop value reading the caller's slot.
+- **Tweens chain, and `Stop` is a method.** `Tween`/`Animate` returned a
+  `func()`, which cannot also be a builder, so chaining would have needed a
+  second function (`app.Sequence(steps...)`) beside the first. Returning
+  `*ui.Tween` instead gives `Then` and `Stop` one object: a step list advanced by
+  the frame clock, starting each leg where the last was due to end so a chain
+  does not drift. It is a small API break (`stop()` becomes `stop.Stop()`), taken
+  while the module is `v0.x`.
+- **A skeleton's highlight is derived, not a theme role.** No colour role is
+  lighter than the surface in both schemes (`surfaceContainerHigh` is lighter in
+  light and darker in dark), so a role-based default would shimmer the wrong way
+  in one of them. The default is the block lifted towards white by a step that
+  depends on the scheme; `highlight:` still takes a role when an app wants one.
+  The sweep is a clipped gradient op moved by the frame clock, so it needs no
+  timer, no goroutine and no new shader shape, and `animated: false` leaves one
+  plain block.

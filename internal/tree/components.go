@@ -685,6 +685,28 @@ func (c *LoadingIndicator) namedProps() []NamedProp {
 	)
 }
 
+// Skeleton is a placeholder for content that has not arrived: a rounded block
+// whose shimmer says "loading". Size and radius come from the common box
+// properties, so one element stands in for a line of text or a card. Color is
+// the block and Highlight the band that sweeps across it; Animated turns the
+// sweep off, which is what a screenshot or a reduced-motion build wants.
+type Skeleton struct {
+	Component
+	Color     Prop[uint32]
+	Highlight Prop[uint32]
+	Animated  Prop[bool]
+}
+
+// Kind implements Node.
+func (*Skeleton) Kind() string { return "Skeleton" }
+func (c *Skeleton) namedProps() []NamedProp {
+	return append(c.propsExcept("Skeleton", "color", "highlight", "animated"),
+		ColorProp(&c.NodeBase, "color", DirtyPaint, &c.Color),
+		ColorProp(&c.NodeBase, "highlight", DirtyPaint, &c.Highlight),
+		BoolProp(&c.NodeBase, "animated", DirtyPaint, &c.Animated),
+	)
+}
+
 // DatePicker picks a date.
 type DatePicker struct{ Component }
 

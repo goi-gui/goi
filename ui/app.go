@@ -85,7 +85,7 @@ type App struct {
 	watcher *hotreload.Reloader
 
 	// tweens are the running app animations, touched only on the UI goroutine.
-	tweens []*tween
+	tweens []*Tween
 	// images caches decoded Image assets by path or URL, so a reload is cheap;
 	// anims holds the animations among them.
 	images     map[string]*img.Data

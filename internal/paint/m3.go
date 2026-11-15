@@ -3,6 +3,7 @@ package paint
 import (
 	"math"
 	"strings"
+	"time"
 
 	"github.com/goi-gui/goi/internal/m3"
 	"github.com/goi-gui/goi/internal/text"
@@ -22,7 +23,10 @@ func weightOf(w int) float32 { return float32(text.NearestWeight(text.Weight(w))
 // withAlpha returns c with its alpha multiplied by a.
 func withAlpha(c uint32, a float64) uint32 {
 	if a <= 0 {
-		return 0
+		// Keep the colour and drop only the alpha: a gradient resamples its
+		// stops by mixing colours, so a transparent end written as black would
+		// drag the band it fades into towards black.
+		return c & 0xFFFFFF00
 	}
 	if a > 1 {
 		a = 1
@@ -415,6 +419,8 @@ func (l *List) paintComponent(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		l.paintCircularProgress(c, r, clip)
 	case "LoadingIndicator":
 		l.paintLoadingIndicator(c, r, clip)
+	case "Skeleton":
+		l.paintSkeleton(c, r, clip)
 	case "DatePicker":
 		l.paintDatePicker(c, r, clip)
 	case "TimePicker":
@@ -1949,6 +1955,61 @@ func (l *List) paintLoadingIndicator(c *tree.Component, r tree.Rect, clip tree.R
 		Clip:       clipArr(clip),
 	})
 }
+
+// paintSkeleton draws the placeholder: a rounded block in the base colour with
+// a highlight band sweeping across it, which is what tells a reader the content
+// is on its way rather than missing.
+func (l *List) paintSkeleton(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	sk, ok := c.Node().(*tree.Skeleton)
+	if !ok || r.W <= 0 || r.H <= 0 {
+		return
+	}
+	base := sk.Color.Get()
+	if base == 0 {
+		base = l.Theme.Colors.SurfaceContainerHighest
+	}
+	rad := l.shapeRadius(c.Base(), r)
+	radii := componentRadii(c.Base(), rad)
+	l.fillShape(r, base, nil, radii, 0, 0, clip)
+	if !sk.Animated.Get() {
+		return
+	}
+	l.Animating = true
+	hi := sk.Highlight.Get()
+	if hi == 0 {
+		// No role is lighter than the surface in both schemes, so the default
+		// highlight is the block lifted towards white: a shimmer reads as light
+		// in a light scheme and in a dark one. A light block has less room to
+		// lift, so it takes the larger step.
+		lift := 0.45
+		if !l.Theme.Dark {
+			lift = 0.8
+		}
+		hi = blend(base, 0xFFFFFFFF, lift)
+	}
+	// The band is a third of the block, swept from just off one edge to just off
+	// the other, so the highlight enters and leaves instead of popping.
+	band := math.Max(48, r.W/3)
+	span := r.W + band
+	phase := math.Mod(float64(l.Clock)/float64(skeletonPeriod), 1)
+	g := &tree.Gradient{Kind: tree.LinearKind, Angle: 90, Stops: []tree.GradientStop{
+		{At: 0, Color: withAlpha(hi, 0)},
+		{At: 0.5, Color: withAlpha(hi, 0.75)},
+		{At: 1, Color: withAlpha(hi, 0)},
+	}}
+	l.Ops = append(l.Ops, Op{
+		Kind: Fill, Shape: CSSGradient, Gradient: g,
+		Rect:       rectArr(tree.Rect{X: r.X - band + span*phase, Y: r.Y, W: band, H: r.H}),
+		Color:      hi,
+		Clip:       clipArr(intersect(clip, r)),
+		ClipRadius: float32(rad),
+		ClipBox:    rectArr(r),
+	})
+}
+
+// skeletonPeriod is one sweep of the highlight. 1.4s reads as loading without
+// pulling the eye away from the rest of the page.
+const skeletonPeriod = 1400 * time.Millisecond
 
 // loadingMorphDur is one breath of the loading shape, in seconds. 4.55s is the
 // timing the M3 indicator morphs on.

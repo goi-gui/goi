@@ -701,6 +701,13 @@ func newM3Component(name string) Node {
 			Component: newComponent(),
 			Color:     newProp(nil, "color", DirtyPaint, uint32(0)),
 		}
+	case "Skeleton":
+		return &Skeleton{
+			Component: newComponent(),
+			Color:     newProp(nil, "color", DirtyPaint, uint32(0)),
+			Highlight: newProp(nil, "highlight", DirtyPaint, uint32(0)),
+			Animated:  newProp(nil, "animated", DirtyPaint, true),
+		}
 	case "DatePicker":
 		return &DatePicker{Component: newComponent()}
 	case "ColorPicker":

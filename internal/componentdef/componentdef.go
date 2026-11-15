@@ -72,6 +72,7 @@ var Kinds = []Kind{
 	{"LinearProgress", false},
 	{"CircularProgress", true},
 	{"LoadingIndicator", false},
+	{"Skeleton", false},
 	// Date and time.
 	{"DatePicker", true},
 	{"TimePicker", true},
@@ -143,6 +144,7 @@ var props = map[string][]string{
 	"LinearProgress":   {"variant", "value", "min", "max", "thickness"},
 	"CircularProgress": {"variant", "value", "min", "max", "thickness"},
 	"LoadingIndicator": {"variant", "color"},
+	"Skeleton":         {"color", "highlight", "animated"},
 	"DatePicker":       {"label", "text", "variant"},
 	"TimePicker":       {"label", "text", "variant", "hourFormat"},
 	"ColorPicker":      {"label", "text"},
@@ -237,6 +239,8 @@ var defaults = map[string]any{
 	// A code block offers its copy button until the design says otherwise.
 	"showCopy":    true,
 	"selectedRow": -1.0,
+	// A skeleton shimmers until the design says otherwise.
+	"animated": true,
 	// A map starts on the whole world, drawn from OpenStreetMap, and credits
 	// it until the design says otherwise.
 	"zoom":        2.0,
@@ -312,7 +316,7 @@ func TypeOfFor(kind, name string) PropType {
 // TypeOf returns the literal type of a component property.
 func TypeOf(name string) PropType {
 	switch name {
-	case "disabled", "checked", "selected", "expanded", "showCopy",
+	case "disabled", "checked", "selected", "expanded", "showCopy", "animated",
 		"sortable", "numeric", "striped", "showHeader", "stickyHeader", "sortAscending",
 		"grid", "axis", "legend", "values", "stacked", "horizontal", "smooth", "points",
 		"disablePan", "disableZoom", "reverseTileColors":
@@ -323,7 +327,7 @@ func TypeOf(name string) PropType {
 		return Number
 	case "variant", "crossAxisAlign", "mainAxisAlign", "align", "selectable":
 		return Enum
-	case "textColor", "gridColor", "color", "lineColor", "fillColor":
+	case "textColor", "gridColor", "color", "lineColor", "fillColor", "highlight":
 		return Color
 	case "categories", "bbox", "data", "coordinate", "coordinates":
 		return List
