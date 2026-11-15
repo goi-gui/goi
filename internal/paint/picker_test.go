@@ -187,3 +187,30 @@ func TestTimePickerMinuteHandTakesEveryMinute(t *testing.T) {
 		t.Fatalf("picked circle at angle %v, want %v", gotAngle, wantAngle)
 	}
 }
+
+// TestTimePickerFieldsAreCentred: the hour and minute are one group in the
+// middle of the card, and a 24-hour clock centres the two fields on their own
+// because the AM/PM control is not there to widen the group.
+func TestTimePickerFieldsAreCentred(t *testing.T) {
+	r := tree.Rect{W: 328, H: 420}
+	for _, format := range []int{12, 24} {
+		tl := TimeLayoutOf(r, "09:30", 0, "dial", format)
+		right := tl.MinBox.Right()
+		if format == 12 {
+			if tl.AMBox.W == 0 {
+				t.Fatal("a 12-hour clock has no AM/PM box")
+			}
+			right = tl.PMBox.Right()
+		} else if tl.AMBox.W != 0 {
+			t.Fatal("a 24-hour clock drew an AM/PM box")
+		}
+		if got := (tl.HourBox.X + right) / 2; got != r.W/2 {
+			t.Fatalf("%dh group centre = %v, want %v", format, got, r.W/2)
+		}
+	}
+	// A card narrower than the group keeps the padding instead of clipping.
+	narrow := TimeLayoutOf(tree.Rect{W: 240, H: 420}, "09:30", 0, "dial", 12)
+	if narrow.HourBox.X < timePad {
+		t.Fatalf("hour box at %v, want at least the %v padding", narrow.HourBox.X, timePad)
+	}
+}

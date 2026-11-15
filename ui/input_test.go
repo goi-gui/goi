@@ -1595,3 +1595,45 @@ func TestPopoverPanelIsNotHitWhenItsAnchorScrolledAway(t *testing.T) {
 		}
 	}
 }
+
+// TestTimePickerDragDoesNotScrollAfterRelease is the stuck-button bug: dragging
+// the clock dial kept the press state, so the next pointer move dragged the
+// page as if the button were still down.
+func TestTimePickerDragDoesNotScrollAfterRelease(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		Column {
+			id:     page
+			scroll: true
+			width:  400
+			height: 500
+
+			TimePicker {
+				id:   pick
+				text: "09:30"
+			}
+
+			Rectangle { width: 300 height: 600 background: #ff0000 }
+		}
+	}`, 400, 500)
+	pick := MustByID[*TimePicker](win, "pick")
+	rect := absoluteRect(pick)
+	tl := paint.TimeLayoutOf(rect, "09:30", 0, "dial", 12)
+	cx, cy := tl.Dial.X+tl.Dial.W/2, tl.Dial.Y+tl.Dial.H/2
+
+	// Press the top of the dial, drag the hand and let go.
+	in.MouseDown(cx, cy-tl.DialRadius(), 0, false)
+	in.MouseMove(cx+20, cy-40)
+	in.MouseUp(cx+20, cy-40, 0)
+	if in.scrollNode != nil || in.pressed != nil {
+		t.Fatalf("the release left press state behind: scrollNode set=%v pressed set=%v",
+			in.scrollNode != nil, in.pressed != nil)
+	}
+
+	// Moving without a button must not scroll the page.
+	page := MustByID[*Column](win, "page").Base()
+	before := page.ScrollOffset()
+	in.MouseMove(cx, cy+150)
+	if got := page.ScrollOffset(); got != before {
+		t.Fatalf("the page scrolled to %v after a plain move (was %v)", got, before)
+	}
+}

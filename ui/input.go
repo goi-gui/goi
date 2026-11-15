@@ -940,6 +940,7 @@ func (i *interactor) MouseUp(x, y float64, button int) {
 	if i.colorNode != nil {
 		n := i.colorNode
 		i.colorNode = nil
+		defer i.endPress()
 		if c := comp(n); c != nil {
 			c.Submit.Emit(c.Text.Get())
 		}
@@ -949,6 +950,7 @@ func (i *interactor) MouseUp(x, y float64, button int) {
 	if i.pickNode != nil {
 		n := i.pickNode
 		i.pickNode = nil
+		defer i.endPress()
 		if c := comp(n); c != nil {
 			if tp := timePickerAt(n); tp != nil {
 				i.finishPick(n, c, tp)
@@ -958,23 +960,7 @@ func (i *interactor) MouseUp(x, y float64, button int) {
 	}
 	i.finishSeek()
 	swallow := i.gestureRelease(x, y)
-	defer func() {
-		if i.scrolled && i.scrollNode != nil {
-			i.settleSnap(i.scrollNode, tree.AxisNone)
-		}
-		// A thumb that was pulled and let go settles the same way a drag does.
-		if i.scrollbar != nil {
-			i.settleSnap(i.scrollbar, i.scrollbarAxis)
-		}
-		i.pressed = nil
-		i.dragging = false
-		i.scrollNode = nil
-		i.scrolled = false
-		i.textField = nil
-		i.selecting = false
-		i.scrollbar = nil
-		i.mapNode = nil
-	}()
+	defer i.endPress()
 	if i.pressed == nil {
 		i.dragging = false
 		return
@@ -1004,6 +990,27 @@ func (i *interactor) MouseUp(x, y float64, button int) {
 
 	i.activate(target, c, x, y)
 	_ = button
+}
+
+// endPress drops the state one press owns, however the press ended: a click, a
+// picker drag, a swallowed gesture. A scrollNode left behind is the one that
+// bites: every later move would drag the page as if the button were still down.
+func (i *interactor) endPress() {
+	if i.scrolled && i.scrollNode != nil {
+		i.settleSnap(i.scrollNode, tree.AxisNone)
+	}
+	// A thumb that was pulled and let go settles the same way a drag does.
+	if i.scrollbar != nil {
+		i.settleSnap(i.scrollbar, i.scrollbarAxis)
+	}
+	i.pressed = nil
+	i.dragging = false
+	i.scrollNode = nil
+	i.scrolled = false
+	i.textField = nil
+	i.selecting = false
+	i.scrollbar = nil
+	i.mapNode = nil
 }
 
 // activate runs the component's click behaviour.

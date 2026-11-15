@@ -159,8 +159,19 @@ func TimeLayoutOf(r tree.Rect, value string, field int, variant string, format i
 	left := r.X + timePad
 	top := r.Y + timeHeaderTop
 	tl.Title = tree.Rect{X: left, Y: r.Y + timeTitleTop, W: r.W - 2*timePad, H: 16}
-	tl.HourBox = tree.Rect{X: left, Y: top, W: timeFieldW, H: timeFieldH}
-	tl.MinBox = tree.Rect{X: left + timeFieldW + 24, Y: top, W: timeFieldW, H: timeFieldH}
+	// The hour and minute are one group, centred in the card. A 12-hour clock
+	// adds the AM/PM control to the group, so a 24-hour one centres the two
+	// fields on their own instead of leaving the gap where the control was.
+	groupW := 2*timeFieldW + 24
+	if format == 12 {
+		groupW += 12 + timeAMPMW
+	}
+	fieldsLeft := r.X + (r.W-groupW)/2
+	if fieldsLeft < left {
+		fieldsLeft = left
+	}
+	tl.HourBox = tree.Rect{X: fieldsLeft, Y: top, W: timeFieldW, H: timeFieldH}
+	tl.MinBox = tree.Rect{X: fieldsLeft + timeFieldW + 24, Y: top, W: timeFieldW, H: timeFieldH}
 	if format == 12 {
 		ampmX := tl.MinBox.Right() + 12
 		tl.AMBox = tree.Rect{X: ampmX, Y: top, W: timeAMPMW, H: timeFieldH / 2}

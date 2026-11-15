@@ -2315,3 +2315,18 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   stays on top, while a panel without one still beats the siblings written after
   its host. CSS reads the same way: an absolute child with z-index auto paints at
   its tree position, and anything with a real z-index beats it.
+- **One press, one cleanup path.** `MouseUp` returned early for the colour hex
+  field and the time dial, and those returns skipped the deferred reset: the
+  `scrollNode` a press in a scroll area sets stayed behind, so every later
+  pointer move dragged the page as if the button were still down. The reset is
+  `endPress` now and all three paths call it, because the state is one press's,
+  not one gesture's — a picker drag owns the same fields a click does. The
+  colour path had a second leak in the same place: it starts the hex field as a
+  text field and never cleared it.
+- **The clock's fields are a centred group, not a left column.** The hour, the
+  colon and the minute were laid out from the card's padding, which left the
+  24-hour clock looking off-centre once the AM/PM control was gone. The group is
+  measured (hour, gap, minute, and AM/PM only on a 12-hour clock) and centred in
+  the card, with the padding kept as the floor for a card narrower than the
+  group. Centring the fields rather than the header row keeps the title and the
+  bottom actions where they were.
