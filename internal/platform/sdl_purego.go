@@ -29,7 +29,7 @@ func sdlInit() error {
 		return err
 	}
 	if wantWaylandDriver(os.Getenv) {
-		_ = sdl.SetHint("SDL_VIDEODRIVER", "wayland")
+		_ = sdl.SetHint(sdl.HINT_VIDEO_DRIVER, "wayland")
 	}
 	return sdl.Init(sdl.INIT_VIDEO)
 }

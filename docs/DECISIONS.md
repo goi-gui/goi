@@ -2102,3 +2102,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   background underneath. The bitmap branch now reads the op's `Radius`, while
   `ClipRadius` stays the rounded clip; `paintBitmap` sets both for an image and
   the map sets only the clip.
+- **A loop's rows keep the slot the loop was declared in.** `fillEach` appended
+  every refill at the end of the parent's child list. A loop that was empty when
+  the tree was built and filled later therefore put its rows above a sibling
+  written after it — a map's polygons covered the Point marker that followed
+  them. The block now remembers its index and refill moves the new rows back to
+  it, so source order is paint order whether the list arrives at build time or
+  from `SetData`.

@@ -31,8 +31,12 @@ type eachBlock struct {
 	listName string
 	src      string
 	arm      []syntax.Member
-	// parent is the element the arm members are built under.
+	// parent is the element the arm members are built under, and at is the
+	// slot in its child list where the loop was declared. A refill inserts the
+	// new rows there, not at the end, so a later sibling (a map marker, say)
+	// keeps painting above the rows.
 	parent *NodeBase
+	at     int
 	scope  *scope
 	hooks  *Hooks
 	nodes  []*NodeBase
@@ -125,6 +129,7 @@ func (t *Tree) buildFor(blk *syntax.Block, parent *NodeBase, hooks *Hooks) error
 		val:    blk.LoopVal(),
 		rng:    blk.Range,
 		parent: parent,
+		at:     len(parent.kids),
 		scope:  t.scope,
 		hooks:  hooks,
 	}
@@ -173,6 +178,7 @@ func (t *Tree) fillEach(eb *eachBlock) {
 		eb.parent.mark(DirtyLayout)
 		return
 	}
+	start := len(eb.parent.kids)
 	for _, p := range pairs {
 		sc := eb.scope
 		if eb.val != "" {
@@ -191,6 +197,19 @@ func (t *Tree) fillEach(eb *eachBlock) {
 			for _, fn := range t.eachHooks[eb.listName] {
 				fn(rows[0].node, p.value)
 			}
+		}
+	}
+	// buildInto appends to the parent; move the new rows back to the slot the
+	// loop occupied, so a sibling declared after the loop still paints after it.
+	k := eb.parent.kids
+	if added := k[start:]; len(added) > 0 {
+		at := min(eb.at, start)
+		if at < start {
+			out := make([]*NodeBase, 0, len(k))
+			out = append(out, k[:at]...)
+			out = append(out, added...)
+			out = append(out, k[at:start]...)
+			eb.parent.kids = out
 		}
 	}
 	t.prune()

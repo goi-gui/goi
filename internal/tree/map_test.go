@@ -270,3 +270,55 @@ func TestGeomDataFromLoop(t *testing.T) {
 		t.Fatal("no Geom built from the loop")
 	}
 }
+
+type testItem struct {
+	Label string `goi:"label"`
+}
+
+// TestLoopRowsKeepTheirSourceOrder is the map's z-order guard: a loop that is
+// empty when the tree is built fills later, and its rows must land where the
+// loop was declared. Appending them at the end put them above a Point written
+// after the loop, so the marker disappeared under the polygons.
+func TestLoopRowsKeepTheirSourceOrder(t *testing.T) {
+	tr, diag := BuildSource([]byte(`bridge { Items []item }
+	type item { Label string }
+	Window {
+		Column {
+			id: col
+			Text { text: "before" }
+			for _, it := range bridge.Items {
+				Text { text: it.Label }
+			}
+			Text { text: "after" }
+		}
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	col, ok := tr.ByID("col")
+	if !ok {
+		t.Fatal("no column")
+	}
+	texts := func() []string {
+		var out []string
+		for _, k := range col.Base().Kids() {
+			if tx, ok := k.Node().(*Text); ok {
+				out = append(out, tx.Text.Get())
+			}
+		}
+		return out
+	}
+	if got := texts(); len(got) != 2 || got[0] != "before" || got[1] != "after" {
+		t.Fatalf("empty loop order = %v", got)
+	}
+	tr.SetData("Items", []testItem{{Label: "one"}})
+	tr.ApplyExpressions()
+	if got := texts(); len(got) != 3 || got[0] != "before" || got[1] != "one" || got[2] != "after" {
+		t.Fatalf("one row order = %v", got)
+	}
+	tr.SetData("Items", []testItem{{Label: "one"}, {Label: "two"}})
+	tr.ApplyExpressions()
+	if got := texts(); len(got) != 4 || got[0] != "before" || got[1] != "one" || got[2] != "two" || got[3] != "after" {
+		t.Fatalf("two row order = %v", got)
+	}
+}
