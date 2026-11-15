@@ -5,14 +5,16 @@ on:
     branches: [master]
   pull_request:
 
+# The build is cgo-free: the window layer loads the SDL3 runtime library through
+# purego, so no C toolchain or SDL development files are needed. The test job
+# still installs the runtime library, because a test that opens a window needs
+# it on the machine; everything else runs headless.
 jobs:
-  # The platform layer is cgo over SDL3, so every target is built natively on
-  # its own runner rather than cross-compiled.
   test:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -20,14 +22,14 @@ jobs:
         with:
           go-version: "1.27.x"
 
-      # SDL3's Linux packages do not carry the X11 and Wayland bits goi needs on
-      # every runner, so Linux builds it from source with SDL's README-linux
-      # dependency set.
-      - name: SDL3 (Linux)
+      # SDL3's Linux package may not be available on every runner, so build the
+      # runtime from source. No development files are needed by goi itself; this
+      # is only for tests that open a window.
+      - name: SDL3 runtime (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake ninja-build pkg-config \
+          sudo apt-get install -y cmake ninja-build \
             libasound2-dev libpulse-dev libudev-dev libdrm-dev libgbm-dev \
             libegl1-mesa-dev libwayland-dev libdecor-0-dev wayland-protocols \
             libxkbcommon-dev libxkbcommon-x11-dev libxtst-dev libx11-dev libxext-dev \
@@ -38,79 +40,34 @@ jobs:
             -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
           cmake --build sdl-build --parallel
           sudo cmake --install sdl-build
-          # /usr/local/lib is not on the loader's default path on every runner.
           sudo ldconfig
 
-      - name: SDL3 (macOS)
+      - name: SDL3 runtime (macOS)
         if: runner.os == 'macOS'
-        run: |
-          brew install sdl3
-          echo "PKG_CONFIG_PATH=$(brew --prefix)/lib/pkgconfig" >> "$GITHUB_ENV"
-
-      - uses: msys2/setup-msys2@v2
-        if: runner.os == 'Windows'
-        with:
-          msystem: MINGW64
-          update: false
-          path-type: inherit
-          install: >-
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-pkgconf
-            mingw-w64-x86_64-sdl3
+        run: brew install sdl3
 
       - name: Build
-        if: runner.os != 'Windows'
-        run: |
-          if [ "$RUNNER_OS" = "Linux" ]; then
-            go build -ldflags=-linkmode=internal ./...
-          else
-            go build ./...
-          fi
-
-      - name: Build (Windows)
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: go build ./...
+        run: CGO_ENABLED=0 go build -tags nofakecgo ./...
 
       - name: Vet
-        if: runner.os != 'Windows'
-        run: go vet ./...
+        run: CGO_ENABLED=0 go vet -tags nofakecgo ./...
 
-      # Headless packages only: the renderer and the window need a display, so
-      # those are exercised by the examples. Linux links the internal linker
-      # because goffi's dynamic imports and the cgo SDL shim cannot share the
-      # external one. Tests that read a sibling checkout skip without it.
       - name: Test
-        if: runner.os == 'Linux'
-        run: go test -race -ldflags=-linkmode=internal ./internal/syntax ./internal/schema ./internal/layout ./internal/paint ./internal/text ./internal/hotreload ./internal/lsp ./internal/goifmt ./ui
+        run: CGO_ENABLED=0 go test -tags nofakecgo ./...
 
-      - name: Test (macOS)
-        if: runner.os == 'macOS'
-        run: go test -race ./internal/syntax ./internal/schema ./internal/layout ./internal/paint ./internal/text ./internal/hotreload ./internal/lsp ./internal/goifmt ./ui
-
-  # Everything above internal/platform is pure Go, so it must cross-compile
-  # without a C toolchain. This catches a cgo import leaking into a pure layer.
-  cross:
-    runs-on: ubuntu-latest
+  # A plain Windows runner: the purego build needs no MSYS2, gcc or pkg-config.
+  windows:
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: "1.27.x"
-      - run: |
-          for os in linux windows darwin; do
-            for arch in amd64 arm64; do
-              echo "== $os/$arch"
-              CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build \
-                ./internal/syntax ./internal/schema ./internal/tree ./internal/layout \
-                ./internal/paint ./internal/text ./internal/render
-            done
-          done
+      - run: CGO_ENABLED=0 go build -tags nofakecgo ./...
 
-  # The purego platform needs no cgo: one machine can build every target. This
-  # is the path a user without a C toolchain and SDL headers takes, and it keeps
-  # goffi and purego sharing one fake C runtime through nofakecgo.
-  purego:
+  # The whole app cross-compiles from one machine: there is no cgo to ask for a
+  # target toolchain, and SDL3 is only needed where the app runs.
+  cross:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -125,8 +82,7 @@ jobs:
             done
           done
 
-  # The browser build needs no C toolchain and no display, so it builds and
-  # tests here: GOOS=js swaps the window layer and the WebGPU backend only.
+  # The browser build needs no display and no runtime library.
   wasm:
     runs-on: ubuntu-latest
     steps:
@@ -148,27 +104,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.27.x"
-
-      - name: SDL3 (Linux)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake ninja-build pkg-config \
-            libasound2-dev libpulse-dev libudev-dev libdrm-dev libgbm-dev \
-            libegl1-mesa-dev libwayland-dev libdecor-0-dev wayland-protocols \
-            libxkbcommon-dev libxkbcommon-x11-dev libxtst-dev libx11-dev \
-            libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxfixes-dev \
-            libxss-dev libxinerama-dev
-          curl -sL "https://github.com/libsdl-org/SDL/releases/download/release-3.4.20/SDL3-3.4.20.tar.gz" | tar xz
-          cmake -S SDL3-3.4.20 -B sdl-build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
-          cmake --build sdl-build --parallel
-          sudo cmake --install sdl-build
-          # /usr/local/lib is not on the loader's default path on every runner.
-          sudo ldconfig
-
       - run: go install honnef.co/go/tools/cmd/staticcheck@latest
-      - run: staticcheck ./...
       - run: CGO_ENABLED=0 staticcheck -tags nofakecgo ./...
+      - run: CGO_ENABLED=0 go vet -tags nofakecgo ./...
       - name: gofmt
         run: |
           unformatted=$(gofmt -l .)

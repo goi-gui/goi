@@ -1,59 +1,49 @@
-//go:build !js && cgo
+//go:build !js
 
 package platform
 
-/*
-#cgo pkg-config: sdl3
-#include <stdlib.h>
-#include "sdl_shim.h"
-*/
-import "C"
+// The SDL3 backend. It loads libSDL3 through purego, so the framework needs no
+// C toolchain or SDL development files: the runtime library is the only
+// requirement. Every port uses this one implementation.
 
 import (
-	"errors"
 	"os"
+	"sync"
 	"unsafe"
+
+	sdl "github.com/Zyko0/go-sdl3/sdl"
 )
 
-// sdlError turns SDL's last error into a Go error.
-func sdlError(what string) error {
-	msg := C.GoString(C.SDL_GetError())
-	if msg == "" {
-		msg = "unknown SDL error"
-	}
-	return errors.New(what + ": " + msg)
+var sdlOnce sync.Once
+
+func loadSDL() error {
+	var err error
+	sdlOnce.Do(func() {
+		err = sdl.LoadLibrary(sdl.Path())
+	})
+	return err
 }
 
 func sdlInit() error {
-	// SDL keeps the Wayland driver only on a compositor that offers fifo-v1 and
-	// otherwise falls back to XWayland, which shows black during an interactive
-	// resize and cannot drag or resize a borderless window at all. SDL documents
-	// this override; the frame pacing it avoids is what the renderer's FIFO
-	// present already provides.
+	if err := loadSDL(); err != nil {
+		return err
+	}
 	if wantWaylandDriver(os.Getenv) {
-		C.goiPreferWaylandDriver()
+		_ = sdl.SetHint(sdl.HINT_VIDEO_DRIVER, "wayland")
 	}
-	if !C.SDL_Init(C.SDL_INIT_VIDEO) {
-		return sdlError("init video")
-	}
-	return nil
+	return sdl.Init(sdl.INIT_VIDEO)
 }
 
-func sdlQuit() { C.SDL_Quit() }
+func sdlQuit() { sdl.Quit() }
 
 func sdlCreateWindow(title string, w, h int, decorated bool) (unsafe.Pointer, error) {
-	ctitle := C.CString(title)
-	defer C.free(unsafe.Pointer(ctitle))
-	flags := C.SDL_WindowFlags(C.SDL_WINDOW_RESIZABLE) | C.SDL_WindowFlags(C.SDL_WINDOW_HIGH_PIXEL_DENSITY) |
-		C.SDL_WindowFlags(C.goiExtraWindowFlags())
+	flags := sdl.WINDOW_RESIZABLE | sdl.WINDOW_HIGH_PIXEL_DENSITY | sdl.WindowFlags(sdlExtraWindowFlags())
 	if !decorated {
-		// A borderless window has no platform title bar; the design draws its
-		// own and the hit test supplies drag and resize edges.
-		flags |= C.SDL_WindowFlags(C.SDL_WINDOW_BORDERLESS)
+		flags |= sdl.WINDOW_BORDERLESS
 	}
-	win := C.SDL_CreateWindow(ctitle, C.int(w), C.int(h), flags)
-	if win == nil {
-		return nil, sdlError("create window")
+	win, err := sdl.CreateWindow(title, w, h, flags)
+	if err != nil {
+		return nil, err
 	}
 	return unsafe.Pointer(win), nil
 }
@@ -62,225 +52,312 @@ func sdlDestroyWindow(p unsafe.Pointer) {
 	if p == nil {
 		return
 	}
-	C.goiFreeCursors()
-	// A Metal view is attached to the window, so it has to go first.
-	C.goiFreeMetalView()
-	C.SDL_DestroyWindow((*C.SDL_Window)(p))
+	sdlFreeCursors()
+	sdlFreeMetalView()
+	(*sdl.Window)(p).Destroy()
 }
 
-func sdlVideoDriver() string { return C.GoString(C.SDL_GetCurrentVideoDriver()) }
+func sdlVideoDriver() string { return sdl.GetCurrentVideoDriver() }
 
 func sdlPollEvent() (rawEvent, bool) {
-	var e C.goiEvent
-	if C.goiPollEvent(&e) == 0 {
-		return rawEvent{}, false
+	var e sdl.Event
+	for sdl.PollEvent(&e) {
+		if ev, ok := translateSDLEvent(&e); ok {
+			return ev, true
+		}
 	}
-	return translateEvent(&e), true
+	return rawEvent{}, false
 }
 
 func sdlWaitEvent() (rawEvent, bool) {
-	var e C.goiEvent
-	if C.goiWaitEvent(&e) == 0 {
-		return rawEvent{}, false
+	for {
+		var e sdl.Event
+		if err := sdl.WaitEvent(&e); err != nil {
+			return rawEvent{}, false
+		}
+		if ev, ok := translateSDLEvent(&e); ok {
+			return ev, true
+		}
 	}
-	return translateEvent(&e), true
 }
 
-// sdlWaitEventTimeout waits up to ms for an event. A zero or negative timeout
-// only polls.
 func sdlWaitEventTimeout(ms int) (rawEvent, bool) {
-	var e C.goiEvent
-	if C.goiWaitEventTimeout(&e, C.int(ms)) == 0 {
-		return rawEvent{}, false
-	}
-	return translateEvent(&e), true
-}
-
-func translateEvent(e *C.goiEvent) rawEvent {
-	return rawEvent{
-		kind:     int(e._type),
-		width:    int(e.width),
-		height:   int(e.height),
-		x:        float64(e.x),
-		y:        float64(e.y),
-		button:   int(e.button),
-		down:     e.down != 0,
-		wheelX:   float64(e.wheelX),
-		wheelY:   float64(e.wheelY),
-		scancode: int(e.scancode),
-		mod:      int(e.mod),
-		text:     C.GoString(e.text),
-		caret:    int(e.caret),
-		scale:    float64(e.scale),
+	for {
+		var e sdl.Event
+		if !sdl.WaitEventTimeout(&e, int32(ms)) {
+			return rawEvent{}, false
+		}
+		if ev, ok := translateSDLEvent(&e); ok {
+			return ev, true
+		}
 	}
 }
 
-func sdlPushUserEvent() { C.goiPushUserEvent() }
+// translateSDLEvent turns one SDL event into the framework's rawEvent.
+func translateSDLEvent(e *sdl.Event) (rawEvent, bool) {
+	switch e.Type {
+	case sdl.EVENT_QUIT:
+		return rawEvent{kind: evQuit}, true
+	case sdl.EVENT_WINDOW_CLOSE_REQUESTED:
+		return rawEvent{kind: evClose}, true
+	case sdl.EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+		w := e.WindowEvent()
+		return rawEvent{kind: evResize, width: int(w.Data1), height: int(w.Data2)}, true
+	case sdl.EVENT_WINDOW_EXPOSED:
+		return rawEvent{kind: evExpose}, true
+	case sdl.EVENT_WINDOW_FOCUS_GAINED:
+		return rawEvent{kind: evFocusIn}, true
+	case sdl.EVENT_WINDOW_FOCUS_LOST:
+		return rawEvent{kind: evFocusOut}, true
+	case sdl.EVENT_WINDOW_MOUSE_LEAVE:
+		return rawEvent{kind: evMouseLeave}, true
+	case sdl.EVENT_MOUSE_MOTION:
+		m := e.MouseMotionEvent()
+		return rawEvent{kind: evMotion, x: float64(m.X), y: float64(m.Y)}, true
+	case sdl.EVENT_MOUSE_BUTTON_DOWN, sdl.EVENT_MOUSE_BUTTON_UP:
+		b := e.MouseButtonEvent()
+		return rawEvent{kind: evButton, x: float64(b.X), y: float64(b.Y), button: int(b.Button) - 1, down: b.Down}, true
+	case sdl.EVENT_MOUSE_WHEEL:
+		w := e.MouseWheelEvent()
+		return rawEvent{kind: evWheel, wheelX: float64(w.X), wheelY: float64(w.Y)}, true
+	case sdl.EVENT_KEY_DOWN:
+		k := e.KeyboardEvent()
+		return rawEvent{kind: evKey, scancode: int(k.Scancode), mod: int(k.Mod)}, true
+	case sdl.EVENT_TEXT_INPUT:
+		return rawEvent{kind: evText, text: e.TextInputEvent().Text}, true
+	case sdl.EVENT_TEXT_EDITING:
+		t := e.TextEditingEvent()
+		return rawEvent{kind: evEditing, text: t.Text, caret: int(t.Start)}, true
+	case sdl.EVENT_USER:
+		return rawEvent{kind: evUser}, true
+	case sdl.EVENT_SYSTEM_THEME_CHANGED:
+		return rawEvent{kind: evTheme}, true
+	case sdl.EVENT_LOCALE_CHANGED:
+		return rawEvent{kind: evLocale}, true
+	case sdl.EVENT_PINCH_UPDATE:
+		return rawEvent{kind: evPinch, scale: float64(pinchScale(e))}, true
+	}
+	return rawEvent{}, false
+}
 
-func sdlSetCursor(kind int) { C.goiSetCursorKind(C.int(kind)) }
+// pinchScale reads SDL_PinchFingerEvent.scale. go-sdl3 declares the struct but
+// has no accessor, so the field is read at its ABI offset: type, reserved,
+// timestamp, then the float at byte 16.
+func pinchScale(e *sdl.Event) float32 {
+	return *(*float32)(unsafe.Add(unsafe.Pointer(e), 16))
+}
+
+func sdlPushUserEvent() {
+	var e sdl.Event
+	e.Type = sdl.EVENT_USER
+	_ = sdl.PushEvent(&e)
+}
+
+var puregoCursors [int(sdl.SYSTEM_CURSOR_COUNT)]*sdl.Cursor
+var puregoCursorHidden bool
+
+func sdlSetCursor(kind int) {
+	if kind == int(sdl.SYSTEM_CURSOR_COUNT) {
+		if !puregoCursorHidden {
+			sdl.HideCursor()
+			puregoCursorHidden = true
+		}
+		return
+	}
+	if puregoCursorHidden {
+		sdl.ShowCursor()
+		puregoCursorHidden = false
+	}
+	if kind < 0 || kind >= len(puregoCursors) {
+		return
+	}
+	if puregoCursors[kind] == nil {
+		c, err := sdl.CreateSystemCursor(sdl.SystemCursor(kind))
+		if err != nil {
+			return
+		}
+		puregoCursors[kind] = c
+	}
+	sdl.SetCursor(puregoCursors[kind])
+}
+
+func sdlFreeCursors() {
+	for i, c := range puregoCursors {
+		if c != nil {
+			c.Destroy()
+			puregoCursors[i] = nil
+		}
+	}
+	if puregoCursorHidden {
+		sdl.ShowCursor()
+		puregoCursorHidden = false
+	}
+}
 
 func sdlWindowSizePixels(p unsafe.Pointer) (int, int) {
-	var w, h C.int
-	C.goiWindowSizePixels((*C.SDL_Window)(p), &w, &h)
+	w, h, err := (*sdl.Window)(p).SizeInPixels()
+	if err != nil {
+		return 0, 0
+	}
 	return int(w), int(h)
 }
 
 func sdlWindowSize(p unsafe.Pointer) (int, int) {
-	var w, h C.int
-	if !C.SDL_GetWindowSize((*C.SDL_Window)(p), &w, &h) {
+	w, h, err := (*sdl.Window)(p).Size()
+	if err != nil {
 		return 0, 0
 	}
 	return int(w), int(h)
 }
 
 func sdlWindowScale(p unsafe.Pointer) float32 {
-	return float32(C.goiWindowScale((*C.SDL_Window)(p)))
+	s, err := (*sdl.Window)(p).PixelDensity()
+	if err != nil || s <= 0 {
+		return 1
+	}
+	return s
 }
 
-func sdlWindowFlags(p unsafe.Pointer) uint64 {
-	return uint64(C.SDL_GetWindowFlags((*C.SDL_Window)(p)))
-}
+func sdlWindowFlags(p unsafe.Pointer) uint64 { return uint64((*sdl.Window)(p).Flags()) }
 
-func sdlSetTitle(p unsafe.Pointer, title string) {
-	ctitle := C.CString(title)
-	defer C.free(unsafe.Pointer(ctitle))
-	C.SDL_SetWindowTitle((*C.SDL_Window)(p), ctitle)
-}
+func sdlSetTitle(p unsafe.Pointer, title string) { _ = (*sdl.Window)(p).SetTitle(title) }
 
-func sdlMinimize(p unsafe.Pointer) { C.SDL_MinimizeWindow((*C.SDL_Window)(p)) }
-func sdlMaximize(p unsafe.Pointer) { C.SDL_MaximizeWindow((*C.SDL_Window)(p)) }
-func sdlRestore(p unsafe.Pointer)  { C.SDL_RestoreWindow((*C.SDL_Window)(p)) }
+func sdlMinimize(p unsafe.Pointer) { _ = (*sdl.Window)(p).Minimize() }
+func sdlMaximize(p unsafe.Pointer) { _ = (*sdl.Window)(p).Maximize() }
+func sdlRestore(p unsafe.Pointer)  { _ = (*sdl.Window)(p).Restore() }
 
-func sdlSetResizable(p unsafe.Pointer, on bool) {
-	C.SDL_SetWindowResizable((*C.SDL_Window)(p), C.bool(on))
-}
+func sdlSetResizable(p unsafe.Pointer, on bool) { _ = (*sdl.Window)(p).SetResizable(on) }
 
 func sdlSetWindowSize(p unsafe.Pointer, w, h int) {
-	C.SDL_SetWindowSize((*C.SDL_Window)(p), C.int(w), C.int(h))
+	_ = (*sdl.Window)(p).SetSize(int32(w), int32(h))
 }
 
-// sdlSetSizeLimits sets the minimum and maximum window size in window
-// coordinates (logical points). A zero maximum means "no limit", which is what
-// SDL uses to clear the constraint.
 func sdlSetSizeLimits(p unsafe.Pointer, minW, minH, maxW, maxH int) {
-	C.SDL_SetWindowMinimumSize((*C.SDL_Window)(p), C.int(minW), C.int(minH))
-	C.SDL_SetWindowMaximumSize((*C.SDL_Window)(p), C.int(maxW), C.int(maxH))
+	win := (*sdl.Window)(p)
+	_ = win.SetMinimumSize(int32(minW), int32(minH))
+	_ = win.SetMaximumSize(int32(maxW), int32(maxH))
 }
 
-func sdlSetFullscreen(p unsafe.Pointer, on bool) {
-	C.SDL_SetWindowFullscreen((*C.SDL_Window)(p), C.bool(on))
-}
+func sdlSetFullscreen(p unsafe.Pointer, on bool) { _ = (*sdl.Window)(p).SetFullscreen(on) }
 
-// sdlSystemLanguage returns the desktop's preferred language code, or "".
 func sdlSystemLanguage() string {
-	cstr := C.goiSystemLanguage()
-	defer C.SDL_free(unsafe.Pointer(cstr))
-	return C.GoString(cstr)
-}
-
-func sdlInstallHitTest(p unsafe.Pointer) { C.goiInstallHitTest((*C.SDL_Window)(p)) }
-
-func sdlStartTextInput(p unsafe.Pointer) error {
-	if !C.SDL_StartTextInput((*C.SDL_Window)(p)) {
-		return sdlError("start text input")
-	}
-	return nil
-}
-
-func sdlStopTextInput(p unsafe.Pointer) { C.SDL_StopTextInput((*C.SDL_Window)(p)) }
-
-func sdlSetTextInputArea(p unsafe.Pointer, x, y, w, h int) {
-	C.goiSetTextInputArea((*C.SDL_Window)(p), C.int(x), C.int(y), C.int(w), C.int(h))
-}
-
-func sdlModState() int { return int(C.SDL_GetModState()) }
-
-// sdlSystemTheme reports the desktop preference: 0 unknown, 1 light, 2 dark.
-func sdlSystemTheme() int { return int(C.goiSystemTheme()) }
-
-func sdlClipboard() string {
-	p := C.goiClipboardText()
-	if p == nil {
+	locales, err := sdl.GetPreferredLocales()
+	if err != nil || len(locales) == 0 {
 		return ""
 	}
-	defer C.SDL_free(unsafe.Pointer(p))
-	return C.GoString(p)
+	return locales[0].Language
+}
+
+var puregoHitTest sdl.HitTest
+
+func sdlInstallHitTest(p unsafe.Pointer) {
+	win := (*sdl.Window)(p)
+	puregoHitTest = sdl.NewHitTest(func(_ *sdl.Window, area *sdl.Point) sdl.HitTestResult {
+		if currentHitTest == nil {
+			return sdl.HITTEST_NORMAL
+		}
+		return sdl.HitTestResult(currentHitTest(float64(area.X), float64(area.Y)))
+	})
+	_ = win.SetHitTest(puregoHitTest)
+}
+
+func sdlStartTextInput(p unsafe.Pointer) error { return (*sdl.Window)(p).StartTextInput() }
+func sdlStopTextInput(p unsafe.Pointer)        { _ = (*sdl.Window)(p).StopTextInput() }
+
+func sdlSetTextInputArea(p unsafe.Pointer, x, y, w, h int) {
+	_ = (*sdl.Window)(p).SetTextInputArea(&sdl.Rect{X: int32(x), Y: int32(y), W: int32(w), H: int32(h)}, 0)
+}
+
+func sdlModState() int { return int(sdl.GetModState()) }
+
+func sdlSystemTheme() int {
+	switch sdl.GetSystemTheme() {
+	case sdl.SYSTEM_THEME_LIGHT:
+		return 1
+	case sdl.SYSTEM_THEME_DARK:
+		return 2
+	}
+	return 0
+}
+
+func sdlClipboard() string {
+	// The clipboard can be reached without a window (a test, or a copy before
+	// the first frame), so the library may not be loaded yet. A machine without
+	// SDL gets an empty clipboard instead of a nil function call.
+	if loadSDL() != nil {
+		return ""
+	}
+	s, err := sdl.GetClipboardText()
+	if err != nil {
+		return ""
+	}
+	return s
 }
 
 func sdlSetClipboard(s string) {
-	cs := C.CString(s)
-	defer C.free(unsafe.Pointer(cs))
-	C.SDL_SetClipboardText(cs)
+	if loadSDL() != nil {
+		return
+	}
+	_ = sdl.SetClipboardText(s)
 }
 
-// Wayland and X11 handles. SDL reports whichever pair belongs to its current
-// video driver.
 func sdlWaylandHandles(p unsafe.Pointer) (display, surface unsafe.Pointer) {
-	w := (*C.SDL_Window)(p)
-	return C.goiWaylandDisplay(w), C.goiWaylandSurface(w)
+	props, err := (*sdl.Window)(p).Properties()
+	if err != nil {
+		return nil, nil
+	}
+	return unsafe.Pointer(props.PointerProperty(sdl.PROP_WINDOW_WAYLAND_DISPLAY_POINTER)),
+		unsafe.Pointer(props.PointerProperty(sdl.PROP_WINDOW_WAYLAND_SURFACE_POINTER))
 }
 
 func sdlX11Handles(p unsafe.Pointer) (display unsafe.Pointer, window uintptr) {
-	w := (*C.SDL_Window)(p)
-	return C.goiX11Display(w), uintptr(C.goiX11Window(w))
-}
-
-// sdlWin32Handles returns the HINSTANCE and HWND of a Windows window. The
-// instance may be nil, which DXGI resolves from the current module.
-func sdlWin32Handles(p unsafe.Pointer) (instance, hwnd unsafe.Pointer) {
-	w := (*C.SDL_Window)(p)
-	return C.goiWin32Instance(w), C.goiWin32Hwnd(w)
-}
-
-// sdlMetalLayer returns the CAMetalLayer behind the window, creating the
-// Metal view on first use.
-func sdlMetalLayer(p unsafe.Pointer) unsafe.Pointer {
-	return C.goiMetalLayer((*C.SDL_Window)(p))
-}
-
-// Window flag bits, mirrored so the rest of the package needs no cgo.
-const (
-	flagHidden     = uint64(C.SDL_WINDOW_HIDDEN)
-	flagMinimized  = uint64(C.SDL_WINDOW_MINIMIZED)
-	flagMaximized  = uint64(C.SDL_WINDOW_MAXIMIZED)
-	flagFullscreen = uint64(C.SDL_WINDOW_FULLSCREEN)
-)
-
-// Modifier and scancode values, mirrored so the event translation in window.go
-// stays free of cgo.
-const (
-	sdlKmodShift = int(C.SDL_KMOD_SHIFT)
-	sdlKmodCtrl  = int(C.SDL_KMOD_CTRL)
-	sdlKmodAlt   = int(C.SDL_KMOD_ALT)
-	sdlKmodGui   = int(C.SDL_KMOD_GUI)
-)
-
-const (
-	scancodeA         = int(C.SDL_SCANCODE_A)
-	scancodeC         = int(C.SDL_SCANCODE_C)
-	scancodeV         = int(C.SDL_SCANCODE_V)
-	scancodeX         = int(C.SDL_SCANCODE_X)
-	scancodeBackspace = int(C.SDL_SCANCODE_BACKSPACE)
-	scancodeDelete    = int(C.SDL_SCANCODE_DELETE)
-	scancodeDown      = int(C.SDL_SCANCODE_DOWN)
-	scancodeEnd       = int(C.SDL_SCANCODE_END)
-	scancodeEscape    = int(C.SDL_SCANCODE_ESCAPE)
-	scancodeHome      = int(C.SDL_SCANCODE_HOME)
-	scancodeKPEnter   = int(C.SDL_SCANCODE_KP_ENTER)
-	scancodeLeft      = int(C.SDL_SCANCODE_LEFT)
-	scancodeReturn    = int(C.SDL_SCANCODE_RETURN)
-	scancodeRight     = int(C.SDL_SCANCODE_RIGHT)
-	scancodeSpace     = int(C.SDL_SCANCODE_SPACE)
-	scancodeTab       = int(C.SDL_SCANCODE_TAB)
-	scancodeUp        = int(C.SDL_SCANCODE_UP)
-)
-
-// goiHitTestXY is the C entry point for SDL's hit-test callback.
-//
-//export goiHitTestXY
-func goiHitTestXY(x, y C.int) C.int {
-	if currentHitTest == nil {
-		return C.int(HitTestNormal)
+	props, err := (*sdl.Window)(p).Properties()
+	if err != nil {
+		return nil, 0
 	}
-	return C.int(currentHitTest(float64(x), float64(y)))
+	return unsafe.Pointer(props.PointerProperty(sdl.PROP_WINDOW_X11_DISPLAY_POINTER)),
+		uintptr(props.NumberProperty(sdl.PROP_WINDOW_X11_WINDOW_NUMBER, 0))
 }
+
+func sdlWin32Handles(p unsafe.Pointer) (instance, hwnd unsafe.Pointer) {
+	props, err := (*sdl.Window)(p).Properties()
+	if err != nil {
+		return nil, nil
+	}
+	return unsafe.Pointer(props.PointerProperty(sdl.PROP_WINDOW_WIN32_INSTANCE_POINTER)),
+		unsafe.Pointer(props.PointerProperty(sdl.PROP_WINDOW_WIN32_HWND_POINTER))
+}
+
+// The window flags the rest of the platform compares against.
+const (
+	flagHidden     = uint64(sdl.WINDOW_HIDDEN)
+	flagMinimized  = uint64(sdl.WINDOW_MINIMIZED)
+	flagMaximized  = uint64(sdl.WINDOW_MAXIMIZED)
+	flagFullscreen = uint64(sdl.WINDOW_FULLSCREEN)
+)
+
+// Key modifiers and scancodes, named the way the input layer expects.
+const (
+	sdlKmodShift = int(sdl.KMOD_SHIFT)
+	sdlKmodCtrl  = int(sdl.KMOD_CTRL)
+	sdlKmodAlt   = int(sdl.KMOD_ALT)
+	sdlKmodGui   = int(sdl.KMOD_GUI)
+
+	scancodeA         = int(sdl.SCANCODE_A)
+	scancodeC         = int(sdl.SCANCODE_C)
+	scancodeV         = int(sdl.SCANCODE_V)
+	scancodeX         = int(sdl.SCANCODE_X)
+	scancodeBackspace = int(sdl.SCANCODE_BACKSPACE)
+	scancodeDelete    = int(sdl.SCANCODE_DELETE)
+	scancodeDown      = int(sdl.SCANCODE_DOWN)
+	scancodeEnd       = int(sdl.SCANCODE_END)
+	scancodeEscape    = int(sdl.SCANCODE_ESCAPE)
+	scancodeHome      = int(sdl.SCANCODE_HOME)
+	scancodeKPEnter   = int(sdl.SCANCODE_KP_ENTER)
+	scancodeLeft      = int(sdl.SCANCODE_LEFT)
+	scancodeReturn    = int(sdl.SCANCODE_RETURN)
+	scancodeRight     = int(sdl.SCANCODE_RIGHT)
+	scancodeSpace     = int(sdl.SCANCODE_SPACE)
+	scancodeTab       = int(sdl.SCANCODE_TAB)
+	scancodeUp        = int(sdl.SCANCODE_UP)
+)

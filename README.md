@@ -248,35 +248,31 @@ every element.
 
 ## Building
 
-goi builds on Linux, Windows and macOS. The Go packages above `internal/platform`
-are pure Go, so they cross-compile as they are. The platform layer is cgo over
-SDL3 by default, so that build needs a C compiler, `pkg-config` and SDL3's
-development files; a `CGO_ENABLED=0` build uses the purego backend and needs only
-the SDL3 runtime library. There is no build tag to pick a platform: the same
-binary asks SDL which driver it got and hands the matching native handle to the
-renderer.
+goi builds on Linux, Windows and macOS without a C toolchain. Everything,
+including the SDL3 window layer, is pure Go: `internal/platform` loads the
+**SDL3 runtime library** through purego, so there are no headers,
+`pkg-config` files or C compiler to install. There is no build tag to pick a
+platform: the same binary asks SDL which driver it got and hands the matching
+native handle to the renderer.
+
+The supported build is cgo-free. `CGO_ENABLED=0` keeps cgo out, and
+`-tags nofakecgo` lets goffi and purego share one fake C runtime; both are
+required, and there is no cgo build.
 
 ```sh
-# Linux (also needs SDL3's own deps: libwayland-dev, libdecor-0-dev,
-# libxkbcommon-dev, libx11-dev, libegl1-mesa-dev, libasound2-dev, libudev-dev)
-sudo apt install libsdl3-dev        # or build SDL3 from source and install it
-go build -ldflags=-linkmode=internal ./...
+# Linux — only the SDL3 runtime library (libsdl3-0 on recent Debian/Ubuntu,
+# sdl3 on Arch, or SDL3 built from source and installed)
+CGO_ENABLED=0 go build -tags nofakecgo ./...
 
-# macOS
+# macOS — brew installs the runtime library
 brew install sdl3
-go build ./...
+CGO_ENABLED=0 go build -tags nofakecgo ./...
 
-# Windows (MSYS2, MINGW64 shell, so cgo finds gcc and pkg-config)
-pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-pkgconf mingw-w64-x86_64-SDL3
-go build ./...
-
-# Any of the three, without a C toolchain or SDL development files
+# Windows — put SDL3.dll next to the executable (the SDL3 release or MSYS2's
+# mingw-w64-x86_64-sdl3); no MSYS2 shell is needed for the build itself
 CGO_ENABLED=0 go build -tags nofakecgo ./...
 ```
 
-`-ldflags=-linkmode=internal` is Linux-only for the cgo build: goffi's dynamic
-imports and the cgo SDL shim cannot share the external linker. The purego build
-needs no cgo flag; `nofakecgo` lets goffi and purego share one fake C runtime.
 Add `-ldflags="-H windowsgui"` on Windows for a program without a console
 window.
 
@@ -285,8 +281,8 @@ not use. The colour emoji font alone is 10.7 MB, and each optional feature
 brings its dependency with it:
 
 ```sh
-go build -tags "noemoji nonet nocode nosvg nomarkdown nodialog" \
-	-ldflags="-s -w -linkmode=internal" -o myapp ./cmd/myapp
+CGO_ENABLED=0 go build -tags "nofakecgo noemoji nonet nocode nosvg nomarkdown nodialog" \
+	-ldflags="-s -w" -o myapp ./cmd/myapp
 ```
 
 See [Building](https://goi-gui.github.io/guide/build) for the tag table, the measured

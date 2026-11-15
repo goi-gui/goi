@@ -2197,3 +2197,14 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   the enum lists it points at are shared per kind rather than copied per node.
   The table is still per node, because a cell belongs to its node; sharing the
   metadata would be the next step if a design ever needs it.
+- **The platform is purego; cgo is gone.** The cgo shim over SDL3 was the only
+  cgo in the tree, and it forced a C toolchain with SDL headers on every build
+  machine, the external linker, and the `-ldflags=-linkmode=internal` rule on
+  Linux. `Zyko0/go-sdl3` (purego) now backs every port: SDL3 is loaded at
+  runtime, so the build needs no C compiler or development files and the only
+  requirement is the runtime library. `CGO_ENABLED=0` and `-tags nofakecgo` are
+  mandatory because purego and goffi each ship a fake C runtime; the tag lets
+  goffi use purego's copy. The `sdl_shim.c` event union and its C translation are
+  gone too: the purego path maps SDL's event union directly. The clipboard can be
+  reached before a window exists (a test, or a copy before the first frame), so
+  it loads the library on demand and no-ops when the machine has no SDL.

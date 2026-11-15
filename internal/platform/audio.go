@@ -1,29 +1,30 @@
-//go:build !js && cgo
+//go:build !js
 
 package platform
 
-/*
-#include "sdl_shim.h"
-*/
-import "C"
+import (
+	"sync"
 
-import "unsafe"
+	sdl "github.com/Zyko0/go-sdl3/sdl"
+)
 
-// AudioStream is a playback device opened for pushed PCM. It is the only audio
-// the framework knows: the media layer decodes, this plays.
-//
-// A machine without a sound card still returns a stream from OpenAudio that
-// silently accepts and discards samples, so a caller never needs a nil check on
-// the hot path.
+// AudioStream is the playback device, opened through SDL3.
 type AudioStream struct {
-	h     unsafe.Pointer
-	Rate  int
-	Chans int
+	stream *sdl.AudioStream
+	Rate   int
+	Chans  int
 }
 
-// OpenAudio opens the default playback device at rate and channels, with signed
-// 16-bit little-endian samples. It returns nil when the platforms has no audio
-// subsystem at all, which callers treat as "silent".
+var audioOnce sync.Once
+var audioOK bool
+
+func audioAvailable() bool {
+	audioOnce.Do(func() {
+		audioOK = sdl.InitSubSystem(sdl.INIT_AUDIO) == nil
+	})
+	return audioOK
+}
+
 func OpenAudio(rate, channels int) *AudioStream {
 	if rate <= 0 {
 		rate = 48000
@@ -31,70 +32,59 @@ func OpenAudio(rate, channels int) *AudioStream {
 	if channels <= 0 {
 		channels = 2
 	}
-	spec := C.goiAudioScreen{freq: C.int(rate), channels: C.int(channels)}
-	h := C.goiOpenAudioStream(&spec)
-	if h == nil {
+	if !audioAvailable() {
 		return nil
 	}
-	return &AudioStream{h: h, Rate: rate, Chans: channels}
+	spec := &sdl.AudioSpec{Format: sdl.AUDIO_S16, Channels: int32(channels), Freq: int32(rate)}
+	stream := sdl.AUDIO_DEVICE_DEFAULT_PLAYBACK.OpenAudioDeviceStream(spec, sdl.AudioStreamCallback(0))
+	if stream == nil {
+		return nil
+	}
+	_ = stream.ResumeDevice()
+	return &AudioStream{stream: stream, Rate: rate, Chans: channels}
 }
 
-// Queue copies PCM into the device's queue. The sample rate has to be the one
-// the stream opened with; the media layer resamples with ffmpeg.
 func (a *AudioStream) Queue(pcm []byte) error {
-	if a == nil || a.h == nil || len(pcm) == 0 {
+	if a == nil || a.stream == nil || len(pcm) == 0 {
 		return nil
 	}
-	if C.goiPutAudio(a.h, unsafe.Pointer(&pcm[0]), C.int(len(pcm))) != 0 {
-		return sdlError("queue audio")
-	}
-	return nil
+	return a.stream.PutData(pcm)
 }
 
-// Queued is how many bytes are waiting to be played, which is how a caller keeps
-// its decode a fixed distance ahead of the device instead of buffering a whole
-// file.
 func (a *AudioStream) Queued() int {
-	if a == nil || a.h == nil {
+	if a == nil || a.stream == nil {
 		return 0
 	}
-	return int(C.goiAudioQueued(a.h))
+	n, err := a.stream.Queued()
+	if err != nil {
+		return 0
+	}
+	return int(n)
 }
 
-// Pause stops the device and drops what it had queued, which is what a seek
-// needs. Resume continues from the next sample pushed.
 func (a *AudioStream) Pause() {
-	if a == nil || a.h == nil {
-		return
+	if a != nil && a.stream != nil {
+		_ = a.stream.PauseDevice()
 	}
-	C.goiPauseAudio(a.h, 1)
 }
 
-// Resume restarts playback.
 func (a *AudioStream) Resume() {
-	if a == nil || a.h == nil {
-		return
+	if a != nil && a.stream != nil {
+		_ = a.stream.ResumeDevice()
 	}
-	C.goiPauseAudio(a.h, 0)
 }
 
-// Flush drops what the device has queued, so a decoder reopened at another
-// position or another audio track does not play a moment of the old one first.
 func (a *AudioStream) Flush() {
-	if a == nil || a.h == nil {
-		return
+	if a != nil && a.stream != nil {
+		_ = a.stream.Flush()
 	}
-	C.goiFlushAudio(a.h)
 }
 
-// Close releases the device.
 func (a *AudioStream) Close() {
-	if a == nil || a.h == nil {
-		return
+	if a != nil && a.stream != nil {
+		a.stream.Destroy()
+		a.stream = nil
 	}
-	C.goiCloseAudioStream(a.h)
-	a.h = nil
 }
 
-// HasAudio reports whether a playback device came up.
-func HasAudio() bool { return C.goiAudioAvailable() == 1 }
+func HasAudio() bool { return audioAvailable() }

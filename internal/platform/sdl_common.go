@@ -2,7 +2,7 @@
 
 package platform
 
-// event kinds mirror the GOI_EV_* enum in sdl_shim.h.
+// event kinds are the framework's own; the SDL translation maps onto them.
 const (
 	_ = iota // evNone: an event the framework does not use
 	evQuit

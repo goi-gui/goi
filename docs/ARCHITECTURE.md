@@ -35,7 +35,7 @@ internal/tree ── instantiate ──▶ node tree + id index
 | `internal/highlight` | chroma | source text to colored spans |
 | `internal/text` | — | shaping, rasterization, glyph atlas |
 | `internal/render` | paint, text, gogpu/wgpu | GPU pipelines, texture upload |
-| `internal/platform` | SDL3 (cgo) | window, native handles, input |
+| `internal/platform` | SDL3 (purego) | window, native handles, input |
 | `internal/hotreload` | fsnotify | file watching |
 | `ui` | all of the above | public API, event loop |
 

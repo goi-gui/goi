@@ -2,7 +2,7 @@
 //
 // ffmpeg is the only decoder the framework needs: it covers every container and
 // codec a desktop app meets, it is available on Linux, macOS and Windows, and
-// running it as a child process keeps the framework free of cgo beyond the
+// running it as a child process keeps the decoder out of the framework.
 // platform layer. A machine without ffmpeg still runs an app: the components
 // report a missing backend instead of failing the frame.
 //

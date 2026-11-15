@@ -1,4 +1,4 @@
-//go:build !js && !cgo && !darwin
+//go:build !js && !darwin
 
 package platform
 
