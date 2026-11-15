@@ -404,6 +404,7 @@ const (
 	RotateKind
 	ModifierValueKind
 	ListKind
+	SlotRefKind
 )
 
 // Value is a property literal. The concrete type is one of *String,
@@ -527,6 +528,20 @@ type Ref struct {
 	ID   string
 	Prop string
 }
+
+// SlotRef is `$name` in a value, the argument of len: it counts the elements an
+// instance passed to that slot. It is only legal inside a fragment, and the
+// loader replaces it with the number before the tree is built.
+type SlotRef struct {
+	At   Pos
+	Name string // with the '$', as written
+}
+
+// Kind implements Value.
+func (*SlotRef) Kind() ValueKind { return SlotRefKind }
+
+// Pos implements Value.
+func (s *SlotRef) Pos() Pos { return s.At }
 
 // Call is a function call: `bridge.onOpen(post.id)` as the whole value of an
 // event property, or a builtin such as `formatf("%d items", count)` in a value.

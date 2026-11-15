@@ -293,7 +293,7 @@ Window { }`, "expected a quoted path"},
 		{"missing brace", "props Title string\nWindow { }", "expected '{' after props"},
 		{"missing type", "props { Title }\nWindow { }", "expected a type"},
 		{"bad slice", "props { Rows [] }\nWindow { }", "expected a type"},
-		{"dollar in a value", "Window { Text { text: $ } }", "unexpected '$' in a value"},
+		{"dollar with no name in a value", "Window { Text { text: $ } }", "expected a slot name after '$'"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1123,24 +1123,34 @@ func TestMultilineStringDiagnostics(t *testing.T) {
 	}
 }
 
-// TestEmptySlotBodyIsADeclaration is the form the docs use: `$children {}` and
-// the bare `$children` both declare an insertion point, so both make the file a
-// fragment. A body with content in it fills a slot instead.
-func TestEmptySlotBodyIsADeclaration(t *testing.T) {
-	for _, src := range []string{`Column { $children }`, `Column { $children {} }`, `Column { $header {} }`} {
-		f, diag := Parse([]byte(src))
-		if !diag.Empty() {
-			t.Fatalf("%q: %v", src, diag)
-		}
-		if !f.IsFragment() {
-			t.Fatalf("%q did not mark a fragment", src)
-		}
+// TestSlotBracesAreAFill is the shape rule: a bare `$name` declares a slot in a
+// fragment body, and braces always mean an instance filling it. A file with only
+// the braced form has no slot, so it is not a fragment.
+func TestSlotBracesAreAFill(t *testing.T) {
+	f, diag := Parse([]byte(`Column { $children }`))
+	if !diag.Empty() {
+		t.Fatal(diag)
 	}
-	f, diag := Parse([]byte(`Window { Card { $header { Text { text: "x" } } } }`))
+	if !f.IsFragment() {
+		t.Fatal("a bare slot did not mark a fragment")
+	}
+	f, diag = Parse([]byte(`Column { $header }`))
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	if !f.IsFragment() || f.Root.Children()[0].Name != "$header" {
+		t.Fatalf("$header = %v, fragment = %v", f.Root.Children(), f.Fragment)
+	}
+	// An empty body is still a fill: the caller passes no elements.
+	f, diag = Parse([]byte(`Column { $header {} }`))
 	if !diag.Empty() {
 		t.Fatal(diag)
 	}
 	if f.IsFragment() {
-		t.Fatal("filling a slot made the caller a fragment")
+		t.Fatal("a filled slot made the caller a fragment")
+	}
+	// A slot in a value is the len argument.
+	if _, diag := Parse([]byte(`Column { gap: conditional { 10: len($header) > 0 } }`)); !diag.Empty() {
+		t.Fatal(diag)
 	}
 }

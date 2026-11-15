@@ -203,6 +203,8 @@ func printInner(v syntax.Value) string {
 			return x.ID
 		}
 		return x.ID + "." + x.Prop
+	case *syntax.SlotRef:
+		return x.Name
 	case *syntax.Call:
 		parts := make([]string, len(x.Args))
 		for i, a := range x.Args {

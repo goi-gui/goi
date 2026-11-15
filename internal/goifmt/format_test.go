@@ -399,3 +399,30 @@ func TestMultilineAlignsWithItsValueColumn(t *testing.T) {
 		t.Fatalf("round trip = %q", parseText(t, got))
 	}
 }
+
+// TestFormatSlotAndLen keeps the slot pieces: a declared slot stays bare, a len
+// argument keeps its `$`, and a comment above an if stays above it.
+func TestFormatSlotAndLen(t *testing.T) {
+	src := `Column {
+	$header
+	$children
+	// the actions only show when the caller passes some
+	if len($actions) > 0 {
+		$actions
+	}
+}`
+	got := string(Source([]byte(src)))
+	want := "Column {\n" +
+		"\t$header\n" +
+		"\n" +
+		"\t$children\n" +
+		"\n" +
+		"\t// the actions only show when the caller passes some\n" +
+		"\tif len($actions) > 0 {\n" +
+		"\t\t$actions\n" +
+		"\t}\n" +
+		"}\n"
+	if got != want {
+		t.Fatalf("format =\n%s\nwant =\n%s", got, want)
+	}
+}

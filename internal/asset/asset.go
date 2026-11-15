@@ -193,7 +193,13 @@ func (l *loader) instantiateFile(f *syntax.File, name string, stack []string) (*
 	// fragment opened on its own is allowed to keep one as an empty hole. A
 	// Window is never a fragment: its root is the window itself.
 	slots := f.IsFragment() && f.Root.Name != "Window"
-	root, diag := l.expand(f.Root, l.aliases(f), stack, slots)
+	// A fragment opened on its own has no caller, so every slot it writes is
+	// empty and `len($slot)` reads zero.
+	body := copyElement(f.Root)
+	if diag := slotLens(body, nil, name); !diag.Empty() {
+		return nil, diag
+	}
+	root, diag := l.expand(body, l.aliases(f), stack, slots)
 	if !diag.Empty() {
 		return nil, diag
 	}
@@ -340,11 +346,18 @@ func (l *loader) expandMembers(members []syntax.Member, aliases map[string]strin
 					// A slot is filled by whoever imports the file, and the file
 					// a program loads has nobody above it. Saying so beats
 					// silently dropping what the design meant as a hole.
+					msg := fmt.Sprintf("%s is a slot: only a fragment can declare one, because nothing above the loaded file fills it", child.Name)
+					hint := ""
+					if child.Open != child.NameAt {
+						msg = fmt.Sprintf("%s { … } fills a slot, and nothing above this file fills one", child.Name)
+						hint = fmt.Sprintf("a fragment declares a slot bare (%s); the instance fills it with %s { … }", child.Name, child.Name)
+					}
 					return nil, syntax.Diagnostics{{
 						Pos:     child.NameAt,
 						End:     child.NameAt + syntax.Pos(len(child.Name)),
 						Src:     child.Src,
-						Message: fmt.Sprintf("%s is a slot: only a fragment can declare one, because nothing above the loaded file fills it", child.Name),
+						Message: msg,
+						Hint:    hint,
 					}}
 				}
 				// A fragment previewed on its own has no caller, so nothing
@@ -406,22 +419,9 @@ func (l *loader) instance(target string, call *syntax.Element, callerAliases map
 	}
 	props := propValues(f, passed)
 
-	body := copyElement(f.Root)
-	if diag := substitute(body, props, target, f); !diag.Empty() {
-		return nil, diag
-	}
-	// Before the caller's children land in a slot, and before the caller's own
-	// properties are applied to the root: their ids and references belong to
-	// the caller, and only the fragment's own ids follow the instance id. A
-	// fragment that declares an `id` prop owns that name, so the instance's
-	// `id:` is its value and scopes nothing.
-	if id, ok := literalID(call); ok && !declared["id"] {
-		scopeIDs(body, id)
-	}
-	applyOverrides(body, overrides)
-
-	// Split the call's children: `$name { ... }` goes to that slot, everything
-	// else to the unnamed `$children` slot.
+	// The caller's children split into fills, `$name { ... }` for a named slot
+	// and everything else for `$children`. Do it before the body is rewritten:
+	// `len($slot)` needs the counts.
 	slots := map[string][]*syntax.Element{}
 	namedAt := map[string]syntax.Pos{}
 	var names []string
@@ -457,6 +457,27 @@ func (l *loader) instance(target string, call *syntax.Element, callerAliases map
 		unnamed = append(unnamed, k)
 	}
 	slots["$children"] = append(slots["$children"], unnamed...)
+	counts := make(map[string]int, len(slots))
+	for name, els := range slots {
+		counts[name] = len(els)
+	}
+
+	body := copyElement(f.Root)
+	if diag := slotLens(body, counts, target); !diag.Empty() {
+		return nil, diag
+	}
+	if diag := substitute(body, props, target, f); !diag.Empty() {
+		return nil, diag
+	}
+	// Before the caller's children land in a slot, and before the caller's own
+	// properties are applied to the root: their ids and references belong to
+	// the caller, and only the fragment's own ids follow the instance id. A
+	// fragment that declares an `id` prop owns that name, so the instance's
+	// `id:` is its value and scopes nothing.
+	if id, ok := literalID(call); ok && !declared["id"] {
+		scopeIDs(body, id)
+	}
+	applyOverrides(body, overrides)
 
 	found, diag := l.fillSlot(body, slots, callerAliases, l.aliases(f), append(stack, target))
 	if !diag.Empty() {
@@ -533,16 +554,15 @@ func (l *loader) fillMembers(members []syntax.Member, slots map[string][]*syntax
 					out = append(out, x)
 					continue
 				}
-				if inCall && len(x.Members) > 0 {
+				if inCall && x.Open != x.NameAt {
 					// Inside a nested fragment call this is that call's argument,
 					// not this fragment's slot: leave it for the inner instance.
 					out = append(out, x)
 					continue
 				}
-				if len(x.Members) > 0 {
-					// The same shape fills a slot at a call, so this reads as one;
-					// inside a fragment it is a slot that cannot take content of
-					// its own.
+				if x.Open != x.NameAt {
+					// Braces fill a slot; a fragment declares one bare, so the
+					// loader can tell the two apart without a caller in sight.
 					at := x.NameAt
 					if pr := x.Props(); len(pr) > 0 {
 						at = pr[0].NameAt
@@ -551,7 +571,8 @@ func (l *loader) fillMembers(members []syntax.Member, slots map[string][]*syntax
 						Pos:     at,
 						End:     at + syntax.Pos(len(x.Name)),
 						Src:     x.Src,
-						Message: fmt.Sprintf("%s in a fragment takes no properties or children: fill it from the instance as %s { … }", x.Name, x.Name),
+						Message: fmt.Sprintf("%s in a fragment takes no elements: declare it bare, and let the instance fill it", x.Name),
+						Hint:    fmt.Sprintf("write %s, and pass %s { … } from the call", x.Name, x.Name),
 					}}
 				}
 				if found[x.Name] {

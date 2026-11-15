@@ -364,6 +364,12 @@ func (v *validator) walk(e *syntax.Element, parent string) {
 // is ordinary children of the component that declares it.
 func (v *validator) walkSlot(e *syntax.Element, owner string) {
 	v.src = e.Src
+	if e.Open == e.NameAt {
+		// A built-in declares its slot itself, so the design is the caller: it
+		// fills the slot with braces, the same shape a fragment call uses.
+		v.add(e.NameAt, e.NameAt+syntax.Pos(len(e.Name)),
+			fmt.Sprintf("%s of %s takes its elements here: write %s { … }", e.Name, owner, e.Name), "")
+	}
 	if props := e.Props(); len(props) > 0 {
 		p := props[0]
 		v.add(p.NameAt, p.NameAt+syntax.Pos(len(p.Name)),

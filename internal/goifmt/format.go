@@ -167,7 +167,12 @@ func (p *printer) element(e *syntax.Element, stop syntax.Pos) {
 	p.indent()
 	p.b.WriteString(e.Name)
 	if len(e.Members) == 0 {
-		p.b.WriteString(" {}\n")
+		if strings.HasPrefix(e.Name, "$") && e.Open == e.NameAt {
+			// A slot declaration is bare: braces are an instance filling it.
+			p.b.WriteString("\n")
+		} else {
+			p.b.WriteString(" {}\n")
+		}
 		p.commentsTo(e.Close)
 		p.trailing(stop)
 		return
@@ -302,6 +307,7 @@ func (p *printer) block(b *syntax.Block, stop syntax.Pos) {
 		p.trailing(stop)
 		return
 	}
+	p.commentsBefore(b.At)
 	for i, br := range b.Branches {
 		p.indent()
 		switch {

@@ -233,6 +233,9 @@ func (s *Server) completion(raw json.RawMessage) any {
 		items = append(items, breakpointItems()...)
 	case inDeclBlock(d.text, off):
 		items = append(items, declTypeItems(file, d.text, off)...)
+	case prop != "" && slotPrefix(string(d.text), off):
+		// `len($slot)`: only the slots the fragment declares can be counted.
+		items = append(items, fileSlotItems(file)...)
 	case prop != "":
 		values, cut := valueItems(file, prop, d.text, off, prefix, insideString(d.text, off), s.fragmentProp(d, file, d.text, off, prop))
 		items = append(items, values...)
@@ -523,12 +526,15 @@ func blockItems(file *syntax.File) []completionResult {
 // the elements, at `$children` for its plain children or `$name` for a named
 // slot it fills with `$name { ... }`.
 const slotDoc = "**$children** — slot\n\n" +
-	"Where the children passed by an instance appear. A fragment that writes " +
-	"this takes children; passing children to one that does not is an error. " +
-	"With no children the slot draws nothing, so the fragment still previews on " +
-	"its own. A file that writes a slot is a fragment.\n\n" +
-	"A named slot works the same way: write `$header` in the fragment, and an " +
-	"instance fills it with `$header { ... }`."
+	"A fragment declares a slot bare and the instance fills it with braces: " +
+	"write `$children` in the fragment, and plain children at the call. A " +
+	"fragment that writes this takes children; passing children to one that " +
+	"does not is an error. With no children the slot draws nothing, so the " +
+	"fragment still previews on its own. A file that writes a slot is a fragment.\n\n" +
+	"A named slot works the same way: write `$header`, and an instance fills it " +
+	"with `$header { ... }`.\n\n" +
+	"`len($children)` is how many elements were passed, so " +
+	"`if len($children) > 0 { $children }` hides an empty slot."
 
 // builtinSlotDoc explains a slot the component itself declares.
 func builtinSlotDoc(kind, name string) string {
@@ -541,10 +547,10 @@ func builtinSlotDoc(kind, name string) string {
 // namedSlotDoc explains `$name` at a hover position.
 func namedSlotDoc(name string) string {
 	return "**" + name + "** — named slot\n\n" +
-		"The instance passes elements here with `" + name + " { ... }`. A fragment " +
-		"that writes this takes that slot; passing one it does not declare is an " +
+		"Declared bare, like `" + name + "`; the instance fills it with " +
+		"`" + name + " { ... }`. Passing one the fragment does not declare is an " +
 		"error. With nothing passed the slot draws nothing, so the fragment still " +
-		"previews on its own."
+		"previews on its own, and `len(" + name + ")` is zero."
 }
 
 // listVars lists every collection a design can range over: bridge variables and
@@ -593,6 +599,40 @@ func slotItems(file *syntax.File, src []byte, off int) []completionResult {
 			Documentation: &doc{Kind: "markdown", Value: builtinSlotDoc(name, label)},
 		})
 	}
+	return out
+}
+
+// slotPrefix reports whether the value being typed is a `$name` argument: the
+// only reader of a slot in a value is len, so the `$` after `len(` is enough.
+func slotPrefix(text string, off int) bool {
+	i := off
+	for i > 0 && isWordByte(text[i-1]) {
+		i--
+	}
+	return i > 0 && text[i-1] == '$'
+}
+
+// fileSlotItems lists the slots this file declares bare, which are the names
+// len can count.
+func fileSlotItems(file *syntax.File) []completionResult {
+	if file == nil || file.Root == nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []completionResult
+	syntax.WalkElements(file.Root, func(e *syntax.Element) {
+		if e.Name == "" || e.Name[0] != '$' || e.Open != e.NameAt || seen[e.Name] {
+			return
+		}
+		seen[e.Name] = true
+		out = append(out, completionResult{
+			Label:         e.Name,
+			Kind:          kindKeyword,
+			Detail:        "slot",
+			Snippet:       e.Name,
+			Documentation: &doc{Kind: "markdown", Value: namedSlotDoc(e.Name)},
+		})
+	})
 	return out
 }
 

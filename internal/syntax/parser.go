@@ -793,12 +793,8 @@ func (p *parser) parseSlot() *Element {
 	ml := p.parseMembers()
 	el.Members = ml.members
 	el.Close = ml.close
-	// An empty body is how the documentation has always written a declaration
-	// (`$children {}`), so it marks a fragment exactly like the bare form. A
-	// body with anything in it is a call filling the slot.
-	if len(el.Members) == 0 {
-		p.slot = true
-	}
+	// Braces are the instance's fill, never a declaration: a slot in a
+	// fragment body is bare, so the loader can tell one from a call argument.
 	return el
 }
 
@@ -1464,11 +1460,17 @@ func (p *parser) parseTerm() (Value, bool) {
 		p.next()
 		return &Color{At: t.pos, RGBA: t.rgba}, true
 	case tokDollar:
-		// `$name` marks a slot, and a slot is an element, not a value. A
-		// fragment reads its inputs as `props.name`.
-		t := p.next()
-		p.errorf(t, "unexpected '$' in a value: a fragment reads its inputs as props.name")
-		return nil, false
+		// `$name` in a value is a slot: only len reads it, as the number of
+		// elements an instance passed. The loader replaces it before the tree
+		// exists, so nothing evaluates it at run time.
+		dollar := p.next()
+		name := p.peek()
+		if name.kind != tokIdent {
+			p.errorf(name, "expected a slot name after '$'")
+			return nil, false
+		}
+		p.next()
+		return &SlotRef{At: dollar.pos, Name: "$" + name.text}, true
 	case tokLBracket:
 		return p.parseList()
 	case tokLParen:

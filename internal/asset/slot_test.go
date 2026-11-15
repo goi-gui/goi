@@ -213,8 +213,8 @@ func TestSlotInEntryFileIsAnError(t *testing.T) {
 }
 
 // TestFragmentSlotTakesNoContent: `$header { … }` inside a fragment reads like a
-// call filling a slot; in the fragment it is a declaration, and it cannot carry
-// content of its own.
+// call filling a slot; a fragment declares a slot bare, so braces there are
+// reported, content or not.
 func TestFragmentSlotTakesNoContent(t *testing.T) {
 	dir := design(t, map[string]string{
 		"Main.goi": `import Card "./Card.goi"
@@ -229,8 +229,149 @@ Window { Card { Text { text: "x" } } }`,
 	if diag.Empty() {
 		t.Fatal("a slot with content in a fragment was accepted")
 	}
-	if got := diag.FormatFiles("Main.goi", b.Sources["Main.goi"], b.Sources); !strings.Contains(got, "takes no properties or children") {
+	if got := diag.FormatFiles("Main.goi", b.Sources["Main.goi"], b.Sources); !strings.Contains(got, "takes no elements") {
 		t.Fatalf("diagnostic = %s", got)
+	}
+}
+
+// TestEmptyBracedSlotInFragmentIsAnError: braces are the fill, so `$header {}`
+// in a fragment body is the old declaration form and would silently drop the
+// children. It is reported instead.
+func TestEmptyBracedSlotInFragmentIsAnError(t *testing.T) {
+	dir := design(t, map[string]string{
+		"Main.goi": `import Card "./Card.goi"
+Window { Card { } }`,
+		"Card.goi": `Column {
+	$children {}
+}`,
+	})
+	b, diag := Load(os.DirFS(dir), "Main.goi")
+	if diag.Empty() {
+		t.Fatal("an empty braced slot in a fragment was accepted")
+	}
+	got := diag.FormatFiles("Main.goi", b.Sources["Main.goi"], b.Sources)
+	if !strings.Contains(got, "declare it bare") {
+		t.Fatalf("diagnostic = %s", got)
+	}
+}
+
+// TestSlotLenCountsFills: `len($slot)` is the number of elements the instance
+// passed, one per fill child, so a fragment can branch on having been given
+// anything at all.
+func TestSlotLenCountsFills(t *testing.T) {
+	dir := design(t, map[string]string{
+		"Main.goi": `import Card "./Card.goi"
+Window {
+	Column {
+		Card {
+			$head {
+				Text { text: "a" }
+				Text { text: "b" }
+			}
+			Text { text: "body" }
+		}
+		Card { }
+	}
+}`,
+		"Card.goi": `Column {
+	Text { text: formatf("head=%d body=%d", len($head), len($children)) }
+	$head
+	$children
+}`,
+	})
+	tr, err := load(t, dir, "Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr.ApplyExpressions()
+	var counts []string
+	for _, n := range tr.All() {
+		if n.Kind() == "Text" {
+			if s := n.(*tree.Text).Text.Get(); strings.HasPrefix(s, "head=") {
+				counts = append(counts, s)
+			}
+		}
+	}
+	if len(counts) != 2 || counts[0] != "head=2 body=1" || counts[1] != "head=0 body=0" {
+		t.Fatalf("counts = %v", counts)
+	}
+}
+
+// TestSlotLenHidesAnEmptySlot is the reason len exists: the slot sits in an arm
+// that only shows when the instance passed something.
+func TestSlotLenHidesAnEmptySlot(t *testing.T) {
+	dir := design(t, map[string]string{
+		"Main.goi": `import Card "./Card.goi"
+Window {
+	Column {
+		Card { }
+		Card {
+			Text { text: "shown" }
+		}
+	}
+}`,
+		"Card.goi": `Column {
+	if len($children) > 0 {
+		$children
+	}
+}`,
+	})
+	tr, err := load(t, dir, "Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr.ApplyExpressions()
+	var shown []string
+	for _, n := range tr.All() {
+		if n.Kind() == "Text" && n.Base().Visible() {
+			shown = append(shown, n.(*tree.Text).Text.Get())
+		}
+	}
+	if len(shown) != 1 || shown[0] != "shown" {
+		t.Fatalf("visible texts = %v, want only the filled one", shown)
+	}
+}
+
+// TestSlotLenUnknownSlot: counting a slot the fragment never declares is a
+// typo, so it names the slots that exist.
+func TestSlotLenUnknownSlot(t *testing.T) {
+	dir := design(t, map[string]string{
+		"Main.goi": `import Card "./Card.goi"
+Window { Card { } }`,
+		"Card.goi": `Column {
+	$header
+	height: conditional {
+		10: len($footer) > 0
+	}
+}`,
+	})
+	b, diag := Load(os.DirFS(dir), "Main.goi")
+	if diag.Empty() {
+		t.Fatal("len of an undeclared slot was accepted")
+	}
+	got := diag.FormatFiles("Main.goi", b.Sources["Main.goi"], b.Sources)
+	if !strings.Contains(got, "$footer is not a slot") || !strings.Contains(got, "$header") {
+		t.Fatalf("diagnostic = %s", got)
+	}
+}
+
+// TestSlotLenInAPreviewIsZero: a fragment opened on its own has no caller, so
+// every slot reads empty and the preview still lays out.
+func TestSlotLenInAPreviewIsZero(t *testing.T) {
+	dir := design(t, map[string]string{
+		"Card.goi": `Column {
+	$children
+	height: conditional {
+		10: len($children) > 0
+	}
+}`,
+	})
+	b, diag := Load(os.DirFS(dir), "Card.goi")
+	if !diag.Empty() {
+		t.Fatal(diag.FormatFiles("Card.goi", b.Sources["Card.goi"], b.Sources))
+	}
+	if _, diag := schema.Validate(b.File); !diag.Empty() {
+		t.Fatalf("the preview is not valid: %v", diag)
 	}
 }
 
