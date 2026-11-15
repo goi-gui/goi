@@ -73,7 +73,6 @@ func commonProps(b *NodeBase) []NamedProp {
 		StringProp(b, "fontFamily", &b.fontFamily),
 		NamedShadow(b, "shadow", &b.shadow),
 		BoolProp(b, "visible", DirtyLayout, &b.visible),
-		BoolProp(b, "template", DirtyLayout, &b.template),
 		BoolProp(b, "scroll", DirtyPaint, &b.scroll),
 		BoolProp(b, "hideScrollbar", DirtyPaint, &b.hideScrollbar),
 		BoolProp(b, "autoHideScrollbar", DirtyPaint, &b.autoHideScrollbar),

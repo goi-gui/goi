@@ -51,6 +51,7 @@ var Kinds = []Kind{
 	{"ListItem", false},
 	{"Menu", true},
 	{"MenuItem", false},
+	{"Popover", true},
 	{"Snackbar", false},
 	{"Tooltip", true},
 	{"Table", true},
@@ -130,6 +131,7 @@ var props = map[string][]string{
 	"TableCell":        {"value", "icon", "align"},
 	"Menu":             {"variant"},
 	"MenuItem":         {"label", "icon", "trailingIcon", "variant", "disabled", "selected"},
+	"Popover":          {"align"},
 	"Snackbar":         {"label", "variant"},
 	"TopAppBar":        {"label", "variant", "icon", "trailingIcon"},
 	"NavigationBar":    {"variant"},
@@ -178,7 +180,7 @@ func Flow(kind string) bool {
 	case "ButtonGroup", "Toolbar", "Carousel", "FABMenu", "Tabs",
 		"NavigationBar", "NavigationRail", "NavigationDrawer", "List", "Menu",
 		"Card", "Dialog", "BottomSheet", "SideSheet", "DatePicker", "TimePicker",
-		"Tooltip":
+		"Tooltip", "Popover":
 		return true
 	}
 	return false
@@ -246,7 +248,40 @@ var defaults = map[string]any{
 // means different things elsewhere: a Slider's `center` is a number, a Map's is
 // a position string, and neither can take the other's default.
 var kindDefaults = map[string]map[string]any{
-	"Slider": {"center": math.NaN()},
+	"Slider":  {"center": math.NaN()},
+	"Popover": {"align": "start"},
+}
+
+// slots lists the child slots a built-in component declares, by bare name. A
+// slot is written `$popover { … }`, the way a fragment writes a named slot, but
+// it belongs to the component and needs no caller above it.
+var slots = map[string][]string{
+	"Popover": {"popover"},
+}
+
+// Slots returns the child slots a kind declares, without the `$`.
+func Slots(kind string) []string { return slots[kind] }
+
+// SlotOwner names the kind that declares `$name`, "" when no built-in does.
+func SlotOwner(name string) string {
+	for kind, names := range slots {
+		for _, s := range names {
+			if "$"+s == name {
+				return kind
+			}
+		}
+	}
+	return ""
+}
+
+// Slot reports whether a kind declares the child slot `$name`.
+func Slot(kind, name string) bool {
+	for _, s := range slots[kind] {
+		if "$"+s == name {
+			return true
+		}
+	}
+	return false
 }
 
 // Default returns the initial value of a component property, when it is not the

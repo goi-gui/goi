@@ -274,6 +274,17 @@ func (v *validator) elementUnknown(e *syntax.Element) {
 // enclosing element name, "" for the root.
 func (v *validator) walk(e *syntax.Element, parent string) {
 	v.src = e.Src
+	if strings.HasPrefix(e.Name, "$") {
+		// A slot is a child of the component that declares it, and only there.
+		// The direct child case is handled by the member walk below.
+		owner := componentdef.SlotOwner(e.Name)
+		msg := fmt.Sprintf("%s is a slot: write it directly inside the component that declares it", e.Name)
+		if owner != "" {
+			msg = fmt.Sprintf("%s is a slot of %s: write it directly inside one", e.Name, owner)
+		}
+		v.add(e.NameAt, e.NameAt+syntax.Pos(len(e.Name)), msg, "")
+		return
+	}
 	def, ok := Lookup(e.Name)
 	if !ok {
 		v.elementUnknown(e)
@@ -338,9 +349,36 @@ func (v *validator) walk(e *syntax.Element, parent string) {
 	for _, m := range e.Members {
 		switch x := m.(type) {
 		case *syntax.Element:
+			if componentdef.Slot(e.Name, x.Name) {
+				v.walkSlot(x, e.Name)
+				continue
+			}
 			v.walk(x, e.Name)
 		case *syntax.Block:
 			v.walkBlock(x, e.Name)
+		}
+	}
+}
+
+// walkSlot checks a `$name` child slot: it takes elements only, and its content
+// is ordinary children of the component that declares it.
+func (v *validator) walkSlot(e *syntax.Element, owner string) {
+	v.src = e.Src
+	if props := e.Props(); len(props) > 0 {
+		p := props[0]
+		v.add(p.NameAt, p.NameAt+syntax.Pos(len(p.Name)),
+			fmt.Sprintf("%s takes elements only: a slot is filled with children, not properties", e.Name), "")
+	}
+	for _, m := range e.Members {
+		switch x := m.(type) {
+		case *syntax.Element:
+			if componentdef.Slot(e.Name, x.Name) {
+				v.walkSlot(x, e.Name)
+				continue
+			}
+			v.walk(x, owner)
+		case *syntax.Block:
+			v.walkBlock(x, owner)
 		}
 	}
 }

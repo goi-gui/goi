@@ -149,6 +149,7 @@ type (
 	TableCell        = tree.TableCell
 	Menu             = tree.Menu
 	MenuItem         = tree.MenuItem
+	Popover          = tree.Popover
 	Snackbar         = tree.Snackbar
 	TopAppBar        = tree.TopAppBar
 	NavigationBar    = tree.NavigationBar

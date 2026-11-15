@@ -2131,3 +2131,24 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   An auto-sized component now adds its `padding` to the size the M3 metrics
   report, so a padded control grows the way a padded Text does instead of
   ignoring the property.
+- **A list is a loop, not a cloned prototype.** `template` marked a hidden row
+  that `ui.Fill`/`ui.Instantiate` copied, which meant a design carried a node the
+  app then had to keep in sync. Both calls and the property are gone: a list is a
+  `for … range` over a bridge slice, `ui.SetData` rebuilds it, and a one-row list
+  is a loop over a one item slice. `Tree.Remove` and the id-scoped `Find` stay,
+  because a node still needs to leave a tree and a row's scoped ids still need to
+  be reachable.
+- **A built-in component can declare a child slot.** `Popover` writes its panel
+  as `$popover { … }`, the same shape a fragment uses, but the asset loader keeps
+  it instead of filling it: the tree builder turns the slot into a Column panel,
+  which stays an ordinary child so paint and hit-testing reach it. Only the
+  layout engine treats it apart, which is what lets the reserved syntax stay
+  consistent between a fragment's slot and a component's own.
+- **A popover's panel is out of the flow.** The component's own box is the
+  anchor, so `width`, `background` and `borderColor` style the button row and not
+  the floating surface. Layout hangs the panel 8dp under the anchor and lines it
+  up with `align` against the anchor's box, not the popover's, because a design
+  that sets an explicit box still means its children. It is always visible (no
+  left-over state to carry), and the ordinary `if` inside the slot is how a
+  design shows it sometimes. Nothing clamps it to the window yet, so a panel low
+  on the page can overflow; a design that hits that places the popover higher.

@@ -530,6 +530,14 @@ const slotDoc = "**$children** — slot\n\n" +
 	"A named slot works the same way: write `$header` in the fragment, and an " +
 	"instance fills it with `$header { ... }`."
 
+// builtinSlotDoc explains a slot the component itself declares.
+func builtinSlotDoc(kind, name string) string {
+	return "**" + name + "** — slot\n\n" +
+		"Where " + kind + " takes the elements it draws as its panel. Write " +
+		name + " { … } directly inside " + kind + "; it takes elements only, and " +
+		"its content floats against the element's children."
+}
+
 // namedSlotDoc explains `$name` at a hover position.
 func namedSlotDoc(name string) string {
 	return "**" + name + "** — named slot\n\n" +
@@ -559,21 +567,33 @@ func listVars(file *syntax.File) []string {
 	return out
 }
 
-// slotItems offers `$children` inside an element body. Only a container can
-// hold one, and a fragment writes each slot once.
+// slotItems offers the slots an element body accepts: `$children` for a
+// fragment, and the built-in slots a component declares (a popover's panel).
 func slotItems(file *syntax.File, src []byte, off int) []completionResult {
-	if el, ok := schema.Lookup(enclosingElementName(file, src, off)); ok {
+	name := enclosingElementName(file, src, off)
+	if el, ok := schema.Lookup(name); ok {
 		if !el.Children {
 			return nil
 		}
 	}
-	return []completionResult{{
+	out := []completionResult{{
 		Label:         "$children",
 		Kind:          kindKeyword,
 		Detail:        "slot",
 		Snippet:       "$children",
 		Documentation: &doc{Kind: "markdown", Value: slotDoc},
 	}}
+	for _, slot := range componentdef.Slots(name) {
+		label := "$" + slot
+		out = append(out, completionResult{
+			Label:         label,
+			Kind:          kindKeyword,
+			Detail:        "slot",
+			Snippet:       label,
+			Documentation: &doc{Kind: "markdown", Value: builtinSlotDoc(name, label)},
+		})
+	}
+	return out
 }
 
 // globalItems lists the members of a reserved namespace. A design can read
@@ -1347,7 +1367,9 @@ func (s *Server) hover(raw json.RawMessage) any {
 	if start, end, el := elementNameAt(file, off); el != nil {
 		if strings.HasPrefix(el.Name, "$") {
 			value := slotDoc
-			if el.Name != "$children" {
+			if owner := componentdef.SlotOwner(el.Name); owner != "" {
+				value = builtinSlotDoc(owner, el.Name)
+			} else if el.Name != "$children" {
 				value = namedSlotDoc(el.Name)
 			}
 			return map[string]any{
@@ -1880,7 +1902,9 @@ func walkBlockElements(blk *syntax.Block, walk func(*syntax.Element)) {
 // buffer does not parse yet (the usual case mid-typing) it falls back to a
 // brace scan, so completion keeps working while a brace is missing.
 func enclosingElementName(file *syntax.File, src []byte, off int) string {
-	if el := elementAt(file, off); el != nil {
+	// A half-typed slot parses as an element named `$…`, so the owner is the
+	// brace around it; the same walk answers when the file does not parse yet.
+	if el := elementAt(file, off); el != nil && !strings.HasPrefix(el.Name, "$") {
 		return el.Name
 	}
 	return braceElementName(src, off)
@@ -2662,11 +2686,6 @@ func propDoc(el string, p schema.Prop) string {
 			"literal, a CSS name such as `red`, `theme.<role>` or " +
 			"`customColor.<name>`, or left out for the scheme's shadow. " +
 			"`shadow: none` removes it.")
-	}
-	if p.Name == "template" {
-		b.WriteString("\n\nMarks a hidden row prototype: it is hidden when the tree is built, " +
-			"takes no space, and `ui.Fill` builds the rows from it. Copies made from it " +
-			"are ordinary rows, so a second `Fill` starts from the same prototype.")
 	}
 	return b.String()
 }

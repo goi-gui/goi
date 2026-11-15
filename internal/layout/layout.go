@@ -173,6 +173,8 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 			e.centeredChildren(b, kids, cw, ch, insetL, insetT)
 		case "NavigationRail", "NavigationDrawer":
 			e.linear(b, kids, cw, ch, insetL, false, insetT)
+		case "Popover":
+			e.popoverChildren(b, kids, cw, ch, insetL, insetT)
 		case "ButtonGroup", "Row", "Toolbar", "Carousel":
 			e.linear(b, kids, cw, ch, insetL, true, insetT)
 		default:
@@ -964,6 +966,9 @@ func (e *Engine) naturalSize(k *tree.NodeBase, availW, availH float64) (float64,
 	if k.Node().Kind() == "AspectRatio" {
 		return e.aspectNatural(k, availW, availH)
 	}
+	if k.Node().Kind() == "Popover" {
+		return e.popoverNatural(k, availW, availH)
+	}
 	if cv, ok := e.componentOf(k); ok {
 		mt := e.metricsFor(k, cv)
 		w, h := mt.W, mt.H
@@ -1314,6 +1319,90 @@ func (e *Engine) fabMenuChildren(b *tree.NodeBase, kids []*tree.NodeBase, w, h f
 		k.SetBounds(tree.Rect{X: right - kw, Y: y, W: kw, H: kh})
 		e.children(k, kw, kh)
 	}
+}
+
+// popoverGap is the space between the anchor and the panel.
+const popoverGap = 8.0
+
+// popoverNatural is the anchor's own size: the panel floats over the page and
+// takes no room in the flow, exactly like a tooltip's bubble.
+func (e *Engine) popoverNatural(k *tree.NodeBase, availW, availH float64) (float64, float64) {
+	p, ok := k.Node().(*tree.Popover)
+	if !ok {
+		return 0, 0
+	}
+	pe, be := k.PaddingEdges(), k.BorderEdges()
+	innerW := maxf(availW-pe.Left-pe.Right-be.Left-be.Right, 0)
+	innerH := maxf(availH-pe.Top-pe.Bottom-be.Top-be.Bottom, 0)
+	spacing := e.containerSpacing(k)
+	var sumW, maxH float64
+	n := 0
+	for _, c := range visibleChildren(k) {
+		if p.Panel != nil && c == p.Panel.Base() {
+			continue
+		}
+		cw, ch := e.natural(c, innerW, innerH)
+		if v := c.Width(); v >= 0 {
+			cw = v
+		}
+		if v := c.Height(); v >= 0 {
+			ch = v
+		}
+		me := c.MarginEdges()
+		if n > 0 {
+			sumW += spacing
+		}
+		sumW += cw + me.Left + me.Right
+		maxH = maxf(maxH, ch+me.Top+me.Bottom)
+		n++
+	}
+	return sumW + pe.Left + pe.Right + be.Left + be.Right,
+		maxH + pe.Top + pe.Bottom + be.Top + be.Bottom
+}
+
+// popoverChildren lays the anchor out as a row and hangs the panel under it,
+// lined up with the anchor's own box rather than with the popover's.
+func (e *Engine) popoverChildren(b *tree.NodeBase, kids []*tree.NodeBase, w, h, offsetX, offsetY float64) {
+	p, ok := b.Node().(*tree.Popover)
+	if !ok || p.Panel == nil {
+		e.linear(b, kids, w, h, offsetX, true, offsetY)
+		return
+	}
+	panel := p.Panel.Base()
+	anchors := make([]*tree.NodeBase, 0, len(kids))
+	for _, k := range kids {
+		if k != panel {
+			anchors = append(anchors, k)
+		}
+	}
+	area := tree.Rect{X: offsetX, Y: offsetY}
+	if len(anchors) > 0 {
+		e.linear(b, anchors, w, h, offsetX, true, offsetY)
+		first := anchors[0].Bounds()
+		area = tree.Rect{X: first.X, Y: first.Y, W: first.W, H: first.H}
+		for _, k := range anchors[1:] {
+			kb := k.Bounds()
+			area.W = maxf(area.W, kb.Right()-area.X)
+			area.H = maxf(area.H, kb.Bottom()-area.Y)
+		}
+	}
+	pw, ph := e.natural(panel, maxf(w, area.W), h)
+	if v := panel.Width(); v >= 0 {
+		pw = v
+	}
+	if v := panel.Height(); v >= 0 {
+		ph = v
+	}
+	x := area.X
+	switch p.Align.Get() {
+	case "center":
+		x = area.X + (area.W-pw)/2
+	case "end":
+		x = area.X + area.W - pw
+	}
+	y := area.Y + area.H + popoverGap
+	panel.SetBounds(tree.Rect{X: x, Y: y, W: pw, H: ph})
+	e.children(panel, pw, ph)
 }
 
 // containerNatural is the auto size of Column, Row and Stack.

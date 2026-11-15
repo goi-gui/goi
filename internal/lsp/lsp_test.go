@@ -954,12 +954,12 @@ func TestCompletionOffersChildrenSlot(t *testing.T) {
 	}
 }
 
-// TestHoverExplainsTheSlotAndTemplate documents both new pieces where they are
-// written, so neither needs the docs site to be understood.
-func TestHoverExplainsTheSlotAndTemplate(t *testing.T) {
+// TestHoverExplainsTheSlot documents a slot where it is written, so it does not
+// need the docs site to be understood.
+func TestHoverExplainsTheSlot(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()
-	src := "Column {\n\t$children\n\tListItem { template: true label: \"x\" }\n}\n"
+	src := "Column {\n\t$children\n\tListItem { label: \"x\" }\n}\n"
 	uri := writeDesign(t, dir, "Card.goi", src)
 	c.openDoc(uri, src)
 
@@ -975,20 +975,6 @@ func TestHoverExplainsTheSlotAndTemplate(t *testing.T) {
 	}
 	if !strings.Contains(h.Contents.Value, "slot") {
 		t.Fatalf("hover on $children = %q", h.Contents.Value)
-	}
-
-	res = c.request("textDocument/hover", map[string]any{
-		"textDocument": map[string]any{"uri": uri},
-		"position":     at(t, src, "template", 2),
-	})
-	h = struct {
-		Contents doc `json:"contents"`
-	}{}
-	if err := json.Unmarshal(res, &h); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(h.Contents.Value, "ui.Fill") {
-		t.Fatalf("hover on template = %q", h.Contents.Value)
 	}
 }
 
@@ -2375,5 +2361,58 @@ func TestNoCompletionInsideABlockString(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("text: missing outside a block string")
+	}
+}
+
+// TestPopoverSlotIsOfferedAndExplained covers the built-in slot: `$popover`
+// completes inside Popover and nowhere else, and hovering it says what it is.
+func TestPopoverSlotIsOfferedAndExplained(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tPopover {\n\t\t$\n\t\tButton { label: \"Open\" }\n\t}\n\tCard {\n\t\t$\n\t}\n}\n"
+	uri := writeDesign(t, dir, "Main.goi", src)
+	c.openDoc(uri, src)
+
+	offer := func(pos any) completionList {
+		res := c.request("textDocument/completion", map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     pos,
+		})
+		var list completionList
+		if err := json.Unmarshal(res, &list); err != nil {
+			t.Fatal(err)
+		}
+		return list
+	}
+	has := func(list completionList, label string) bool {
+		for _, it := range list.Items {
+			if it.Label == label {
+				return true
+			}
+		}
+		return false
+	}
+	if !has(offer(at(t, src, "$\n", 1)), "$popover") {
+		t.Fatal("$popover was not offered inside Popover")
+	}
+	if has(offer(at(t, src, "$\n", 2)), "$popover") {
+		t.Fatal("$popover was offered inside Card")
+	}
+
+	valid := "Window {\n\tPopover {\n\t\t$popover {\n\t\t\tCard { label: \"x\" }\n\t\t}\n\t}\n}\n"
+	validURI := writeDesign(t, dir, "Slot.goi", valid)
+	c.openDoc(validURI, valid)
+	res := c.request("textDocument/hover", map[string]any{
+		"textDocument": map[string]any{"uri": validURI},
+		"position":     at(t, valid, "$popover", 2),
+	})
+	var h struct {
+		Contents doc `json:"contents"`
+	}
+	if err := json.Unmarshal(res, &h); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.Contents.Value, "Popover") {
+		t.Fatalf("hover on $popover = %q", h.Contents.Value)
 	}
 }

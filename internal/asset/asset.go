@@ -27,6 +27,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/goi-gui/goi/internal/componentdef"
 	"github.com/goi-gui/goi/internal/syntax"
 )
 
@@ -294,7 +295,7 @@ func (l *loader) expand(el *syntax.Element, aliases map[string]string, stack []s
 		return l.instance(target, el, aliases, stack)
 	}
 	out := copyElement(el)
-	kids, diag := l.expandMembers(out.Members, aliases, stack, slots)
+	kids, diag := l.expandMembers(out.Members, aliases, stack, slots, out.Name)
 	if !diag.Empty() {
 		return nil, diag
 	}
@@ -304,13 +305,15 @@ func (l *loader) expand(el *syntax.Element, aliases map[string]string, stack []s
 }
 
 // expandMembers expands one member list, including the arms of a control block.
-func (l *loader) expandMembers(members []syntax.Member, aliases map[string]string, stack []string, slots bool) ([]syntax.Member, syntax.Diagnostics) {
+// owner is the element the members belong to, so a built-in component's own
+// `$name` slot is kept while a fragment slot is dropped or reported.
+func (l *loader) expandMembers(members []syntax.Member, aliases map[string]string, stack []string, slots bool, owner string) ([]syntax.Member, syntax.Diagnostics) {
 	kids := make([]syntax.Member, 0, len(members))
 	for _, m := range members {
 		switch child := m.(type) {
 		case *syntax.Block:
 			for i := range child.Branches {
-				expanded, diag := l.expandMembers(child.Branches[i].Members, aliases, stack, slots)
+				expanded, diag := l.expandMembers(child.Branches[i].Members, aliases, stack, slots, owner)
 				if !diag.Empty() {
 					return nil, diag
 				}
@@ -323,6 +326,16 @@ func (l *loader) expandMembers(members []syntax.Member, aliases map[string]strin
 				continue
 			}
 			if strings.HasPrefix(child.Name, "$") {
+				if componentdef.Slot(owner, child.Name) {
+					// A built-in's own slot stays in the tree; the tree builder
+					// turns it into the component's panel.
+					expanded, diag := l.expand(child, aliases, stack, slots)
+					if !diag.Empty() {
+						return nil, diag
+					}
+					kids = append(kids, expanded)
+					continue
+				}
 				if !slots {
 					// A slot is filled by whoever imports the file, and the file
 					// a program loads has nobody above it. Saying so beats
@@ -484,7 +497,7 @@ func (l *loader) instance(target string, call *syntax.Element, callerAliases map
 // fragment forwards its children. It reports the slots it found.
 func (l *loader) fillSlot(el *syntax.Element, slots map[string][]*syntax.Element, callerAliases, fragAliases map[string]string, stack []string) (map[string]bool, syntax.Diagnostics) {
 	found := map[string]bool{}
-	members, diag := l.fillMembers(el.Members, slots, callerAliases, fragAliases, stack, false, found)
+	members, diag := l.fillMembers(el.Members, slots, callerAliases, fragAliases, stack, false, found, el.Name)
 	if !diag.Empty() {
 		return found, diag
 	}
@@ -494,13 +507,13 @@ func (l *loader) fillSlot(el *syntax.Element, slots map[string][]*syntax.Element
 
 // fillMembers fills the slots in one member list, recursing into blocks and
 // nested elements.
-func (l *loader) fillMembers(members []syntax.Member, slots map[string][]*syntax.Element, callerAliases, fragAliases map[string]string, stack []string, inCall bool, found map[string]bool) ([]syntax.Member, syntax.Diagnostics) {
+func (l *loader) fillMembers(members []syntax.Member, slots map[string][]*syntax.Element, callerAliases, fragAliases map[string]string, stack []string, inCall bool, found map[string]bool, owner string) ([]syntax.Member, syntax.Diagnostics) {
 	out := make([]syntax.Member, 0, len(members))
 	for _, m := range members {
 		switch x := m.(type) {
 		case *syntax.Block:
 			for i := range x.Branches {
-				arm, diag := l.fillMembers(x.Branches[i].Members, slots, callerAliases, fragAliases, stack, inCall, found)
+				arm, diag := l.fillMembers(x.Branches[i].Members, slots, callerAliases, fragAliases, stack, inCall, found, owner)
 				if !diag.Empty() {
 					return nil, diag
 				}
@@ -509,6 +522,17 @@ func (l *loader) fillMembers(members []syntax.Member, slots map[string][]*syntax
 			out = append(out, x)
 		case *syntax.Element:
 			if strings.HasPrefix(x.Name, "$") {
+				if componentdef.Slot(owner, x.Name) {
+					// A built-in's own slot is ordinary content: recurse so a
+					// fragment slot inside it still fills.
+					nested, diag := l.fillMembers(x.Members, slots, callerAliases, fragAliases, stack, inCall, found, x.Name)
+					if !diag.Empty() {
+						return nil, diag
+					}
+					x.Members = nested
+					out = append(out, x)
+					continue
+				}
 				if inCall && len(x.Members) > 0 {
 					// Inside a nested fragment call this is that call's argument,
 					// not this fragment's slot: leave it for the inner instance.
@@ -573,7 +597,7 @@ func (l *loader) fillMembers(members []syntax.Member, slots map[string][]*syntax
 			// forwards its children: fill it here. A slot with content is that
 			// call's own argument, which the rule above leaves alone.
 			_, isCall := fragAliases[x.Name]
-			nested, diag := l.fillMembers(x.Members, slots, callerAliases, fragAliases, stack, inCall || isCall, found)
+			nested, diag := l.fillMembers(x.Members, slots, callerAliases, fragAliases, stack, inCall || isCall, found, x.Name)
 			if !diag.Empty() {
 				return nil, diag
 			}

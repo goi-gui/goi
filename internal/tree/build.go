@@ -3,7 +3,9 @@ package tree
 import (
 	"fmt"
 	"math"
+	"strings"
 
+	"github.com/goi-gui/goi/internal/componentdef"
 	"github.com/goi-gui/goi/internal/i18n"
 	"github.com/goi-gui/goi/internal/schema"
 	"github.com/goi-gui/goi/internal/syntax"
@@ -48,9 +50,9 @@ type Tree struct {
 	// evalSeen is the scratch reference chain of an expression pass, so
 	// evaluating one costs no allocation.
 	evalSeen []refKey
-	// cloning is set while Instantiate builds a copy: ids stay on the nodes so
-	// an app can find them, but they are not registered, because a copy would
-	// otherwise collide with the template's own ids.
+	// cloning is set while a loop row is built: ids stay on the nodes so an app
+	// can find them, but they are not registered, because another row would
+	// otherwise collide with the same names.
 	cloning bool
 	// conds holds the arms of every {#if} block, in build order, so the frame
 	// loop can toggle their visibility.
@@ -252,11 +254,6 @@ func (t *Tree) build(el *syntax.Element, parent *NodeBase, hooks *Hooks) (Node, 
 			return nil, fmt.Errorf("%s.%s: value not valid for the property type", el.Name, p.Name)
 		}
 	}
-	// A template is hidden before its children are built, so it never joins
-	// layout. The flag stays on the node for ui.Fill to find.
-	if b.template.Get() {
-		b.SetVisible(false)
-	}
 	if len(b.responsive) > 0 {
 		t.responsive = append(t.responsive, b)
 	}
@@ -285,6 +282,12 @@ func (t *Tree) buildMembers(members []syntax.Member, parent *NodeBase, hooks *Ho
 	for _, m := range members {
 		switch x := m.(type) {
 		case *syntax.Element:
+			if strings.HasPrefix(x.Name, "$") {
+				if err := t.buildSlot(x, parent, hooks, arm != nil); err != nil {
+					return err
+				}
+				continue
+			}
 			n, err := t.build(x, parent, hooks)
 			if err != nil {
 				return err
@@ -305,6 +308,39 @@ func (t *Tree) buildMembers(members []syntax.Member, parent *NodeBase, hooks *Ho
 			}
 		}
 	}
+	return nil
+}
+
+// buildSlot builds a `$name` child slot of a built-in component. Only the
+// component that declares the slot accepts one, and the elements become a panel
+// that stays an ordinary child for paint and hit-testing; layout places it
+// apart, against the anchor.
+func (t *Tree) buildSlot(el *syntax.Element, parent *NodeBase, hooks *Hooks, inArm bool) error {
+	kind := parent.Node().Kind()
+	if inArm {
+		return fmt.Errorf("%s: write the slot directly under %s, not inside a block", el.Name, kind)
+	}
+	if !componentdef.Slot(kind, el.Name) {
+		return fmt.Errorf("%s is not a slot of %s", el.Name, kind)
+	}
+	p, ok := parent.Node().(*Popover)
+	if !ok {
+		return fmt.Errorf("%s: %s declares no slot build", el.Name, kind)
+	}
+	if p.Panel != nil {
+		return fmt.Errorf("%s appears twice under %s: a slot is written once", el.Name, kind)
+	}
+	// Several elements in the slot are one panel, so a column keeps them in
+	// order instead of on top of each other; it draws nothing itself.
+	wrap := &syntax.Element{
+		Name: "Column", NameAt: el.NameAt, Open: el.Open, Close: el.Close,
+		Src: el.Src, Members: el.Members,
+	}
+	n, err := t.build(wrap, parent, hooks)
+	if err != nil {
+		return err
+	}
+	p.Panel = n
 	return nil
 }
 
@@ -350,7 +386,6 @@ func newNode(name string) Node {
 	b := func() NodeBase {
 		return NodeBase{
 			visible:           newProp(nil, "visible", DirtyLayout, true),
-			template:          newProp(nil, "template", DirtyLayout, false),
 			margin:            newProp(nil, "margin", DirtyLayout, 0.0),
 			padding:           newProp(nil, "padding", DirtyLayout, 0.0),
 			paddingX:          newProp(nil, "paddingX", DirtyLayout, -1.0),
@@ -627,6 +662,11 @@ func newM3Component(name string) Node {
 		return &Menu{Component: newComponent()}
 	case "MenuItem":
 		return &MenuItem{Component: newComponent()}
+	case "Popover":
+		return &Popover{
+			Component: newComponent(),
+			Align:     newProp(nil, "align", DirtyLayout, "start"),
+		}
 	case "Snackbar":
 		return &Snackbar{Component: newComponent()}
 	case "TopAppBar":

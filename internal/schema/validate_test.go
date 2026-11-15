@@ -117,6 +117,8 @@ func TestDiagnosticCases(t *testing.T) {
 		{"responsive id", `Window { Text { id: { md: a } } }`, "cannot be responsive", ""},
 		{"repeated breakpoint", `Window { width: { md: 1, md: 2 } }`, "repeats the breakpoint", ""},
 		{"positioned outside stack", `Window { Column { Positioned { left: 1 } } }`, "direct child of Stack", ""},
+		{"slot outside its component", `Window { Column { $popover { } } }`, "slot of Popover", ""},
+		{"slot with a property", `Window { Popover { $popover { width: 1 } } }`, "takes elements only", ""},
 		{"percent on padding", `Window { padding: 50% }`, "only supported for width, height and opacity", ""},
 		{"unknown ref id", `Window { Text { id: a width: b.width } }`, "unknown id", ""},
 		{"unknown ref prop", `Window { Text { id: a width: a.nope } }`, "has no property", ""},

@@ -264,7 +264,6 @@ var common = []Prop{
 	{Name: "zIndex", Type: TypeNumber, Dirty: DirtyPaint, Default: 0.0, Common: true},
 	// cursor is the pointer shape, named the way CSS names it.
 	{Name: "cursor", Type: TypeEnum, Dirty: DirtyPaint, Enum: CursorValues, Default: "", Common: true},
-	{Name: "template", Type: TypeBool, Dirty: DirtyLayout, Default: false, Common: true},
 	// rotate turns the element and everything under it, the way CSS rotate
 	// does. Layout ignores it, so the box keeps its place.
 	{Name: "rotate", Type: TypeRotate, Dirty: DirtyPaint, Common: true},

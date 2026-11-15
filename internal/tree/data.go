@@ -346,7 +346,7 @@ func (t *Tree) buildInto(eb *eachBlock, members []syntax.Member, sc *scope, clon
 	before := len(eb.parent.kids)
 	prevScope, prevCloning := t.scope, t.cloning
 	t.scope = sc
-	// A row's ids stay on the nodes like an Instantiate copy, so two rows of
+	// A row's ids stay on the nodes, so two rows of
 	// the same arm do not collide; reach them with ui.Descendant.
 	t.cloning = cloning
 	err := t.buildMembers(members, eb.parent, eb.hooks, nil)
