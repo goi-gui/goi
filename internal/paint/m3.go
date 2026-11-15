@@ -148,17 +148,14 @@ func componentFill(b *tree.NodeBase, fill uint32) (uint32, *tree.Gradient) {
 	return fill, nil
 }
 
-// componentBorder is the border a component draws: the design's when it declared
-// one, else the component's own. The last result says the sides differ, which
-// paint draws as four bands instead of one rounded rect.
-func componentBorder(b *tree.NodeBase, color uint32, width float64) (uint32, float64, bool) {
-	if !b.BorderSet() {
-		return color, width, false
+// componentBorder is the border a component draws itself: its own M3 outline.
+// A design border is paintComponentBorder's job, because it belongs above the
+// content and not on the surface the component painted first.
+func componentBorder(b *tree.NodeBase, color uint32, width float64) (uint32, float64) {
+	if b.BorderSet() {
+		return 0, 0
 	}
-	if b.UniformBorder() {
-		return b.BorderColors()[0], b.BorderEdges().Top, false
-	}
-	return 0, 0, true
+	return color, width
 }
 
 // componentColor is the `color` a component with its own foreground cell was
@@ -486,7 +483,7 @@ func (l *List) paintButton(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	// replace the variant's, and color replaces the label's foreground.
 	radii := componentRadii(c.Base(), radius)
 	bg, gradient := componentFill(c.Base(), bg)
-	border, bw, uneven := componentBorder(c.Base(), border, bw)
+	border, bw = componentBorder(c.Base(), border, bw)
 	if v := componentColor(c); v != 0 {
 		fg = v
 	}
@@ -502,9 +499,6 @@ func (l *List) paintButton(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	}
 	l.shadowRadii(r, radii32(radii), elev, clip)
 	l.fillShape(r, bg, gradient, radii, border, bw, clip)
-	if uneven {
-		l.paintSideBorders(c.Base(), r, radii, c.Base().BorderEdges(), c.Base().BorderColors(), clip)
-	}
 	if !c.Disabled.Get() {
 		l.ripple(c, r, radii[0], fg, clip)
 		l.tint(c, r, radii32(radii), fg, clip)
@@ -1129,53 +1123,42 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		container = 0
 	}
 	fill, gradient := componentFill(c.Base(), container)
-	border, bw, uneven := componentBorder(c.Base(), border, bw)
-	if !c.Focused {
-		// Focus still thickens the component's own border, but a design border
-		// is the design's decision.
-	}
+	border, bw = componentBorder(c.Base(), border, bw)
 	if filled {
 		l.fillShape(r, fill, gradient, radii, 0, 0, clip)
-		switch {
-		case c.Base().BorderSet():
-			// The design's border is the field's outline, so the M3 indicator
-			// would run under it and past the corners.
-			l.fillShape(r, 0, nil, radii, border, bw, clip)
-			if uneven {
-				l.paintSideBorders(c.Base(), r, radii, c.Base().BorderEdges(), c.Base().BorderColors(), clip)
+		// A design border is the field's outline, so the M3 indicator stays
+		// away from it; paintComponentBorder draws that border above the text.
+		if !c.Base().BorderSet() {
+			if c.Base().RadiusSet() {
+				// A rounded field keeps a focus cue with a border instead: a square
+				// indicator would cut the corners it now has.
+				bc, bwid := col.Outline, 1.0
+				if c.Focused {
+					bc, bwid = col.Primary, 2
+				}
+				if c.Disabled.Get() {
+					bc = withAlpha(bc, m3.DisabledContainerOpacity)
+				}
+				l.fillShape(r, 0, nil, radii, bc, bwid, clip)
+			} else {
+				// Active indicator along the bottom.
+				ind := col.OnSurfaceVariant
+				th := 1.0
+				if c.Focused {
+					ind, th = col.Primary, 2.0
+				}
+				l.Ops = append(l.Ops, Op{
+					Kind: Fill, Shape: RoundedRect,
+					Rect:  [4]float32{float32(r.X), float32(r.Bottom() - th), float32(r.W), float32(th)},
+					Color: ind, Clip: clipArr(clip),
+				})
 			}
-		case c.Base().RadiusSet():
-			// A rounded field keeps a focus cue with a border instead: a square
-			// indicator would cut the corners it now has.
-			bc, bwid := col.Outline, 1.0
-			if c.Focused {
-				bc, bwid = col.Primary, 2
-			}
-			if c.Disabled.Get() {
-				bc = withAlpha(bc, m3.DisabledContainerOpacity)
-			}
-			l.fillShape(r, 0, nil, radii, bc, bwid, clip)
-		default:
-			// Active indicator along the bottom.
-			ind := col.OnSurfaceVariant
-			th := 1.0
-			if c.Focused {
-				ind, th = col.Primary, 2.0
-			}
-			l.Ops = append(l.Ops, Op{
-				Kind: Fill, Shape: RoundedRect,
-				Rect:  [4]float32{float32(r.X), float32(r.Bottom() - th), float32(r.W), float32(th)},
-				Color: ind, Clip: clipArr(clip),
-			})
 		}
 	} else {
 		if c.Focused && !c.Base().BorderSet() {
 			border, bw = col.Primary, 2
 		}
 		l.fillShape(r, fill, gradient, radii, border, bw, clip)
-		if uneven {
-			l.paintSideBorders(c.Base(), r, radii, c.Base().BorderEdges(), c.Base().BorderColors(), clip)
-		}
 	}
 	if v := componentColor(c); v != 0 {
 		fg = v

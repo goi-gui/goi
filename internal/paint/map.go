@@ -17,12 +17,9 @@ func (l *List) paintMap(m *tree.Map, r tree.Rect, clip tree.Rect) {
 	inner := intersect(clip, r)
 	box := rectArr(r)
 	// The node's own box shows through the gaps while the first tiles load, so
-	// an unset background falls back to the theme's surface.
-	if m.Base().Background() == 0 && m.Base().Gradient("background") == nil {
-		l.fillRect(r, l.Theme.Colors.SurfaceContainerHighest, m.Base().Radius(), 0, 0, inner)
-	} else {
-		l.paintBox(&m.NodeBase, r, clip)
-	}
+	// an unset background falls back to the theme's surface. paintComponentBox
+	// swaps it for the design's when one is given.
+	l.fillRect(r, l.Theme.Colors.SurfaceContainerHighest, m.Base().Radius(), 0, 0, inner)
 	for _, t := range m.ViewTiles() {
 		d := m.Tile(t.MapTile)
 		if d == nil || d.W == 0 || d.H == 0 {
@@ -40,16 +37,6 @@ func (l *List) paintMap(m *tree.Map, r tree.Rect, clip tree.Rect) {
 		})
 	}
 	l.paintMapAttribution(m, r, inner)
-	// The border goes last: the tiles are full bleed, so one drawn with the
-	// background would never be seen.
-	if m.Base().UniformBorder() {
-		cols := m.Base().BorderColors()
-		if cols[0] != 0 && m.Base().BorderEdges().Top > 0 {
-			l.fillShape(r, 0, nil, m.Base().Radii(), cols[0], m.Base().BorderEdges().Top, clip)
-		}
-	} else {
-		l.paintSideBorders(&m.NodeBase, r, m.Base().Radii(), m.Base().BorderEdges(), m.Base().BorderColors(), clip)
-	}
 }
 
 // paintGeom draws one polygon: its rasterized fill first, then the ring as one

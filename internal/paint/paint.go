@@ -276,6 +276,9 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 	frame := b.ScrollViewport(r)
 	l.paintScrollShadows(b, frame, clip)
 	l.paintScrollbar(b, frame, clip)
+	if _, ok := b.Node().(componentNode); ok {
+		l.paintComponentBorder(b, r, clip, from)
+	}
 	l.roundClip(b, r, fromClip)
 	l.applyRotate(from, b, r)
 	l.applyOpacity(from, b.Opacity())
@@ -366,6 +369,9 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 	frame := b.ScrollViewport(r)
 	l.paintScrollShadows(b, frame, clip)
 	l.paintScrollbar(b, frame, clip)
+	if _, ok := b.Node().(componentNode); ok {
+		l.paintComponentBorder(b, r, clip, from)
+	}
 	l.roundClip(b, r, fromClip)
 	l.applyRotate(from, b, r)
 	l.applyOpacity(from, b.Opacity())
@@ -387,8 +393,10 @@ func (l *List) paintContent(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
 	}
 	if c, ok := b.Node().(componentNode); ok {
 		l.suppressElev = b.ShadowSet()
+		from := len(l.Ops)
 		l.paintComponent(c.M3(), r, clip)
 		l.suppressElev = false
+		l.paintComponentBox(b, r, clip, from)
 	} else {
 		l.paintBox(b, r, clip)
 	}
@@ -436,9 +444,116 @@ func (l *List) paintBackdrop(b *tree.NodeBase, r tree.Rect, clip tree.Rect, blur
 	})
 }
 
+// paintComponentBox applies the common box properties to a component. A
+// component paints its own M3 surface, so background, border and radius used to
+// be ignored there; this replaces the surface it drew, or puts one behind a
+// transparent control, and draws the design's border above the content.
+func (l *List) paintComponentBox(b *tree.NodeBase, r tree.Rect, clip tree.Rect, from int) {
+	color := b.Background()
+	grad := b.Gradient("background")
+	hasPaint := color != 0 || grad != nil
+	radii := b.Radii()
+	hasRadius := b.RadiusSet()
+	be := b.BorderEdges()
+	hasBorder := be.Top > 0 || be.Right > 0 || be.Bottom > 0 || be.Left > 0
+	if !hasPaint && !hasRadius && !hasBorder {
+		return
+	}
+
+	// The component's outer surface is the first fill that covers its whole
+	// box. Sliders, switches and checkboxes paint only their own small parts, so
+	// they get a box behind their content instead.
+	surface := surfaceOp(l.Ops, from, r)
+	if surface >= 0 {
+		op := &l.Ops[surface]
+		if hasRadius {
+			op.Radius = radiusArr(radii, r)
+		}
+		if hasPaint {
+			op.Color = color
+			op.Gradient = grad
+			op.Shape = RoundedRect
+			if grad != nil {
+				op.Shape = CSSGradient
+			}
+		}
+		if hasBorder {
+			// The design's border replaces the component's own outline, which is
+			// sometimes a second op on the same box (an outlined field, a table)
+			// rather than a property of its surface. Children paint later, so
+			// only the component's own filled boxes are in this range.
+			for i := from; i < len(l.Ops); i++ {
+				if op := &l.Ops[i]; op.Kind == Fill && rectEqual(op.Rect, r) {
+					op.BorderColor, op.BorderWidth = 0, 0
+				}
+			}
+		}
+	} else if hasPaint {
+		op := Op{
+			Kind: Fill, Shape: RoundedRect,
+			Rect: rectArr(r), Radius: radiusArr(radii, r),
+			Color: color, Gradient: grad, Clip: clipArr(clip),
+		}
+		if grad != nil {
+			op.Shape = CSSGradient
+		}
+		l.Ops = append(l.Ops, Op{})
+		copy(l.Ops[from+1:], l.Ops[from:])
+		l.Ops[from] = op
+	}
+}
+
+// paintComponentBorder draws the design's border above a component's content
+// and children. The border belongs to the whole box, not to the surface the
+// component painted, so it runs after the child walk.
+func (l *List) paintComponentBorder(b *tree.NodeBase, r tree.Rect, clip tree.Rect, from int) {
+	be, cols := b.BorderEdges(), b.BorderColors()
+	if be.Top <= 0 && be.Right <= 0 && be.Bottom <= 0 && be.Left <= 0 {
+		return
+	}
+	radii := b.Radii()
+	if !b.RadiusSet() {
+		// A pill button or a rounded card keeps its own corner when the design
+		// only asked for a border colour.
+		if i := surfaceOp(l.Ops, from, r); i >= 0 {
+			for k := range radii {
+				radii[k] = float64(l.Ops[i].Radius[k])
+			}
+		}
+	}
+	if b.UniformBorder() {
+		if cols[0] != 0 && be.Top > 0 {
+			l.fillShape(r, 0, nil, radii, cols[0], be.Top, clip)
+		}
+		return
+	}
+	l.paintSideBorders(b, r, radii, be, cols, clip)
+}
+
+// surfaceOp is the first full-box rounded fill a component painted.
+func surfaceOp(ops []Op, from int, r tree.Rect) int {
+	for i := from; i < len(ops); i++ {
+		op := &ops[i]
+		if op.Kind == Fill && (op.Shape == RoundedRect || op.Shape == CSSGradient) && rectEqual(op.Rect, r) {
+			return i
+		}
+	}
+	return -1
+}
+
+// rectEqual reports whether a painted op covers the node's box, with the half
+// pixel an op snaps to the device grid.
+func rectEqual(op [4]float32, r tree.Rect) bool {
+	const eps = 1.0
+	return math.Abs(float64(op[0]-float32(r.X))) <= eps &&
+		math.Abs(float64(op[1]-float32(r.Y))) <= eps &&
+		math.Abs(float64(op[2]-float32(r.W))) <= eps &&
+		math.Abs(float64(op[3]-float32(r.H))) <= eps
+}
+
 // paintBox draws the common box of an element: its background (a solid colour
-// or a gradient) and its border. Components paint their own surface, so they
-// call this only where one of their parts is an ordinary box.
+// or a gradient) and its border. A component paints its own surface, so
+// paintComponentBox applies the same properties to the fill it emitted.
 func (l *List) paintBox(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
 	radii := b.Radii()
 	be := b.BorderEdges()

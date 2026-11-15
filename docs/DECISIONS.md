@@ -2117,3 +2117,17 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   accumulated regions pass a soft cap, clears the atlas and repacks the current
   display list, which also releases the old `img.Data` pointers. Atlas UVs are
   inset half a texel so the sampler cannot read outside its own region.
+- **A component's built-in surface is not a shield against the common box.**
+  Every component painted its own M3 container, so `background`, `radius` and
+  `borderColor` were silently ignored except on Button and TextField. Paint now
+  treats the first full-box fill a component emitted as that surface: it takes
+  the design's colour, gradient and radius, and the design border is drawn after
+  the children, because a border belongs on top of the content and not on the
+  surface underneath it. A control that paints only a small part of its box
+  (Switch, Checkbox, Slider) gets the background behind its content instead, and
+  nothing changes when the design sets none of these. A border declared on the
+  design therefore also stops the component drawing its own, which is what
+  Button and TextField already did; their duplicate side-border pass went away.
+  An auto-sized component now adds its `padding` to the size the M3 metrics
+  report, so a padded control grows the way a padded Text does instead of
+  ignoring the property.

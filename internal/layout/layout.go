@@ -980,6 +980,15 @@ func (e *Engine) naturalSize(k *tree.NodeBase, availW, availH float64) (float64,
 		if w == 0 && len(k.Kids()) > 0 {
 			w = e.contentWidth(k, availW, h, mt)
 		}
+		// The component's own metrics do not know the design's padding, so an
+		// auto-sized box grows around its content, the way a padded Text does.
+		pe, be := k.PaddingEdges(), k.BorderEdges()
+		if !mt.FillW && k.Width() < 0 {
+			w += pe.Left + pe.Right + be.Left + be.Right
+		}
+		if !mt.FillH && k.Height() < 0 {
+			h += pe.Top + pe.Bottom + be.Top + be.Bottom
+		}
 		return w, h
 	}
 	switch n := k.Node().(type) {
