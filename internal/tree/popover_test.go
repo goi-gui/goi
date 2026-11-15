@@ -111,3 +111,49 @@ func TestRemovingThePanelStopsTheLift(t *testing.T) {
 		t.Fatalf("holder children = %d, want none", len(order))
 	}
 }
+
+// TestZIndexBeatsAFloatingBranch is the drawer-behind-a-page bug: a page that
+// holds a popover lifts its branch above later siblings, and a modal written
+// after it lost the order. An explicit zIndex is the stronger claim, so the
+// overlay wins; at equal zIndex the floating branch still wins, which is what
+// keeps a panel above the siblings written after its host.
+func TestZIndexBeatsAFloatingBranch(t *testing.T) {
+	tr, diag := BuildSource([]byte(`Window { Stack {
+		Column {
+			Popover {
+				Button { label: "Open" }
+				$popover { Card { label: "Panel" width: 80 height: 40 } }
+			}
+		}
+		Rectangle { id: scrim zIndex: 1 }
+		Positioned { id: drawer zIndex: 2 left: 0 top: 0 bottom: 0 width: 200 }
+	} }`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	stack := tr.Root.Children()[0].Base()
+	order := stack.PaintOrder()
+	last := order[len(order)-1]
+	if last.ID() != "drawer" {
+		t.Fatalf("the drawer is not painted last: %v", order)
+	}
+
+	// Without the zIndex, the same stack orders the floating branch last.
+	tr, diag = BuildSource([]byte(`Window { Stack {
+		Column {
+			Popover {
+				Button { label: "Open" }
+				$popover { Card { label: "Panel" width: 80 height: 40 } }
+			}
+		}
+		Rectangle { id: later }
+	} }`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	stack = tr.Root.Children()[0].Base()
+	order = stack.PaintOrder()
+	if last := order[len(order)-1]; last.Node().Kind() != "Column" {
+		t.Fatalf("the floating branch is not painted last: %v", order)
+	}
+}

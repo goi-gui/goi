@@ -2305,3 +2305,13 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   has, takes nothing; the restored value is clamped on read like any other, so a
   shorter page shows its end rather than a blank. It runs before `Bind`, so a
   Bind that scrolls somewhere on purpose still wins.
+- **An explicit zIndex outranks a floating branch.** A popover panel is an
+  overlay without a stacking context, so the branch that holds it is lifted above
+  its later siblings by the `floats` flag — and that lift climbs every ancestor.
+  A page that contains any popover therefore painted after a drawer written below
+  it in the Stack, which is how the gallery's modal drawer ended up behind the
+  page it covers. Sorting now compares `zIndex` first and uses `floats` only to
+  break a tie, so a modal names `zIndex: 1` (and a drawer above its scrim `2`) and
+  stays on top, while a panel without one still beats the siblings written after
+  its host. CSS reads the same way: an absolute child with z-index auto paints at
+  its tree position, and anything with a real z-index beats it.

@@ -619,12 +619,13 @@ func (b *NodeBase) ZIndex() float64 { return b.zIndex.Get() }
 // raising a popover while it is open needs no repaint call.
 func (b *NodeBase) SetZIndex(v float64) { b.zIndex.Set(v) }
 
-// PaintOrder returns the children in paint order: an ordinary child first,
-// then a branch that floats a surface out of its box, each group by ascending
-// zIndex and ties in document order. A popover's panel is such a surface, so
-// the branch that holds it paints above the siblings written after it. Layout
-// never uses this order, so a design can restack a row without moving anything.
-// The untouching case costs nothing and is the common one.
+// PaintOrder returns the children in paint order, by ascending zIndex, ties
+// broken in favour of a branch that floats a surface out of its box, then by
+// document order. A popover's panel is such a surface, so the branch that holds
+// it paints above the siblings written after it — unless one of them names a
+// zIndex, which is how a modal overlay stays on top of a page that contains a
+// popover. Layout never uses this order, so a design can restack a row without
+// moving anything. The untouching case costs nothing and is the common one.
 func (b *NodeBase) PaintOrder() []*NodeBase {
 	// A table paints its rows in the sorted order layout used, so a click lands
 	// on the row under the pointer and the bands line up with the cells.
@@ -644,10 +645,13 @@ func (b *NodeBase) PaintOrder() []*NodeBase {
 	out := make([]*NodeBase, len(b.kids))
 	copy(out, b.kids)
 	sort.SliceStable(out, func(i, j int) bool {
+		if zi, zj := out[i].zIndex.Get(), out[j].zIndex.Get(); zi != zj {
+			return zi < zj
+		}
 		if out[i].floats != out[j].floats {
 			return !out[i].floats
 		}
-		return out[i].zIndex.Get() < out[j].zIndex.Get()
+		return false
 	})
 	return out
 }
