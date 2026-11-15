@@ -483,7 +483,6 @@ func (l *List) paintButton(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	// replace the variant's, and color replaces the label's foreground.
 	radii := componentRadii(c.Base(), radius)
 	bg, gradient := componentFill(c.Base(), bg)
-	border, bw = componentBorder(c.Base(), border, bw)
 	if v := componentColor(c); v != 0 {
 		fg = v
 	}
@@ -497,6 +496,7 @@ func (l *List) paintButton(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		border = withAlpha(col.OnSurface, m3.DisabledContainerOpacity)
 		fg = col.OnSurface
 	}
+	border, bw = componentBorder(c.Base(), border, bw)
 	l.shadowRadii(r, radii32(radii), elev, clip)
 	l.fillShape(r, bg, gradient, radii, border, bw, clip)
 	if !c.Disabled.Get() {

@@ -119,3 +119,26 @@ func TestComponentShadowAndPadding(t *testing.T) {
 		t.Errorf("%d shadow ops, want 1", shadows)
 	}
 }
+
+// TestComponentColorTintsTheForeground covers `color`, the one visual property
+// outside the common box: a Button recolours its label and a TextField its
+// value.
+func TestComponentColorTintsTheForeground(t *testing.T) {
+	for _, tc := range []struct {
+		src, run string
+		want     uint32
+	}{
+		{`Window { Column { Button { label: "B" color: #ff0000ff } } }`, "B", 0xff0000ff},
+		{`Window { Column { TextField { label: "F" text: "v" color: #00ff00ff } } }`, "v", 0x00ff00ff},
+	} {
+		got := uint32(0)
+		for _, op := range list(t, tc.src, 400, 300).Ops {
+			if op.Kind == Text && op.Text == tc.run {
+				got = op.Color
+			}
+		}
+		if got != tc.want {
+			t.Errorf("%q: text colour %08x, want %08x", tc.run, got, tc.want)
+		}
+	}
+}
