@@ -2277,3 +2277,21 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   window clamp are skipped while the anchor itself is outside that viewport:
   clamping there would drag a sliver of the panel back on screen with nothing
   to point at.
+- **`expand` is a node method with an optional bool.** The split button and the
+  FAB menu already carry an `expanded` cell, and the gallery was written as if
+  `id.expand()` existed, so the method completes that pair instead of adding a
+  second state: `expand(true)` and `expand(false)` set it, and a bare `expand()`
+  toggles, which is what one button that opens and closes itself wants. It
+  writes through `SetPropBool`, the typed cell, so the write marks the tree dirty
+  like a `Set` from Go; the literal path used at build time deliberately does
+  not. The checker accepts the method only on an element whose kind declares
+  `expanded`, so `plain.expand(true)` on a Button is reported rather than
+  silently doing nothing, and a literal argument that is not a bool is reported
+  while an expression is left to run time. No argument at all means toggle,
+  rather than an error, because the alternative is two methods for one switch.
+- **The split button's menu icon is a property, not a sketch.** The trailing
+  segment used to draw `arrow_drop_down` unconditionally. It now reads
+  `trailingIcon`, the same name every other component uses for its end icon, and
+  falls back to the M3 arrow. The open state is drawn by the design
+  (`trailingIcon: split.expanded ? arrow_upward : arrow_downward`), which keeps
+  the component free of a second icon property and lets any icon pair work.

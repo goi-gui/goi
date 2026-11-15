@@ -701,7 +701,11 @@ func (l *List) paintSplitButton(c *tree.Component, r tree.Rect, clip tree.Rect) 
 	} else {
 		l.textIn(c.Label.Get(), l.style("labelLarge"), fg, main, AlignCenter, clip)
 	}
-	l.iconIn("arrow_drop_down", 24, fg, trail.X+trail.W/2, r.Y+r.H/2, clip)
+	trailIcon := c.Trailing.Get()
+	if trailIcon == "" {
+		trailIcon = "arrow_drop_down"
+	}
+	l.iconIn(trailIcon, 24, fg, trail.X+trail.W/2, r.Y+r.H/2, clip)
 }
 
 func (l *List) paintSegmentedButton(c *tree.Component, r tree.Rect, clip tree.Rect) {

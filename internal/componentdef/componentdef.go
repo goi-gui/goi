@@ -108,7 +108,7 @@ var props = map[string][]string{
 	"FAB":              {"label", "icon", "variant", "disabled", "expanded"},
 	"FABMenu":          {"icon", "variant", "disabled", "expanded"},
 	"ButtonGroup":      {"variant", "disabled"},
-	"SplitButton":      {"label", "icon", "variant", "disabled", "expanded"},
+	"SplitButton":      {"label", "icon", "trailingIcon", "variant", "disabled", "expanded"},
 	"SegmentedButton":  {"label", "icon", "variant", "disabled", "selected"},
 	"Chip":             {"label", "icon", "trailingIcon", "variant", "disabled", "selected", "checked"},
 	"Badge":            {"label", "variant"},

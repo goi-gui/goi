@@ -1393,27 +1393,46 @@ func (v *validator) checkEventCall(e *syntax.Element, ev EventDef, p *syntax.Pro
 		}
 		if !NodeMethod(call.Callee.Prop) {
 			v.add(at, end,
-				fmt.Sprintf("%s.%s: a handler call starts with bridge., or calls play, pause, stop, toggle, seek, volume, fullscreen or audioTrack on an id",
+				fmt.Sprintf("%s.%s: a handler call starts with bridge., or calls play, pause, stop, toggle, seek, volume, fullscreen, audioTrack or expand on an id",
 					e.Name, p.Name),
 				syntax.Suggest(call.Callee.Prop, NodeMethods))
 			return
 		}
-		if _, ok := v.elems[call.Callee.ID]; !ok {
+		target, ok := v.elems[call.Callee.ID]
+		if !ok {
 			v.add(at, end,
 				fmt.Sprintf("%s.%s: no element with id %q", e.Name, p.Name, call.Callee.ID), "")
 			return
 		}
-		// A player's seek and volume take one number; the rest take none.
-		wantArgs := 0
-		if call.Callee.Prop == "seek" || call.Callee.Prop == "volume" {
-			wantArgs = 1
-		}
-		if len(call.Args) != wantArgs {
-			if wantArgs == 0 {
-				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes no arguments",
-					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
-			} else {
+		switch call.Callee.Prop {
+		case "seek", "volume", "audioTrack":
+			// A player's transport takes one number.
+			if len(call.Args) != 1 {
 				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes one number",
+					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+			}
+		case "expand":
+			// `expand()` toggles and `expand(true)` sets, so no argument is
+			// legal and the one that may follow is a bool.
+			if def, ok := Lookup(target.Name); ok && def.Prop("expanded") == nil {
+				v.add(at, end,
+					fmt.Sprintf("%s.%s: %s has no expanded state to set", e.Name, p.Name, target.Name), "")
+				return
+			}
+			if len(call.Args) > 1 {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes no argument or one bool",
+					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+				return
+			}
+			if len(call.Args) == 1 {
+				if _, ok := call.Args[0].(*syntax.Bool); !ok && !boolishValue(call.Args[0]) {
+					v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes a bool",
+						e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+				}
+			}
+		default:
+			if len(call.Args) != 0 {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes no arguments",
 					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
 			}
 		}
@@ -1667,4 +1686,15 @@ func listItemLen(v syntax.Value) int {
 		return len(x.ID) + 1 + len(x.Prop)
 	}
 	return 1
+}
+
+// boolishValue reports whether a value could be a bool at run time: a literal
+// bool, or an expression whose type the checker cannot know without running it.
+// It is what lets `expand(split.expanded)` pass while `expand(3)` does not.
+func boolishValue(v syntax.Value) bool {
+	switch v.(type) {
+	case *syntax.Ref, *syntax.Binary, *syntax.Unary, *syntax.Ternary, *syntax.Call:
+		return true
+	}
+	return false
 }

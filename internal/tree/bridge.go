@@ -277,6 +277,33 @@ func (t *Tree) callNodeMethodX(id, method string, args []any) {
 		t.bridgeErr(fmt.Errorf("goi: no element with id %q", id))
 		return
 	}
+	// `id.expand()` toggles a component's expanded state and `id.expand(true)`
+	// sets it; the prop is what the design reads back as `id.expanded`.
+	if method == "expand" {
+		b := n.Base()
+		cur, has := b.PropValue("expanded")
+		if !has {
+			t.bridgeErr(fmt.Errorf("goi: %s has no expanded state to set", n.Kind()))
+			return
+		}
+		on, _ := cur.(bool)
+		switch len(args) {
+		case 0:
+			on = !on
+		case 1:
+			v, ok := args[0].(bool)
+			if !ok {
+				t.bridgeErr(fmt.Errorf("goi: %s.expand takes a bool", n.Kind()))
+				return
+			}
+			on = v
+		default:
+			t.bridgeErr(fmt.Errorf("goi: %s.expand takes no argument or one bool", n.Kind()))
+			return
+		}
+		b.SetPropBool("expanded", on)
+		return
+	}
 	if _, isMedia := MediaNode(n); isMedia {
 		if h := n.Base().hooks; h != nil && h.Media != nil && h.Media(n, method, args) {
 			return

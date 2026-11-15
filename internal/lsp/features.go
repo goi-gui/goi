@@ -841,6 +841,17 @@ func animatedKind(kind string) bool {
 	return false
 }
 
+// kindHasNodeMethod reports whether a kind accepts a node method: the playback
+// transport on an animation or a player, and expand on a component with an
+// expanded state.
+func kindHasNodeMethod(kind, method string) bool {
+	if method == "expand" {
+		el, ok := schema.Lookup(kind)
+		return ok && el.Prop("expanded") != nil
+	}
+	return animatedKind(kind)
+}
+
 // nodeMethodDoc explains one playback method, for completion and hover.
 func nodeMethodDoc(name string) string {
 	switch name {
@@ -862,6 +873,8 @@ func nodeMethodDoc(name string) string {
 		return "**windowed()**\n\nLeaves fullscreen and puts the video back in its box."
 	case "audioTrack":
 		return "**audioTrack(0)**\n\nPicks the audio stream, 0 being the first."
+	case "expand":
+		return "**expand(on?)**\n\nSets the component's `expanded` state; with no argument it toggles. `split.expand(true)` opens, `split.expand()` flips it, and a design reads the result as `split.expanded`."
 	case "toggleFullscreen":
 		return "**toggleFullscreen()**\n\nFlips between fullscreen and windowed."
 	}
@@ -1050,11 +1063,14 @@ func valueItems(file *syntax.File, prop string, src []byte, off int, prefix stri
 				continue
 			}
 			for _, m := range schema.NodeMethods {
+				if !kindHasNodeMethod(id.kind, m) {
+					continue
+				}
 				out = append(out, completionResult{
 					Label:         id.name + "." + m + "(…)",
 					InsertText:    id.name + "." + m + "(",
 					Kind:          kindFunction,
-					Detail:        "playback · " + id.kind,
+					Detail:        "method · " + id.kind,
 					Documentation: &doc{Kind: "markdown", Value: nodeMethodDoc(m)},
 				})
 			}
@@ -1489,7 +1505,7 @@ func (s *Server) hover(raw json.RawMessage) any {
 		}
 		if off >= propStart {
 			if kind, ok := idElementAt(file, r.ID); ok {
-				if schema.NodeMethod(r.Prop) && animatedKind(kind) {
+				if schema.NodeMethod(r.Prop) && kindHasNodeMethod(kind, r.Prop) {
 					return map[string]any{
 						"contents": doc{Kind: "markdown", Value: nodeMethodDoc(r.Prop)},
 						"range":    idx.at(propStart, propStart+len(r.Prop)),

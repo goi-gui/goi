@@ -240,3 +240,32 @@ func TestGestureDetectorTakesMouseEvents(t *testing.T) {
 		t.Error("Column accepted a GestureDetector event")
 	}
 }
+
+// TestSplitButtonExpands keeps the split button's state methods honest: an
+// event may toggle or set the expanded state by id, and nothing else.
+func TestSplitButtonExpands(t *testing.T) {
+	base := `Window { Column {
+		SplitButton { id: split label: "Split" }
+		Button { %s }
+	} }`
+	for _, call := range []string{"split.expand()", "split.expand(true)", "split.expand(false)"} {
+		src := fmt.Sprintf(base, "onClick: "+call)
+		if _, diag := validate(t, src); !diag.Empty() {
+			t.Errorf("%s: %v", call, diag)
+		}
+	}
+	for _, bad := range []string{"split.expand(3)", "split.expand(true, false)", "split.collapse()"} {
+		src := fmt.Sprintf(base, "onClick: "+bad)
+		if _, diag := validate(t, src); diag.Empty() {
+			t.Errorf("%s was accepted", bad)
+		}
+	}
+	// Only a component with an expanded state accepts the method.
+	src := `Window { Column {
+		Button { id: plain label: "Plain" }
+		Button { onClick: plain.expand(true) }
+	} }`
+	if _, diag := validate(t, src); diag.Empty() {
+		t.Fatal("expand on a Button was accepted")
+	}
+}

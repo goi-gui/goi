@@ -113,3 +113,46 @@ func TestBridgeEventPayload(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// TestExpandDrivesTheExpandedProp: `id.expand()` flips the state and
+// `id.expand(true)` sets it, which is the value a design reads back as
+// `id.expanded` and the icon switch follows.
+func TestExpandDrivesTheExpandedProp(t *testing.T) {
+	var errs []error
+	tr, diag := BuildSource([]byte(`Window { Column {
+		SplitButton { id: split label: "Split" }
+		SplitButton { id: open label: "Open" onClick: open.expand(true) }
+		SplitButton { id: close label: "Close" expanded: true onClick: close.expand(false) }
+		SplitButton { id: flip label: "Flip" onClick: flip.expand() }
+	} }`), &Hooks{Error: func(err error) { errs = append(errs, err) }})
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	split := tr.ids["split"].(*SplitButton)
+	open := tr.ids["open"].(*SplitButton)
+	closeBtn := tr.ids["close"].(*SplitButton)
+	flip := tr.ids["flip"].(*SplitButton)
+
+	open.Base().Click.Emit(ClickEvent{})
+	if !open.Expanded.Get() {
+		t.Fatal("expand(true) did not open")
+	}
+	closeBtn.Base().Click.Emit(ClickEvent{})
+	if closeBtn.Expanded.Get() {
+		t.Fatal("expand(false) did not close")
+	}
+	flip.Base().Click.Emit(ClickEvent{})
+	if !flip.Expanded.Get() {
+		t.Fatal("expand() did not toggle a closed button open")
+	}
+	flip.Base().Click.Emit(ClickEvent{})
+	if flip.Expanded.Get() {
+		t.Fatal("expand() did not toggle an open button closed")
+	}
+	if split.Expanded.Get() {
+		t.Fatal("a button nobody touched reports expanded")
+	}
+	if len(errs) != 0 {
+		t.Fatalf("errors: %v", errs)
+	}
+}

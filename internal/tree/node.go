@@ -777,6 +777,23 @@ func (b *NodeBase) PropValue(name string) (any, bool) {
 	return nil, false
 }
 
+// SetPropBool writes a bool property by .goi name through its cell, so a runtime
+// write from a design method marks the tree dirty like any other Set. It
+// reports false when the node has no such property.
+func (b *NodeBase) SetPropBool(name string, v bool) bool {
+	b.properties()
+	i, ok := b.byName[name]
+	if !ok {
+		return false
+	}
+	p, ok := b.props[i].cell.(*Prop[bool])
+	if !ok {
+		return false
+	}
+	p.Set(v)
+	return true
+}
+
 // PropDirty returns the dirty kind of a property, or DirtyLayout when unknown.
 func (b *NodeBase) PropDirty(name string) DirtyKind {
 	b.properties()

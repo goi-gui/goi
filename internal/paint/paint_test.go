@@ -673,3 +673,26 @@ func TestSkeletonDrawsABaseAndASweep(t *testing.T) {
 		t.Fatal("a still skeleton asked for the next frame")
 	}
 }
+
+// TestSplitButtonTrailingIcon: the menu segment draws the icon the design named,
+// and keeps the M3 arrow when it names none.
+func TestSplitButtonTrailingIcon(t *testing.T) {
+	icons := func(src string) []string {
+		l := list(t, src, 300, 200)
+		var out []string
+		for _, op := range l.Ops {
+			if op.Kind == Text && op.Icon {
+				out = append(out, op.Text)
+			}
+		}
+		return out
+	}
+	got := icons(`Window { SplitButton { label: "Split" width: 200 height: 40 trailingIcon: arrow_upward } }`)
+	if len(got) != 1 || got[0] != "arrow_upward" {
+		t.Fatalf("icons = %v, want the trailing arrow_upward", got)
+	}
+	got = icons(`Window { SplitButton { label: "Split" width: 200 height: 40 } }`)
+	if len(got) != 1 || got[0] != "arrow_drop_down" {
+		t.Fatalf("icons = %v, want the default arrow_drop_down", got)
+	}
+}
