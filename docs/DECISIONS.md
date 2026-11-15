@@ -2295,3 +2295,13 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   falls back to the M3 arrow. The open state is drawn by the design
   (`trailingIcon: split.expanded ? arrow_upward : arrow_downward`), which keeps
   the component free of a second icon property and lets any icon pair work.
+- **A reload puts the reader back where they were.** Scroll offsets live on the
+  node, so rebuilding the tree from the file dropped every position to the top on
+  each save, which is the one thing an editor loop cannot afford. `carryScroll`
+  snapshots the offset of every scrolling node before the swap and restores it
+  after: by `id` when the node has one, because an inserted sibling should not
+  move the match, and by its index path otherwise, because a scroller nobody
+  named is still a scroller. A node the new file no longer scrolls, or no longer
+  has, takes nothing; the restored value is clamped on read like any other, so a
+  shorter page shows its end rather than a blank. It runs before `Bind`, so a
+  Bind that scrolls somewhere on purpose still wins.

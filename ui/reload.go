@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -106,6 +107,9 @@ func (a *App) swapTree(tr *tree.Tree) {
 	}
 
 	carryOver(old, tr)
+	if old != nil {
+		carryScroll(old, tr)
+	}
 
 	w.tree = tr
 	tr.SetI18n(a.catalog)
@@ -188,6 +192,61 @@ func carryOver(old, fresh *tree.Tree) {
 
 // propNames lists the .goi property names a node exposes.
 func propNames(b *tree.NodeBase) []string { return b.PropertyNames() }
+
+// scrollState is where one scrolling node was left.
+type scrollState struct{ x, y float64 }
+
+// carryScroll keeps every scrolling node where the reader left it. A node with
+// an id is matched by it; one without falls back to its position in the tree,
+// which survives the style edit a reload usually is. A scroller the new file
+// dropped, or one that no longer scrolls, takes nothing.
+func carryScroll(old, fresh *tree.Tree) {
+	if old == nil || old.Root == nil || fresh.Root == nil {
+		return
+	}
+	byID := map[string]scrollState{}
+	byPath := map[string]scrollState{}
+	var save func(n tree.Node, path string)
+	save = func(n tree.Node, path string) {
+		b := n.Base()
+		if b.ScrollAxis() != tree.AxisNone {
+			st := scrollState{
+				x: b.ScrollOffsetFor(tree.AxisX),
+				y: b.ScrollOffsetFor(tree.AxisY),
+			}
+			if id := b.ID(); id != "" {
+				byID[id] = st
+			}
+			byPath[path] = st
+		}
+		for i, k := range b.Kids() {
+			save(k.Node(), path+"/"+strconv.Itoa(i))
+		}
+	}
+	save(old.Root, "")
+
+	var restore func(n tree.Node, path string)
+	restore = func(n tree.Node, path string) {
+		b := n.Base()
+		if b.ScrollAxis() != tree.AxisNone {
+			st, ok := scrollState{}, false
+			if id := b.ID(); id != "" {
+				st, ok = byID[id]
+			}
+			if !ok {
+				st, ok = byPath[path]
+			}
+			if ok {
+				b.SetScrollOffsetFor(tree.AxisX, st.x)
+				b.SetScrollOffsetFor(tree.AxisY, st.y)
+			}
+		}
+		for i, k := range b.Kids() {
+			restore(k.Node(), path+"/"+strconv.Itoa(i))
+		}
+	}
+	restore(fresh.Root, "")
+}
 
 // enableWatcher starts watching every directory the design lives in.
 func (a *App) enableWatcher() error {

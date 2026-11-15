@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/goi-gui/goi/internal/layout"
 	"github.com/goi-gui/goi/internal/syntax"
 	"github.com/goi-gui/goi/internal/tree"
 )
@@ -214,4 +215,129 @@ func TestReloadKeepsTheme(t *testing.T) {
 	if got := w.Root().Theme.Get(); got != "dark" {
 		t.Fatalf("theme after reload = %q, want dark", got)
 	}
+}
+
+// TestReloadKeepsScrollPosition: a hot reload re-reads the design, and a reader
+// half-way down a page must stay there instead of being thrown back to the top.
+func TestReloadKeepsScrollPosition(t *testing.T) {
+	a, win, _ := inputFixture(t, `Window {
+		Column {
+			id:     page
+			scroll: true
+			width:  100
+			height: 100
+
+			Rectangle { width: 100 height: 600 background: #ff0000 }
+		}
+
+		Row {
+			id:     strip
+			scroll: true
+			width:  100
+			height: 40
+
+			Rectangle { width: 600 height: 40 background: #00ff00 }
+		}
+	}`, 100, 200)
+	page := MustByID[*Column](win, "page")
+	strip := MustByID[*Row](win, "strip")
+	page.Base().SetScrollOffsetFor(tree.AxisY, 240)
+	strip.Base().SetScrollOffsetFor(tree.AxisX, 90)
+
+	if err := applyReloadSource(t, a, `Window {
+		Column {
+			id:     page
+			scroll: true
+			width:  100
+			height: 100
+
+			Rectangle { width: 100 height: 600 background: #0000ff }
+		}
+
+		Row {
+			id:     strip
+			scroll: true
+			width:  100
+			height: 40
+
+			Rectangle { width: 600 height: 40 background: #00ff00 }
+		}
+	}`); err != nil {
+		t.Fatal(err)
+	}
+	layoutAgain(win)
+	page = MustByID[*Column](win, "page")
+	strip = MustByID[*Row](win, "strip")
+	if got := page.Base().ScrollOffset(); got != 240 {
+		t.Fatalf("page scrolled to %v after reload, want 240", got)
+	}
+	if got := strip.Base().ScrollOffset(); got != 90 {
+		t.Fatalf("strip scrolled to %v after reload, want 90", got)
+	}
+}
+
+// TestReloadKeepsScrollWithoutAnID: a scroller nobody named is matched by its
+// place in the tree, so a style edit elsewhere does not reset it.
+func TestReloadKeepsScrollWithoutAnID(t *testing.T) {
+	a, win, _ := inputFixture(t, `Window {
+		Column {
+			padding: 4
+
+			Column {
+				scroll: true
+				width:  100
+				height: 100
+
+				Rectangle { width: 100 height: 600 background: #ff0000 }
+			}
+		}
+	}`, 100, 200)
+	page := scrollableChild(win.tree.Root.Base())
+	if page == nil {
+		t.Fatal("the fixture has no scroller")
+	}
+	page.SetScrollOffsetFor(tree.AxisY, 120)
+
+	if err := applyReloadSource(t, a, `Window {
+		Column {
+			padding: 8
+
+			Column {
+				scroll: true
+				width:  100
+				height: 100
+
+				Rectangle { width: 100 height: 600 background: #ff0000 }
+			}
+		}
+	}`); err != nil {
+		t.Fatal(err)
+	}
+	layoutAgain(win)
+	page = scrollableChild(win.tree.Root.Base())
+	if page == nil {
+		t.Fatal("the scroller went missing")
+	}
+	if got := page.ScrollOffset(); got != 120 {
+		t.Fatalf("scrolled to %v after reload, want 120", got)
+	}
+}
+
+// scrollableChild returns the first scrolling node under b.
+func scrollableChild(b *tree.NodeBase) *tree.NodeBase {
+	if b.ScrollAxis() != tree.AxisNone {
+		return b
+	}
+	for _, k := range b.Kids() {
+		if found := scrollableChild(k); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
+// layoutAgain lays the freshly built tree out at the fixture's size, which is
+// what makes a restored offset readable through its clamp.
+func layoutAgain(w *Window) {
+	layout.New(nil).Layout(w.tree.Root, 100, 200)
 }
