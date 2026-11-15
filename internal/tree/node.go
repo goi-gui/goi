@@ -90,6 +90,12 @@ type NodeBase struct {
 	scrollbarColor    Prop[uint32]
 	scrollShadow      Prop[bool]
 	scrollShadowColor Prop[uint32]
+	// Scroll snapping, the way CSS spells it: the container carries the type,
+	// the padding and the stop rule, and each child carries its alignment.
+	scrollSnapType  Prop[string]
+	scrollSnapStop  Prop[string]
+	scrollSnapAlign Prop[string]
+	scrollPadding   Prop[float64]
 	// opacity fades the node and everything under it.
 	opacity Prop[float64]
 	// backdropBlur softens what is already painted behind this node, the way
@@ -573,6 +579,28 @@ func (b *NodeBase) ScrollShadow() bool { return b.scrollShadow.Get() }
 // ScrollShadowColor returns the gradient colour, 0 when the design left it to
 // the theme.
 func (b *NodeBase) ScrollShadowColor() uint32 { return b.scrollShadowColor.Get() }
+
+// SnapType returns the container's scroll-snap style: "", "none",
+// "mandatory" or "proximity".
+func (b *NodeBase) SnapType() string { return b.scrollSnapType.Get() }
+
+// SnapAlign returns the child's snap alignment: "", "none", "start", "center"
+// or "end".
+func (b *NodeBase) SnapAlign() string { return b.scrollSnapAlign.Get() }
+
+// SnapStop reports whether the container stops at the next snap point instead
+// of letting a gesture pass more than one.
+func (b *NodeBase) SnapStop() bool { return b.scrollSnapStop.Get() == "stop" }
+
+// SnapPadding returns the inset between the frame and the snap line, the way
+// CSS scroll-padding insets a start or end alignment.
+func (b *NodeBase) SnapPadding() float64 { return b.scrollPadding.Get() }
+
+// Snapping reports whether the node scrolls and asks for snapping at all.
+func (b *NodeBase) Snapping() bool {
+	t := b.SnapType()
+	return b.ScrollAxis() != AxisNone && t != "" && t != "none"
+}
 
 // Cursor returns the pointer shape this node asks for, or "" for auto.
 func (b *NodeBase) Cursor() string { return b.cursor.Get() }

@@ -102,6 +102,18 @@ type interactor struct {
 	flingV    float64 // logical pixels per second
 	flingAxis tree.Axis
 	lastWheel time.Time
+	// flingLimit is the snap point a `scrollSnapStop: stop` container refuses to
+	// coast past, +Inf when there is none.
+	flingLimit float64
+
+	// snapNode is a scroll offset easing onto a snap point, with where it
+	// started, where it goes and how far it has travelled.
+	snapNode tree.Node
+	snapAxis tree.Axis
+	snapFrom float64
+	snapTo   float64
+	snapT    float64
+	snapDur  float64
 
 	// scrollbar is the node whose bar the pointer grabbed, with the thumb
 	// geometry frozen at the press so a resize mid-drag cannot shift it. grab is
@@ -947,6 +959,13 @@ func (i *interactor) MouseUp(x, y float64, button int) {
 	i.finishSeek()
 	swallow := i.gestureRelease(x, y)
 	defer func() {
+		if i.scrolled && i.scrollNode != nil {
+			i.settleSnap(i.scrollNode, tree.AxisNone)
+		}
+		// A thumb that was pulled and let go settles the same way a drag does.
+		if i.scrollbar != nil {
+			i.settleSnap(i.scrollbar, i.scrollbarAxis)
+		}
 		i.pressed = nil
 		i.dragging = false
 		i.scrollNode = nil
@@ -2029,6 +2048,7 @@ func (i *interactor) Scroll(dx, dy float64, shift bool) {
 	if last == nil {
 		return
 	}
+	i.snapNode = nil
 	// Only a touchpad coasts. A wheel notch is one deliberate step and must
 	// stop where it lands; letting it fling too made every click of the wheel
 	// travel several times as far as the notch.
@@ -2036,6 +2056,17 @@ func (i *interactor) Scroll(dx, dy float64, shift bool) {
 		i.startFling(last, used, axis)
 	} else {
 		i.flingNode, i.flingV = nil, 0
+		// A snapping container takes a notch as one snap point, whichever way
+		// the wheel turned, instead of a few pixels that the settle would undo.
+		if b := last.Base(); b.Snapping() {
+			dir := 1.0
+			if (axis == tree.AxisX && panX < 0) || (axis == tree.AxisY && panY < 0) {
+				dir = -1
+			}
+			if to, ok := b.SnapNext(axis, b.ScrollOffsetFor(axis)-used, dir); ok {
+				i.startSnap(last, axis, to)
+			}
+		}
 	}
 	// The content moved under a stationary pointer, so the shape may be stale.
 	i.pointerAt(i.hit(i.cursorX, i.cursorY))
@@ -2112,6 +2143,18 @@ func (i *interactor) startFling(n tree.Node, moved float64, axis tree.Axis) {
 	// A flick that is faster than this coasts further than the page is tall,
 	// which reads as the scroll running away from the finger.
 	i.flingV = min(max(moved/dt, -flingMaxSpeed), flingMaxSpeed)
+	i.flingLimit = math.Inf(1)
+	// `scrollSnapStop: stop` means a gesture may not pass more than one snap
+	// point, so the coast ends at the next one however fast the flick was.
+	if b := n.Base(); b.Snapping() && b.SnapStop() {
+		dir := 1.0
+		if moved < 0 {
+			dir = -1
+		}
+		if to, ok := b.SnapNext(axis, b.ScrollOffsetFor(axis), dir); ok {
+			i.flingLimit = to
+		}
+	}
 }
 
 // flingFriction is the exponential decay per second. 6 is a short M3-like
@@ -2135,7 +2178,20 @@ func (i *interactor) tickFling(dt float64) bool {
 	} else {
 		panY = i.flingV * dt
 	}
+	// A stop container refuses to coast past its next snap point: the coast is
+	// cut short there and the settle below takes over.
+	if !math.IsInf(i.flingLimit, 1) {
+		b := i.flingNode.Base()
+		room := i.flingLimit - b.ScrollOffsetFor(i.flingAxis)
+		if i.flingAxis == tree.AxisX && math.Abs(panX) >= math.Abs(room) {
+			panX, i.flingV = room, 0
+		}
+		if i.flingAxis == tree.AxisY && math.Abs(panY) >= math.Abs(room) {
+			panY, i.flingV = room, 0
+		}
+	}
 	last, _, _ := scrollChain(i.flingNode, panX, panY)
+	node, axis := i.flingNode, i.flingAxis
 	i.flingV *= math.Exp(-flingFriction * dt)
 	// Hitting an edge kills the momentum; otherwise the offset would keep
 	// asking for frames while nothing moves. The chain hands a coast that
@@ -2143,12 +2199,79 @@ func (i *interactor) tickFling(dt float64) bool {
 	if last == nil || math.Abs(i.flingV) < 20 {
 		i.flingNode = nil
 		i.flingV = 0
+		i.flingLimit = math.Inf(1)
+		if last != nil {
+			node = last
+		}
+		i.settleSnap(node, axis)
 		return false
 	}
 	i.flingNode = last
 	i.showScrollbar(last)
 	i.markDirty()
 	return true
+}
+
+// snapDur is how long a scroll takes to settle onto a snap point.
+const snapDur = 0.18
+
+// settleSnap eases n onto the snap point nearest its current offset, when the
+// container snaps and the point counts for its type.
+func (i *interactor) settleSnap(n tree.Node, axis tree.Axis) {
+	if n == nil {
+		return
+	}
+	b := n.Base()
+	if !b.Snapping() {
+		return
+	}
+	if axis == tree.AxisNone || axis == tree.AxisBoth {
+		axis = snapAxisOf(b)
+	}
+	to, ok := b.SnapOffset(axis, b.ScrollOffsetFor(axis))
+	if !ok {
+		return
+	}
+	i.startSnap(n, axis, to)
+}
+
+// startSnap begins the eased move to one snap point. A move shorter than half a
+// pixel is not worth a frame.
+func (i *interactor) startSnap(n tree.Node, axis tree.Axis, to float64) {
+	from := n.Base().ScrollOffsetFor(axis)
+	if math.Abs(to-from) < 0.5 {
+		return
+	}
+	i.snapNode, i.snapAxis = n, axis
+	i.snapFrom, i.snapTo = from, to
+	i.snapT, i.snapDur = 0, snapDur
+	i.markDirty()
+}
+
+// tickSnap advances a settle and reports whether another frame is needed.
+func (i *interactor) tickSnap(dt float64) bool {
+	n := i.snapNode
+	if n == nil {
+		return false
+	}
+	i.snapT += dt
+	p := min(i.snapT/i.snapDur, 1)
+	off := i.snapFrom + (i.snapTo-i.snapFrom)*Standard(p)
+	n.Base().SetScrollOffsetFor(i.snapAxis, off)
+	if p >= 1 {
+		i.snapNode = nil
+	}
+	i.markDirty()
+	return true
+}
+
+// snapAxisOf picks the axis a settle uses for a container that scrolls both
+// ways, where the vertical one is the page's.
+func snapAxisOf(b *tree.NodeBase) tree.Axis {
+	if b.ScrollAxis() == tree.AxisX {
+		return tree.AxisX
+	}
+	return tree.AxisY
 }
 
 // dragScroll follows the pointer while a press inside a scroll area moves. It
@@ -2175,6 +2298,7 @@ func (i *interactor) dragScroll(x, y float64) bool {
 	}
 	// Dragging pulls the content with the hand, and it chains to the page the
 	// same way the wheel does, so the pointer never sticks at a child's end.
+	i.snapNode = nil
 	last, _, _ := scrollChain(n, -dx, -dy)
 	if last == nil {
 		return i.scrolled

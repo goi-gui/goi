@@ -1,6 +1,10 @@
 package tree
 
-import "time"
+import (
+	"math"
+	"slices"
+	"time"
+)
 
 // Axis is a scroll direction.
 type Axis uint8
@@ -293,4 +297,116 @@ func (b *NodeBase) ScrollbarVisible() bool {
 		return true
 	}
 	return b.scrollbarHover || time.Now().Before(b.scrollbarShowUntil)
+}
+
+// SnapProximity is how close a stop has to be for `proximity` to take it, as a
+// share of the viewport. A gesture that ends within a quarter of the box coasts
+// onto the point; one that ends further away is left where the reader put it.
+const SnapProximity = 0.25
+
+// SnapTargets lists the offsets along axis where a child's snap area lines up
+// with the viewport, sorted and clamped to what the content allows. A child's
+// scrollSnapAlign picks the edge: start, center or end, inset by scrollPadding
+// for the two edges the padding can move. Children that do not scroll with the
+// content (a sticky table header) and invisible ones are skipped.
+func (b *NodeBase) SnapTargets(axis Axis) []float64 {
+	if !b.scrollsOn(axis) {
+		return nil
+	}
+	be := b.BorderEdges()
+	viewStart, view := b.bounds.Y+be.Top, b.bounds.H-be.Top-be.Bottom
+	if axis == AxisX {
+		viewStart, view = b.bounds.X+be.Left, b.bounds.W-be.Left-be.Right
+	}
+	if view <= 0 {
+		return nil
+	}
+	pad := b.SnapPadding()
+	max := b.ScrollMaxFor(axis)
+	var out []float64
+	for _, k := range b.kids {
+		if !k.Visible() || (axis == AxisY && b.fixedChild(k)) {
+			continue
+		}
+		lo, size := k.Bounds().Y, k.Bounds().H
+		if axis == AxisX {
+			lo, size = k.Bounds().X, k.Bounds().W
+		}
+		var off float64
+		switch k.Base().SnapAlign() {
+		case "start":
+			off = lo - viewStart - pad
+		case "center":
+			off = lo + size/2 - viewStart - view/2
+		case "end":
+			off = lo + size - viewStart - view + pad
+		default:
+			continue
+		}
+		off = min(maxf(off, 0), max)
+		if !slices.Contains(out, off) {
+			out = append(out, off)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// SnapOffset returns the snap target a gesture ending at off should settle on.
+// `mandatory` always answers; `proximity` answers only when the point is within
+// SnapProximity of the viewport, and leaves the offset alone otherwise.
+func (b *NodeBase) SnapOffset(axis Axis, off float64) (float64, bool) {
+	targets := b.SnapTargets(axis)
+	if len(targets) == 0 {
+		return 0, false
+	}
+	best, bestD := 0.0, math.Inf(1)
+	for _, t := range targets {
+		if d := math.Abs(t - off); d < bestD {
+			best, bestD = t, d
+		}
+	}
+	if b.SnapType() == "proximity" {
+		be := b.BorderEdges()
+		view := b.bounds.H - be.Top - be.Bottom
+		if axis == AxisX {
+			view = b.bounds.W - be.Left - be.Right
+		}
+		if bestD > view*SnapProximity {
+			return 0, false
+		}
+	}
+	return best, true
+}
+
+// SnapNext returns the first target past off in the direction dir (+1 forward,
+// -1 back), which is what one notch of a wheel moves on a snapping container.
+// At the end it reports the last target, so a wheel step never overshoots.
+func (b *NodeBase) SnapNext(axis Axis, off, dir float64) (float64, bool) {
+	targets := b.SnapTargets(axis)
+	if len(targets) == 0 {
+		return 0, false
+	}
+	if dir >= 0 {
+		for _, t := range targets {
+			if t > off+0.5 {
+				return t, true
+			}
+		}
+		return targets[len(targets)-1], true
+	}
+	for i := len(targets) - 1; i >= 0; i-- {
+		if targets[i] < off-0.5 {
+			return targets[i], true
+		}
+	}
+	return targets[0], true
+}
+
+// maxf is the larger of two floats.
+func maxf(a, b float64) float64 {
+	if a > b {
+		return a
+	}
+	return b
 }

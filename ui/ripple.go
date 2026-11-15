@@ -35,6 +35,9 @@ func (i *interactor) tick(dt float64) bool {
 	if i.tickFling(dt) {
 		scrolling = true
 	}
+	if i.tickSnap(dt) {
+		scrolling = true
+	}
 	if i.tickSwitches(dt) {
 		scrolling = true
 	}

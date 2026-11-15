@@ -262,6 +262,13 @@ var common = []Prop{
 	{Name: "scrollbarColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
 	{Name: "scrollShadow", Type: TypeBool, Dirty: DirtyPaint, Default: false, Common: true},
 	{Name: "scrollShadowColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
+	// Scroll snapping. The container says how strictly a stop is taken; each
+	// child says which edge snaps. The axis is the container's own, so a Column
+	// snaps vertically and a Row sideways, with no `x`/`y` suffix.
+	{Name: "scrollSnapType", Type: TypeEnum, Dirty: DirtyPaint, Enum: []string{"none", "mandatory", "proximity"}, Default: "none", Common: true},
+	{Name: "scrollSnapStop", Type: TypeEnum, Dirty: DirtyPaint, Enum: []string{"normal", "stop"}, Default: "normal", Common: true},
+	{Name: "scrollSnapAlign", Type: TypeEnum, Dirty: DirtyPaint, Enum: []string{"none", "start", "center", "end"}, Default: "none", Common: true},
+	{Name: "scrollPadding", Type: TypeNumber, Dirty: DirtyPaint, Default: 0.0, Common: true},
 	// opacity fades the node and its subtree. It also accepts a percentage.
 	{Name: "opacity", Type: TypeNumber, Dirty: DirtyPaint, Default: 1.0, Common: true},
 	// backdropBlur blurs what is already painted behind the element, like CSS

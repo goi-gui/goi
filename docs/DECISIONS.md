@@ -2240,3 +2240,27 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   The sweep is a clipped gradient op moved by the frame clock, so it needs no
   timer, no goroutine and no new shader shape, and `animated: false` leaves one
   plain block.
+- **Scroll snapping follows the container's axis, not a suffix.** CSS spells the
+  container side `scroll-snap-type: x mandatory` and the child side
+  `scroll-snap-align: start`, because a CSS scroll box can scroll both ways. A
+  goi container already knows: a Column scrolls vertically, a Row and a Carousel
+  sideways, a Table both (its vertical axis is the page's), so the properties are
+  `scrollSnapType`, `scrollSnapStop` and `scrollPadding` on the container and
+  `scrollSnapAlign` on the child, with no `x`/`y`. That also makes snapping a
+  common property pair rather than a component feature: any node that scrolls
+  snaps, and `scrollSnapAlign` on a child of a non-scrolling parent is inert.
+  The targets are the direct children's bounds — start, center or end inset by
+  scrollPadding — which is the geometry layout already produced, so no second
+  pass and no per-frame cost. Only the settle animates, and it is the
+  interactor's own 180ms ease rather than a Prop tween, because the offset is
+  not a property a design can write.
+- **A notch moves one snap point; a hand scrolls freely and settles.** Snapping
+  every wheel notch to the *nearest* point would undo the notch (the step is
+  smaller than the gap), and letting a mandatory container scroll freely would
+  leave it between points. So a notched wheel takes `SnapNext` in the direction
+  it turned, while a touchpad, a drag and a thumb release move the offset
+  directly and settle with `SnapOffset` when they end. `proximity` uses the same
+  settle and ignores a point further than a quarter of the frame away, which is
+  the "a hint, not a clamp" reading of the CSS value. `scrollSnapStop: stop`
+  caps a fling at the first point past the gesture's start, which is what CSS
+  `scroll-snap-stop: always` does for a fling.

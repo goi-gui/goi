@@ -22,7 +22,7 @@ type Node interface {
 // commonPropCount is how many cells the shared table has. Naming it keeps the
 // per-node table one exact allocation instead of the three or four that append
 // growth used to make (the largest heap cost of a big design).
-const commonPropCount = 64
+const commonPropCount = 68
 
 // commonProps returns the property table shared by every element. extra is how
 // many cells the caller will append, so the slice is sized once. "id" is absent
@@ -87,6 +87,10 @@ func commonProps(b *NodeBase, extra int) []NamedProp {
 		ColorProp(b, "scrollbarColor", DirtyPaint, &b.scrollbarColor),
 		BoolProp(b, "scrollShadow", DirtyPaint, &b.scrollShadow),
 		ColorProp(b, "scrollShadowColor", DirtyPaint, &b.scrollShadowColor),
+		EnumProp(b, "scrollSnapType", DirtyPaint, &b.scrollSnapType, SnapTypeValues),
+		EnumProp(b, "scrollSnapStop", DirtyPaint, &b.scrollSnapStop, SnapStopValues),
+		EnumProp(b, "scrollSnapAlign", DirtyPaint, &b.scrollSnapAlign, SnapAlignValues),
+		NumberProp(b, "scrollPadding", DirtyPaint, &b.scrollPadding),
 		NumberProp(b, "opacity", DirtyPaint, &b.opacity),
 		NumberProp(b, "backdropBlur", DirtyPaint, &b.backdropBlur),
 		NumberProp(b, "zIndex", DirtyPaint, &b.zIndex),
@@ -207,6 +211,15 @@ var CrossAxisValues = []string{"start", "center", "end", "stretch"}
 // MainAxisValues are the main-axis alignments, the same set Flutter's
 // MainAxisAlignment offers: the space handlers only matter when the children do
 // not already fill the axis.
+// SnapTypeValues, SnapStopValues and SnapAlignValues are the words a scroll
+// snap property accepts. They follow CSS, minus the axis suffix: the container
+// already knows which way it scrolls.
+var (
+	SnapTypeValues  = []string{"none", "mandatory", "proximity"}
+	SnapStopValues  = []string{"normal", "stop"}
+	SnapAlignValues = []string{"none", "start", "center", "end"}
+)
+
 var MainAxisValues = []string{"start", "center", "end", "spaceBetween", "spaceAround", "spaceEvenly"}
 
 // Container holds the properties shared by Column, Row and Stack. It is never
