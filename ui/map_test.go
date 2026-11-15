@@ -145,3 +145,27 @@ func TestMapDoubleClickAndPinch(t *testing.T) {
 		t.Fatalf("a disabled pinch zoomed: %v -> %v", z3, z4)
 	}
 }
+
+// TestMapPansOverOverlays is the Geom regression: a Geom covers the whole map,
+// so the pointer press hits it rather than the Map; the drag still has to move
+// the map.
+func TestMapPansOverOverlays(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		Map {
+			id: map width: 400 height: 300 center: "41,29" zoom: 5
+			Geom { data: [[28, 40], [30, 40], [30, 42], [28, 42]] }
+		}
+	}`, 400, 300)
+	m := MustByID[*Map](win, "map")
+	m.Prepare(m.Bounds().W, m.Bounds().H)
+	r := absoluteRect(m)
+	cx, cy := r.X+r.W/2, r.Y+r.H/2
+
+	_, lng0, _ := m.View()
+	in.MouseDown(cx, cy, 0, false)
+	in.MouseMove(cx+40, cy)
+	in.MouseUp(cx+40, cy, 0)
+	if _, lng1, _ := m.View(); lng1 >= lng0 {
+		t.Fatalf("dragging over a Geom did not pan: %v -> %v", lng0, lng1)
+	}
+}

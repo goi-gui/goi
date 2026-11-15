@@ -731,9 +731,12 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 			}
 			if !m.DisablePan.Get() {
 				i.setFocus(nil)
-				i.setKbd(hit)
+				i.setKbd(m)
 				i.scrollNode = nil
-				i.mapNode, i.mapLastX, i.mapLastY = hit, x, y
+				// The press lands on an overlay (a Geom covers the map), but the
+				// drag belongs to the Map; storing the hit made MouseMove's
+				// *Map assertion fail and the pan silently stopped.
+				i.mapNode, i.mapLastX, i.mapLastY = m, x, y
 				i.pointer(platform.CursorMove)
 				return
 			}
