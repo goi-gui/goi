@@ -1321,9 +1321,6 @@ func (e *Engine) fabMenuChildren(b *tree.NodeBase, kids []*tree.NodeBase, w, h f
 	}
 }
 
-// popoverGap is the space between the anchor and the panel.
-const popoverGap = 8.0
-
 // popoverNatural is the anchor's own size: the panel floats over the page and
 // takes no room in the flow, exactly like a tooltip's bubble.
 func (e *Engine) popoverNatural(k *tree.NodeBase, availW, availH float64) (float64, float64) {
@@ -1400,7 +1397,7 @@ func (e *Engine) popoverChildren(b *tree.NodeBase, kids []*tree.NodeBase, w, h, 
 	case "end":
 		x = area.X + area.W - pw
 	}
-	y := area.Y + area.H + popoverGap
+	y := area.Y + area.H + tree.PopoverGap
 	panel.SetBounds(tree.Rect{X: x, Y: y, W: pw, H: ph})
 	e.children(panel, pw, ph)
 }

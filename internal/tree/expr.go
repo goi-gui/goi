@@ -247,6 +247,15 @@ func (b *NodeBase) ApplyExpressions() {
 	}
 }
 
+// Viewport returns the logical client size of the last layout pass. A popover
+// uses it to keep its panel on screen.
+func (t *Tree) Viewport() (w, h float64) {
+	if t == nil {
+		return 0, 0
+	}
+	return t.viewW, t.viewH
+}
+
 // SetViewport records the logical window size for `window.width` and
 // `window.height` in expressions.
 func (t *Tree) SetViewport(w, h float64) {

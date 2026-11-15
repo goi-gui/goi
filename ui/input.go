@@ -2690,6 +2690,25 @@ func (i *interactor) hit(x, y float64) tree.Node {
 	return found
 }
 
+// panelHitPlace gives a popover panel the same bounds and clip paint gives it,
+// so a press on the floating surface lands where it is drawn. ox, oy is the
+// parent's absolute origin, and anchor its absolute box.
+func panelHitPlace(b *tree.NodeBase, anchor tree.Rect, k *tree.NodeBase, kb tree.Rect, clip tree.Rect, ox, oy float64) (tree.Rect, tree.Rect) {
+	p, ok := b.Node().(*tree.Popover)
+	if !ok || p.Panel == nil || k != p.Panel.Base() {
+		return kb, clip
+	}
+	winW, winH := b.TreeRef().Viewport()
+	if winW <= 0 || winH <= 0 {
+		return kb, clip
+	}
+	abs := tree.Rect{X: ox + kb.X, Y: oy + kb.Y, W: kb.W, H: kb.H}
+	dx, dy := p.PanelShift(anchor, abs, winW, winH)
+	kb.X += dx
+	kb.Y += dy
+	return kb, tree.Rect{W: winW, H: winH}
+}
+
 // walkHit visits children last-first so the topmost node wins.
 func walkHit(b *tree.NodeBase, ox, oy float64, x, y float64, clip tree.Rect, found *tree.Node) {
 	if !b.Visible() {
@@ -2720,7 +2739,9 @@ func walkHit(b *tree.NodeBase, ox, oy float64, x, y float64, clip tree.Rect, fou
 				}
 			}
 		}
-		walkHitOffset(kids[n], ox, oy, kb, x, y, b.ChildClip(kids[n], box, kidClip), found)
+		kc := b.ChildClip(kids[n], box, kidClip)
+		kb, kc = panelHitPlace(b, box, kids[n], kb, kc, ox, oy)
+		walkHitOffset(kids[n], ox, oy, kb, x, y, kc, found)
 		if *found != nil {
 			return
 		}
@@ -2757,7 +2778,9 @@ func walkHitOffset(b *tree.NodeBase, ox, oy float64, bounds tree.Rect, x, y floa
 				}
 			}
 		}
-		walkHitOffset(kids[n], ox, oy, kb, x, y, b.ChildClip(kids[n], box, kidClip), found)
+		kc := b.ChildClip(kids[n], box, kidClip)
+		kb, kc = panelHitPlace(b, box, kids[n], kb, kc, ox, oy)
+		walkHitOffset(kids[n], ox, oy, kb, x, y, kc, found)
 		if *found != nil {
 			return
 		}

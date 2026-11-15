@@ -1506,3 +1506,31 @@ func TestSeekbarDragScrubsOnRelease(t *testing.T) {
 		t.Fatalf("release seeks=%d at=%v, want one seek to 75s", seeks, seeked)
 	}
 }
+
+// TestPopoverPanelIsHitAboveLaterSiblings keeps the press with the picture: the
+// panel floats over the rect written after it, so it owns the click there, and
+// a point beside it still reaches that rect.
+func TestPopoverPanelIsHitAboveLaterSiblings(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		Column {
+			Popover {
+				Button { id: anchor label: "Open" }
+				$popover {
+					Card { id: panel label: "Panel" width: 140 height: 80 }
+				}
+			}
+			Rectangle { id: cover width: 260 height: 140 background: #00ff00 }
+		}
+	}`, 400, 300)
+	panel := absoluteRect(MustByID[*Card](win, "panel"))
+	hit := in.hit(panel.X+panel.W/2, panel.Y+panel.H/2)
+	if hit == nil || hit.Base().ID() != "panel" {
+		t.Fatalf("hit = %v, want the panel", hit)
+	}
+	// Beside the panel, the covering rect is still the target.
+	cover := absoluteRect(MustByID[*Rectangle](win, "cover"))
+	hit = in.hit(cover.Right()-4, cover.Bottom()-4)
+	if hit == nil || hit.Base().ID() != "cover" {
+		t.Fatalf("hit beside the panel = %v, want the rect", hit)
+	}
+}

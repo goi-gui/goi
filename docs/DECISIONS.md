@@ -2141,14 +2141,22 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
 - **A built-in component can declare a child slot.** `Popover` writes its panel
   as `$popover { … }`, the same shape a fragment uses, but the asset loader keeps
   it instead of filling it: the tree builder turns the slot into a Column panel,
-  which stays an ordinary child so paint and hit-testing reach it. Only the
-  layout engine treats it apart, which is what lets the reserved syntax stay
-  consistent between a fragment's slot and a component's own.
+  which stays an ordinary child so paint and hit-testing reach it. The slot may
+  sit directly under the component or inside a control block, where the panel
+  follows that arm's visibility like any other child built there; reusing the
+  fragment syntax is what keeps one reservation (`$name`) rather than a second
+  spelling for the same idea.
 - **A popover's panel is out of the flow.** The component's own box is the
   anchor, so `width`, `background` and `borderColor` style the button row and not
   the floating surface. Layout hangs the panel 8dp under the anchor and lines it
   up with `align` against the anchor's box, not the popover's, because a design
   that sets an explicit box still means its children. It is always visible (no
-  left-over state to carry), and the ordinary `if` inside the slot is how a
-  design shows it sometimes. Nothing clamps it to the window yet, so a panel low
-  on the page can overflow; a design that hits that places the popover higher.
+  left-over state to carry), and the ordinary `if` inside the slot, or around
+  it, is how a design shows it sometimes. The panel is an overlay for the two
+  things layout cannot express: paint and hit-testing lift its branch above the
+  siblings written after it, and give it the window as its clip, so an ancestor
+  that clips its children does not cut the surface. Those two passes ask
+  `PanelShift` for the final box, which flips the panel above the anchor when it
+  would leave the bottom and slides it in from the side; layout keeps the
+  preferred box, so a flipped panel is a paint-time move rather than a second
+  layout pass.

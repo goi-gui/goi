@@ -275,8 +275,12 @@ func (v *validator) elementUnknown(e *syntax.Element) {
 func (v *validator) walk(e *syntax.Element, parent string) {
 	v.src = e.Src
 	if strings.HasPrefix(e.Name, "$") {
-		// A slot is a child of the component that declares it, and only there.
-		// The direct child case is handled by the member walk below.
+		// A slot belongs to the component that declares it: a direct child or
+		// one inside a control block under it.
+		if componentdef.Slot(parent, e.Name) {
+			v.walkSlot(e, parent)
+			return
+		}
 		owner := componentdef.SlotOwner(e.Name)
 		msg := fmt.Sprintf("%s is a slot: write it directly inside the component that declares it", e.Name)
 		if owner != "" {
@@ -349,10 +353,6 @@ func (v *validator) walk(e *syntax.Element, parent string) {
 	for _, m := range e.Members {
 		switch x := m.(type) {
 		case *syntax.Element:
-			if componentdef.Slot(e.Name, x.Name) {
-				v.walkSlot(x, e.Name)
-				continue
-			}
 			v.walk(x, e.Name)
 		case *syntax.Block:
 			v.walkBlock(x, e.Name)

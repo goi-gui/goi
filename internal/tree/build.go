@@ -283,8 +283,15 @@ func (t *Tree) buildMembers(members []syntax.Member, parent *NodeBase, hooks *Ho
 		switch x := m.(type) {
 		case *syntax.Element:
 			if strings.HasPrefix(x.Name, "$") {
-				if err := t.buildSlot(x, parent, hooks, arm != nil); err != nil {
+				n, err := t.buildSlot(x, parent, hooks)
+				if err != nil {
 					return err
+				}
+				if arm != nil && n != nil {
+					// A slot inside an arm follows the arm: the panel is built
+					// once, under the parent, and hidden with the branch.
+					arm.nodes = append(arm.nodes, n.Base())
+					arm.own = append(arm.own, n.Base().Visible())
 				}
 				continue
 			}
@@ -315,20 +322,17 @@ func (t *Tree) buildMembers(members []syntax.Member, parent *NodeBase, hooks *Ho
 // component that declares the slot accepts one, and the elements become a panel
 // that stays an ordinary child for paint and hit-testing; layout places it
 // apart, against the anchor.
-func (t *Tree) buildSlot(el *syntax.Element, parent *NodeBase, hooks *Hooks, inArm bool) error {
+func (t *Tree) buildSlot(el *syntax.Element, parent *NodeBase, hooks *Hooks) (Node, error) {
 	kind := parent.Node().Kind()
-	if inArm {
-		return fmt.Errorf("%s: write the slot directly under %s, not inside a block", el.Name, kind)
-	}
 	if !componentdef.Slot(kind, el.Name) {
-		return fmt.Errorf("%s is not a slot of %s", el.Name, kind)
+		return nil, fmt.Errorf("%s is not a slot of %s", el.Name, kind)
 	}
 	p, ok := parent.Node().(*Popover)
 	if !ok {
-		return fmt.Errorf("%s: %s declares no slot build", el.Name, kind)
+		return nil, fmt.Errorf("%s: %s declares no slot build", el.Name, kind)
 	}
 	if p.Panel != nil {
-		return fmt.Errorf("%s appears twice under %s: a slot is written once", el.Name, kind)
+		return nil, fmt.Errorf("%s appears twice under %s: a slot is written once", el.Name, kind)
 	}
 	// Several elements in the slot are one panel, so a column keeps them in
 	// order instead of on top of each other; it draws nothing itself.
@@ -338,10 +342,15 @@ func (t *Tree) buildSlot(el *syntax.Element, parent *NodeBase, hooks *Hooks, inA
 	}
 	n, err := t.build(wrap, parent, hooks)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	p.Panel = n
-	return nil
+	// Paint and hit-testing lift the panel and every ancestor above the
+	// siblings written after them, the way an overlay does.
+	for a := n.Base(); a != nil && !a.floats; a = a.parent {
+		a.floats = true
+	}
+	return n, nil
 }
 
 // applyDefaults seeds every property of the node from the schema.

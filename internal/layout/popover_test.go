@@ -49,7 +49,7 @@ func TestPopoverPanelHangsUnderTheAnchor(t *testing.T) {
 			anchor.W = second.Base().Bounds().Right() - anchor.X
 
 			panel := card.Base().Parent().Base().Bounds()
-			if got, want := panel.Y, anchor.Bottom()+popoverGap; got != want {
+			if got, want := panel.Y, anchor.Bottom()+tree.PopoverGap; got != want {
 				t.Errorf("panel y = %v, want %v", got, want)
 			}
 			if got, want := panel.X, tc.x(anchor, panel); got != want {

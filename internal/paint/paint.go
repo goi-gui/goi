@@ -179,6 +179,9 @@ type List struct {
 	// suppressElev drops a component's own M3 elevation shadow for the node
 	// being painted, so an explicit `shadow` replaces it instead of stacking.
 	suppressElev bool
+	// window is the whole client area, which a popover panel draws in: it is an
+	// overlay, so no ancestor's clip cuts it.
+	window tree.Rect
 	// family is the font family of the node being painted, resolved with the
 	// same inheritance a design has. Every text op the node emits carries it.
 	family string
@@ -213,6 +216,7 @@ func (l *List) Build(tr *tree.Tree, w, h float64) {
 	}
 	l.Reset()
 	clip := tree.Rect{W: w, H: h}
+	l.window = clip
 	l.walk(tr.Root.Base(), 0, 0, clip)
 	// A fullscreen video covers the window, so it is painted last rather than
 	// where its own box sits; the walk skipped it in place.
@@ -226,6 +230,21 @@ func (l *List) Build(tr *tree.Tree, w, h float64) {
 		l.textIn(strconv.Itoa(l.FPS)+" fps", l.style("labelSmall"), l.Theme.Colors.OnSurfaceVariant,
 			tree.Rect{X: 0, Y: 8, W: w - 12, H: 20}, AlignEnd, clip)
 	}
+}
+
+// panelPlace returns the bounds and clip a popover panel draws with: the box
+// moved inside the window, and the window itself as its clip, because a panel
+// floats above the page instead of living inside the element that holds it.
+func (l *List) panelPlace(b *tree.NodeBase, r tree.Rect, k *tree.NodeBase, kb tree.Rect, clip tree.Rect) (tree.Rect, tree.Rect) {
+	p, ok := b.Node().(*tree.Popover)
+	if !ok || p.Panel == nil || k != p.Panel.Base() {
+		return kb, clip
+	}
+	abs := tree.Rect{X: r.X + kb.X, Y: r.Y + kb.Y, W: kb.W, H: kb.H}
+	dx, dy := p.PanelShift(r, abs, l.window.W, l.window.H)
+	kb.X += dx
+	kb.Y += dy
+	return kb, l.window
 }
 
 // walk emits the node and its children. x,y is the node's absolute origin.
@@ -271,7 +290,9 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 				}
 			}
 		}
-		l.walkOffset(k, x, y, kb, b.ChildClip(k, r, childClip))
+		kc := b.ChildClip(k, r, childClip)
+		kb, kc = l.panelPlace(b, r, k, kb, kc)
+		l.walkOffset(k, x, y, kb, kc)
 	}
 	frame := b.ScrollViewport(r)
 	l.paintScrollShadows(b, frame, clip)
@@ -364,7 +385,9 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 				}
 			}
 		}
-		l.walkOffset(k, x, y, kb, b.ChildClip(k, r, childClip))
+		kc := b.ChildClip(k, r, childClip)
+		kb, kc = l.panelPlace(b, r, k, kb, kc)
+		l.walkOffset(k, x, y, kb, kc)
 	}
 	frame := b.ScrollViewport(r)
 	l.paintScrollShadows(b, frame, clip)
