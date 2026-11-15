@@ -1534,3 +1534,64 @@ func TestPopoverPanelIsHitAboveLaterSiblings(t *testing.T) {
 		t.Fatalf("hit beside the panel = %v, want the rect", hit)
 	}
 }
+
+// TestPopoverPanelIsNotHitWhenItsAnchorScrolledAway is the long-page bug: the
+// panel belongs to the scroll it was written in, so an anchor below the visible
+// part leaves nothing of the panel to click, however far the window clamp would
+// have moved it.
+func TestPopoverPanelIsNotHitWhenItsAnchorScrolledAway(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		Column {
+			Rectangle { height: 40 background: #0000ff }
+
+			Column {
+				id:     page
+				scroll: true
+				width:  300
+				height: 150
+
+				Rectangle { width: 300 height: 400 background: #00ff00 }
+
+				Popover {
+					id: pop
+					Button { id: anchor label: "Open" }
+					$popover {
+						Card { id: panel label: "Panel" width: 120 height: 80 }
+					}
+				}
+
+				Rectangle { width: 300 height: 400 background: #ff00ff }
+			}
+		}
+	}`, 300, 300)
+	page := MustByID[*Column](win, "page")
+	// A point inside the scroller frame: at rest the anchor is a page away, so
+	// nothing of the panel may own it.
+	hit := in.hit(60, 150)
+	if hit != nil && hit.Base().ID() == "panel" {
+		t.Fatal("a click on the frame hit a panel whose anchor scrolled away")
+	}
+	// Scroll the anchor into the frame: the panel is on screen, somewhere the
+	// hit walk finds it again.
+	page.Base().SetScrollOffset(350)
+	found := false
+	for y := 0.0; y < 300 && !found; y += 8 {
+		for x := 0.0; x < 300; x += 8 {
+			if h := in.hit(x, y); h != nil && h.Base().ID() == "panel" {
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		t.Fatal("the panel is not hittable anywhere after scrolling to it")
+	}
+
+	// The anchor sits at the bottom of the frame and the panel hangs below it:
+	// the part outside the frame is not drawn, so it takes no press.
+	for y := 196.0; y < 290; y += 8 {
+		if h := in.hit(60, y); h != nil && h.Base().ID() == "panel" {
+			t.Fatalf("a click at %v hit the panel below the scroller frame", y)
+		}
+	}
+}

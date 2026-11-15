@@ -180,8 +180,12 @@ type List struct {
 	// being painted, so an explicit `shadow` replaces it instead of stacking.
 	suppressElev bool
 	// window is the whole client area, which a popover panel draws in: it is an
-	// overlay, so no ancestor's clip cuts it.
+	// overlay, so a plain ancestor's box does not cut it. A scrolling ancestor
+	// still does, or a panel would stay on screen after its anchor scrolled out.
 	window tree.Rect
+	// scrollClip is the intersection of the scrolling ancestors' viewports and
+	// the window: what a floating panel may draw in.
+	scrollClip tree.Rect
 	// family is the font family of the node being painted, resolved with the
 	// same inheritance a design has. Every text op the node emits carries it.
 	family string
@@ -217,6 +221,7 @@ func (l *List) Build(tr *tree.Tree, w, h float64) {
 	l.Reset()
 	clip := tree.Rect{W: w, H: h}
 	l.window = clip
+	l.scrollClip = clip
 	l.walk(tr.Root.Base(), 0, 0, clip)
 	// A fullscreen video covers the window, so it is painted last rather than
 	// where its own box sits; the walk skipped it in place.
@@ -233,18 +238,26 @@ func (l *List) Build(tr *tree.Tree, w, h float64) {
 }
 
 // panelPlace returns the bounds and clip a popover panel draws with: the box
-// moved inside the window, and the window itself as its clip, because a panel
-// floats above the page instead of living inside the element that holds it.
+// moved inside the window, and the scrolling ancestors' viewport as its clip. A
+// panel floats above the page instead of living inside the element that holds
+// it, but it still belongs to the scroll it was written in: an anchor scrolled
+// out of view takes its panel with it.
 func (l *List) panelPlace(b *tree.NodeBase, r tree.Rect, k *tree.NodeBase, kb tree.Rect, clip tree.Rect) (tree.Rect, tree.Rect) {
 	p, ok := b.Node().(*tree.Popover)
 	if !ok || p.Panel == nil || k != p.Panel.Base() {
 		return kb, clip
 	}
 	abs := tree.Rect{X: r.X + kb.X, Y: r.Y + kb.Y, W: kb.W, H: kb.H}
+	// An anchor outside its scroller has scrolled away: the panel stays where
+	// the content put it and the clip above hides it. Flipping it into the
+	// window here would leave a sliver of a panel whose anchor is nowhere.
+	if vis := intersect(r, l.scrollClip); vis.W <= 0 || vis.H <= 0 {
+		return kb, l.scrollClip
+	}
 	dx, dy := p.PanelShift(r, abs, l.window.W, l.window.H)
 	kb.X += dx
 	kb.Y += dy
-	return kb, l.window
+	return kb, l.scrollClip
 }
 
 // walk emits the node and its children. x,y is the node's absolute origin.
@@ -274,6 +287,10 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 	childClip := clip
 	if b.ClipsChildren() {
 		childClip = intersect(clip, inner)
+	}
+	outerScroll := l.scrollClip
+	if b.ScrollAxis() != tree.AxisNone {
+		l.scrollClip = intersect(l.scrollClip, inner)
 	}
 	fromClip := len(l.Ops)
 	for _, k := range b.PaintOrder() {
@@ -305,6 +322,7 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 	l.applyOpacity(from, b.Opacity())
 	l.applyDisabled(from, b)
 	l.family = outerFamily
+	l.scrollClip = outerScroll
 }
 
 // applyDisabled dims a table row's content when the row asked for it. A cell is
@@ -370,6 +388,10 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 	if b.ClipsChildren() {
 		childClip = intersect(clip, inner)
 	}
+	outerScroll := l.scrollClip
+	if b.ScrollAxis() != tree.AxisNone {
+		l.scrollClip = intersect(l.scrollClip, inner)
+	}
 	fromClip := len(l.Ops)
 	for _, k := range b.PaintOrder() {
 		kb := k.Bounds()
@@ -400,6 +422,7 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 	l.applyOpacity(from, b.Opacity())
 	l.applyDisabled(from, b)
 	l.family = outerFamily
+	l.scrollClip = outerScroll
 }
 
 // paintContent draws one node's own visuals: its shadow, its fill and its

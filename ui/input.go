@@ -2860,16 +2860,15 @@ func (i *interactor) hit(x, y float64) tree.Node {
 		return v
 	}
 	var found tree.Node
-	walkHit(i.tree.Root.Base(), 0, 0, x, y, tree.Rect{
-		X: 0, Y: 0, W: i.windowW(), H: i.windowH(),
-	}, &found)
+	window := tree.Rect{X: 0, Y: 0, W: i.windowW(), H: i.windowH()}
+	walkHit(i.tree.Root.Base(), 0, 0, x, y, window, window, &found)
 	return found
 }
 
 // panelHitPlace gives a popover panel the same bounds and clip paint gives it,
 // so a press on the floating surface lands where it is drawn. ox, oy is the
 // parent's absolute origin, and anchor its absolute box.
-func panelHitPlace(b *tree.NodeBase, anchor tree.Rect, k *tree.NodeBase, kb tree.Rect, clip tree.Rect, ox, oy float64) (tree.Rect, tree.Rect) {
+func panelHitPlace(b *tree.NodeBase, anchor tree.Rect, k *tree.NodeBase, kb tree.Rect, clip, scroll tree.Rect, ox, oy float64) (tree.Rect, tree.Rect) {
 	p, ok := b.Node().(*tree.Popover)
 	if !ok || p.Panel == nil || k != p.Panel.Base() {
 		return kb, clip
@@ -2879,10 +2878,15 @@ func panelHitPlace(b *tree.NodeBase, anchor tree.Rect, k *tree.NodeBase, kb tree
 		return kb, clip
 	}
 	abs := tree.Rect{X: ox + kb.X, Y: oy + kb.Y, W: kb.W, H: kb.H}
+	// Paint leaves a panel whose anchor scrolled out of the viewport where the
+	// content put it, so hit-testing must not clamp it into the window either.
+	if vis := intersectRect(anchor, scroll); vis.W <= 0 || vis.H <= 0 {
+		return kb, scroll
+	}
 	dx, dy := p.PanelShift(anchor, abs, winW, winH)
 	kb.X += dx
 	kb.Y += dy
-	return kb, tree.Rect{W: winW, H: winH}
+	return kb, scroll
 }
 
 // clickOutside reports a primary press to every element that declared
@@ -2911,7 +2915,7 @@ func (i *interactor) clickOutside(hit tree.Node, x, y float64) {
 }
 
 // walkHit visits children last-first so the topmost node wins.
-func walkHit(b *tree.NodeBase, ox, oy float64, x, y float64, clip tree.Rect, found *tree.Node) {
+func walkHit(b *tree.NodeBase, ox, oy float64, x, y float64, clip, scroll tree.Rect, found *tree.Node) {
 	if !b.Visible() {
 		return
 	}
@@ -2925,6 +2929,9 @@ func walkHit(b *tree.NodeBase, ox, oy float64, x, y float64, clip tree.Rect, fou
 	if b.ClipsChildren() {
 		kidClip = intersectRect(clip, inner)
 	}
+	if b.ScrollAxis() != tree.AxisNone {
+		scroll = intersectRect(scroll, inner)
+	}
 	kids := b.PaintOrder()
 	for n := len(kids) - 1; n >= 0; n-- {
 		kb := kids[n].Bounds()
@@ -2941,8 +2948,8 @@ func walkHit(b *tree.NodeBase, ox, oy float64, x, y float64, clip tree.Rect, fou
 			}
 		}
 		kc := b.ChildClip(kids[n], box, kidClip)
-		kb, kc = panelHitPlace(b, box, kids[n], kb, kc, ox, oy)
-		walkHitOffset(kids[n], ox, oy, kb, x, y, kc, found)
+		kb, kc = panelHitPlace(b, box, kids[n], kb, kc, scroll, ox, oy)
+		walkHitOffset(kids[n], ox, oy, kb, x, y, kc, scroll, found)
 		if *found != nil {
 			return
 		}
@@ -2952,7 +2959,7 @@ func walkHit(b *tree.NodeBase, ox, oy float64, x, y float64, clip tree.Rect, fou
 	}
 }
 
-func walkHitOffset(b *tree.NodeBase, ox, oy float64, bounds tree.Rect, x, y float64, clip tree.Rect, found *tree.Node) {
+func walkHitOffset(b *tree.NodeBase, ox, oy float64, bounds tree.Rect, x, y float64, clip, scroll tree.Rect, found *tree.Node) {
 	if !b.Visible() {
 		return
 	}
@@ -2964,6 +2971,9 @@ func walkHitOffset(b *tree.NodeBase, ox, oy float64, bounds tree.Rect, x, y floa
 	if b.ClipsChildren() {
 		kidClip = intersectRect(clip, inner)
 	}
+	if b.ScrollAxis() != tree.AxisNone {
+		scroll = intersectRect(scroll, inner)
+	}
 	kids := b.PaintOrder()
 	for n := len(kids) - 1; n >= 0; n-- {
 		kb := kids[n].Bounds()
@@ -2980,8 +2990,8 @@ func walkHitOffset(b *tree.NodeBase, ox, oy float64, bounds tree.Rect, x, y floa
 			}
 		}
 		kc := b.ChildClip(kids[n], box, kidClip)
-		kb, kc = panelHitPlace(b, box, kids[n], kb, kc, ox, oy)
-		walkHitOffset(kids[n], ox, oy, kb, x, y, kc, found)
+		kb, kc = panelHitPlace(b, box, kids[n], kb, kc, scroll, ox, oy)
+		walkHitOffset(kids[n], ox, oy, kb, x, y, kc, scroll, found)
 		if *found != nil {
 			return
 		}

@@ -2264,3 +2264,16 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   the "a hint, not a clamp" reading of the CSS value. `scrollSnapStop: stop`
   caps a fling at the first point past the gesture's start, which is what CSS
   `scroll-snap-stop: always` does for a fling.
+- **A popover panel escapes its holder, not its scroller.** The panel is an
+  overlay: it is not cut by the card or the box it was written in, and it paints
+  above later siblings. That used to mean the window was its only clip, which
+  also let it escape a scrolling ancestor: a popover at the end of a long column
+  drew its panel over the page before the anchor was anywhere on screen. Paint
+  and hit-testing now carry the intersection of the scrolling ancestors'
+  viewports (the list keeps it as it walks) and use that for the panel, so the
+  panel moves with its anchor, is cut at the scroller's frame, and is gone when
+  the anchor is scrolled out. A non-scrolling ancestor still does not cut it,
+  which is what keeps a menu inside a raised card usable. The flip and the
+  window clamp are skipped while the anchor itself is outside that viewport:
+  clamping there would drag a sliver of the panel back on screen with nothing
+  to point at.
