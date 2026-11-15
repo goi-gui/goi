@@ -1,3 +1,5 @@
+//go:build !noemoji
+
 package text
 
 import "testing"
@@ -92,5 +94,20 @@ func TestEmojiMeasureMatchesRuns(t *testing.T) {
 	}
 	if got := f.advance(s); got != want {
 		t.Fatalf("advance = %v, shaped runs = %v", got, want)
+	}
+}
+
+// TestEmojiLoadsOnFirstUse keeps the 11 MB font and its parse out of an app
+// that never draws an emoji.
+func TestEmojiLoadsOnFirstUse(t *testing.T) {
+	l := NewLibrary()
+	if l.emoji != nil {
+		t.Fatal("the emoji font was parsed at startup")
+	}
+	if !l.HasEmoji() {
+		t.Fatal("HasEmoji did not load the font")
+	}
+	if l.emoji == nil {
+		t.Fatal("the emoji font is still nil after HasEmoji")
 	}
 }

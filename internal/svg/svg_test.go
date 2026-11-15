@@ -1,3 +1,5 @@
+//go:build !nosvg
+
 package svg
 
 import (

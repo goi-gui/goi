@@ -145,7 +145,7 @@ type ChartSeries struct {
 func (*ChartSeries) Kind() string { return "ChartSeries" }
 
 func (s *ChartSeries) namedProps() []NamedProp {
-	return append(commonProps(&s.NodeBase),
+	return append(commonProps(&s.NodeBase, 4),
 		StringProp(&s.NodeBase, "label", &s.Label),
 		ListPropOf(&s.NodeBase, "values", DirtyLayout, &s.Values),
 		ListPropOf(&s.NodeBase, "colors", DirtyPaint, &s.Colors),

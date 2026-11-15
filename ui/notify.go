@@ -1,3 +1,5 @@
+//go:build !nodialog
+
 package ui
 
 import "github.com/gen2brain/beeep"

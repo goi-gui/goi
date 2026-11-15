@@ -162,12 +162,12 @@ func spanOf(tx *Text) Span {
 
 func (r *RichText) namedProps() []NamedProp {
 	t := &r.Text
-	return append(commonProps(&r.NodeBase),
+	return append(commonProps(&r.NodeBase, 7),
 		StringProp(&r.NodeBase, "text", &t.Text),
 		NumberProp(&r.NodeBase, "fontSize", DirtyLayout, &t.FontSize),
 		ColorProp(&r.NodeBase, "color", DirtyPaint, &t.Color),
-		EnumProp(&r.NodeBase, "align", DirtyLayout, &t.Align, "start", "center", "end"),
+		EnumProp(&r.NodeBase, "align", DirtyLayout, &t.Align, AlignValues),
 		BoolProp(&r.NodeBase, "wrap", DirtyLayout, &t.Wrap),
-		EnumProp(&r.NodeBase, "role", DirtyLayout, &t.Role, textRoles...),
+		EnumProp(&r.NodeBase, "role", DirtyLayout, &t.Role, textRoles),
 	)
 }

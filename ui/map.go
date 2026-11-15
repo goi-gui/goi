@@ -12,8 +12,9 @@ import (
 // traffic profile, so one app keeps two downloads in flight and 256 decoded
 // tiles in memory; a larger tile that a design points at is still just a tile.
 const (
-	mapTileParallel = 2
-	mapTileCacheMax = 128
+	mapTileParallel   = 2
+	mapTileCacheMax   = 128
+	mapTileCacheBytes = 32 << 20
 	// mapQueueMax bounds the queue when the user zooms through many levels
 	// quickly. A dropped URL is not lost: the next frame asks again.
 	mapQueueMax = 64
@@ -91,8 +92,7 @@ func (a *App) finishTile(url string, d *img.Data) {
 		}
 		a.mapFailed[url] = true
 	} else {
-		a.cacheImage(url, d, nil)
-		a.mapKeys = append(a.mapKeys, url)
+		a.cacheTile(url, d)
 		a.evictTiles()
 	}
 	if a.win != nil && a.win.tree != nil {
@@ -109,10 +109,13 @@ func (a *App) finishTile(url string, d *img.Data) {
 // Map keeps its own pointer to a tile it is showing, so an evicted bitmap is
 // still drawn this frame and simply fetched again if the view returns to it.
 func (a *App) evictTiles() {
-	for len(a.mapKeys) > mapTileCacheMax {
+	for len(a.mapKeys) > 0 && (len(a.mapKeys) > mapTileCacheMax || a.mapBytes > mapTileCacheBytes) {
 		url := a.mapKeys[0]
 		a.mapKeys = a.mapKeys[1:]
-		delete(a.images, url)
+		if d, ok := a.images[url]; ok {
+			a.mapBytes -= len(d.Pix)
+			delete(a.images, url)
+		}
 		delete(a.anims, url)
 	}
 }

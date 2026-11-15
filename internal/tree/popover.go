@@ -21,7 +21,7 @@ func (*Popover) Kind() string { return "Popover" }
 
 func (c *Popover) namedProps() []NamedProp {
 	return append(c.propsExcept("Popover", "align"),
-		EnumProp(&c.NodeBase, "align", DirtyLayout, &c.Align, "start", "center", "end"))
+		EnumProp(&c.NodeBase, "align", DirtyLayout, &c.Align, AlignValues))
 }
 
 // PanelShift moves the panel's box so it stays inside a window of winW by winH:

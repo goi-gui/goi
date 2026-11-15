@@ -280,6 +280,18 @@ needs no cgo flag; `nofakecgo` lets goffi and purego share one fake C runtime.
 Add `-ldflags="-H windowsgui"` on Windows for a program without a console
 window.
 
+A release build usually wants `-s -w` and the tags for anything the app does
+not use. The colour emoji font alone is 10.7 MB, and each optional feature
+brings its dependency with it:
+
+```sh
+go build -tags "noemoji nonet nocode nosvg nomarkdown nodialog" \
+	-ldflags="-s -w -linkmode=internal" -o myapp ./cmd/myapp
+```
+
+See [Building](https://goi-gui.github.io/guide/build) for the tag table, the measured
+sizes and the memory knobs (`App.MSAA`, `App.ImageCache`, `App.VideoBuffer`).
+
 The renderer picks its backend from the surface it is given: Vulkan through
 Wayland or X11, Direct3D 12 on Windows, Metal on macOS. All four go through
 `github.com/gogpu/wgpu`'s pure-Go backends, so no extra GPU SDK is needed.

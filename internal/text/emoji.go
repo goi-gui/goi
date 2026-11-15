@@ -17,12 +17,17 @@ import (
 //
 // notoEmoji is the embedded font, or nil in a noemoji build.
 
-// HasEmoji reports whether the colour emoji font parsed.
-func (l *Library) HasEmoji() bool { return l.emoji != nil }
+// HasEmoji reports whether the colour emoji font parsed. The first call parses
+// it, so a test that asks is also a test that loads.
+func (l *Library) HasEmoji() bool {
+	l.ensureEmoji()
+	return l.emoji != nil
+}
 
 // EmojiFace returns the colour emoji face at a size. Text never shapes with it
 // directly: the text face falls back to it for a rune Roboto has no glyph for.
 func (l *Library) EmojiFace(size float64) *Face {
+	l.ensureEmoji()
 	if l.emoji == nil {
 		return nil
 	}

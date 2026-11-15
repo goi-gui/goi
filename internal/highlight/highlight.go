@@ -1,3 +1,5 @@
+//go:build !nocode
+
 // Package highlight turns source text into colored runs.
 //
 // The lexing itself is Chroma's: it knows a few hundred languages, and the

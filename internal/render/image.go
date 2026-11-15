@@ -64,6 +64,11 @@ const imageAtlasSoftCap = 128
 // Image atlases are capped so a pathological set cannot allocate without bound.
 const maxImageAtlasDim = 4096
 
+// initImageAtlasDim is where the atlas starts. A minimal app used to pay for a
+// 2048x2048 RGBA texture (16 MB of pixels plus the GPU copy) before it showed a
+// single picture; 512 is 1 MB and grows when a frame needs more.
+const initImageAtlasDim = 512
+
 // imageKey identifies one packed copy of an image: the source, and the size it
 // was scaled to.
 type imageKey struct {
@@ -81,7 +86,7 @@ type imageSlot struct {
 }
 
 func (g *GPU) initImages() error {
-	const size = 2048
+	const size = initImageAtlasDim
 	t := &imageRenderer{
 		gpu: g,
 		w:   size, h: size,
@@ -285,7 +290,7 @@ func (t *imageRenderer) pack(d *img.Data, key imageKey) (img.Region, bool) {
 	}
 	x, y, ok := t.shelf.Place(w, h)
 	// Grow before downscaling: a sharper image is worth the texture memory.
-	for tries := 0; !ok && tries < 2; tries++ {
+	for !ok {
 		if !t.grow() {
 			break
 		}

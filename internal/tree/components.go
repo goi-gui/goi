@@ -144,8 +144,8 @@ func newComponent() Component {
 // namedProps returns the properties listed in propsFor(kind), in that order.
 func (c *Component) props(kind string) []NamedProp {
 	names := propsFor(kind)
-	out := make([]NamedProp, 0, len(names)+14)
-	out = append(out, commonProps(&c.NodeBase)...)
+	out := make([]NamedProp, 0, commonPropCount+len(names)+8)
+	out = append(out, commonProps(&c.NodeBase, len(names)+8)...)
 	for _, n := range names {
 		out = append(out, c.one(kind, n))
 	}
@@ -157,8 +157,8 @@ func (c *Component) props(kind string) []NamedProp {
 // names, so the schema and the docs see them.
 func (c *Component) propsExcept(kind string, skip ...string) []NamedProp {
 	names := propsFor(kind)
-	out := make([]NamedProp, 0, len(names)+16)
-	out = append(out, commonProps(&c.NodeBase)...)
+	out := make([]NamedProp, 0, commonPropCount+len(names)+12)
+	out = append(out, commonProps(&c.NodeBase, len(names)+12)...)
 	for _, n := range names {
 		own := false
 		for _, s := range skip {
@@ -211,7 +211,7 @@ func (c *Component) one(kind, name string) NamedProp {
 		if kind == "TimePicker" {
 			dirty = DirtyLayout
 		}
-		return EnumProp(b, "variant", dirty, &c.Variant, componentdef.EnumValuesFor(kind, "variant")...)
+		return EnumProp(b, "variant", dirty, &c.Variant, componentdef.EnumValuesFor(kind, "variant"))
 	case "disabled":
 		return BoolProp(b, "disabled", DirtyPaint, &c.Disabled)
 	case "checked":
@@ -241,9 +241,9 @@ func (c *Component) one(kind, name string) NamedProp {
 		// expects. Whichever the file writes last wins.
 		return NumberProp(b, "gap", DirtyLayout, &c.Spacing)
 	case "crossAxisAlign":
-		return EnumProp(b, "crossAxisAlign", DirtyLayout, &c.CrossAlign, CrossAxisValues...)
+		return EnumProp(b, "crossAxisAlign", DirtyLayout, &c.CrossAlign, CrossAxisValues)
 	case "mainAxisAlign":
-		return EnumProp(b, "mainAxisAlign", DirtyLayout, &c.MainAlign, MainAxisValues...)
+		return EnumProp(b, "mainAxisAlign", DirtyLayout, &c.MainAlign, MainAxisValues)
 	}
 	return StringProp(b, name, &c.Label)
 }
@@ -519,7 +519,7 @@ func (c *Table) namedProps() []NamedProp {
 		NumberProp(&c.NodeBase, "headerHeight", DirtyLayout, &c.HeaderHeight),
 		NumberProp(&c.NodeBase, "sortColumn", DirtyLayout, &c.SortColumn),
 		BoolProp(&c.NodeBase, "sortAscending", DirtyLayout, &c.SortAscending),
-		EnumProp(&c.NodeBase, "selectable", DirtyPaint, &c.Selectable, "none", "single", "multiple"),
+		EnumProp(&c.NodeBase, "selectable", DirtyPaint, &c.Selectable, TableSelectableValues),
 		NumberProp(&c.NodeBase, "selectedRow", DirtyPaint, &c.SelectedRow),
 	)
 }
@@ -551,7 +551,7 @@ func (*TableColumn) Kind() string { return "TableColumn" }
 func (c *TableColumn) namedProps() []NamedProp {
 	return append(c.propsExcept("TableColumn", "key", "align", "sortable", "numeric"),
 		StringProp(&c.NodeBase, "key", &c.Key),
-		EnumProp(&c.NodeBase, "align", DirtyPaint, &c.Align, "start", "center", "end"),
+		EnumProp(&c.NodeBase, "align", DirtyPaint, &c.Align, AlignValues),
 		BoolProp(&c.NodeBase, "sortable", DirtyPaint, &c.Sortable),
 		BoolProp(&c.NodeBase, "numeric", DirtyPaint, &c.Numeric),
 	)
@@ -581,7 +581,7 @@ func (*TableCell) Kind() string { return "TableCell" }
 func (c *TableCell) namedProps() []NamedProp {
 	return append(c.propsExcept("TableCell", "value", "align"),
 		ScalarProp(&c.NodeBase, "value", DirtyLayout, &c.Value),
-		EnumProp(&c.NodeBase, "align", DirtyPaint, &c.Align, "start", "center", "end"),
+		EnumProp(&c.NodeBase, "align", DirtyPaint, &c.Align, AlignValues),
 	)
 }
 

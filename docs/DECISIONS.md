@@ -2174,3 +2174,26 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   leave for what dropped, enter for what arrived and a move for the rest. Hot
   reload drops the chain, or the first move would send a leave to a detector the
   old tree owned and run a handler against the tree that is gone.
+- **A minimal app should not pay for the emoji font it never draws.** Noto Color
+  Emoji is 10.7 MB of the binary and used to parse at startup, which cost ~11 MB
+  of heap plus the font's file pages before the first frame. The parse now waits
+  for the first rune that needs it (a `sync.Once` in `EmojiFace`), and the
+  documented `noemoji` tag leaves the file out entirely. Lazy is the default
+  because emoji support must not silently disappear; the tag is for an app that
+  knows it has none.
+- **A 12-megapixel photo is not a 12-megapixel UI.** Decoding stored the source
+  resolution as RGBA forever, so one 4288x2848 JPEG held 49 MB in a 400dp box.
+  Decode now caps the longest side at 2048 px, and the decoded cache is a byte
+  budget (64 MB) with an LRU: the oldest picture leaves, and the element showing
+  it reloads when it returns. A picture that is on screen is pinned, or a page
+  that needs more than the budget would reload every frame. The image, map-tile
+  and rasterized-SVG caches each have their own budget, and the video player's
+  frame queue is 16 MB (32 live) instead of 64/96, configurable on the app.
+- **The atlases and the per-node tables start where the app is, not where it
+  could end up.** The image atlas began at 2048² (16 MB of pixels plus the GPU
+  copy) even in an app with no pictures; it now starts at 512² and grows, the
+  same way the text atlas already did. A node's property table is one exact
+  allocation instead of append growth (69 cells fitted in a 135-cell slice), and
+  the enum lists it points at are shared per kind rather than copied per node.
+  The table is still per node, because a cell belongs to its node; sharing the
+  metadata would be the next step if a design ever needs it.

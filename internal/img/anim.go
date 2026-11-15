@@ -81,7 +81,7 @@ func (a *Anim) UntilNextFrame(i int, elapsed time.Duration) time.Duration {
 // instead of exhausting memory.
 const (
 	maxAnimFrames = 512
-	maxAnimBytes  = 128 << 20
+	maxAnimBytes  = 32 << 20
 )
 
 // DecodeAnimated decodes an image file. anim is non-nil only for an animated

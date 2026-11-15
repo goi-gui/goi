@@ -2,10 +2,8 @@ package ui
 
 import (
 	"fmt"
-	"io"
 	"io/fs"
 	"math"
-	"net/http"
 	"os"
 	"path"
 	"strings"
@@ -16,13 +14,29 @@ import (
 	"github.com/goi-gui/goi/internal/tree"
 )
 
-// maxRemoteImageBytes caps one download. A design may point at anything, and an
-// image that decodes to a 20k by 20k bitmap would take the process down.
-const maxRemoteImageBytes = 32 << 20
+// maxDecodedImageDim caps a decoded picture's longest side. A 12-megapixel
+// photo shown in a 400dp box does not need its 4288 source pixels, and the
+// extra RGBA copy is tens of megabytes for pixels no screen shows. The renderer
+// scales into the atlas anyway; this keeps the source from outliving its use.
+const maxDecodedImageDim = 2048
 
-// remoteImageClient is shared by every window: it pools connections, and the
-// timeout keeps a hanging host from leaving a placeholder pulsing forever.
-var remoteImageClient = &http.Client{Timeout: 20 * time.Second}
+// defaultImageBudget is how many decoded image bytes the cache may hold. A
+// picture is reloaded when it comes back; keeping a session's whole history is
+// what makes a long-running app grow without bound.
+const defaultImageBudget = 64 << 20
+
+// svgCacheBudget is the same for rasterized SVG bitmaps.
+const svgCacheBudget = 8 << 20
+
+// capDecoded shrinks a bitmap whose longest side is over the cap.
+func capDecoded(d *img.Data) *img.Data {
+	if d == nil || (d.W <= maxDecodedImageDim && d.H <= maxDecodedImageDim) {
+		return d
+	}
+	scale := float64(maxDecodedImageDim) / float64(max(d.W, d.H))
+	w, h := max(1, int(float64(d.W)*scale)), max(1, int(float64(d.H)*scale))
+	return img.Scale(d, w, h)
+}
 
 // assetScheme marks a src that lives in the design's asset container: the fs.FS
 // passed to LoadWindow, so an embed.FS in production and a directory in
@@ -122,6 +136,9 @@ func (a *App) loadImage(im *tree.Image, src string) {
 			im.LoadErr = fmt.Errorf("%s: %w", src, err)
 			return
 		}
+		if anim == nil {
+			d = capDecoded(d)
+		}
 		a.cacheImage(src, d, anim)
 	}
 	anim := a.anims[src]
@@ -176,19 +193,126 @@ func animData(im *tree.Image, d *img.Data, anim *img.Anim) {
 	im.Data = &img.Data{W: anim.W, H: anim.H, Pix: anim.Frames[0].Pix}
 }
 
-// cacheImage stores a decoded bitmap for src, and its animation when it has one.
+// cacheImage stores a decoded bitmap for src, and its animation when it has
+// one. The cache is a byte-budgeted LRU: a long session that shows many images
+// would otherwise keep every one of them decoded forever.
 func (a *App) cacheImage(src string, d *img.Data, anim *img.Anim) {
 	if a.images == nil {
 		a.images = map[string]*img.Data{}
 	}
+	if old, ok := a.images[src]; ok {
+		a.imageBytes -= len(old.Pix)
+		if oldAnim, ok := a.anims[src]; ok {
+			a.imageBytes -= animBytes(oldAnim)
+			delete(a.anims, src)
+		}
+	} else {
+		a.imageOrder = append(a.imageOrder, src)
+	}
 	a.images[src] = d
-	if anim == nil {
+	a.imageBytes += len(d.Pix)
+	if anim != nil {
+		if a.anims == nil {
+			a.anims = map[string]*img.Anim{}
+		}
+		a.anims[src] = anim
+		a.imageBytes += animBytes(anim)
+	}
+	a.evictImages()
+}
+
+// cacheTile stores one map tile. Tiles keep their own byte budget, so a pan
+// across many zooms cannot push the design's pictures out of the image cache.
+func (a *App) cacheTile(url string, d *img.Data) {
+	if a.images == nil {
+		a.images = map[string]*img.Data{}
+	}
+	if old, ok := a.images[url]; ok {
+		a.mapBytes -= len(old.Pix)
+	} else {
+		a.mapKeys = append(a.mapKeys, url)
+	}
+	a.images[url] = d
+	a.mapBytes += len(d.Pix)
+}
+
+// animBytes is the pixels one animation holds.
+func animBytes(a *img.Anim) int {
+	n := 0
+	for _, f := range a.Frames {
+		n += len(f.Pix)
+	}
+	return n
+}
+
+// evictImages drops the oldest decoded pictures once the cache is over its
+// budget. A node using an evicted src is cleared and reloaded on the next frame
+// (from disk, or from the network when the src is remote).
+func (a *App) evictImages() {
+	budget := a.imageBudget
+	if budget <= 0 {
+		budget = defaultImageBudget
+	}
+	// A picture an element is showing cannot be dropped, or a page that needs
+	// more than the budget would reload every frame. Only unused ones leave; the
+	// visible set may sit above the budget until it scrolls away.
+	tries := 0
+	for a.imageBytes > budget && len(a.imageOrder) > 0 && tries < len(a.imageOrder) {
+		src := a.imageOrder[0]
+		a.imageOrder = a.imageOrder[1:]
+		if a.imageInUse(src) {
+			a.imageOrder = append(a.imageOrder, src)
+			tries++
+			continue
+		}
+		tries = 0
+		d, ok := a.images[src]
+		if !ok {
+			continue
+		}
+		a.imageBytes -= len(d.Pix)
+		if anim, ok := a.anims[src]; ok {
+			a.imageBytes -= animBytes(anim)
+			delete(a.anims, src)
+		}
+		delete(a.images, src)
+		a.invalidateImage(src)
+	}
+}
+
+// imageInUse reports whether an Image element still shows src.
+func (a *App) imageInUse(src string) bool {
+	if a.win == nil || a.win.tree == nil {
+		return false
+	}
+	found := false
+	a.win.tree.Walk(func(n tree.Node) {
+		if found {
+			return
+		}
+		if im, ok := n.(*tree.Image); ok && im.RenderedSrc == src {
+			found = true
+		}
+	})
+	return found
+}
+
+// invalidateImage clears the nodes that show src, so the memory is really
+// released and the next sync loads the picture again.
+func (a *App) invalidateImage(src string) {
+	if a.win == nil || a.win.tree == nil {
 		return
 	}
-	if a.anims == nil {
-		a.anims = map[string]*img.Anim{}
-	}
-	a.anims[src] = anim
+	a.win.tree.Walk(func(n tree.Node) {
+		im, ok := n.(*tree.Image)
+		if !ok || im.RenderedSrc != src {
+			return
+		}
+		im.Data, im.Anim = nil, nil
+		im.RenderedSrc = ""
+		im.Base().MarkDirty(tree.DirtyPaint)
+	})
+	a.needsFrame = true
 }
 
 // svgColor normalises a design colour for the rasterizer. SVG colours have no
@@ -314,12 +438,49 @@ func (a *App) renderSVG(n *tree.SVG, src string, color uint32) {
 			a.svgData = map[svgKey]*img.Data{}
 		}
 		a.svgData[key] = d
+		a.svgBytes += len(d.Pix)
+		a.svgOrder = append(a.svgOrder, key)
+		a.evictSVGs()
 	}
 	n.Data = d
 	// shortcut: a colour change rasterizes a new bitmap and the image atlas
 	// keeps the superseded region, so animating Color every frame grows GPU
 	// memory. Upgrade with a tint mask or in-place atlas updates if that is
 	// ever needed; state changes and theme switches are fine.
+}
+
+// evictSVGs drops the oldest rasterized icons once the cache is over its
+// budget, and clears the nodes that drew them so the pixels can be collected.
+func (a *App) evictSVGs() {
+	for a.svgBytes > svgCacheBudget && len(a.svgOrder) > 0 {
+		key := a.svgOrder[0]
+		a.svgOrder = a.svgOrder[1:]
+		d, ok := a.svgData[key]
+		if !ok {
+			continue
+		}
+		a.svgBytes -= len(d.Pix)
+		delete(a.svgData, key)
+		a.invalidateSVG(key)
+	}
+}
+
+// invalidateSVG clears the nodes showing one rasterized icon; syncSVGs renders
+// it again from the parsed file.
+func (a *App) invalidateSVG(key svgKey) {
+	if a.win == nil || a.win.tree == nil {
+		return
+	}
+	a.win.tree.Walk(func(n tree.Node) {
+		s, ok := n.(*tree.SVG)
+		if !ok || s.RenderedSrc != key.src || s.RenderedColor != key.color {
+			return
+		}
+		s.Data = nil
+		s.RenderedSrc = ""
+		s.Base().MarkDirty(tree.DirtyPaint)
+	})
+	a.needsFrame = true
 }
 
 // svgSource returns the parsed file for src, reading a local asset or using the
@@ -474,51 +635,6 @@ func (a *App) loadRemoteImage(im *tree.Image, src string) {
 		// touched.
 		a.Post(func() { a.finishImageLoad(src, d, anim, err) })
 	}()
-}
-
-// fetchRemoteImage downloads and decodes one URL. Decoding happens here, off the
-// UI goroutine: a large JPEG takes long enough to drop a frame.
-func fetchRemoteImage(src string) (*img.Data, *img.Anim, error) {
-	b, err := fetchRemote(src)
-	if err != nil {
-		return nil, nil, err
-	}
-	d, anim, err := img.DecodeAnimated(b)
-	if err != nil {
-		return nil, nil, fmt.Errorf("%s: %w", src, err)
-	}
-	return d, anim, nil
-}
-
-// fetchRemote downloads one URL and returns its bytes. Image decodes them here
-// too; SVG keeps them until the UI goroutine can parse and rasterize.
-func fetchRemote(src string) ([]byte, error) {
-	req, err := http.NewRequest(http.MethodGet, src, nil)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", src, err)
-	}
-	req.Header.Set("Accept", "image/*")
-	// A tile service can refuse an anonymous client: OpenStreetMap's policy
-	// asks for an identifying agent, and it is what turns a 403 into tiles. A
-	// browser drops this header and sends its own, which is what its policy
-	// expects anyway.
-	req.Header.Set("User-Agent", "goi (+https://github.com/goi-gui/goi)")
-	resp, err := remoteImageClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", src, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%s: %s", src, resp.Status)
-	}
-	b, err := io.ReadAll(io.LimitReader(resp.Body, maxRemoteImageBytes+1))
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", src, err)
-	}
-	if len(b) > maxRemoteImageBytes {
-		return nil, fmt.Errorf("%s: larger than %d bytes", src, maxRemoteImageBytes)
-	}
-	return b, nil
 }
 
 // finishImageLoad hands a finished download to the nodes that asked for it. It

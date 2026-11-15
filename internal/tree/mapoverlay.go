@@ -41,7 +41,7 @@ func newGeom(base NodeBase) *Geom {
 }
 
 func (g *Geom) namedProps() []NamedProp {
-	return append(commonProps(&g.NodeBase),
+	return append(commonProps(&g.NodeBase, 3),
 		ListPropOf(&g.NodeBase, "data", DirtyPaint, &g.Data),
 		ColorProp(&g.NodeBase, "lineColor", DirtyPaint, &g.LineColor),
 		ColorProp(&g.NodeBase, "fillColor", DirtyPaint, &g.FillColor),
@@ -109,7 +109,7 @@ func newPath(base NodeBase) *Path {
 }
 
 func (p *Path) namedProps() []NamedProp {
-	return append(commonProps(&p.NodeBase),
+	return append(commonProps(&p.NodeBase, 2),
 		ListPropOf(&p.NodeBase, "coordinates", DirtyPaint, &p.Coordinates),
 		ColorProp(&p.NodeBase, "lineColor", DirtyPaint, &p.LineColor),
 	)
@@ -143,7 +143,7 @@ func newPoint(base NodeBase) *Point {
 }
 
 func (p *Point) namedProps() []NamedProp {
-	return append(commonProps(&p.NodeBase),
+	return append(commonProps(&p.NodeBase, 1),
 		ListPropOf(&p.NodeBase, "coordinate", DirtyPaint, &p.Coordinate),
 	)
 }

@@ -68,6 +68,8 @@ type Library struct {
 	// back to; emojiCache holds its decoded bitmaps per size and glyph.
 	emoji      *font.Face
 	emojiCache map[emojiKey]*emojiGlyph
+	emojiOnce  sync.Once
+	emojiErr   error
 	faces      map[faceKey]*Face
 	atlas      *Atlas
 	// front is a small direct-mapped cache in front of faces. A page uses a
@@ -129,8 +131,17 @@ func NewLibrary() *Library {
 	if f, err := font.ParseTTF(bytes.NewReader(materialSymbols)); err == nil {
 		l.icon = f
 	}
-	l.loadEmoji(notoEmoji)
 	return l
+}
+
+// ensureEmoji parses the embedded colour font once. A failure is not fatal:
+// text falls back to the monochrome glyphs of the regular face.
+func (l *Library) ensureEmoji() {
+	l.emojiOnce.Do(func() {
+		if err := l.loadEmoji(notoEmoji); err != nil {
+			l.emojiErr = err
+		}
+	})
 }
 
 // HasFont reports whether Roboto parsed.

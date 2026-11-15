@@ -363,7 +363,7 @@ func EnumValuesFor(kind, name string) []string {
 		}
 	}
 	if name == "selectable" && kind == "Table" {
-		return []string{"none", "single", "multiple"}
+		return tableSelectableValues
 	}
 	return EnumValues(name)
 }
@@ -371,20 +371,29 @@ func EnumValuesFor(kind, name string) []string {
 // EnumValues returns the accepted identifiers for an enum property. It is a
 // union: a variant that does not apply to a component is simply unused, unless
 // that component narrows the list with EnumValuesFor.
-func EnumValues(name string) []string {
-	if name == "crossAxisAlign" {
-		return []string{"start", "center", "end", "stretch"}
-	}
-	if name == "align" {
-		return []string{"start", "center", "end"}
-	}
-	if name == "mainAxisAlign" {
-		return []string{"start", "center", "end", "spaceBetween", "spaceAround", "spaceEvenly"}
-	}
-	return []string{
+// The enum value lists are shared, not rebuilt per node: a component with a
+// variant used to copy twenty values into its own cell table.
+var (
+	alignValues           = []string{"start", "center", "end"}
+	crossAxisValues       = []string{"start", "center", "end", "stretch"}
+	mainAxisValues        = []string{"start", "center", "end", "spaceBetween", "spaceAround", "spaceEvenly"}
+	tableSelectableValues = []string{"none", "single", "multiple"}
+	variantUnion          = []string{
 		"filled", "tonal", "elevated", "outlined", "text", "plain", "standard",
 		"primary", "secondary", "tertiary", "small", "large", "extended",
 		"assist", "filter", "input", "suggestion", "horizontal", "vertical",
 		"single", "multi",
 	}
+)
+
+func EnumValues(name string) []string {
+	switch name {
+	case "crossAxisAlign":
+		return crossAxisValues
+	case "align":
+		return alignValues
+	case "mainAxisAlign":
+		return mainAxisValues
+	}
+	return variantUnion
 }

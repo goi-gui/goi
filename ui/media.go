@@ -39,12 +39,12 @@ const (
 	audioChannels = 2
 	// Video and audio byte budgets. A buffer is measured in seconds, but memory
 	// is what runs out, so the seconds are clamped to these.
-	maxVideoBufferBytes = 64 << 20
+	maxVideoBufferBytes = 16 << 20
 	// maxLiveBufferBytes is the same budget for a live feed. A feed arrives in
 	// segments with gaps between them, so the seconds the design asks for only
 	// help if the bytes are allowed; a live buffer is also short-lived, because
 	// it never holds more than the seconds it names.
-	maxLiveBufferBytes = 96 << 20
+	maxLiveBufferBytes = 32 << 20
 	// minVideoFrames keeps a buffer useful at a low frame rate.
 	minVideoFrames = 2
 	// reserveSeconds is the cushion a live player keeps: how much it gathers
@@ -91,6 +91,11 @@ type mediaPlayer struct {
 	// node from the UI goroutine so paint never reads a field another goroutine
 	// writes.
 	hardware bool
+
+	// budget is how many bytes this player may hold in buffered frames; zero
+	// uses the defaults above. A 1080p frame is 8 MB, so this is what the
+	// design's `buffer` seconds cost.
+	budget int
 
 	// Buffered frames. The pump decodes into a buffer from free and sends it to
 	// frames; the UI takes from frames and hands the buffer back. Sending on a
@@ -366,6 +371,7 @@ func (a *App) startPlayer(n tree.Node) (*mediaPlayer, error) {
 			v.Data = &img.Data{W: w, H: h, Pix: make([]byte, w*h*4)}
 		}
 		p.frame = v.Data
+		p.budget = a.videoBuffer
 		p.openFrames(w * h * 4)
 		// The decoder needs a moment before its first frame; until then the box
 		// breathes instead of showing a black rectangle.
@@ -445,9 +451,12 @@ func (p *mediaPlayer) openFrames(frameBytes int) {
 	if n < minVideoFrames {
 		n = minVideoFrames
 	}
-	budget := maxVideoBufferBytes
-	if p.live {
-		budget = maxLiveBufferBytes
+	budget := p.budget
+	if budget <= 0 {
+		budget = maxVideoBufferBytes
+		if p.live {
+			budget = maxLiveBufferBytes
+		}
 	}
 	if limit := budget / max(frameBytes, 1); n > limit {
 		n = limit

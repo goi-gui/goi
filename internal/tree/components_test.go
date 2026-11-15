@@ -368,3 +368,12 @@ func TestGradientStopsResolveTheirRoles(t *testing.T) {
 		t.Fatal("a resolved gradient did not mark the node")
 	}
 }
+
+// TestCommonPropCount keeps the fixed capacity honest: commonProps sizes the
+// per-node table from it, so a property added to the table without updating the
+// count would grow the slice again.
+func TestCommonPropCount(t *testing.T) {
+	if got := len(commonProps(&NodeBase{}, 0)); got != commonPropCount {
+		t.Fatalf("commonProps has %d entries, commonPropCount says %d", got, commonPropCount)
+	}
+}

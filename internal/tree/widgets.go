@@ -19,10 +19,17 @@ type Node interface {
 	namedProps() []NamedProp
 }
 
-// commonProps returns the property table shared by every element. "id" is
-// absent on purpose: it is assigned by the builder and is not a runtime cell.
-func commonProps(b *NodeBase) []NamedProp {
-	return []NamedProp{
+// commonPropCount is how many cells the shared table has. Naming it keeps the
+// per-node table one exact allocation instead of the three or four that append
+// growth used to make (the largest heap cost of a big design).
+const commonPropCount = 64
+
+// commonProps returns the property table shared by every element. extra is how
+// many cells the caller will append, so the slice is sized once. "id" is absent
+// on purpose: it is assigned by the builder and is not a runtime cell.
+func commonProps(b *NodeBase, extra int) []NamedProp {
+	out := make([]NamedProp, 0, commonPropCount+extra)
+	return append(out, []NamedProp{
 		NumberProp(b, "width", DirtyLayout, &b.width),
 		NumberProp(b, "height", DirtyLayout, &b.height),
 		SizeProp(b),
@@ -83,11 +90,11 @@ func commonProps(b *NodeBase) []NamedProp {
 		NumberProp(b, "opacity", DirtyPaint, &b.opacity),
 		NumberProp(b, "backdropBlur", DirtyPaint, &b.backdropBlur),
 		NumberProp(b, "zIndex", DirtyPaint, &b.zIndex),
-		EnumProp(b, "cursor", DirtyPaint, &b.cursor, schema.CursorValues...),
+		EnumProp(b, "cursor", DirtyPaint, &b.cursor, schema.CursorValues),
 		NumberProp(b, "flex", DirtyLayout, &b.flex),
-		EnumProp(b, "alignSelf", DirtyLayout, &b.alignSelf, "start", "center", "end", "stretch"),
+		EnumProp(b, "alignSelf", DirtyLayout, &b.alignSelf, AlignSelfValues),
 		RotateProp(b, "rotate", DirtyPaint, &b.rotate),
-	}
+	}...)
 }
 
 // Window is the root of a tree. It owns the title but no size of its own; the
@@ -153,10 +160,10 @@ func (w *Window) PlatformState() (minimized, maximized, fullscreen, known bool) 
 
 func (w *Window) namedProps() []NamedProp {
 	return append(
-		commonProps(&w.NodeBase),
+		commonProps(&w.NodeBase, 10),
 		StringProp(&w.NodeBase, "title", &w.Title),
 		StringProp(&w.NodeBase, "theme", &w.Theme),
-		EnumProp(&w.NodeBase, "titleBar", DirtyPaint, &w.TitleBar, "system", "custom"),
+		EnumProp(&w.NodeBase, "titleBar", DirtyPaint, &w.TitleBar, TitleBarValues),
 		BoolProp(&w.NodeBase, "disableResize", DirtyPaint, &w.DisableResize),
 		BoolProp(&w.NodeBase, "resizable", DirtyPaint, &w.Resizable),
 		BoolProp(&w.NodeBase, "minimizable", DirtyPaint, &w.Minimizable),
@@ -166,6 +173,31 @@ func (w *Window) namedProps() []NamedProp {
 		BoolProp(&w.NodeBase, "fullscreen", DirtyPaint, &w.Fullscreen),
 	)
 }
+
+// AlignValues are the start/center/end alignments a Text, table cell or popover
+// takes. The slice is shared: an enum cell used to copy it per node.
+var AlignValues = []string{"start", "center", "end"}
+
+// AlignSelfValues are the overrides a child may make on its parent's cross axis.
+var AlignSelfValues = []string{"start", "center", "end", "stretch"}
+
+// TitleBarValues are the two window chrome modes.
+var TitleBarValues = []string{"system", "custom"}
+
+// GridVariantValues are the grid layouts.
+var GridVariantValues = []string{"normal", "masonry"}
+
+// FitValues are the image fitting modes.
+var FitValues = []string{"cover", "contain", "fill"}
+
+// FontStyleValues are the two text slants.
+var FontStyleValues = []string{"normal", "italic"}
+
+// DecorationStyleValues are the CSS underline styles a Text accepts.
+var DecorationStyleValues = []string{"solid", "wavy", "dotted", "double", "dashed"}
+
+// TableSelectableValues are the row-selection modes of a Table.
+var TableSelectableValues = []string{"none", "single", "multiple"}
 
 // CrossAxisValues are the cross-axis alignments a flow container accepts.
 // `stretch` is the default feel of a Column: a child that can fill the width
@@ -192,11 +224,11 @@ type Container struct {
 
 func (c *Container) namedProps() []NamedProp {
 	return append(
-		commonProps(&c.NodeBase),
+		commonProps(&c.NodeBase, 4),
 		NumberProp(&c.NodeBase, "spacing", DirtyLayout, &c.Spacing),
 		NumberProp(&c.NodeBase, "gap", DirtyLayout, &c.Spacing),
-		EnumProp(&c.NodeBase, "crossAxisAlign", DirtyLayout, &c.CrossAlign, CrossAxisValues...),
-		EnumProp(&c.NodeBase, "mainAxisAlign", DirtyLayout, &c.MainAlign, MainAxisValues...),
+		EnumProp(&c.NodeBase, "crossAxisAlign", DirtyLayout, &c.CrossAlign, CrossAxisValues),
+		EnumProp(&c.NodeBase, "mainAxisAlign", DirtyLayout, &c.MainAlign, MainAxisValues),
 	)
 }
 
@@ -313,7 +345,7 @@ func (*Positioned) Kind() string { return "Positioned" }
 
 func (p *Positioned) namedProps() []NamedProp {
 	return append(
-		commonProps(&p.NodeBase),
+		commonProps(&p.NodeBase, 6),
 		NumberProp(&p.NodeBase, "left", DirtyLayout, &p.Left),
 		NumberProp(&p.NodeBase, "top", DirtyLayout, &p.Top),
 		NumberProp(&p.NodeBase, "right", DirtyLayout, &p.Right),
@@ -364,7 +396,7 @@ func (g *Grid) namedProps() []NamedProp {
 	return append(
 		g.Container.namedProps(),
 		NumberProp(&g.NodeBase, "columns", DirtyLayout, &g.Columns),
-		EnumProp(&g.NodeBase, "variant", DirtyLayout, &g.Variant, "normal", "masonry"),
+		EnumProp(&g.NodeBase, "variant", DirtyLayout, &g.Variant, GridVariantValues),
 	)
 }
 
@@ -376,7 +408,7 @@ type Rectangle struct {
 // Kind implements Node.
 func (r *Rectangle) Kind() string { return "Rectangle" }
 
-func (r *Rectangle) namedProps() []NamedProp { return commonProps(&r.NodeBase) }
+func (r *Rectangle) namedProps() []NamedProp { return commonProps(&r.NodeBase, 0) }
 
 // Image draws a decoded bitmap. The ui layer fills Data from Src, because a node
 // has no way to read files; an empty Data draws the Background as a placeholder,
@@ -440,9 +472,9 @@ func (i *Image) SetImage(src image.Image) {
 
 func (i *Image) namedProps() []NamedProp {
 	return append(
-		commonProps(&i.NodeBase),
+		commonProps(&i.NodeBase, 4),
 		StringProp(&i.NodeBase, "src", &i.Src),
-		EnumProp(&i.NodeBase, "fit", DirtyLayout, &i.Fit, "cover", "contain", "fill"),
+		EnumProp(&i.NodeBase, "fit", DirtyLayout, &i.Fit, FitValues),
 		BoolProp(&i.NodeBase, "paused", DirtyPaint, &i.Paused),
 		BoolProp(&i.NodeBase, "loop", DirtyPaint, &i.Loop),
 	)
@@ -580,11 +612,11 @@ func (s *SVG) SetDataBytes(b []byte) {
 
 func (s *SVG) namedProps() []NamedProp {
 	return append(
-		commonProps(&s.NodeBase),
+		commonProps(&s.NodeBase, 5),
 		BoolProp(&s.NodeBase, "paused", DirtyPaint, &s.Paused),
 		BoolProp(&s.NodeBase, "loop", DirtyPaint, &s.Loop),
 		StringProp(&s.NodeBase, "src", &s.Src),
-		EnumProp(&s.NodeBase, "fit", DirtyLayout, &s.Fit, "cover", "contain", "fill"),
+		EnumProp(&s.NodeBase, "fit", DirtyLayout, &s.Fit, FitValues),
 		ColorProp(&s.NodeBase, "color", DirtyPaint, &s.Color),
 	)
 }
@@ -661,21 +693,20 @@ func (t *Text) Kind() string { return "Text" }
 
 func (t *Text) namedProps() []NamedProp {
 	return append(
-		commonProps(&t.NodeBase),
+		commonProps(&t.NodeBase, 15),
 		StringProp(&t.NodeBase, "text", &t.Text),
 		NumberProp(&t.NodeBase, "fontSize", DirtyLayout, &t.FontSize),
 		ColorProp(&t.NodeBase, "color", DirtyPaint, &t.Color),
-		EnumProp(&t.NodeBase, "align", DirtyLayout, &t.Align, "start", "center", "end"),
+		EnumProp(&t.NodeBase, "align", DirtyLayout, &t.Align, AlignValues),
 		BoolProp(&t.NodeBase, "wrap", DirtyLayout, &t.Wrap),
-		EnumProp(&t.NodeBase, "role", DirtyLayout, &t.Role, textRoles...),
+		EnumProp(&t.NodeBase, "role", DirtyLayout, &t.Role, textRoles),
 		NumberProp(&t.NodeBase, "weight", DirtyLayout, &t.Weight),
 		// fontWeight is the CSS spelling: the parser turns its keywords into the
 		// same number, so both names share one cell and the last write wins.
 		NumberProp(&t.NodeBase, "fontWeight", DirtyLayout, &t.Weight),
-		EnumProp(&t.NodeBase, "fontStyle", DirtyPaint, &t.FontStyle, "normal", "italic"),
+		EnumProp(&t.NodeBase, "fontStyle", DirtyPaint, &t.FontStyle, FontStyleValues),
 		StringProp(&t.NodeBase, "decoration", &t.Decoration),
-		EnumProp(&t.NodeBase, "decorationStyle", DirtyPaint, &t.DecorationStyle,
-			"solid", "wavy", "dotted", "double", "dashed"),
+		EnumProp(&t.NodeBase, "decorationStyle", DirtyPaint, &t.DecorationStyle, DecorationStyleValues),
 		NumberProp(&t.NodeBase, "decorationThickness", DirtyPaint, &t.DecorationThickness),
 		ColorProp(&t.NodeBase, "decorationColor", DirtyPaint, &t.DecorationColor),
 		BoolProp(&t.NodeBase, "selectable", DirtyPaint, &t.Selectable),

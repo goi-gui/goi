@@ -142,10 +142,13 @@ func (m *Media) OnEnd(fn func(time.Duration)) (off func()) { return m.End.On(fn)
 // OnSeeked subscribes to a seek, with the new position.
 func (m *Media) OnSeeked(fn func(time.Duration)) (off func()) { return m.Seeked.On(fn) }
 
+// normalWavyValues are the two player styles.
+var normalWavyValues = []string{"normal", "wavy"}
+
 // mediaProps is the property table a media element exposes: the common box plus
 // the playback switches.
 func mediaProps(m *Media) []NamedProp {
-	return append(commonProps(&m.NodeBase),
+	return append(commonProps(&m.NodeBase, 21),
 		StringProp(&m.NodeBase, "src", &m.Src),
 		BoolProp(&m.NodeBase, "controls", DirtyLayout, &m.Controls),
 		BoolProp(&m.NodeBase, "autoplay", DirtyPaint, &m.Autoplay),
@@ -154,7 +157,7 @@ func mediaProps(m *Media) []NamedProp {
 		NumberProp(&m.NodeBase, "volume", DirtyPaint, &m.Volume),
 		NumberProp(&m.NodeBase, "startAt", DirtyPaint, &m.StartAt),
 		NumberProp(&m.NodeBase, "buffer", DirtyPaint, &m.Buffer),
-		EnumProp(&m.NodeBase, "variant", DirtyPaint, &m.Variant, "normal", "wavy"),
+		EnumProp(&m.NodeBase, "variant", DirtyPaint, &m.Variant, normalWavyValues),
 		ColorProp(&m.NodeBase, "color", DirtyPaint, &m.Color),
 		ColorProp(&m.NodeBase, "surfaceColor", DirtyPaint, &m.SurfaceColor),
 		StringProp(&m.NodeBase, "subtitles", &m.Subtitles),
@@ -200,7 +203,7 @@ func (*Video) Kind() string { return "Video" }
 
 func (v *Video) namedProps() []NamedProp {
 	return append(mediaProps(&v.Media),
-		EnumProp(&v.NodeBase, "fit", DirtyPaint, &v.Fit, "cover", "contain", "fill"),
+		EnumProp(&v.NodeBase, "fit", DirtyPaint, &v.Fit, FitValues),
 		BoolProp(&v.NodeBase, "fullscreen", DirtyLayout, &v.Fullscreen),
 	)
 }

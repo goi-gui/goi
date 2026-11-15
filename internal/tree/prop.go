@@ -614,7 +614,7 @@ func NamedShadow(b *NodeBase, name string, p *ShadowProp) NamedProp {
 }
 
 // EnumProp builds a NamedProp whose literal must be one of allowed.
-func EnumProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[string], allowed ...string) NamedProp {
+func EnumProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[string], allowed []string) NamedProp {
 	wire(b, name, p)
 	return NamedProp{Name: name, Dirty: dirty, kind: propEnum, cell: p, enum: &allowed}
 }

@@ -1,3 +1,5 @@
+//go:build !nomarkdown
+
 package tree
 
 import (

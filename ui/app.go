@@ -63,6 +63,11 @@ type App struct {
 	needsFrame bool
 	// showFPS is the debug overlay switch; off unless the app asks for it.
 	showFPS bool
+	// imageBudget is how many decoded image bytes the cache may hold, 0 for
+	// the default.
+	imageBudget int
+	// videoBuffer is the per-player buffered-frame budget, 0 for the defaults.
+	videoBuffer int
 	// msaa is the multisample count the renderer draws with; 0 keeps the
 	// renderer's own default (4).
 	msaa int
@@ -83,8 +88,10 @@ type App struct {
 	tweens []*tween
 	// images caches decoded Image assets by path or URL, so a reload is cheap;
 	// anims holds the animations among them.
-	images map[string]*img.Data
-	anims  map[string]*img.Anim
+	images     map[string]*img.Data
+	anims      map[string]*img.Anim
+	imageBytes int
+	imageOrder []string
 	// hasAnim is true while the tree holds an animated Image, so the per-frame
 	// walk only runs when there is one.
 	hasAnim bool
@@ -100,6 +107,8 @@ type App struct {
 	// svgPending holds the SVG URLs with a fetch in flight, for the same reason
 	// as pending: one request per URL.
 	svgPending map[string]bool
+	svgBytes   int
+	svgOrder   []svgKey
 	hasSVG     bool
 	// hasImages is true while the tree holds an Image, so the per-frame src
 	// check only walks a design that can use one.
@@ -115,6 +124,7 @@ type App struct {
 	mapPending  map[string]bool
 	mapFailed   map[string]bool
 	mapKeys     []string
+	mapBytes    int
 	mapInFlight int
 	// hasSVGAnim is true while the tree holds an animated SVG document.
 	hasSVGAnim bool
@@ -302,6 +312,28 @@ func (a *App) VSync(on bool) {
 // the last stair-step off a curve. Curves are drawn from signed distances, which
 // already fade their own edges, so a higher count refines edges rather than
 // making a shape that lacked them.
+// ImageCache sets how many decoded image bytes the cache may hold; 0 keeps the
+// default (64 MB). The oldest picture is dropped, and the element showing it
+// reloads from disk when it comes back. A photo wall on a small device can lower
+// this; a design that swaps many large pictures can raise it.
+func (a *App) ImageCache(bytes int) {
+	if bytes < 0 {
+		return
+	}
+	a.imageBudget = bytes
+}
+
+// VideoBuffer sets how many bytes one media player may hold in buffered video
+// frames; 0 keeps the defaults (16 MB, 32 MB for a live feed). A 1080p frame is
+// about 8 MB, so a design's `buffer` seconds are clamped by this. A player
+// that already opened keeps the budget it started with.
+func (a *App) VideoBuffer(bytes int) {
+	if bytes < 0 {
+		return
+	}
+	a.videoBuffer = bytes
+}
+
 func (a *App) MSAA(samples int) {
 	if samples < 0 {
 		return
