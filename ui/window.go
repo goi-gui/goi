@@ -265,13 +265,21 @@ func (w *Window) Close() {
 	}
 }
 
-// ByID returns the node with the given id, or an error naming the id.
-func (w *Window) ByID(id string) (Node, error) {
-	n, ok := w.tree.ByID(id)
-	if !ok {
-		return nil, fmt.Errorf("ui: no element with id %q", id)
-	}
-	return n, nil
+// ByID returns the node with the given id, typed, the same as the package
+// function. It is a method so a Bind body reads the lookup as the window's:
+//
+//	btn, err := w.ByID[*ui.Button]("inc")
+//
+// Ask for ui.Node when only the id matters.
+func (w *Window) ByID[T Node](id string) (T, error) {
+	return ByID[T](w, id)
+}
+
+// MustByID is ByID but panics, the form used inside Bind:
+//
+//	btn := w.MustByID[*ui.Button]("inc")
+func (w *Window) MustByID[T Node](id string) T {
+	return MustByID[T](w, id)
 }
 
 // Tree returns the live tree for tests and debugging.
@@ -307,9 +315,10 @@ func (w *Window) SystemMode() Mode {
 // ByID returns the node with the given id, typed. The id must exist and must
 // name a node of type T (for example *ui.Button):
 //
-//	btn, err := ui.ByID[*ui.Button](w, "inc")
+//	btn, err := w.ByID[*ui.Button]("inc")
 //
-// A missing id or a type mismatch returns an error explaining which.
+// A missing id or a type mismatch returns an error explaining which. The window
+// carries the same call, so a Bind body usually writes `w.ByID`.
 func ByID[T Node](w *Window, id string) (T, error) {
 	var zero T
 	n, ok := w.tree.ByID(id)
@@ -324,7 +333,10 @@ func ByID[T Node](w *Window, id string) (T, error) {
 }
 
 // MustByID is ByID but panics. Use it inside Bind where a missing id is a
-// programming error rather than a runtime condition.
+// programming error rather than a runtime condition. The window carries it too,
+// which is the form a Bind body reads best:
+//
+//	inc := w.MustByID[*ui.Button]("inc")
 func MustByID[T Node](w *Window, id string) T {
 	n, err := ByID[T](w, id)
 	if err != nil {

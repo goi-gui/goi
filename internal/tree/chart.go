@@ -42,7 +42,7 @@ type Series struct {
 //
 // From Go, SetData replaces the whole picture:
 //
-//	chart := ui.MustByID[*ui.BarChart](w, "sales")
+//	chart := w.MustByID[*ui.BarChart]("sales")
 //	chart.SetData(ui.ChartData{
 //		Categories: []string{"Jan", "Feb", "Mar"},
 //		Series: []ui.Series{{Label: "2026", Values: []float64{12, 18, 9}}},

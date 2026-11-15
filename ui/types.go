@@ -4,8 +4,8 @@
 // behaviour:
 //
 //	win.Bind(func(w *ui.Window) error {
-//		label := ui.MustByID[*ui.Text](w, "label")
-//		ui.MustByID[*ui.Button](w, "inc").OnClick(func(ui.ClickEvent) {
+//		label := w.MustByID[*ui.Text]("label")
+//		w.MustByID[*ui.Button]("inc").OnClick(func(ui.ClickEvent) {
 //			label.Text.Set(strconv.Itoa(n))
 //		})
 //		return nil
@@ -161,6 +161,7 @@ type (
 	LinearProgress   = tree.LinearProgress
 	CircularProgress = tree.CircularProgress
 	LoadingIndicator = tree.LoadingIndicator
+	Skeleton         = tree.Skeleton
 	DatePicker       = tree.DatePicker
 	TimePicker       = tree.TimePicker
 	ColorPicker      = tree.ColorPicker
