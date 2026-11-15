@@ -2160,3 +2160,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   would leave the bottom and slides it in from the side; layout keeps the
   preferred box, so a flipped panel is a paint-time move rather than a second
   layout pass.
+- **A click outside is a press on the page, not on the element.** `onClickOutside`
+  fires on the primary press, so a panel dismisses before the control under the
+  pointer acts, and the element's own subtree counts as inside, which is what
+  makes a popover's floating panel part of it. A popover whose panel is hidden
+  reports nothing, so a design that keeps the node mounted while its panel is
+  closed does not see every press. Targets are collected before any handler runs,
+  so one that rebuilds a list cannot change the walk that found it.

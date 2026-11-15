@@ -132,6 +132,8 @@ func (t *Tree) bindEvent(b *NodeBase, name string, v syntax.Value) error {
 	switch name {
 	case "onClick":
 		b.Click.On(func(e ClickEvent) { t.fire(b, name, call, e) })
+	case "onClickOutside":
+		b.Outside.On(func(e ClickEvent) { t.fire(b, name, call, e) })
 	case "onToggle":
 		c := bridgeComponent(b)
 		if c == nil {

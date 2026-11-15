@@ -170,6 +170,9 @@ var CursorValues = []string{
 
 var eventDefs = []EventDef{
 	{Name: "onClick", Type: TypeString},
+	// A press outside the element's subtree. It carries a ClickEvent, which no
+	// scalar type names, so `event` cannot be passed from a design.
+	{Name: "onClickOutside", Type: TypeString},
 	{Name: "onToggle", Type: TypeBool, HasValue: true, Component: true},
 	{Name: "onChange", Type: TypeNumber, HasValue: true, Component: true},
 	{Name: "onEdit", Type: TypeString, HasValue: true, Component: true},
@@ -532,7 +535,7 @@ var elements = func() []Element {
 	// events. The list stays in one place so the validator, the builder and the
 	// language server cannot drift apart.
 	for i := range out {
-		out[i].Events = append(out[i].Events, "onClick")
+		out[i].Events = append(out[i].Events, "onClick", "onClickOutside")
 		if out[i].Name == "Audio" || out[i].Name == "Video" {
 			out[i].Events = append(out[i].Events, "onPlay", "onPause", "onEnd")
 			continue

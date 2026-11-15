@@ -141,6 +141,9 @@ type NodeBase struct {
 	// Rectangle can be a scrim or a hit area without becoming a component; a
 	// component's own Click is the same field.
 	Click Event[ClickEvent]
+	// Outside is the click-outside handler slot, on every node for the same
+	// reason: a press anywhere outside it is reported here.
+	Outside Event[ClickEvent]
 	// responsive holds properties declared as a breakpoint map.
 	responsive []responsiveProp
 	// conds holds properties whose value the first true conditional arm picks.

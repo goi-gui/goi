@@ -212,3 +212,14 @@ func TestNoElementRepeatsAProperty(t *testing.T) {
 		}
 	}
 }
+
+// TestEveryElementTakesClickOutside keeps the event where onClick is: every
+// element is a hit area, so a press outside one can be reported from a plain box
+// as well as from a component.
+func TestEveryElementTakesClickOutside(t *testing.T) {
+	for _, e := range elements {
+		if !e.HasEvent("onClickOutside") {
+			t.Errorf("%s does not accept onClickOutside", e.Name)
+		}
+	}
+}

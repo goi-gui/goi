@@ -686,6 +686,9 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 	i.event("MouseDown", "x", x, "y", y, "button", button, "shift", shift)
 	i.cursorX, i.cursorY = x, y
 	hit := i.hit(x, y)
+	if button == 0 {
+		i.clickOutside(hit, x, y)
+	}
 	i.pressX, i.pressY = x, y
 	i.pressed = nil
 	i.dragging = false
@@ -2707,6 +2710,31 @@ func panelHitPlace(b *tree.NodeBase, anchor tree.Rect, k *tree.NodeBase, kb tree
 	kb.X += dx
 	kb.Y += dy
 	return kb, tree.Rect{W: winW, H: winH}
+}
+
+// clickOutside reports a primary press to every element that declared
+// onClickOutside and does not contain the press. A popover uses it to dismiss
+// itself, so the handler runs on the press, before the control under the
+// pointer sees its click. Targets are collected first: a handler that rebuilds
+// a list must not change the walk it was found by.
+func (i *interactor) clickOutside(hit tree.Node, x, y float64) {
+	var targets []*tree.NodeBase
+	i.tree.WalkVisible(func(n tree.Node) {
+		b := n.Base()
+		if b.Outside.Len() == 0 || isDescendantOf(hit, n) {
+			return
+		}
+		// A popover whose panel is hidden is not asking to be dismissed: the
+		// element is on the page, but nothing is showing.
+		if p, ok := n.(*tree.Popover); ok && p.Panel != nil && !p.Panel.Base().Visible() {
+			return
+		}
+		targets = append(targets, b)
+	})
+	ev := tree.ClickEvent{X: x, Y: y}
+	for _, b := range targets {
+		b.Outside.Emit(ev)
+	}
 }
 
 // walkHit visits children last-first so the topmost node wins.

@@ -69,6 +69,10 @@ type FocusEvent struct {
 // act as a hit area; on components it is the usual button click.
 func (b *NodeBase) OnClick(fn func(ClickEvent)) (off func()) { return b.Click.On(fn) }
 
+// OnClickOutside subscribes to a press outside the node's subtree, which is how
+// a popover dismisses itself. The event carries the press coordinates.
+func (b *NodeBase) OnClickOutside(fn func(ClickEvent)) (off func()) { return b.Outside.On(fn) }
+
 // OnToggle subscribes to checked changes (checkbox, switch, chip, radio).
 func (c *Component) OnToggle(fn func(bool)) (off func()) { return c.Toggle.On(fn) }
 
