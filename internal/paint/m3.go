@@ -616,10 +616,17 @@ func (l *List) paintFABMenu(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	}
 	box := tree.Rect{X: r.Right() - side, Y: r.Bottom() - side, W: side, H: side}
 	col := l.Theme.Colors
+	bg, fg := col.PrimaryContainer, col.OnPrimaryContainer
+	switch variant(c, "") {
+	case "secondary":
+		bg, fg = col.SecondaryContainer, col.OnSecondaryContainer
+	case "tertiary":
+		bg, fg = col.TertiaryContainer, col.OnTertiaryContainer
+	}
 	radius := radiusFor(m3.ShapeLarge, box)
 	l.shadow(box, radius, m3.Elevation3, clip)
-	l.fillRect(box, col.PrimaryContainer, radius, 0, 0, clip)
-	l.iconIn(c.Icon.Get(), 24, col.OnPrimaryContainer, box.X+box.W/2, box.Y+box.H/2, clip)
+	l.fillRect(box, bg, radius, 0, 0, clip)
+	l.iconIn(c.Icon.Get(), 24, fg, box.X+box.W/2, box.Y+box.H/2, clip)
 }
 
 func (l *List) paintButtonGroup(c *tree.Component, r tree.Rect, clip tree.Rect) {
