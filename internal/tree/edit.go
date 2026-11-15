@@ -26,6 +26,27 @@ func (t *Tree) Remove(n Node) {
 		}
 	}
 	p.mark(DirtyLayout)
+	if b.floats {
+		// A removed panel must stop lifting the branch it lived in.
+		t.recomputeFloats()
+	}
+}
+
+// recomputeFloats rebuilds the "subtree holds a floating panel" flags. It runs
+// only when a floating subtree left the tree, so a whole-list refill of ordinary
+// rows never pays for it.
+func (t *Tree) recomputeFloats() {
+	all := t.All()
+	for _, n := range all {
+		n.Base().floats = false
+	}
+	for _, n := range all {
+		if p, ok := n.(*Popover); ok && p.Panel != nil {
+			for a := p.Panel.Base(); a != nil && !a.floats; a = a.parent {
+				a.floats = true
+			}
+		}
+	}
 }
 
 // Find returns the descendant of root whose .goi id is id, root included. A

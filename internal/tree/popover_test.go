@@ -77,3 +77,37 @@ func TestPopoverPanelFloatsAboveLaterSiblings(t *testing.T) {
 		t.Fatal("the panel and its ancestors are not marked as floating")
 	}
 }
+
+// TestRemovingThePanelStopsTheLift keeps the float flags honest: a branch that
+// held the only panel must not keep painting last after the panel is gone.
+func TestRemovingThePanelStopsTheLift(t *testing.T) {
+	tr, diag := BuildSource([]byte(`Window {
+		Column {
+			Column {
+				id: holder
+				Popover {
+					id: pop
+					Button { label: "Open" }
+					$popover { Card { label: "Panel" } }
+				}
+			}
+			Button { label: "After" }
+		}
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	holder, _ := tr.ByID("holder")
+	pop, _ := tr.ByID("pop")
+	if !holder.Base().floats || !pop.Base().floats {
+		t.Fatal("the panel did not lift its branch")
+	}
+	tr.Remove(pop)
+	if holder.Base().floats {
+		t.Fatal("the holder still floats after its panel was removed")
+	}
+	order := holder.Base().PaintOrder()
+	if len(order) != 0 {
+		t.Fatalf("holder children = %d, want none", len(order))
+	}
+}
