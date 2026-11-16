@@ -159,7 +159,7 @@ var props = map[string][]string{
 	"Path":             {"coordinates", "lineColor"},
 	"LineChart":        {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "smooth", "points", "min", "max"},
 	"AreaChart":        {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "smooth", "points", "stacked", "min", "max"},
-	"BarChart":         {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "stacked", "horizontal", "min", "max"},
+	"BarChart":         {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "stacked", "horizontal", "barRadius", "barGap", "barBorderWidth", "barBorderColor", "min", "max"},
 	"PieChart":         {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "innerRadius", "startAngle", "min", "max"},
 	"ScatterChart":     {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "points", "min", "max"},
 	"RadarChart":       {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "points", "min", "max"},
@@ -241,6 +241,9 @@ var defaults = map[string]any{
 	"selectedRow": -1.0,
 	// A skeleton shimmers until the design says otherwise.
 	"animated": true,
+	// A bar takes its corner from the chart's own radius unless the design
+	// names one, the way radiusTop falls back to radius.
+	"barRadius": -1.0,
 	// A map starts on the whole world, drawn from OpenStreetMap, and credits
 	// it until the design says otherwise.
 	"zoom":        2.0,
@@ -323,11 +326,12 @@ func TypeOf(name string) PropType {
 		return Bool
 	case "value", "end", "center", "min", "max", "step", "spacing", "gap", "size", "hourFormat",
 		"rowHeight", "headerHeight", "sortColumn", "selectedRow",
-		"innerRadius", "startAngle", "thickness", "zoom":
+		"innerRadius", "startAngle", "thickness", "zoom",
+		"barRadius", "barGap", "barBorderWidth":
 		return Number
 	case "variant", "crossAxisAlign", "mainAxisAlign", "align", "selectable":
 		return Enum
-	case "textColor", "gridColor", "color", "lineColor", "fillColor", "highlight":
+	case "textColor", "gridColor", "color", "lineColor", "fillColor", "highlight", "barBorderColor":
 		return Color
 	case "categories", "bbox", "data", "coordinate", "coordinates":
 		return List

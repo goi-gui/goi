@@ -90,8 +90,16 @@ type Chart struct {
 	Points      Prop[bool]    // line and scatter: a dot at each value
 	InnerRadius Prop[float64] // pie: 0 is a pie, above it a donut
 	StartAngle  Prop[float64] // pie: degrees, 0 at 12 o'clock
-	Min         Prop[float64] // 0 means "from the data"
-	Max         Prop[float64]
+	// Bar shape, on a bar chart. BarRadius rounds one bar; -1 follows the
+	// node's own radius, so a design that set `radius` for the bars keeps the
+	// look it asked for. The border outlines the bar inside its box, and BarGap
+	// separates the bars of one group, which only a vertical chart has room for.
+	BarRadius      Prop[float64]
+	BarBorderWidth Prop[float64]
+	BarBorderColor Prop[uint32]
+	BarGap         Prop[float64]
+	Min            Prop[float64] // 0 means "from the data"
+	Max            Prop[float64]
 
 	// HoverSeries and HoverIndex are the point under the pointer, or -1. The
 	// input layer writes them and paint reads them.
@@ -335,6 +343,7 @@ func chartProps(c *Chart, kind string, own ...NamedProp) []NamedProp {
 		"grid", "axis", "legend", "values", "categories", "textColor", "gridColor",
 		"stacked", "horizontal", "smooth", "points",
 		"innerRadius", "startAngle", "min", "max",
+		"barRadius", "barGap", "barBorderWidth", "barBorderColor",
 	), own...)
 }
 
@@ -390,6 +399,10 @@ func (c *BarChart) namedProps() []NamedProp {
 		append(gridProps(&c.Chart),
 			BoolProp(&c.NodeBase, "stacked", DirtyPaint, &c.Stacked),
 			BoolProp(&c.NodeBase, "horizontal", DirtyPaint, &c.Horizontal),
+			NumberProp(&c.NodeBase, "barRadius", DirtyPaint, &c.BarRadius),
+			NumberProp(&c.NodeBase, "barGap", DirtyPaint, &c.BarGap),
+			NumberProp(&c.NodeBase, "barBorderWidth", DirtyPaint, &c.BarBorderWidth),
+			ColorProp(&c.NodeBase, "barBorderColor", DirtyPaint, &c.BarBorderColor),
 		)...)
 }
 
@@ -465,6 +478,10 @@ func newChart() Chart {
 		Points:         newProp(nil, "points", DirtyPaint, true),
 		InnerRadius:    newProp(nil, "innerRadius", DirtyPaint, 0.0),
 		StartAngle:     newProp(nil, "startAngle", DirtyPaint, 0.0),
+		BarRadius:      newProp(nil, "barRadius", DirtyPaint, -1.0),
+		BarGap:         newProp(nil, "barGap", DirtyPaint, 0.0),
+		BarBorderWidth: newProp(nil, "barBorderWidth", DirtyPaint, 0.0),
+		BarBorderColor: newProp(nil, "barBorderColor", DirtyPaint, uint32(0)),
 		Min:            newProp(nil, "min", DirtyPaint, 0.0),
 		Max:            newProp(nil, "max", DirtyPaint, 0.0),
 		HoverSeries:    -1,

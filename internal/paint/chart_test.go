@@ -446,3 +446,72 @@ func TestNegativeValuesGetABaseline(t *testing.T) {
 	}
 	t.Fatal("a chart that crosses zero has no baseline")
 }
+
+// TestBarChartGapAndShape covers the bar properties: a gap between the bars of
+// a group on a vertical chart, and the bar's own corner and outline.
+func TestBarChartGapAndShape(t *testing.T) {
+	data := tree.ChartData{
+		Categories: []string{"a", "b"},
+		Series: []tree.Series{
+			{Label: "one", Values: []float64{3, 4}},
+			{Label: "two", Values: []float64{2, 1}},
+		},
+	}
+	tr, _ := chartNode(t, "BarChart", "barGap: 8", data, 300, 200)
+	c := core(t, tr)
+	lay := ChartLayoutOf(c, c.Base().Bounds())
+	if len(lay.Bars) != 2 {
+		t.Fatalf("bars = %v, want two series", lay.Bars)
+	}
+	gap := lay.Bars[1][0].X - (lay.Bars[0][0].X + lay.Bars[0][0].W)
+	if math.Abs(gap-8) > 0.01 {
+		t.Fatalf("gap = %v, want 8", gap)
+	}
+
+	// A horizontal chart has no gap, however the property is set.
+	tr, _ = chartNode(t, "BarChart", "horizontal: true barGap: 8", data, 300, 200)
+	c = core(t, tr)
+	lay = ChartLayoutOf(c, c.Base().Bounds())
+	gap = lay.Bars[1][0].Y - (lay.Bars[0][0].Y + lay.Bars[0][0].H)
+	if math.Abs(gap) > 0.01 {
+		t.Fatalf("horizontal gap = %v, want none", gap)
+	}
+
+	// Radius and border reach the bar op itself; an unset barRadius follows the
+	// node's radius, which is where the bars took it from before.
+	tr, l := chartNode(t, "BarChart", "barRadius: 6 barBorderWidth: 2 barBorderColor: #ff0000", data, 300, 200)
+	c = core(t, tr)
+	lay = ChartLayoutOf(c, c.Base().Bounds())
+	bar := lay.Bars[0][0]
+	var op *Op
+	for i := range l.Ops {
+		o := &l.Ops[i]
+		if o.Kind == Fill && math.Abs(float64(o.Rect[0])-bar.X) < 0.6 && math.Abs(float64(o.Rect[1])-bar.Y) < 0.6 {
+			op = o
+			break
+		}
+	}
+	if op == nil {
+		t.Fatal("the bar did not paint")
+	}
+	if op.Radius[0] != 6 {
+		t.Fatalf("bar radius = %v, want 6", op.Radius[0])
+	}
+	if op.BorderColor != 0xFF0000FF || op.BorderWidth != 2 {
+		t.Fatalf("bar border = %08x/%v, want #ff0000/2", op.BorderColor, op.BorderWidth)
+	}
+
+	tr, l = chartNode(t, "BarChart", "radius: 10", data, 300, 200)
+	c = core(t, tr)
+	lay = ChartLayoutOf(c, c.Base().Bounds())
+	bar = lay.Bars[0][0]
+	for _, o := range l.Ops {
+		if o.Kind == Fill && math.Abs(float64(o.Rect[0])-bar.X) < 0.6 && math.Abs(float64(o.Rect[1])-bar.Y) < 0.6 {
+			if o.Radius[0] != 10 {
+				t.Fatalf("bar radius = %v, want the node's 10", o.Radius[0])
+			}
+			return
+		}
+	}
+	t.Fatal("the bar did not paint")
+}

@@ -305,8 +305,15 @@ func (l *ChartLayout) layoutBars(c *tree.Chart, n int) {
 				end := chartPos(layout, v)
 				r = tree.Rect{X: minf(l.Baseline, end), Y: x, W: math.Abs(end - l.Baseline), H: w}
 			} else {
-				w := group * 0.8 / float64(max(ns, 1))
-				x := pos - group*0.4 + float64(s)*w
+				// A vertical chart has room for a gap between the bars of one
+				// group; a horizontal one does not, so the property is ignored
+				// there. The gap shrinks to nothing before it can eat a bar.
+				gap := math.Max(0, c.BarGap.Get())
+				w := (group*0.8 - gap*float64(max(ns-1, 0))) / float64(max(ns, 1))
+				if w < 1 {
+					gap, w = 0, group*0.8/float64(max(ns, 1))
+				}
+				x := pos - group*0.4 + float64(s)*(w+gap)
 				end := chartPos(layout, v)
 				r = tree.Rect{X: x, Y: minf(l.Baseline, end), W: w, H: math.Abs(end - l.Baseline)}
 			}
@@ -955,7 +962,17 @@ func (l *List) fillTriangle(a, b, c chartPoint, color uint32, clip tree.Rect) {
 
 // paintBars draws every bar, the hovered one lighter.
 func (l *List) paintBars(c *tree.Chart, lay ChartLayout, clip tree.Rect, pal []uint32) {
+	// A bar has its own corner and outline; an unset barRadius follows the
+	// node's radius, which is where it used to come from.
 	rad := c.Base().Radii()[0]
+	if r := c.BarRadius.Get(); r >= 0 {
+		rad = r
+	}
+	bw := math.Max(0, c.BarBorderWidth.Get())
+	bc := c.BarBorderColor.Get()
+	if bw > 0 && bc == 0 {
+		bc = l.Theme.Colors.OnSurface
+	}
 	for s := range lay.Bars {
 		if c.SeriesHidden(s) {
 			continue
@@ -973,10 +990,10 @@ func (l *List) paintBars(c *tree.Chart, lay ChartLayout, clip tree.Rect, pal []u
 			if c.SelectedIndex == i && (c.SelectedSeries == s || c.SelectedSeries < 0) {
 				// A selected bar keeps its fill and gains an outline, so the
 				// choice reads without another colour.
-				l.fillRect(r, col, radius, l.Theme.Colors.OnSurface, 1.5, clip)
+				l.fillRect(r, col, radius, l.Theme.Colors.OnSurface, math.Max(1.5, bw), clip)
 				continue
 			}
-			l.fillRect(r, col, radius, 0, 0, clip)
+			l.fillRect(r, col, radius, bc, bw, clip)
 		}
 	}
 }
