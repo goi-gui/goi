@@ -862,3 +862,61 @@ func TestListItemColours(t *testing.T) {
 		t.Fatalf("tinted %d of %d parts:\n%s", seen, len(want), l.Dump())
 	}
 }
+
+// TestExtendedFABHugsItsLabel is the width/alignment rule: 20dp at each end,
+// the icon and a 12dp gap when there is one, and the label between them. The
+// metrics and the paint have to agree or the pill grows a gap at its end.
+func TestExtendedFABHugsItsLabel(t *testing.T) {
+	find := func(l *List, text string, icon bool) *Op {
+		for i := range l.Ops {
+			op := &l.Ops[i]
+			if op.Kind == Text && op.Text == text && op.Icon == icon {
+				return op
+			}
+		}
+		return nil
+	}
+	pill := func(l *List) *Op {
+		col := l.Theme.Colors.PrimaryContainer
+		for i := range l.Ops {
+			op := &l.Ops[i]
+			if op.Kind == Fill && op.Color == col && op.Shape == RoundedRect {
+				return op
+			}
+		}
+		return nil
+	}
+
+	l := list(t, `Window { FAB { icon: edit label: "Compose" } }`, 300, 120)
+	box, label, icon := pill(l), find(l, "Compose", false), find(l, "edit", true)
+	if box == nil || label == nil || icon == nil {
+		t.Fatalf("missing ops:\n%s", l.Dump())
+	}
+	rx, rw := float64(box.Rect[0]), float64(box.Rect[2])
+	if got := float64(icon.Rect[0]); got != rx+20 {
+		t.Fatalf("icon left = %v, want %v", got, rx+20)
+	}
+	if got := float64(label.TextX); got != rx+56 {
+		t.Fatalf("label left = %v, want %v", got, rx+56)
+	}
+	if got, want := float64(label.TextX)+float64(label.BoxW), rx+rw-20; math.Abs(got-want) > 0.01 {
+		t.Fatalf("label right = %v, want %v", got, want)
+	}
+	if want := 20 + 24 + 12 + float64(label.BoxW) + 20; math.Abs(rw-want) > 0.01 {
+		t.Fatalf("pill width = %v, want %v (20+icon+gap+label+20)", rw, want)
+	}
+
+	// A label with no icon drops the icon's width and gap, not just the glyph.
+	l = list(t, `Window { FAB { label: "Compose" } }`, 300, 120)
+	box, label = pill(l), find(l, "Compose", false)
+	if box == nil || label == nil {
+		t.Fatalf("missing ops:\n%s", l.Dump())
+	}
+	rx, rw = float64(box.Rect[0]), float64(box.Rect[2])
+	if got := float64(label.TextX); got != rx+20 {
+		t.Fatalf("label left = %v, want %v", got, rx+20)
+	}
+	if want := 20 + float64(label.BoxW) + 20; math.Abs(rw-want) > 0.01 {
+		t.Fatalf("pill width = %v, want %v", rw, want)
+	}
+}

@@ -603,10 +603,16 @@ func (l *List) paintFAB(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	l.stateLayer(c, r, radius, fg, clip)
 
 	if c.Label.Get() != "" {
-		// Extended FAB: icon + label.
-		l.iconIn(c.Icon.Get(), 24, fg, r.X+24, r.Y+r.H/2, clip)
+		// Extended FAB: 20dp of padding, then the icon and a 12dp gap when
+		// there is one, then the label, then 20dp again. The metrics use the
+		// same numbers, so the box hugs its content.
+		x := r.X + 20
+		if c.Icon.Get() != "" {
+			l.iconIn(c.Icon.Get(), 24, fg, x+12, r.Y+r.H/2, clip)
+			x += 24 + 12
+		}
 		l.textIn(c.Label.Get(), l.style("labelLarge"), fg,
-			tree.Rect{X: r.X + 24 + 12, Y: r.Y, W: r.W - 60, H: r.H}, AlignStart, clip)
+			tree.Rect{X: x, Y: r.Y, W: r.Right() - 20 - x, H: r.H}, AlignStart, clip)
 		return
 	}
 	l.iconIn(c.Icon.Get(), iconSize, fg, r.X+r.W/2, r.Y+r.H/2, clip)

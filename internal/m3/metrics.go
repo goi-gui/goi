@@ -92,8 +92,14 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 		return Metrics{W: 40, H: 40}
 	case "FAB":
 		if label != "" {
+			// Extended: 20dp on each end, the 24dp icon and a 12dp gap when
+			// there is one, and nothing where the icon would be otherwise.
 			lw := labelWidth(m, kind, label)
-			return Metrics{W: 20 + 24 + 12 + lw + 20, H: 56}
+			w := 20 + lw + 20
+			if hasIcon {
+				w += 24 + 12
+			}
+			return Metrics{W: w, H: 56}
 		}
 		return Metrics{W: 56, H: 56}
 	case "FABMenu", "Toolbar":
