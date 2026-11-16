@@ -2361,3 +2361,12 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   nothing while plain elements kept drawing. `scale: 0` is still expressible
   because the flag says the factors were written. Regression test:
   `TestUnscaledComponentsStayUnscaled`.
+- **A drag locks its axis.** A hand that pulls a carousel sideways also moves a
+  few pixels vertically, and the scroll chain handed those to the page below: the
+  carousel moved as asked and the page drifted up or down with it. The wheel has
+  its own axis rule (one notch, one axis), but a drag passed both deltas. The
+  gesture now picks the axis it is dominantly moving along when it passes the
+  slop threshold and drops the cross-axis part for the rest of the drag, which is
+  what touch scrolling does and what makes a horizontal strip feel like a strip
+  rather than a hole in the page. A `Table` is the exception: it scrolls both
+  ways, so a diagonal pull there is meant literally and takes both axes.

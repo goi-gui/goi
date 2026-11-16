@@ -190,3 +190,51 @@ func TestStickyHeaderKeepsRowsOutOfTheBand(t *testing.T) {
 		t.Fatalf("hit %v, want a row below the header", got)
 	}
 }
+
+// TestSidewaysDragDoesNotScrollThePage is the carousel drift: a horizontal drag
+// carries a few pixels of vertical movement, and without an axis lock those
+// pixels walked the page the strip sits in.
+func TestSidewaysDragDoesNotScrollThePage(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		Column {
+			id:     page
+			scroll: true
+			width:  400
+			height: 300
+
+			Row {
+				id:     strip
+				scroll: true
+				width:  300
+				height: 100
+
+				Rectangle { width: 900 height: 90 background: #00ff00 }
+			}
+
+			Rectangle { width: 300 height: 800 background: #ff0000 }
+		}
+	}`, 400, 300)
+	page := MustByID[*Column](win, "page").Base()
+	strip := MustByID[*Row](win, "strip").Base()
+
+	// Mostly sideways, with the few pixels down a hand always adds.
+	in.MouseDown(200, 40, 0, false)
+	in.MouseMove(120, 34)
+	in.MouseMove(60, 32)
+	in.MouseUp(60, 32, 0)
+
+	if got := page.ScrollOffset(); got != 0 {
+		t.Fatalf("the page scrolled to %v during a sideways drag", got)
+	}
+	if got := strip.ScrollOffset(); got <= 0 {
+		t.Fatalf("the strip did not scroll: %v", got)
+	}
+
+	// A vertical drag still moves the page, and leaves the strip alone.
+	in.MouseDown(380, 280, 0, false)
+	in.MouseMove(384, 200)
+	in.MouseUp(384, 200, 0)
+	if got := page.ScrollOffset(); got <= 0 {
+		t.Fatalf("a vertical drag did not scroll the page: %v", got)
+	}
+}

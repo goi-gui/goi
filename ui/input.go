@@ -43,6 +43,9 @@ type interactor struct {
 	dragFromX, dragFromY float64 // where the press landed, for the drag slop
 	dragLastX, dragLastY float64 // the previous move, so a drag scrolls by steps
 	scrolled             bool
+	// dragAxis is the one axis a drag scrolls, chosen when the press becomes a
+	// gesture. A sideways pull on a carousel must not nudge the page it sits in.
+	dragAxis tree.Axis
 
 	// ripples are the live press animations.
 	ripples []ripple
@@ -2294,8 +2297,18 @@ func (i *interactor) dragScroll(x, y float64) bool {
 		if math.Abs(x-i.dragFromX) < 4 && math.Abs(y-i.dragFromY) < 4 {
 			return false
 		}
-		// Past the slop: this is a scroll, not a click.
+		// Past the slop: this is a scroll, not a click. A drag locks to the
+		// axis the hand moved along, the way touch scrolling does; a two-axis
+		// table takes both, because that is the one surface where a diagonal
+		// pull is meant literally.
 		i.scrolled = true
+		i.dragAxis = tree.AxisNone
+		if n.Base().ScrollAxis() != tree.AxisBoth {
+			i.dragAxis = tree.AxisX
+			if math.Abs(y-i.dragFromY) > math.Abs(x-i.dragFromX) {
+				i.dragAxis = tree.AxisY
+			}
+		}
 		if c := comp(i.pressed); c != nil && c.Pressed {
 			c.Pressed = false
 			c.Base().MarkDirty(tree.DirtyPaint)
@@ -2305,8 +2318,17 @@ func (i *interactor) dragScroll(x, y float64) bool {
 	}
 	// Dragging pulls the content with the hand, and it chains to the page the
 	// same way the wheel does, so the pointer never sticks at a child's end.
+	// The cross-axis part of the movement is dropped: a hand that drags a
+	// carousel sideways also moves a few pixels down, and that must not walk
+	// the page under it.
 	i.snapNode = nil
-	last, _, _ := scrollChain(n, -dx, -dy)
+	panX, panY := -dx, -dy
+	if i.dragAxis == tree.AxisX {
+		panY = 0
+	} else if i.dragAxis == tree.AxisY {
+		panX = 0
+	}
+	last, _, _ := scrollChain(n, panX, panY)
 	if last == nil {
 		return i.scrolled
 	}
