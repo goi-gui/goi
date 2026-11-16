@@ -735,6 +735,11 @@ func newM3Component(name string) Node {
 			Component: newComponent(),
 			Color:     newProp(nil, "color", DirtyPaint, uint32(0)),
 		}
+	case "Icon":
+		return &Icon{
+			Component: newComponent(),
+			Color:     newProp(nil, "color", DirtyPaint, uint32(0)),
+		}
 	case "Skeleton":
 		return &Skeleton{
 			Component: newComponent(),

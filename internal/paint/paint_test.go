@@ -920,3 +920,50 @@ func TestExtendedFABHugsItsLabel(t *testing.T) {
 		t.Fatalf("pill width = %v, want %v", rw, want)
 	}
 }
+
+// TestIconSizedAndTinted is the whole contract of a standalone glyph: it fills
+// the shorter side of its box and stays centred, takes the M3 icon role by
+// default, and follows a named colour.
+func TestIconSizedAndTinted(t *testing.T) {
+	glyph := func(l *List) *Op {
+		for i := range l.Ops {
+			if l.Ops[i].Kind == Text && l.Ops[i].Icon {
+				return &l.Ops[i]
+			}
+		}
+		return nil
+	}
+
+	l := list(t, `Window { Column { Icon { icon: home } } }`, 200, 100)
+	op := glyph(l)
+	if op == nil || op.Text != "home" {
+		t.Fatalf("no home glyph:\n%s", l.Dump())
+	}
+	if op.FontSize != 24 || op.Rect[2] != 24 || op.Rect[3] != 24 {
+		t.Fatalf("default glyph = %v in %v, want 24dp", op.FontSize, op.Rect)
+	}
+	if want := l.Theme.Colors.OnSurfaceVariant; op.Color != want {
+		t.Fatalf("default colour = %08x, want onSurfaceVariant %08x", op.Color, want)
+	}
+
+	// A square `size`, and a colour of its own. A role stays a name until the
+	// theme runs, so the painter test uses a literal.
+	l = list(t, `Window { Column { Icon { icon: star size: 40 color: #ff0000 } } }`, 200, 100)
+	op = glyph(l)
+	if op == nil || op.FontSize != 40 || op.Rect[2] != 40 || op.Rect[3] != 40 {
+		t.Fatalf("sized glyph = %+v", op)
+	}
+	if op.Color != 0xFF0000FF {
+		t.Fatalf("colour = %08x, want #ff0000", op.Color)
+	}
+
+	// A box that is not square uses the shorter side and centres the glyph.
+	l = list(t, `Window { Column { Icon { icon: star width: 80 height: 40 color: #ff0000 } } }`, 200, 100)
+	op = glyph(l)
+	if op == nil || op.Rect[2] != 40 || op.Rect[3] != 40 {
+		t.Fatalf("non-square glyph = %+v", op)
+	}
+	if op.Rect[0] != 20 {
+		t.Fatalf("glyph left = %v, want 20 (centred in an 80dp box)", op.Rect[0])
+	}
+}

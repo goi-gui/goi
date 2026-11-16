@@ -241,6 +241,9 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 		return Metrics{W: 48, H: 48}
 	case "LoadingIndicator":
 		return Metrics{W: 48, H: 48}
+	case "Icon":
+		// The M3 glyph size; `size` or width/height in the design override it.
+		return Metrics{W: 24, H: 24}
 	case "TextArea":
 		// Three lines is the usual resting height for a multiline field; a
 		// design that wants more sets height itself. Supporting text is drawn

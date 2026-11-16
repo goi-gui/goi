@@ -17,6 +17,7 @@ var Kinds = []Kind{
 	// Layout and structure.
 	{"Divider", false},
 	// Content: components that are plain nodes with behaviour.
+	{"Icon", false},
 	{"Code", false},
 	{"Markdown", false},
 	{"Map", true},
@@ -104,6 +105,7 @@ func Lookup(name string) (Kind, bool) {
 // props is the property list per kind, beyond the common box properties.
 var props = map[string][]string{
 	"Button":           {"label", "leadingIcon", "variant", "color", "disabled"},
+	"Icon":             {"icon", "color"},
 	"IconButton":       {"icon", "variant", "disabled", "selected"},
 	"FAB":              {"label", "icon", "variant", "disabled", "expanded"},
 	"FABMenu":          {"icon", "variant", "disabled", "expanded"},

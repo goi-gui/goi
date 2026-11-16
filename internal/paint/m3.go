@@ -419,6 +419,8 @@ func (l *List) paintComponent(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		l.paintCircularProgress(c, r, clip)
 	case "LoadingIndicator":
 		l.paintLoadingIndicator(c, r, clip)
+	case "Icon":
+		l.paintIcon(c, r, clip)
 	case "Skeleton":
 		l.paintSkeleton(c, r, clip)
 	case "DatePicker":
@@ -1966,6 +1968,21 @@ func (l *List) paintWavyRing(r tree.Rect, frac, thickness float64, clip tree.Rec
 	if 2*math.Pi-gap > end+gap {
 		l.progressArc(cx, cy, rr, trackW, end+gap, 2*math.Pi-gap, col.SecondaryContainer, clip)
 	}
+}
+
+// paintIcon draws a standalone glyph: it fills the shorter side of its box and
+// is centred, so a square `size` gives the M3 icon and a wider box pads it. With
+// no colour named it takes the M3 icon role.
+func (l *List) paintIcon(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	ic, ok := c.Node().(*tree.Icon)
+	if !ok || r.W <= 0 || r.H <= 0 {
+		return
+	}
+	col := l.Theme.Colors.OnSurfaceVariant
+	if v := ic.Color.Get(); v != 0 {
+		col = v
+	}
+	l.iconIn(c.Icon.Get(), minf(r.W, r.H), col, r.X+r.W/2, r.Y+r.H/2, clip)
 }
 
 // paintLoadingIndicator draws the M3 loading shape: a rounded star whose lobe

@@ -161,6 +161,7 @@ type (
 	LinearProgress   = tree.LinearProgress
 	CircularProgress = tree.CircularProgress
 	LoadingIndicator = tree.LoadingIndicator
+	Icon             = tree.Icon
 	Skeleton         = tree.Skeleton
 	DatePicker       = tree.DatePicker
 	TimePicker       = tree.TimePicker

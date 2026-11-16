@@ -695,6 +695,23 @@ type CircularProgress struct{ Component }
 func (*CircularProgress) Kind() string              { return "CircularProgress" }
 func (c *CircularProgress) namedProps() []NamedProp { return c.props("CircularProgress") }
 
+// Icon is one Material Symbols glyph. Colour is its own cell, the way a
+// LoadingIndicator's is: the glyph is the component, so a design tints it
+// directly rather than through a background. The box comes from the common
+// `size` (or width/height) properties, and the glyph fills its shorter side.
+type Icon struct {
+	Component
+	Color Prop[uint32]
+}
+
+// Kind implements Node.
+func (*Icon) Kind() string { return "Icon" }
+func (c *Icon) namedProps() []NamedProp {
+	return append(c.propsExcept("Icon", "color"),
+		ColorProp(&c.NodeBase, "color", DirtyPaint, &c.Color),
+	)
+}
+
 // LoadingIndicator is the expressive loading indicator: a rotating, morphing
 // shape. Color is its own cell because the shape is the component, so a design
 // tints it directly rather than through a background.
