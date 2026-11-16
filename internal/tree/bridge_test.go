@@ -156,3 +156,47 @@ func TestExpandDrivesTheExpandedProp(t *testing.T) {
 		t.Fatalf("errors: %v", errs)
 	}
 }
+
+// loopChannel is the Go shape the design's `type loopChannel` describes.
+type loopChannel struct{ Name string }
+
+// TestLoopIndexIsAValue: `for i, row := range bridge.rows` gives i Go's index,
+// so a handler that takes an int gets the row's position, not the word "i".
+func TestLoopIndexIsAValue(t *testing.T) {
+	tr, diag := BuildSource([]byte(`bridge {
+		channels []loopChannel
+		onPick   func(index int)
+	}
+	type loopChannel {
+		Name string
+	}
+	Window {
+		Column {
+			for i, channel := range bridge.channels {
+				Text {
+					text:    channel.Name
+					onClick: bridge.onPick(i)
+				}
+			}
+		}
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	var picked []int
+	if err := tr.SetHandler("onPick", func(index int) { picked = append(picked, index) }); err != nil {
+		t.Fatal(err)
+	}
+	var rows []Node
+	tr.OnEach("channels", func(n Node, _ any) { rows = append(rows, n) })
+	tr.SetData("channels", []loopChannel{{Name: "a"}, {Name: "b"}, {Name: "c"}})
+	if len(rows) != 3 {
+		t.Fatalf("rows = %d, want 3", len(rows))
+	}
+	for _, row := range rows {
+		row.Base().Click.Emit(ClickEvent{})
+	}
+	if len(picked) != 3 || picked[0] != 0 || picked[1] != 1 || picked[2] != 2 {
+		t.Fatalf("picked = %v, want 0, 1, 2", picked)
+	}
+}

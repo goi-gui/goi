@@ -269,3 +269,64 @@ func TestSplitButtonExpands(t *testing.T) {
 		t.Fatal("expand on a Button was accepted")
 	}
 }
+
+// TestLoopVariablesCarryGoTypes keeps the range variables typed the way Go types
+// them: an index is an int, a map's first name is its key, and a scalar list's
+// element can feed a handler that takes that type.
+func TestLoopVariablesCarryGoTypes(t *testing.T) {
+	const src = `bridge {
+	channels []loopChannel
+	names    []string
+	scores   map[string]int
+	onIndex  func(index int)
+	onKey    func(key string)
+	onValue  func(value int)
+	onName   func(name string)
+}
+
+type loopChannel {
+	Name string
+}
+
+Window {
+	Column {
+		for i, channel := range bridge.channels {
+			Button { label: channel.Name onClick: bridge.onIndex(i) }
+		}
+		for k, v := range bridge.scores {
+			Button { label: k onClick: bridge.onKey(k) }
+			Button { label: k onClick: bridge.onValue(v) }
+		}
+		for _, name := range bridge.names {
+			Button { label: name onClick: bridge.onName(name) }
+		}
+		for i := range 4 {
+			Button { label: "n" onClick: bridge.onIndex(i) }
+		}
+	}
+}`
+	if _, diag := validate(t, src); !diag.Empty() {
+		t.Fatalf("loop variables were mis-typed: %v", diag)
+	}
+
+	// The rule is a type, not a free pass: a row is not an int, and a string
+	// field cannot feed a number parameter.
+	bad := `bridge {
+	channels []loopChannel
+	onIndex  func(index int)
+}
+type loopChannel {
+	Name string
+}
+Window {
+	Column {
+		for i, channel := range bridge.channels {
+			Button { label: channel.Name onClick: bridge.onIndex(channel.Name) }
+			Button { label: channel.Name onClick: bridge.onIndex(i) }
+		}
+	}
+}`
+	if _, diag := validate(t, bad); diag.Empty() {
+		t.Fatal("a string field fed a number parameter")
+	}
+}

@@ -2380,3 +2380,14 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   on the next frame, and the Go value would never show. Sizes are dp, because a
   percentage is a fact about the parent at build time; colours are literals for
   the same reason roles are design-side.
+- **A loop variable is a value of its Go type, not a word.** `for i, row := range
+  bridge.rows` bound the row's shape for `row.Name` but never typed `i`, so the
+  checker read `bridge.onPick(i)` as an identifier and refused it where Go passes
+  an int; a map's key and a scalar list's element had the same hole (a `[]string`
+  element slipped through only because an identifier is accepted where a string
+  is). The validator now keeps a second scope of primitive loop types beside the
+  shapes: a slice's key is `int`, a map's key is its declared key type, a scalar
+  element takes its element type, and a number range binds an int. `checkLiteral`
+  resolves an identifier that names one of those before it treats the word as a
+  literal, and reports a mismatch with the type it has, the way a reference does.
+  A row stays a shape: its fields are the values, not the row itself.

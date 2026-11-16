@@ -92,6 +92,10 @@ type validator struct {
 	file *syntax.File
 	// scopes is the stack of loop variables in scope, innermost last.
 	scopes []map[string]*syntax.DataShape
+	// loopTypes holds the primitive type of each loop variable that is not a
+	// row: a slice's index, a map's key, or a scalar element. It is what lets
+	// `bridge.onPick(i)` type-check the way Go does.
+	loopTypes []map[string]*syntax.Type
 }
 
 func (v *validator) add(at, end syntax.Pos, msg, hint string) {
@@ -254,6 +258,17 @@ func varNames(f *syntax.File) []string {
 		out = append(out, dv.Name)
 	}
 	return out
+}
+
+// lookupLoopType returns the primitive type a loop variable holds, if it is a
+// scalar variable in scope.
+func (v *validator) lookupLoopType(name string) *syntax.Type {
+	for i := len(v.loopTypes) - 1; i >= 0; i-- {
+		if t, ok := v.loopTypes[i][name]; ok {
+			return t
+		}
+	}
+	return nil
 }
 
 // lookupLoopVar returns the shape a loop variable holds, if it is in scope.
@@ -462,25 +477,64 @@ func (v *validator) walkArm(members []syntax.Member, parent string) {
 
 // walkFor validates a range loop and binds its loop variables.
 func (v *validator) walkFor(blk *syntax.Block, parent string) {
-	keyShape, valShape := v.checkForRange(blk)
-	defer func() { v.scopes = v.scopes[:len(v.scopes)-1] }()
+	keyShape, valShape, keyType, valType := v.checkForRange(blk)
+	defer func() {
+		v.scopes = v.scopes[:len(v.scopes)-1]
+		v.loopTypes = v.loopTypes[:len(v.loopTypes)-1]
+	}()
 	v.scopes = append(v.scopes, map[string]*syntax.DataShape{})
+	v.loopTypes = append(v.loopTypes, map[string]*syntax.Type{})
 	top := v.scopes[len(v.scopes)-1]
-	if k := blk.LoopKey(); k != "" && keyShape != nil {
-		top[k] = keyShape
+	types := v.loopTypes[len(v.loopTypes)-1]
+	if k := blk.LoopKey(); k != "" {
+		if keyShape != nil {
+			top[k] = keyShape
+		} else if keyType != nil {
+			types[k] = keyType
+		}
 	}
-	if k := blk.LoopVal(); k != "" && valShape != nil {
-		top[k] = valShape
+	if k := blk.LoopVal(); k != "" {
+		if valShape != nil {
+			top[k] = valShape
+		} else if valType != nil {
+			types[k] = valType
+		}
 	}
 	for _, br := range blk.Branches {
 		v.walkArm(br.Members, parent)
 	}
 }
 
-// checkForRange resolves `range X` and returns the key and value shapes the
-// loop variables hold. A list of a shape gives the value that shape and an
-// index key; a map gives no shape; a number counts.
-func (v *validator) checkForRange(blk *syntax.Block) (keyShape, valShape *syntax.DataShape) {
+// intType is the type of a slice index, which is Go's int.
+func intType() *syntax.Type {
+	return &syntax.Type{Kind: syntax.TypeScalar, Name: "int"}
+}
+
+// keyTypeOf is the type of the first loop variable for a ranged value: the key's
+// own type for a map, an int for a slice, Go's rule.
+func keyTypeOf(t *syntax.Type) *syntax.Type {
+	if t != nil && t.Kind == syntax.TypeMap {
+		return &syntax.Type{Kind: syntax.TypeScalar, Name: t.Name}
+	}
+	return intType()
+}
+
+// valueTypeOf is the type of the second loop variable when it is a scalar: the
+// element of a slice, the value of a map. A row is a shape, not a type.
+func valueTypeOf(t *syntax.Type, f *syntax.File) *syntax.Type {
+	if t == nil || t.Elem == nil || t.Elem.Kind != syntax.TypeScalar {
+		return nil
+	}
+	if f.Shape(t.Elem.Name) != nil {
+		return nil // a row: its fields are what a design reads
+	}
+	return t.Elem
+}
+
+// checkForRange resolves `range X` and returns what the loop variables hold: a
+// shape for a row, a type for a scalar, and an int key for a slice or the key's
+// type for a map, Go's rule. A number range gives an int key and no value.
+func (v *validator) checkForRange(blk *syntax.Block) (keyShape, valShape *syntax.DataShape, keyType, valType *syntax.Type) {
 	at, end := blk.RangeAt, blk.RangeAt+1
 	if blk.Range != nil {
 		end = blk.RangeAt + syntax.Pos(len(edgeOf(blk.Range)))
@@ -489,14 +543,14 @@ func (v *validator) checkForRange(blk *syntax.Block) (keyShape, valShape *syntax
 	if !ok {
 		switch x := blk.Range.(type) {
 		case *syntax.Number, *syntax.Binary:
-			return nil, nil // `for i := range 5`
+			return nil, nil, intType(), nil // `for i := range 5`
 		case *syntax.Call:
 			if x.Name == "len" || x.Name == "cap" {
-				return nil, nil // `for i := range len(bridge.rows)`
+				return nil, nil, intType(), nil // `for i := range len(bridge.rows)`
 			}
 		}
 		v.add(at, end, "a for loop ranges over a list, a map or a number", "")
-		return nil, nil
+		return nil, nil, nil, nil
 	}
 	switch ref.ID {
 	case "bridge", "data":
@@ -504,33 +558,33 @@ func (v *validator) checkForRange(blk *syntax.Block) (keyShape, valShape *syntax
 		if dv == nil {
 			v.add(at, end, fmt.Sprintf("no bridge variable %q", ref.Prop),
 				syntax.Suggest(ref.Prop, varNames(v.file)))
-			return nil, nil
+			return nil, nil, nil, nil
 		}
 		if dv.Type.Kind == syntax.TypeScalar && isNumericType(dv.Type.Name) {
-			return nil, nil // `for i := range bridge.count`
+			return nil, nil, intType(), nil // `for i := range bridge.count`
 		}
 		if dv.Type.Kind != syntax.TypeSlice && dv.Type.Kind != syntax.TypeMap {
 			v.add(at, end, fmt.Sprintf("cannot range over bridge.%s: it is %s, not a slice, a map or a number",
 				ref.Prop, dv.Type.String()), "")
-			return nil, nil
+			return nil, nil, nil, nil
 		}
-		return shapeFor(&dv.Type, v.file), shapeFor(dv.Type.Elem, v.file)
+		return nil, shapeFor(dv.Type.Elem, v.file), keyTypeOf(&dv.Type), valueTypeOf(&dv.Type, v.file)
 	case "props":
 		pr := v.file.Prop(ref.Prop)
 		if pr == nil {
 			v.add(at, end, fmt.Sprintf("no prop %q", ref.Prop),
 				syntax.Suggest(ref.Prop, declaredPropNames(v.file)))
-			return nil, nil
+			return nil, nil, nil, nil
 		}
 		if pr.Type.Kind == syntax.TypeScalar && isNumericType(pr.Type.Name) {
-			return nil, nil // `for i := range props.count`
+			return nil, nil, intType(), nil // `for i := range props.count`
 		}
 		if pr.Type.Kind != syntax.TypeSlice && pr.Type.Kind != syntax.TypeMap {
 			v.add(at, end, fmt.Sprintf("cannot range over props.%s: it is %s, not a slice, a map or a number",
 				ref.Prop, pr.Type.String()), "")
-			return nil, nil
+			return nil, nil, nil, nil
 		}
-		return nil, shapeFor(pr.Type.Elem, v.file)
+		return nil, shapeFor(pr.Type.Elem, v.file), keyTypeOf(&pr.Type), valueTypeOf(&pr.Type, v.file)
 	}
 	if sh := v.lookupLoopVar(ref.ID); sh != nil {
 		// A field of a row that is itself a list.
@@ -538,11 +592,12 @@ func (v *validator) checkForRange(blk *syntax.Block) (keyShape, valShape *syntax
 			if sh.Fields[i].Name != ref.Prop {
 				continue
 			}
-			return nil, shapeFor(sh.Fields[i].Type.Elem, v.file)
+			ft := &sh.Fields[i].Type
+			return nil, shapeFor(ft.Elem, v.file), keyTypeOf(ft), valueTypeOf(ft, v.file)
 		}
 	}
 	v.add(at, end, fmt.Sprintf("cannot range over %s.%s", ref.ID, ref.Prop), "")
-	return nil, nil
+	return nil, nil, nil, nil
 }
 
 // shapeFor resolves a type to the declared shape it names, or nil.
@@ -757,6 +812,19 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 	at, end := val.Pos(), val.Pos()+1
 	fail := func(want string) {
 		v.add(at, end, fmt.Sprintf("%s.%s expects %s, got %s", e.Name, pd.Name, want, kindName(val)), "")
+	}
+
+	// A bare name may be a loop variable, and Go says what it holds: an index
+	// for a slice, a key for a map, the element for a scalar list. It is a value
+	// of that type, not the literal word a string property would read.
+	if id, ok := val.(*syntax.Ident); ok {
+		if t := v.lookupLoopType(id.Val); t != nil {
+			if ft, ok := TypeOf(t); ok && !typesFit(ft, pd.Type) {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s is %s, which cannot feed %s",
+					e.Name, pd.Name, id.Val, typeName(ft), typeName(pd.Type)), "")
+			}
+			return
+		}
 	}
 
 	if isExprValue(val) {
@@ -1204,15 +1272,28 @@ func (v *validator) walkBlockRefs(blk *syntax.Block) {
 // walkForRefs checks the references inside a range loop with its loop variables
 // in scope.
 func (v *validator) walkForRefs(blk *syntax.Block) {
-	keyShape, valShape := v.checkForRange(blk)
-	defer func() { v.scopes = v.scopes[:len(v.scopes)-1] }()
+	keyShape, valShape, keyType, valType := v.checkForRange(blk)
+	defer func() {
+		v.scopes = v.scopes[:len(v.scopes)-1]
+		v.loopTypes = v.loopTypes[:len(v.loopTypes)-1]
+	}()
 	v.scopes = append(v.scopes, map[string]*syntax.DataShape{})
+	v.loopTypes = append(v.loopTypes, map[string]*syntax.Type{})
 	top := v.scopes[len(v.scopes)-1]
-	if k := blk.LoopKey(); k != "" && keyShape != nil {
-		top[k] = keyShape
+	types := v.loopTypes[len(v.loopTypes)-1]
+	if k := blk.LoopKey(); k != "" {
+		if keyShape != nil {
+			top[k] = keyShape
+		} else if keyType != nil {
+			types[k] = keyType
+		}
 	}
-	if k := blk.LoopVal(); k != "" && valShape != nil {
-		top[k] = valShape
+	if k := blk.LoopVal(); k != "" {
+		if valShape != nil {
+			top[k] = valShape
+		} else if valType != nil {
+			types[k] = valType
+		}
 	}
 	for _, br := range blk.Branches {
 		for _, m := range br.Members {
