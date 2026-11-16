@@ -418,6 +418,7 @@ func newNode(name string) Node {
 			borderLeftColor:   newProp(nil, "borderLeftColor", DirtyPaint, uint32(0)),
 			flex:              newProp(nil, "flex", DirtyLayout, 0.0),
 			alignSelf:         newProp(nil, "alignSelf", DirtyLayout, ""),
+			scale:             newProp(nil, "scale", DirtyPaint, IdentityScale),
 			scroll:            newProp(nil, "scroll", DirtyPaint, false),
 			hideScrollbar:     newProp(nil, "hideScrollbar", DirtyPaint, false),
 			autoHideScrollbar: newProp(nil, "autoHideScrollbar", DirtyPaint, true),

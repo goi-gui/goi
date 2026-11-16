@@ -80,6 +80,9 @@ type NodeBase struct {
 	// rotate turns the node and its subtree; layout ignores it, the way CSS
 	// rotate does.
 	rotate Prop[Rotation]
+	// scale stretches the node and its subtree about its centre, the way CSS
+	// `scale` does. Layout ignores it, so the box keeps its place.
+	scale  Prop[Scale]
 	scroll Prop[bool]
 	// Scrollbar and scroll-shadow behaviour. `hideScrollbar` removes the bar;
 	// `autoHideScrollbar` (the default) shows it only while the pointer is over
@@ -427,6 +430,27 @@ func (r Rotation) IsZero() bool { return r.Angle == 0 }
 
 // Rotation returns the node's rotation.
 func (b *NodeBase) Rotation() Rotation { return b.rotate.Get() }
+
+// Scale is a CSS `scale` value in the form paint needs: factors about the
+// element's centre. The zero value is not the identity, so it is built with 1s;
+// Z is kept for the three-value form even though the renderer is flat.
+type Scale struct {
+	X, Y, Z float64
+}
+
+// IdentityScale is the scale that changes nothing.
+var IdentityScale = Scale{X: 1, Y: 1, Z: 1}
+
+// IsIdentity reports whether the scale is a no-op.
+func (s Scale) IsIdentity() bool { return s.X == 1 && s.Y == 1 }
+
+// Scaling returns the node's scale.
+func (b *NodeBase) Scaling() Scale { return b.scale.Get() }
+
+// SetScale stretches the node and its subtree by the factors about its centre,
+// like CSS `scale`. It marks the tree dirty, so an animation needs no repaint
+// call.
+func (b *NodeBase) SetScale(x, y float64) { b.scale.Set(Scale{X: x, Y: y, Z: 1}) }
 
 // SetRotation turns the node and its subtree by deg degrees about axis (the z
 // axis by default), like CSS `rotate`.

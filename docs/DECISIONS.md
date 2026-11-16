@@ -2341,3 +2341,16 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   group runs down the axis and the gap would be spacing between rows, not between
   bars, so the property would mean something else. The gap shrinks to nothing
   before it can leave a bar under a pixel, so a group always keeps its bars.
+- **`scale` is a paint transform with a shader, not a layout size.** CSS `scale`
+  stretches the painted element and leaves layout alone; the alternative — writing
+  the factors into width and height — would move every sibling and re-wrap text,
+  which is the opposite of what the property is for. The vertex shader scales the
+  quad about the pivot it already rotates around, and the fragment shader keeps
+  evaluating distance fields in the element's own local space, so a rounded rect's
+  corners become ellipses under a non-uniform scale and glyphs stretch, exactly as
+  CSS distorts them. The op carries `[x, y, flag]` because the zero value of an op
+  has to stay the identity and a scale of zero is a real value; nested transforms
+  multiply factors and move the inner pivot, which is exact on aligned axes and an
+  approximation when a non-uniform scale meets a rotation (recorded as a shortcut
+  in the code). Hit-testing stays on the layout box, like `rotate`, and the docs
+  say so.

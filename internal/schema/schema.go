@@ -29,6 +29,8 @@ const (
 	// TypeRotate is the CSS rotate value: none, an angle, an axis plus angle, or
 	// a vector plus angle.
 	TypeRotate
+	// TypeScale is the CSS scale value: none, one factor, or x, y and z.
+	TypeScale
 	// TypeList is a list literal, `[1, 2, 3]`, whose items Elem types.
 	TypeList
 	// TypeCoords is one item of a coordinate list: `[lon, lat]`.
@@ -55,6 +57,8 @@ func (t ValueType) String() string {
 		return "string, number or bool"
 	case TypeRotate:
 		return "a rotate value"
+	case TypeScale:
+		return "a scale value"
 	case TypeCoords:
 		return "a [lon, lat] pair"
 	}
@@ -281,6 +285,9 @@ var common = []Prop{
 	// rotate turns the element and everything under it, the way CSS rotate
 	// does. Layout ignores it, so the box keeps its place.
 	{Name: "rotate", Type: TypeRotate, Dirty: DirtyPaint, Common: true},
+	// scale stretches the element and its subtree about its centre, the way CSS
+	// scale does; layout ignores it. A percentage is a factor, so 50% is 0.5.
+	{Name: "scale", Type: TypeScale, Dirty: DirtyPaint, Common: true},
 }
 
 func withCommon(extra ...Prop) []Prop {

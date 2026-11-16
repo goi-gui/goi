@@ -696,3 +696,98 @@ func TestSplitButtonTrailingIcon(t *testing.T) {
 		t.Fatalf("icons = %v, want the default arrow_drop_down", got)
 	}
 }
+
+// TestScaleStretchesSubtree checks the CSS shapes of `scale`: one value is both
+// axes, a percentage is its factor, two values split x and y, and the whole
+// subtree scales about the node's centre while a sibling stays put.
+func TestScaleStretchesSubtree(t *testing.T) {
+	const src = `Window { Column {
+		Column {
+			id:     box
+			width:  200
+			height: 100
+			scale:  2 50%
+			Text { text: "stretched" }
+		}
+		Text { text: "still" }
+	} }`
+	l := list(t, src, 500, 400)
+	scaled := 0
+	for _, op := range l.Ops {
+		if op.Kind == Text && op.Text == "still" {
+			if op.Scale[2] != 0 {
+				t.Fatalf("a sibling outside the scaled box scaled: %+v", op)
+			}
+			continue
+		}
+		if op.Scale[2] == 0 {
+			continue
+		}
+		scaled++
+		if op.Scale[0] != 2 || op.Scale[1] != 0.5 {
+			t.Fatalf("scale = %v, %v; want 2, 0.5", op.Scale[0], op.Scale[1])
+		}
+	}
+	if scaled == 0 {
+		t.Fatalf("nothing scaled:\n%s", l.Dump())
+	}
+
+	// The uniform forms, and `none` leaving every op alone.
+	for _, tc := range []struct {
+		value string
+		x, y  float32
+	}{
+		{"2", 2, 2},
+		{"50%", 0.5, 0.5},
+		{"none", 1, 1},
+	} {
+		l := list(t, `Window { Column { width: 100 height: 100 scale: `+tc.value+` } }`, 200, 200)
+		for _, op := range l.Ops {
+			if op.Kind != Fill {
+				continue
+			}
+			if tc.value == "none" {
+				if op.Scale[2] != 0 {
+					t.Fatalf("none scaled an op: %+v", op)
+				}
+				continue
+			}
+			if op.Scale[0] != tc.x || op.Scale[1] != tc.y {
+				t.Fatalf("scale %q = %v, %v; want %v, %v", tc.value, op.Scale[0], op.Scale[1], tc.x, tc.y)
+			}
+		}
+	}
+}
+
+// TestScaleComposesThroughThePivot: two scaled boxes multiply their factors and
+// keep one pivot, which is what the shader needs to draw the inner box in the
+// outer box's frame.
+func TestScaleComposesThroughThePivot(t *testing.T) {
+	l := list(t, `Window {
+		Column {
+			id:     outer
+			width:  200
+			height: 200
+			scale:  2
+			Column {
+				width:  50
+				height: 50
+				scale:  0.5
+				Rectangle { width: 50 height: 50 background: #ff0000 }
+			}
+		}
+	}`, 400, 400)
+	for _, op := range l.Ops {
+		if op.Kind != Fill || op.Color != 0xFF0000FF {
+			continue
+		}
+		if op.Scale[2] == 0 {
+			t.Fatal("the nested box did not scale")
+		}
+		if op.Scale[0] != 1 || op.Scale[1] != 1 {
+			t.Fatalf("nested factors = %v, %v; want 1, 1", op.Scale[0], op.Scale[1])
+		}
+		return
+	}
+	t.Fatal("the rectangle did not paint")
+}

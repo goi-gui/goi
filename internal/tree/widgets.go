@@ -22,7 +22,7 @@ type Node interface {
 // commonPropCount is how many cells the shared table has. Naming it keeps the
 // per-node table one exact allocation instead of the three or four that append
 // growth used to make (the largest heap cost of a big design).
-const commonPropCount = 68
+const commonPropCount = 69
 
 // commonProps returns the property table shared by every element. extra is how
 // many cells the caller will append, so the slice is sized once. "id" is absent
@@ -98,6 +98,7 @@ func commonProps(b *NodeBase, extra int) []NamedProp {
 		NumberProp(b, "flex", DirtyLayout, &b.flex),
 		EnumProp(b, "alignSelf", DirtyLayout, &b.alignSelf, AlignSelfValues),
 		RotateProp(b, "rotate", DirtyPaint, &b.rotate),
+		ScaleProp(b, "scale", DirtyPaint, &b.scale),
 	}...)
 }
 

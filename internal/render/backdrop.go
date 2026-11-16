@@ -28,10 +28,11 @@ type backdropPanel struct {
 	// ClipRRect stays inside its corners.
 	clipRadius float32
 	clipBox    [4]float32
-	// rot and pivot turn the composite with the element. The blur passes stay
-	// axis-aligned, which a symmetric kernel hides.
+	// rot, pivot and scale move the composite with the element. The blur passes
+	// stay axis-aligned, which a symmetric kernel hides.
 	rot            float32
 	pivotX, pivotY float32
+	scale          [4]float32
 }
 
 // backdropTarget owns the offscreen scene and the two textures the blur passes
@@ -310,6 +311,7 @@ func backdropInstances(p backdropPanel, lw, lh float32) []gpuInstance {
 			Params:  [4]float32{11, 0, 0, 0},
 			Misc:    [4]float32{0, 0, p.clipRadius, 0},
 			Rot:     [4]float32{p.rot, p.pivotX, p.pivotY, 0},
+			Scale:   p.scale,
 		},
 	}
 }

@@ -542,6 +542,44 @@ func (p *parser) parseBlockBody() ([]Member, Pos, bool) {
 	return ml.members, ml.close, ml.closed
 }
 
+// parseScale reads a CSS scale: `none`, `2`, `50%`, `2 0.5` or
+// `200% 50% 200%`. A percentage becomes its factor, and one value scales both
+// axes, so `2` is `2 2`.
+func (p *parser) parseScale() (Value, bool) {
+	if t := p.peek(); t.kind == tokIdent && t.text == "none" {
+		p.next()
+		return &Scale{At: t.pos, X: 1, Y: 1, Z: 1}, true
+	}
+	at := p.peek().pos
+	var vals []float64
+	for len(vals) < 3 {
+		t := p.peek()
+		if t.kind != tokNumber || !p.sameLine(t.pos) {
+			break
+		}
+		p.next()
+		v := t.num
+		if p.peek().kind == tokPercent && p.peek().pos == t.end {
+			p.next()
+			v /= 100
+		}
+		vals = append(vals, v)
+	}
+	s := &Scale{At: at, X: 1, Y: 1, Z: 1}
+	switch len(vals) {
+	case 1:
+		s.X, s.Y = vals[0], vals[0]
+	case 2:
+		s.X, s.Y = vals[0], vals[1]
+	case 3:
+		s.X, s.Y, s.Z = vals[0], vals[1], vals[2]
+	default:
+		p.errorf(p.peek(), "expected a scale value: none, 2, 50%, 2 0.5 or 200% 50% 200%")
+		return nil, false
+	}
+	return s, true
+}
+
 // parseIfBlock reads Go's if/else if/else:
 //
 //	if user.Adult {
@@ -830,6 +868,8 @@ func (p *parser) parseProperty() (*Property, bool) {
 		v, ok = p.parseCursorValue()
 	case "rotate":
 		v, ok = p.parseRotate()
+	case "scale":
+		v, ok = p.parseScale()
 	default:
 		v, ok = p.parseValue()
 	}

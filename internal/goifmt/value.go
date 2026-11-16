@@ -250,6 +250,18 @@ func printInner(v syntax.Value) string {
 		return x.Op + printPrec(x.X, precUnary)
 	case *syntax.Ternary:
 		return printPrec(x.Cond, precOr) + " ? " + printPrec(x.Then, precTernary) + " : " + printPrec(x.Else, precTernary)
+	case *syntax.Scale:
+		if x.X == 1 && x.Y == 1 && x.Z == 1 {
+			return "none"
+		}
+		num := func(v float64) string { return strconv.FormatFloat(v, 'g', -1, 64) }
+		if x.Z != 1 {
+			return num(x.X) + " " + num(x.Y) + " " + num(x.Z)
+		}
+		if x.X == x.Y {
+			return num(x.X)
+		}
+		return num(x.X) + " " + num(x.Y)
 	case *syntax.Rotate:
 		// The angle is degrees, so a turn or rad becomes the equivalent degree
 		// value. Seven significant digits is as fine as the radians the painter

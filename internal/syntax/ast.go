@@ -402,6 +402,7 @@ const (
 	CallKind
 	ShadowKind
 	RotateKind
+	ScaleKind
 	ModifierValueKind
 	ListKind
 	SlotRefKind
@@ -611,6 +612,20 @@ func (r *Rotate) Kind() ValueKind { return RotateKind }
 
 // Pos implements Value.
 func (r *Rotate) Pos() Pos { return r.At }
+
+// Scale is a CSS `scale` value: `none`, one factor, two (x, y) or three
+// (x, y, z). A percentage is written `50%` and stored as 0.5, the factor CSS
+// computes; one value scales both axes equally.
+type Scale struct {
+	At      Pos
+	X, Y, Z float64
+}
+
+// Kind implements Value.
+func (s *Scale) Kind() ValueKind { return ScaleKind }
+
+// Pos implements Value.
+func (s *Scale) Pos() Pos { return s.At }
 
 // Ternary is `cond ? then : else`.
 type Ternary struct {

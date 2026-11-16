@@ -135,6 +135,9 @@ type Op struct {
 	// A node's `rotate` composes into every op its subtree emits.
 	Rotate         float32
 	PivotX, PivotY float32
+	// Scale is x, y and a flag: the third slot is 1 when the op is scaled about
+	// the same pivot, so an op nobody scaled keeps the zero value as identity.
+	Scale [3]float32
 
 	// Bitmap fields. Src is the decoded image and UV is the crop inside it, in
 	// 0..1, so a cover or contain fit only changes the quad and the UVs.
@@ -319,6 +322,7 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 	}
 	l.roundClip(b, r, fromClip)
 	l.applyRotate(from, b, r)
+	l.applyScale(from, b, r)
 	l.applyOpacity(from, b.Opacity())
 	l.applyDisabled(from, b)
 	l.family = outerFamily
@@ -353,8 +357,10 @@ func (l *List) applyRotate(from int, b *tree.NodeBase, r tree.Rect) {
 	c, s := float32(math.Cos(float64(angle))), float32(math.Sin(float64(angle)))
 	for i := from; i < len(l.Ops); i++ {
 		op := &l.Ops[i]
-		if op.Rotate != 0 {
-			// Move the inner pivot into the outer frame, then add the angles.
+		if op.Rotate != 0 || op.Scale[2] != 0 {
+			// Move the inner pivot into the outer frame, then add the angles. A
+			// scaled op counts as transformed even without a turn: its pivot is
+			// its own centre, and the turn has to carry it.
 			dx, dy := op.PivotX-px, op.PivotY-py
 			op.PivotX = px + dx*c - dy*s
 			op.PivotY = py + dx*s + dy*c
@@ -362,6 +368,38 @@ func (l *List) applyRotate(from int, b *tree.NodeBase, r tree.Rect) {
 			continue
 		}
 		op.Rotate = angle
+		op.PivotX, op.PivotY = px, py
+	}
+}
+
+// applyScale stretches every op a subtree emitted about the node's centre, the
+// way CSS `scale` does. Like rotation it is a paint transform: layout keeps the
+// box where it was, and the clip still cuts in window space.
+//
+// shortcut: a non-uniform scale over a rotated child multiplies the factors
+// instead of composing a matrix, so it is exact on aligned axes and an
+// approximation when the two meet; upgrade by carrying a matrix per op.
+func (l *List) applyScale(from int, b *tree.NodeBase, r tree.Rect) {
+	sc := b.Scaling()
+	if sc.IsIdentity() || from >= len(l.Ops) {
+		return
+	}
+	sx, sy := float32(sc.X), float32(sc.Y)
+	px, py := float32(r.X+r.W/2), float32(r.Y+r.H/2)
+	for i := from; i < len(l.Ops); i++ {
+		op := &l.Ops[i]
+		if op.Rotate != 0 || op.Scale[2] != 0 {
+			// The inner pivot moves under this scale, and the factors multiply.
+			dx, dy := op.PivotX-px, op.PivotY-py
+			op.PivotX, op.PivotY = px+dx*sx, py+dy*sy
+			if op.Scale[2] == 0 {
+				op.Scale = [3]float32{1, 1, 1}
+			}
+			op.Scale[0] *= sx
+			op.Scale[1] *= sy
+			continue
+		}
+		op.Scale = [3]float32{sx, sy, 1}
 		op.PivotX, op.PivotY = px, py
 	}
 }
@@ -419,6 +457,7 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 	}
 	l.roundClip(b, r, fromClip)
 	l.applyRotate(from, b, r)
+	l.applyScale(from, b, r)
 	l.applyOpacity(from, b.Opacity())
 	l.applyDisabled(from, b)
 	l.family = outerFamily

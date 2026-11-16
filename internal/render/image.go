@@ -261,6 +261,7 @@ func (t *imageRenderer) addOp(op paint.Op) {
 		Params: [4]float32{5, op.Radius[0], cu0 + uv[0]*(cu1-cu0), cv0 + uv[1]*(cv1-cv0)},
 		Misc:   [4]float32{cu0 + uv[2]*(cu1-cu0), cv0 + uv[3]*(cv1-cv0), op.ClipRadius, invertFlag(op.Invert)},
 		Rot:    [4]float32{op.Rotate, op.PivotX, op.PivotY, 0},
+		Scale:  opScale(op),
 	})
 }
 

@@ -1154,3 +1154,38 @@ func TestSlotBracesAreAFill(t *testing.T) {
 		t.Fatal(diag)
 	}
 }
+
+// TestParseScale covers the CSS forms: one factor for both axes, a percentage
+// as its factor, and the two- and three-value spellings.
+func TestParseScale(t *testing.T) {
+	cases := []struct {
+		src  string
+		x, y float64
+		z    float64
+	}{
+		{"none", 1, 1, 1},
+		{"2", 2, 2, 1},
+		{"50%", 0.5, 0.5, 1},
+		{"2 0.5", 2, 0.5, 1},
+		{"200% 50% 200%", 2, 0.5, 2},
+	}
+	for _, tc := range cases {
+		f, diag := Parse([]byte("Window { Column { scale: " + tc.src + " } }"))
+		if !diag.Empty() {
+			t.Fatalf("%s: %v", tc.src, diag)
+		}
+		sc, ok := f.Root.Children()[0].Prop("scale").Value.(*Scale)
+		if !ok {
+			t.Fatalf("%s did not parse as a scale", tc.src)
+		}
+		if sc.X != tc.x || sc.Y != tc.y || sc.Z != tc.z {
+			t.Fatalf("%s = %v, %v, %v; want %v, %v, %v", tc.src, sc.X, sc.Y, sc.Z, tc.x, tc.y, tc.z)
+		}
+	}
+	// More than three factors, or none at all, is a typo with a named form.
+	for _, bad := range []string{"1 2 3 4", ""} {
+		if _, diag := Parse([]byte("Window { Column { scale: " + bad + " } }")); diag.Empty() {
+			t.Fatalf("%q was accepted as a scale", bad)
+		}
+	}
+}

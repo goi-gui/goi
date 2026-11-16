@@ -426,3 +426,21 @@ func TestFormatSlotAndLen(t *testing.T) {
 		t.Fatalf("format =\n%s\nwant =\n%s", got, want)
 	}
 }
+
+// TestFormatScale keeps the scale spellings: percentages arrive as their
+// factor, one value is one value, and the identity is written none.
+func TestFormatScale(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"Window { Column { scale: 2 } }", "scale: 2"},
+		{"Window { Column { scale: 50% } }", "scale: 0.5"},
+		{"Window { Column { scale: 2 0.5 } }", "scale: 2 0.5"},
+		{"Window { Column { scale: 200% 50% 200% } }", "scale: 2 0.5 2"},
+		{"Window { Column { scale: none } }", "scale: none"},
+		{"Window { Column { scale: 1 } }", "scale: none"},
+	} {
+		got := string(Source([]byte(tc.in)))
+		if !strings.Contains(got, tc.want) {
+			t.Fatalf("%q formatted as\n%s\nwant %q", tc.in, got, tc.want)
+		}
+	}
+}

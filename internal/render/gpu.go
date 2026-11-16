@@ -42,6 +42,7 @@ struct Instance {
 	params: vec4f,  // kind, blur, startAngle, endAngle
 	misc: vec4f,    // thickness, uv far (glyphs, bitmaps), clip radius
 	rot: vec4f,     // angle in radians, pivot x, pivot y, unused
+	scale: vec4f,   // x, y factors, and 1 when the op is scaled
 }
 
 struct Viewport {
@@ -86,7 +87,7 @@ fn vs_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
 	// edge needs somewhere to land, and a fragment outside the quad never runs.
 	// So every segment of a curve keeps its soft edge instead of a staircase.
 	var pad = 0.0;
-	if (inst.rot.x != 0.0) { pad = 1.0; }
+	if (inst.rot.x != 0.0 || inst.scale.z != 0.0) { pad = 1.0; }
 	let grow = inst.rect.zw + vec2f(2.0 * pad);
 	let origin = inst.rect.xy - vec2f(pad);
 	let p = origin + c * grow;
@@ -103,17 +104,25 @@ fn vs_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
 	out.misc = inst.misc;
 	out.clipbox = inst.clipbox;
 	out.uv = mix(inst.params.zw, inst.misc.xy, c);
-	// A rotated op turns its quad about the pivot in window space. Local
-	// coordinates stay unrotated, so every distance field is evaluated in the
-	// element's own frame.
-	if (inst.rot.x != 0.0) {
-		let ca = cos(inst.rot.x);
-		let sa = sin(inst.rot.x);
-		let d = p - inst.rot.yz;
-		let q = vec2f(d.x * ca - d.y * sa, d.x * sa + d.y * ca);
-		out.pos = vec4f((inst.rot.yz.x + q.x) / viewport.size.x * 2.0 - 1.0,
-			1.0 - (inst.rot.yz.y + q.y) / viewport.size.y * 2.0, 0.0, 1.0);
-		out.pos2 = inst.rot.yz + q;
+	// A transformed op turns and stretches its quad about the pivot in window
+	// space. Local coordinates stay untransformed, so a distance field is
+	// evaluated in the element's own frame and the shape stretches with the
+	// quad, which is what a CSS scale does to corners and glyphs too.
+	if (inst.rot.x != 0.0 || inst.scale.z != 0.0) {
+		let pivot = inst.rot.yz;
+		var d = p - pivot;
+		if (inst.scale.z != 0.0) {
+			d = vec2f(d.x * inst.scale.x, d.y * inst.scale.y);
+		}
+		if (inst.rot.x != 0.0) {
+			let ca = cos(inst.rot.x);
+			let sa = sin(inst.rot.x);
+			d = vec2f(d.x * ca - d.y * sa, d.x * sa + d.y * ca);
+		}
+		let q = pivot + d;
+		out.pos = vec4f(q.x / viewport.size.x * 2.0 - 1.0,
+			1.0 - q.y / viewport.size.y * 2.0, 0.0, 1.0);
+		out.pos2 = q;
 	}
 	return out;
 }
@@ -479,7 +488,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 }
 `
 
-// gpuInstance is the per-shape vertex data. 112 bytes, matching the WGSL struct.
+// gpuInstance is the per-shape vertex data. 128 bytes, matching the WGSL struct.
 type gpuInstance struct {
 	Rect   [4]float32
 	Radius [4]float32
@@ -493,6 +502,7 @@ type gpuInstance struct {
 	Params  [4]float32 // kind, blur, startAngle, endAngle
 	Misc    [4]float32 // thickness, uv far (glyphs, bitmaps), clip radius
 	Rot     [4]float32 // angle (radians), pivot x, pivot y
+	Scale   [4]float32 // x, y, and 1 when the op is scaled
 }
 
 // GPU is the WebGPU renderer.
@@ -1144,6 +1154,7 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 				rot:        op.Rotate,
 				pivotX:     op.PivotX,
 				pivotY:     op.PivotY,
+				scale:      opScale(op),
 			}
 			panels = append(panels, panel)
 			g.instances = append(g.instances, backdropInstances(panel, float32(width)/g.scale, float32(height)/g.scale)...)
@@ -1172,6 +1183,7 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 				Params:  params,
 				Misc:    misc,
 				Rot:     [4]float32{op.Rotate, op.PivotX, op.PivotY, 0},
+				Scale:   opScale(op),
 			})
 		case paint.Shadow:
 			kind := float32(3)
@@ -1187,6 +1199,7 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 				Params:  [4]float32{kind, op.Blur, op.OffsetX, op.OffsetY},
 				Misc:    [4]float32{0, 0, op.ClipRadius, op.Spread},
 				Rot:     [4]float32{op.Rotate, op.PivotX, op.PivotY, 0},
+				Scale:   opScale(op),
 			})
 		case paint.Text:
 			if g.text != nil {
@@ -1523,6 +1536,11 @@ func borderVec(c uint32, w float32) [4]float32 {
 	v := rgba(c)
 	v[3] = w
 	return v
+}
+
+// opScale carries a paint op's scale onto its instance.
+func opScale(op paint.Op) [4]float32 {
+	return [4]float32{op.Scale[0], op.Scale[1], op.Scale[2], 0}
 }
 
 func rgba(c uint32) [4]float32 {

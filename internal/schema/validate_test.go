@@ -278,6 +278,8 @@ func plainValue(pd Prop) syntax.Value {
 		return &syntax.String{Val: "x"}
 	case TypeRotate:
 		return &syntax.Rotate{Angle: 90}
+	case TypeScale:
+		return &syntax.Scale{X: 2, Y: 1, Z: 1}
 	}
 	return &syntax.Ident{Val: "start"}
 }

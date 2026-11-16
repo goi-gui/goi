@@ -802,6 +802,11 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 			fail("a rotate value: none, 90deg, x 90deg or 1 1 1 90deg")
 		}
 		return
+	case TypeScale:
+		if _, ok := val.(*syntax.Scale); !ok {
+			fail("a scale value: none, 2, 50%, 2 0.5 or 200% 50% 200%")
+		}
+		return
 	case TypeList:
 		list, ok := val.(*syntax.List)
 		if !ok {

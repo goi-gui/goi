@@ -54,6 +54,7 @@ type glyphQuad struct {
 	clipBox [4]float32
 	clipR   float32
 	rot     [4]float32
+	scale   [4]float32
 }
 
 // placedGlyph is one glyph's quad and atlas slot, before the shadow copies are
@@ -83,6 +84,7 @@ type emojiQuad struct {
 	clipBox [4]float32
 	clipR   float32
 	rot     [4]float32
+	scale   [4]float32
 }
 
 func (g *GPU) initText(lib *text.Library) error {
@@ -261,6 +263,7 @@ func (t *textRenderer) shapeOp(op paint.Op, atlas *text.Atlas) (int, int) {
 				clipBox: clipBox,
 				clipR:   op.ClipRadius,
 				rot:     glyphRot(op),
+				scale:   opScale(op),
 			})
 			n++
 		}
@@ -274,6 +277,7 @@ func (t *textRenderer) shapeOp(op paint.Op, atlas *text.Atlas) (int, int) {
 			clipBox: clipBox,
 			clipR:   op.ClipRadius,
 			rot:     glyphRot(op),
+			scale:   opScale(op),
 		})
 	}
 	return n + len(placed), len(t.emoji) - before
@@ -298,6 +302,7 @@ func (t *textRenderer) placeEmoji(run text.ShapedRun, penX, penY, scale float64,
 				clipBox: clipBox,
 				clipR:   op.ClipRadius,
 				rot:     glyphRot(op),
+				scale:   opScale(op),
 			})
 		}
 		penX += float64(gl.Advance) / 64 / scale
@@ -365,7 +370,8 @@ func (t *textRenderer) emit(i int) {
 				float32(q.slot.Max.X) / float32(t.atlasW),
 				float32(q.slot.Max.Y) / float32(t.atlasH), q.clipR, 0,
 			},
-			Rot: q.rot,
+			Rot:   q.rot,
+			Scale: q.scale,
 		})
 	}
 	// Colour emoji come after the run's outline glyphs and sample the image
@@ -391,6 +397,7 @@ func (t *textRenderer) emit(i int) {
 				Params:  [4]float32{5, q.clipR, u0, v0},
 				Misc:    [4]float32{u1, v1, q.clipR, 0},
 				Rot:     q.rot,
+				Scale:   q.scale,
 			})
 		}
 	}

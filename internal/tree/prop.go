@@ -120,6 +120,7 @@ const (
 	// table cell's value takes whatever the row's data holds.
 	propScalar
 	propRotate
+	propScale
 	// propList writes a design list: a chart's categories, values or colours.
 	propList
 	// propSize is the `size` shorthand: one number that writes both width and
@@ -135,6 +136,8 @@ func (p *NamedProp) Get() any {
 		return p.cell.(*Prop[float64]).val
 	case propRotate:
 		return p.cell.(*Prop[Rotation]).val
+	case propScale:
+		return p.cell.(*Prop[Scale]).val
 	case propString, propEnum, propScalar:
 		return p.cell.(*Prop[string]).val
 	case propBool:
@@ -175,6 +178,9 @@ func (p *NamedProp) Same(v any) bool {
 	case propRotate:
 		r, ok := v.(Rotation)
 		return ok && p.cell.(*Prop[Rotation]).val == r
+	case propScale:
+		sc, ok := v.(Scale)
+		return ok && p.cell.(*Prop[Scale]).val == sc
 	case propSize:
 		f, ok := v.(float64)
 		return ok && p.cell.(*NodeBase).width.val == f
@@ -199,6 +205,13 @@ func (p *NamedProp) SetLiteral(v syntax.Value) bool {
 			return false
 		}
 		p.cell.(*Prop[Rotation]).val = rotationOf(r)
+		return true
+	case propScale:
+		sc, ok := v.(*syntax.Scale)
+		if !ok {
+			return false
+		}
+		p.cell.(*Prop[Scale]).val = scaleOf(sc)
 		return true
 	case propList:
 		list, ok := v.(*syntax.List)
@@ -356,6 +369,12 @@ func (p *NamedProp) SetLiteral(v syntax.Value) bool {
 		return true
 	}
 	return false
+}
+
+// scaleOf converts a parsed scale to the factors paint needs: one value scales
+// both axes, percentages arrived as their factor, and none is 1.
+func scaleOf(sc *syntax.Scale) Scale {
+	return Scale{X: sc.X, Y: sc.Y, Z: sc.Z}
 }
 
 // rotationOf converts a parsed rotate to the radians paint needs. Only a
@@ -571,6 +590,12 @@ func StringProp(b *NodeBase, name string, p *Prop[string]) NamedProp {
 func RotateProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[Rotation]) NamedProp {
 	wire(b, name, p)
 	return NamedProp{Name: name, Dirty: dirty, kind: propRotate, cell: p}
+}
+
+// ScaleProp builds a NamedProp for a Scale cell, written as a CSS scale value.
+func ScaleProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[Scale]) NamedProp {
+	wire(b, name, p)
+	return NamedProp{Name: name, Dirty: dirty, kind: propScale, cell: p}
 }
 
 // ScalarProp builds a NamedProp for a string cell that also accepts a number or
