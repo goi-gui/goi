@@ -10,12 +10,13 @@ on:
 # still installs the runtime library, because a test that opens a window needs
 # it on the machine; everything else runs headless.
 jobs:
+  # Tests run on Linux only. The macOS hosted runner is scarce enough that a
+  # job can sit queued until GitHub cancels it, which marks the run failed with
+  # no code to blame; the `cross` job still builds darwin/amd64 and arm64, so a
+  # macOS compile break is caught. Run the suite on a Mac by hand when touching
+  # platform/darwin code.
   test:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -25,8 +26,7 @@ jobs:
       # SDL3's Linux package may not be available on every runner, so build the
       # runtime from source. No development files are needed by goi itself; this
       # is only for tests that open a window.
-      - name: SDL3 runtime (Linux)
-        if: runner.os == 'Linux'
+      - name: SDL3 runtime
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build \
@@ -41,10 +41,6 @@ jobs:
           cmake --build sdl-build --parallel
           sudo cmake --install sdl-build
           sudo ldconfig
-
-      - name: SDL3 runtime (macOS)
-        if: runner.os == 'macOS'
-        run: brew install sdl3
 
       - name: Build
         run: CGO_ENABLED=0 go build -tags nofakecgo ./...
