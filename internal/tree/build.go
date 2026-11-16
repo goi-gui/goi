@@ -327,30 +327,59 @@ func (t *Tree) buildSlot(el *syntax.Element, parent *NodeBase, hooks *Hooks) (No
 	if !componentdef.Slot(kind, el.Name) {
 		return nil, fmt.Errorf("%s is not a slot of %s", el.Name, kind)
 	}
-	p, ok := parent.Node().(*Popover)
-	if !ok {
-		return nil, fmt.Errorf("%s: %s declares no slot build", el.Name, kind)
-	}
-	if p.Panel != nil {
-		return nil, fmt.Errorf("%s appears twice under %s: a slot is written once", el.Name, kind)
-	}
-	// Several elements in the slot are one panel, so a column keeps them in
-	// order instead of on top of each other; it draws nothing itself.
+	// Several elements in a slot are one body, so a column keeps them in order
+	// instead of on top of each other; it draws nothing itself.
 	wrap := &syntax.Element{
 		Name: "Column", NameAt: el.NameAt, Open: el.Open, Close: el.Close,
 		Src: el.Src, Members: el.Members,
 	}
-	n, err := t.build(wrap, parent, hooks)
-	if err != nil {
-		return nil, err
+	switch p := parent.Node().(type) {
+	case *Popover:
+		if p.Panel != nil {
+			return nil, fmt.Errorf("%s appears twice under %s: a slot is written once", el.Name, kind)
+		}
+		n, err := t.build(wrap, parent, hooks)
+		if err != nil {
+			return nil, err
+		}
+		p.Panel = n
+		// Paint and hit-testing lift the panel and every ancestor above the
+		// siblings written after them, the way an overlay does.
+		for a := n.Base(); a != nil && !a.floats; a = a.parent {
+			a.floats = true
+		}
+		return n, nil
+	case *ListItem:
+		// A list row centres whatever it is given in the icon square, the way
+		// the icon it replaces is centred.
+		wrap.Members = append([]syntax.Member{
+			&syntax.Property{Name: "mainAxisAlign", Value: &syntax.Ident{Val: "center"}},
+			&syntax.Property{Name: "crossAxisAlign", Value: &syntax.Ident{Val: "center"}},
+		}, wrap.Members...)
+		switch el.Name {
+		case "$leading":
+			if p.LeadingNode != nil {
+				return nil, fmt.Errorf("%s appears twice under %s: a slot is written once", el.Name, kind)
+			}
+			n, err := t.build(wrap, parent, hooks)
+			if err != nil {
+				return nil, err
+			}
+			p.LeadingNode = n
+			return n, nil
+		case "$trailing":
+			if p.TrailingNode != nil {
+				return nil, fmt.Errorf("%s appears twice under %s: a slot is written once", el.Name, kind)
+			}
+			n, err := t.build(wrap, parent, hooks)
+			if err != nil {
+				return nil, err
+			}
+			p.TrailingNode = n
+			return n, nil
+		}
 	}
-	p.Panel = n
-	// Paint and hit-testing lift the panel and every ancestor above the
-	// siblings written after them, the way an overlay does.
-	for a := n.Base(); a != nil && !a.floats; a = a.parent {
-		a.floats = true
-	}
-	return n, nil
+	return nil, fmt.Errorf("%s: %s declares no slot build", el.Name, kind)
 }
 
 // applyDefaults seeds every property of the node from the schema.

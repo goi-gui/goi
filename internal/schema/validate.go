@@ -410,11 +410,16 @@ type childStart struct {
 	Name string
 }
 
-// firstChild returns the first child element or block of e, or nil.
+// firstChild returns the first child element or block of e, or nil. A slot is
+// not content: a built-in `$name` child is how a component takes a body, so it
+// does not make a component that takes no children into one that does.
 func firstChild(e *syntax.Element) *childStart {
 	for _, m := range e.Members {
 		switch x := m.(type) {
 		case *syntax.Element:
+			if len(x.Name) > 0 && x.Name[0] == '$' {
+				continue
+			}
 			return &childStart{At: x.NameAt, Name: x.Name}
 		case *syntax.Block:
 			return &childStart{At: x.At, Name: "{#if}"}

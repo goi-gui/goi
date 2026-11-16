@@ -598,6 +598,13 @@ func ScaleProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[Scale]) NamedP
 	return NamedProp{Name: name, Dirty: dirty, kind: propScale, cell: p}
 }
 
+// LayoutStringProp builds a NamedProp for a string cell whose change moves the
+// layout: an icon decides how much room its label has.
+func LayoutStringProp(b *NodeBase, name string, p *Prop[string]) NamedProp {
+	wire(b, name, p)
+	return NamedProp{Name: name, Dirty: DirtyLayout, kind: propString, cell: p}
+}
+
 // ScalarProp builds a NamedProp for a string cell that also accepts a number or
 // a bool literal, formatting it as text.
 func ScalarProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[string]) NamedProp {

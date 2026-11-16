@@ -30,6 +30,12 @@ type Component struct {
 	Placeholder Prop[string]
 	Icon        Prop[string]
 	Trailing    Prop[string]
+	// ListItem colours: each falls back to its M3 role when zero, so a design
+	// that wants its own row can tint one part without touching the others.
+	LeadingIconColor  Prop[uint32]
+	TrailingIconColor Prop[uint32]
+	LabelColor        Prop[uint32]
+	SupportingColor   Prop[uint32]
 	// IconOn and IconOff override Icon for a Switch's checked state. Both empty
 	// means no icon in the thumb.
 	IconOn  Prop[string]
@@ -112,21 +118,25 @@ type Component struct {
 // newComponent seeds the shared defaults.
 func newComponent() Component {
 	return Component{
-		SelAnchor:   -1,
-		Label:       newProp(nil, "label", DirtyLayout, ""),
-		Supporting:  newProp(nil, "supporting", DirtyLayout, ""),
-		Text:        newProp(nil, "text", DirtyLayout, ""),
-		Placeholder: newProp(nil, "placeholder", DirtyLayout, ""),
-		Icon:        newProp(nil, "icon", DirtyLayout, ""),
-		Trailing:    newProp(nil, "trailingIcon", DirtyLayout, ""),
-		IconOn:      newProp(nil, "iconOn", DirtyLayout, ""),
-		IconOff:     newProp(nil, "iconOff", DirtyLayout, ""),
-		Language:    newProp(nil, "language", DirtyPaint, ""),
-		ShowCopy:    newProp(nil, "showCopy", DirtyPaint, true),
-		Variant:     newProp(nil, "variant", DirtyPaint, ""),
-		Thickness:   newProp(nil, "thickness", DirtyLayout, 0.0),
-		Disabled:    newProp(nil, "disabled", DirtyPaint, false),
-		Checked:     newProp(nil, "checked", DirtyPaint, false),
+		SelAnchor:         -1,
+		Label:             newProp(nil, "label", DirtyLayout, ""),
+		Supporting:        newProp(nil, "supporting", DirtyLayout, ""),
+		Text:              newProp(nil, "text", DirtyLayout, ""),
+		Placeholder:       newProp(nil, "placeholder", DirtyLayout, ""),
+		Icon:              newProp(nil, "icon", DirtyLayout, ""),
+		Trailing:          newProp(nil, "trailingIcon", DirtyLayout, ""),
+		LeadingIconColor:  newProp(nil, "leadingIconColor", DirtyPaint, uint32(0)),
+		TrailingIconColor: newProp(nil, "trailingIconColor", DirtyPaint, uint32(0)),
+		LabelColor:        newProp(nil, "labelColor", DirtyPaint, uint32(0)),
+		SupportingColor:   newProp(nil, "supportingColor", DirtyPaint, uint32(0)),
+		IconOn:            newProp(nil, "iconOn", DirtyLayout, ""),
+		IconOff:           newProp(nil, "iconOff", DirtyLayout, ""),
+		Language:          newProp(nil, "language", DirtyPaint, ""),
+		ShowCopy:          newProp(nil, "showCopy", DirtyPaint, true),
+		Variant:           newProp(nil, "variant", DirtyPaint, ""),
+		Thickness:         newProp(nil, "thickness", DirtyLayout, 0.0),
+		Disabled:          newProp(nil, "disabled", DirtyPaint, false),
+		Checked:           newProp(nil, "checked", DirtyPaint, false),
 		// A selected chip or segment shows a check in place of its leading icon,
 		// which changes its width, so this one is a layout change.
 		Selected:   newProp(nil, "selected", DirtyLayout, false),
@@ -189,9 +199,19 @@ func (c *Component) one(kind, name string) NamedProp {
 	case "placeholder":
 		return StringProp(b, "placeholder", &c.Placeholder)
 	case "icon":
-		return StringProp(b, "icon", &c.Icon)
+		return LayoutStringProp(b, "icon", &c.Icon)
+	case "leadingIcon":
+		return LayoutStringProp(b, "leadingIcon", &c.Icon)
+	case "leadingIconColor":
+		return ColorProp(b, "leadingIconColor", DirtyPaint, &c.LeadingIconColor)
+	case "trailingIconColor":
+		return ColorProp(b, "trailingIconColor", DirtyPaint, &c.TrailingIconColor)
+	case "labelColor":
+		return ColorProp(b, "labelColor", DirtyPaint, &c.LabelColor)
+	case "supportingColor":
+		return ColorProp(b, "supportingColor", DirtyPaint, &c.SupportingColor)
 	case "trailingIcon":
-		return StringProp(b, "trailingIcon", &c.Trailing)
+		return LayoutStringProp(b, "trailingIcon", &c.Trailing)
 	case "iconOn":
 		return StringProp(b, "iconOn", &c.IconOn)
 	case "iconOff":
@@ -478,8 +498,14 @@ type List struct{ Component }
 func (*List) Kind() string              { return "List" }
 func (c *List) namedProps() []NamedProp { return c.props("List") }
 
-// ListItem is one row of a list.
-type ListItem struct{ Component }
+// ListItem is one row of a list. LeadingNode and TrailingNode hold the nodes
+// built from its $leading and $trailing slots; an explicit leadingIcon or
+// trailingIcon property wins over the slot, so the same design can take either.
+type ListItem struct {
+	Component
+	LeadingNode  Node
+	TrailingNode Node
+}
 
 // Kind implements Node.
 func (*ListItem) Kind() string              { return "ListItem" }

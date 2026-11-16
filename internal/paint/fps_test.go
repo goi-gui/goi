@@ -39,7 +39,7 @@ func TestShowFPSDrawsCornerLabel(t *testing.T) {
 // empty icon means the navigation lives elsewhere, so no glyph is drawn and the
 // title starts at the M3 inset.
 func TestTopAppBarWithoutIconDropsTheHamburger(t *testing.T) {
-	l := m3list(t, `Window { TopAppBar { label: "Motion" icon: "" } }`)
+	l := m3list(t, `Window { TopAppBar { label: "Motion" leadingIcon: "" } }`)
 	var title, menu bool
 	var titleX float32
 	for _, op := range l.Ops {
@@ -66,7 +66,7 @@ func TestTopAppBarWithoutIconDropsTheHamburger(t *testing.T) {
 // rail on plain Surface blended into a Surface page.
 func TestRailSitsOnItsOwnSurface(t *testing.T) {
 	l := m3list(t, `Window {
-		NavigationRail { height: 200 NavigationItem { label: "One" icon: tune } }
+		NavigationRail { height: 200 NavigationItem { label: "One" leadingIcon: tune } }
 	}`)
 	col := m3.Light().Colors
 	var container, edge bool

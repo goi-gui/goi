@@ -187,19 +187,19 @@ Column {
 	}
 
 	NavigationItem {
-		label:    "Inbox"
-		icon:     inbox
-		selected: true
+		label:       "Inbox"
+		leadingIcon: inbox
+		selected:    true
 	}
 
 	NavigationItem {
-		label: "Starred"
-		icon:  star
+		label:       "Starred"
+		leadingIcon: star
 	}
 
 	NavigationItem {
-		label: "Sent"
-		icon:  send
+		label:       "Sent"
+		leadingIcon: send
 	}
 }
 ```

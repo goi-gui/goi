@@ -175,6 +175,8 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 			e.linear(b, kids, cw, ch, insetL, false, insetT)
 		case "Popover":
 			e.popoverChildren(b, kids, cw, ch, insetL, insetT)
+		case "ListItem":
+			e.listItemSlots(b, kids, cw, ch, insetL, insetT)
 		case "ButtonGroup", "Row", "Toolbar", "Carousel":
 			e.linear(b, kids, cw, ch, insetL, true, insetT)
 		default:
@@ -194,6 +196,39 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 		e.grid(b, kids, cw, ch, pe.Left+be.Left, pe.Top+be.Top)
 	default: // Window, Column
 		e.linear(b, kids, cw, ch, pe.Left+be.Left, false, pe.Top+be.Top)
+	}
+}
+
+// listItemSlots places a row's $leading and $trailing bodies in the icon squares
+// the built-in icons occupy, centred. An explicit icon property wins over the
+// slot, so while it is set the slot keeps no bounds: nothing of it paints or
+// takes a press.
+func (e *Engine) listItemSlots(b *tree.NodeBase, kids []*tree.NodeBase, w, h, insetL, insetT float64) {
+	li, ok := b.Node().(*tree.ListItem)
+	if !ok {
+		e.linear(b, kids, w, h, insetL, false, insetT)
+		return
+	}
+	place := func(n tree.Node, x float64) {
+		if n == nil {
+			return
+		}
+		size := minf(40, h)
+		if size < 0 {
+			size = 0
+		}
+		x += insetL
+		if x < insetL {
+			x = insetL
+		}
+		n.Base().SetBounds(tree.Rect{X: x, Y: insetT + (h-size)/2, W: 40, H: size})
+		e.children(n.Base(), 40, size)
+	}
+	if li.Icon.Get() == "" {
+		place(li.LeadingNode, 0)
+	}
+	if li.Trailing.Get() == "" {
+		place(li.TrailingNode, w-40)
 	}
 }
 

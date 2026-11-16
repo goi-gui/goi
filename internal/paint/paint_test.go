@@ -822,3 +822,43 @@ func TestUnscaledComponentsStayUnscaled(t *testing.T) {
 		t.Fatalf("scaled ops = %d, want only the text", scaled)
 	}
 }
+
+// TestListItemColours checks the four colour properties: each tints its own
+// part and falls back to the M3 role when unset.
+func TestListItemColours(t *testing.T) {
+	l := list(t, `Window {
+		ListItem {
+			label:            "Label"
+			supporting:       "Supporting"
+			leadingIcon:      home
+			trailingIcon:     star
+			leadingIconColor:  #112233
+			trailingIconColor: #223344
+			labelColor:        #334455
+			supportingColor:   #445566
+		}
+	} `, 400, 200)
+	want := map[string]uint32{
+		"home":       0x112233FF,
+		"star":       0x223344FF,
+		"Label":      0x334455FF,
+		"Supporting": 0x445566FF,
+	}
+	seen := 0
+	for _, op := range l.Ops {
+		if op.Kind != Text {
+			continue
+		}
+		c, ok := want[op.Text]
+		if !ok {
+			continue
+		}
+		seen++
+		if op.Color != c {
+			t.Fatalf("%q colour = %08x, want %08x", op.Text, op.Color, c)
+		}
+	}
+	if seen != len(want) {
+		t.Fatalf("tinted %d of %d parts:\n%s", seen, len(want), l.Dump())
+	}
+}

@@ -2391,3 +2391,21 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   resolves an identifier that names one of those before it treats the word as a
   literal, and reports a mismatch with the type it has, the way a reference does.
   A row stays a shape: its fields are the values, not the row itself.
+- **A component with a label leads with an icon; a component that is an icon keeps
+  `icon`.** `icon` meant "the glyph before the label" on thirteen kinds and "the
+  glyph, full stop" on `IconButton`, `FAB`, `FABMenu`, `Switch`, `TableColumn` and
+  `TableCell`, so the same word named two roles. The labelled ones take
+  `leadingIcon` now, which pairs with the `trailingIcon` they already had, and the
+  Go cell stays one shared field: only the property name a design writes changed.
+  The rename is a break for `.goi` files, taken while the module is v0.x; the
+  examples and the docs were migrated with a syntax-aware pass, not a sed, so the
+  nodes that keep `icon` did not move.
+- **A list row takes a body where it took an icon.** `$leading` and `$trailing` on
+  `ListItem` accept any element and layout centres it in the 40dp square the icon
+  occupies, so an avatar or a switch lines up with a plain row without the design
+  placing it. An explicit `leadingIcon`/`trailingIcon` wins over the matching
+  slot: the slot is left unlaid out (no bounds, so it neither paints nor takes a
+  press) rather than hidden, which means the row keeps one icon's width in both
+  cases and a Go icon change re-lays it out. Slots are not "children": the
+  validator's `cannot contain child elements` check skips `$name` members so a
+  leaf component can declare one.

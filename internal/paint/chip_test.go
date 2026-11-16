@@ -15,10 +15,10 @@ func TestChipLabelStaysInside(t *testing.T) {
 	for _, src := range []string{
 		`Chip { id: c label: "Input" variant: input }`,
 		`Chip { id: c label: "Input" variant: input selected: true }`,
-		`Chip { id: c label: "Input" icon: event }`,
+		`Chip { id: c label: "Input" leadingIcon: event }`,
 		`Chip { id: c label: "Input" trailingIcon: close }`,
-		`Chip { id: c label: "Input" icon: event trailingIcon: close }`,
-		`Chip { id: c label: "Input" icon: event selected: true }`,
+		`Chip { id: c label: "Input" leadingIcon: event trailingIcon: close }`,
+		`Chip { id: c label: "Input" leadingIcon: event selected: true }`,
 	} {
 		tr, diag := tree.BuildSource([]byte("Window { Column { "+src+" } }"), nil)
 		if !diag.Empty() {

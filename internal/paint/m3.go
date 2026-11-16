@@ -1490,23 +1490,52 @@ func (l *List) paintListItem(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	}
 	l.stateLayer(c, r, 0, col.OnSurface, clip)
 
+	leading, trailing := "", ""
+	var slots *tree.ListItem
+	if li, ok := c.Node().(*tree.ListItem); ok {
+		slots = li
+	}
+	leadColor, trailColor := col.OnSurfaceVariant, col.OnSurfaceVariant
+	if v := c.LeadingIconColor.Get(); v != 0 {
+		leadColor = v
+	}
+	if v := c.TrailingIconColor.Get(); v != 0 {
+		trailColor = v
+	}
+	labelColor, supportColor := col.OnSurface, col.OnSurfaceVariant
+	if v := c.LabelColor.Get(); v != 0 {
+		labelColor = v
+	}
+	if v := c.SupportingColor.Get(); v != 0 {
+		supportColor = v
+	}
+
+	// An explicit icon wins over the slot; the slot node is only laid out when
+	// the icon is empty, so its space is reserved exactly when it draws.
 	x := r.X + 16
 	if c.Icon.Get() != "" {
-		l.iconIn(c.Icon.Get(), 24, col.OnSurfaceVariant, x+12, r.Y+r.H/2, clip)
+		leading = c.Icon.Get()
+		l.iconIn(leading, 24, leadColor, x+12, r.Y+r.H/2, clip)
+		x += 40
+	} else if slots != nil && slots.LeadingNode != nil {
 		x += 40
 	}
 	textW := r.Right() - x - 16
 	if c.Trailing.Get() != "" {
+		trailing = c.Trailing.Get()
 		textW -= 40
-		l.iconIn(c.Trailing.Get(), 24, col.OnSurfaceVariant, r.Right()-28, r.Y+r.H/2, clip)
+		l.iconIn(trailing, 24, trailColor, r.Right()-28, r.Y+r.H/2, clip)
+	} else if slots != nil && slots.TrailingNode != nil {
+		textW -= 40
 	}
-	fg := disabledAlpha(c, col.OnSurface)
+
+	fg := disabledAlpha(c, labelColor)
 	if c.Supporting.Get() != "" {
 		// Two line boxes centred as one block.
 		top := r.Y + (r.H-44)/2
 		l.textIn(c.Label.Get(), l.style("bodyLarge"), fg,
 			tree.Rect{X: x, Y: top, W: textW, H: 24}, AlignStart, clip)
-		l.textIn(c.Supporting.Get(), l.style("bodyMedium"), col.OnSurfaceVariant,
+		l.textIn(c.Supporting.Get(), l.style("bodyMedium"), disabledAlpha(c, supportColor),
 			tree.Rect{X: x, Y: top + 24, W: textW, H: 20}, AlignStart, clip)
 		return
 	}

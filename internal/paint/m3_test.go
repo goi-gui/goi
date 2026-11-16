@@ -168,7 +168,7 @@ func TestDisabledDimmsEveryPaint(t *testing.T) {
 // TestNavigationItemStacksInWideBar guards the arrangement rule: a wide
 // destination in a navigation bar still puts the label under the icon.
 func TestNavigationItemStacksInWideBar(t *testing.T) {
-	l := m3list(t, `Window { NavigationBar { NavigationItem { label: "Home" icon: home } } }`)
+	l := m3list(t, `Window { NavigationBar { NavigationItem { label: "Home" leadingIcon: home } } }`)
 	var icon, label Op
 	for _, op := range l.Ops {
 		if op.Kind != Text {
@@ -465,7 +465,7 @@ func TestSearchBarSelectionIsHighlighted(t *testing.T) {
 // TestSplitButtonPaintsTwoPills guards the Expressive shape: a leading pill and
 // a square menu pill with a 2dp gap, not one container with a divider.
 func TestSplitButtonPaintsTwoPills(t *testing.T) {
-	l := m3list(t, `Window { SplitButton { label: "Split" icon: add width: 180 height: 40 } }`)
+	l := m3list(t, `Window { SplitButton { label: "Split" leadingIcon: add width: 180 height: 40 } }`)
 	primary := m3.Light().Colors.Primary
 	var segs [][4]float32
 	for _, op := range l.Ops {
@@ -665,10 +665,10 @@ func TestNavigationRailIndicatorFollowsScroll(t *testing.T) {
 		scroll: true
 		width: 80
 		height: 120
-		NavigationItem { id: a label: "A" icon: home }
-		NavigationItem { id: b label: "B" icon: home }
-		NavigationItem { id: c label: "C" icon: home }
-		NavigationItem { id: d label: "D" icon: home selected: true }
+		NavigationItem { id: a label: "A" leadingIcon: home }
+		NavigationItem { id: b label: "B" leadingIcon: home }
+		NavigationItem { id: c label: "C" leadingIcon: home }
+		NavigationItem { id: d label: "D" leadingIcon: home selected: true }
 	} }`), nil)
 	if !diag.Empty() {
 		t.Fatalf("%v", diag)

@@ -103,44 +103,44 @@ func Lookup(name string) (Kind, bool) {
 
 // props is the property list per kind, beyond the common box properties.
 var props = map[string][]string{
-	"Button":           {"label", "icon", "variant", "color", "disabled"},
+	"Button":           {"label", "leadingIcon", "variant", "color", "disabled"},
 	"IconButton":       {"icon", "variant", "disabled", "selected"},
 	"FAB":              {"label", "icon", "variant", "disabled", "expanded"},
 	"FABMenu":          {"icon", "variant", "disabled", "expanded"},
 	"ButtonGroup":      {"variant", "disabled"},
-	"SplitButton":      {"label", "icon", "trailingIcon", "variant", "disabled", "expanded"},
-	"SegmentedButton":  {"label", "icon", "variant", "disabled", "selected"},
-	"Chip":             {"label", "icon", "trailingIcon", "variant", "disabled", "selected", "checked"},
+	"SplitButton":      {"label", "leadingIcon", "trailingIcon", "variant", "disabled", "expanded"},
+	"SegmentedButton":  {"label", "leadingIcon", "variant", "disabled", "selected"},
+	"Chip":             {"label", "leadingIcon", "trailingIcon", "variant", "disabled", "selected", "checked"},
 	"Badge":            {"label", "variant"},
 	"Checkbox":         {"label", "variant", "disabled", "checked"},
 	"RadioButton":      {"label", "variant", "disabled", "checked"},
 	"Switch":           {"label", "variant", "disabled", "checked", "icon", "iconOn", "iconOff"},
 	"Slider":           {"variant", "disabled", "value", "end", "center", "min", "max", "step"},
-	"TextField":        {"label", "text", "placeholder", "supporting", "icon", "trailingIcon", "variant", "color", "disabled", "type", "mask"},
-	"SearchBar":        {"label", "text", "placeholder", "icon", "trailingIcon", "variant", "disabled"},
+	"TextField":        {"label", "text", "placeholder", "supporting", "leadingIcon", "trailingIcon", "variant", "color", "disabled", "type", "mask"},
+	"SearchBar":        {"label", "text", "placeholder", "leadingIcon", "trailingIcon", "variant", "disabled"},
 	"Tooltip":          {"text", "variant"},
-	"Card":             {"label", "supporting", "icon", "variant", "disabled"},
-	"Dialog":           {"label", "supporting", "icon", "variant"},
+	"Card":             {"label", "supporting", "leadingIcon", "variant", "disabled"},
+	"Dialog":           {"label", "supporting", "leadingIcon", "variant"},
 	"BottomSheet":      {"label", "supporting", "variant"},
 	"SideSheet":        {"label", "supporting", "variant"},
 	"Divider":          {"variant"},
 	"List":             {"variant"},
-	"ListItem":         {"label", "supporting", "icon", "trailingIcon", "variant", "disabled", "selected"},
+	"ListItem":         {"label", "supporting", "leadingIcon", "trailingIcon", "leadingIconColor", "trailingIconColor", "labelColor", "supportingColor", "variant", "disabled", "selected"},
 	"Table":            {"variant", "striped", "showHeader", "stickyHeader", "rowHeight", "headerHeight", "sortColumn", "sortAscending", "selectable", "selectedRow"},
 	"TableColumn":      {"label", "icon", "key", "align", "sortable", "numeric"},
 	"TableRow":         {"selected", "disabled"},
 	"TableCell":        {"value", "icon", "align"},
 	"Menu":             {"variant"},
-	"MenuItem":         {"label", "icon", "trailingIcon", "variant", "disabled", "selected"},
+	"MenuItem":         {"label", "leadingIcon", "trailingIcon", "variant", "disabled", "selected"},
 	"Popover":          {"align"},
 	"Snackbar":         {"label", "variant"},
-	"TopAppBar":        {"label", "variant", "icon", "trailingIcon"},
+	"TopAppBar":        {"label", "variant", "leadingIcon", "trailingIcon"},
 	"NavigationBar":    {"variant"},
 	"NavigationRail":   {"variant"},
 	"NavigationDrawer": {"label", "variant"},
-	"NavigationItem":   {"label", "icon", "variant", "disabled", "selected"},
+	"NavigationItem":   {"label", "leadingIcon", "variant", "disabled", "selected"},
 	"Tabs":             {"variant"},
-	"Tab":              {"label", "icon", "variant", "disabled", "selected"},
+	"Tab":              {"label", "leadingIcon", "variant", "disabled", "selected"},
 	"LinearProgress":   {"variant", "value", "min", "max", "thickness"},
 	"CircularProgress": {"variant", "value", "min", "max", "thickness"},
 	"LoadingIndicator": {"variant", "color"},
@@ -263,7 +263,8 @@ var kindDefaults = map[string]map[string]any{
 // slot is written `$popover { … }`, the way a fragment writes a named slot, but
 // it belongs to the component and needs no caller above it.
 var slots = map[string][]string{
-	"Popover": {"popover"},
+	"Popover":  {"popover"},
+	"ListItem": {"leading", "trailing"},
 }
 
 // Slots returns the child slots a kind declares, without the `$`.
@@ -331,7 +332,8 @@ func TypeOf(name string) PropType {
 		return Number
 	case "variant", "crossAxisAlign", "mainAxisAlign", "align", "selectable":
 		return Enum
-	case "textColor", "gridColor", "color", "lineColor", "fillColor", "highlight", "barBorderColor":
+	case "textColor", "gridColor", "color", "lineColor", "fillColor", "highlight", "barBorderColor",
+		"leadingIconColor", "trailingIconColor", "labelColor", "supportingColor":
 		return Color
 	case "categories", "bbox", "data", "coordinate", "coordinates":
 		return List

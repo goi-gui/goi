@@ -384,8 +384,8 @@ func TestNavigationItemSelectionMovesTheIndicator(t *testing.T) {
 		Column {
 			NavigationRail {
 				id: rail
-				NavigationItem { id: one label: "One" icon: home selected: true }
-				NavigationItem { id: two label: "Two" icon: star }
+				NavigationItem { id: one label: "One" leadingIcon: home selected: true }
+				NavigationItem { id: two label: "Two" leadingIcon: star }
 			}
 		}
 	}`, 480, 320)
@@ -425,9 +425,9 @@ func TestNavigationIndexCountsOnlyDestinations(t *testing.T) {
 			NavigationRail {
 				id: rail
 				Text { text: "Header" }
-				NavigationItem { id: one label: "One" icon: home selected: true }
+				NavigationItem { id: one label: "One" leadingIcon: home selected: true }
 				Rectangle { height: 8 }
-				NavigationItem { id: two label: "Two" icon: star }
+				NavigationItem { id: two label: "Two" leadingIcon: star }
 				Switch { id: theme }
 			}
 		}
