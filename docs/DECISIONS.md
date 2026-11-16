@@ -2370,3 +2370,13 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   what touch scrolling does and what makes a horizontal strip feel like a strip
   rather than a hole in the page. A `Table` is the exception: it scrolls both
   ways, so a diagonal pull there is meant literally and takes both axes.
+- **Every common box property has a setter, not just a getter.** `Width()` had no
+  `SetWidth`, so a Go app that decided a panel's size at run time had to rebuild
+  the design or reach into a `Prop[float64]` by name; the docs even documented a
+  method that did not exist. The setters are on `NodeBase`, and every element
+  promotes them through its embedding, so `page.SetWidth(320)` is enough.
+  `SetBackground` and `SetBorderColor` clear the colour role and the gradient
+  first: writing the cell alone would leave the theme resolver rewriting the role
+  on the next frame, and the Go value would never show. Sizes are dp, because a
+  percentage is a fact about the parent at build time; colours are literals for
+  the same reason roles are design-side.

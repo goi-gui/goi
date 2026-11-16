@@ -471,8 +471,23 @@ func (b *NodeBase) SetRotation(deg float64, axis ...[3]float64) {
 // Width returns the declared width, or -1 for auto.
 func (b *NodeBase) Width() float64 { return b.width.Get() }
 
+// SetWidth declares the node's width in dp; a negative value returns it to
+// auto, the same as the property's default. Like every Prop.Set it marks the
+// node for layout, so the frame that follows lays it out at the new size.
+func (b *NodeBase) SetWidth(v float64) { b.width.Set(v) }
+
 // Height returns the declared height, or -1 for auto.
 func (b *NodeBase) Height() float64 { return b.height.Get() }
+
+// SetHeight declares the node's height in dp; a negative value returns it to
+// auto.
+func (b *NodeBase) SetHeight(v float64) { b.height.Set(v) }
+
+// SetSize declares both sides at once, the same as the design's `size`.
+func (b *NodeBase) SetSize(w, h float64) {
+	b.width.Set(w)
+	b.height.Set(h)
+}
 
 // MinWidth returns the declared minimum width, or 0.
 func (b *NodeBase) MinWidth() float64 { return b.minWidth.Get() }
@@ -500,8 +515,40 @@ func (b *NodeBase) SetMinHeight(v float64) { b.minHeight.Set(v) }
 // SetMaxHeight changes the maximum height; a negative value means unbounded.
 func (b *NodeBase) SetMaxHeight(v float64) { b.maxHeight.Set(v) }
 
+// SetMargin changes the outer spacing; the per-side values the design set stay
+// as they are and still win.
+func (b *NodeBase) SetMargin(v float64) { b.margin.Set(v) }
+
+// SetPadding changes the inner spacing; the per-side values the design set stay
+// as they are and still win.
+func (b *NodeBase) SetPadding(v float64) { b.padding.Set(v) }
+
+// SetFlex changes the node's share of its parent's leftover main-axis space.
+func (b *NodeBase) SetFlex(v float64) { b.flex.Set(v) }
+
+// SetAlignSelf overrides the parent's cross-axis alignment: "start", "center",
+// "end", "stretch", or "" to inherit.
+func (b *NodeBase) SetAlignSelf(v string) { b.alignSelf.Set(v) }
+
+// SetScroll turns scrolling on or off for a node whose content overflows.
+func (b *NodeBase) SetScroll(v bool) { b.scroll.Set(v) }
+
+// SetRadius rounds all four corners.
+func (b *NodeBase) SetRadius(v float64) { b.radius.Set(v) }
+
+// SetBorderWidth draws an outline around the box; 0 removes it.
+func (b *NodeBase) SetBorderWidth(v float64) { b.borderW.Set(v) }
+
 // Background returns 0xRRGGBBAA.
 func (b *NodeBase) Background() uint32 { return b.background.Get() }
+
+// SetBackground paints a solid colour behind the node, replacing a role or a
+// gradient the design set. Zero clears it.
+func (b *NodeBase) SetBackground(rgba uint32) {
+	b.clearColorRole("background")
+	b.setGradient("background", nil)
+	b.background.Set(rgba)
+}
 
 // Gradients returns the gradient behind a colour property, or nil for a solid
 // one.
@@ -587,6 +634,33 @@ func (b *NodeBase) HideScrollbar() bool { return b.hideScrollbar.Get() }
 // instead of always showing.
 func (b *NodeBase) AutoHideScrollbar() bool { return b.autoHideScrollbar.Get() }
 
+// SetHideScrollbar removes the bar, or brings it back.
+func (b *NodeBase) SetHideScrollbar(v bool) { b.hideScrollbar.Set(v) }
+
+// SetAutoHideScrollbar makes the bar follow the pointer and the clock, or keep
+// it up.
+func (b *NodeBase) SetAutoHideScrollbar(v bool) { b.autoHideScrollbar.Set(v) }
+
+// SetScrollbarWidth changes the bar's thickness in dp.
+func (b *NodeBase) SetScrollbarWidth(v float64) { b.scrollbarWidth.Set(v) }
+
+// SetScrollbarColor paints the bar a solid colour, replacing a role the design
+// set. Zero returns it to the theme's muted role.
+func (b *NodeBase) SetScrollbarColor(rgba uint32) {
+	b.clearColorRole("scrollbarColor")
+	b.scrollbarColor.Set(rgba)
+}
+
+// SetScrollShadow turns the edge gradient on or off.
+func (b *NodeBase) SetScrollShadow(v bool) { b.scrollShadow.Set(v) }
+
+// SetScrollShadowColor paints the edge gradient a solid colour, replacing a
+// role the design set.
+func (b *NodeBase) SetScrollShadowColor(rgba uint32) {
+	b.clearColorRole("scrollShadowColor")
+	b.scrollShadowColor.Set(rgba)
+}
+
 // ScrollbarWidth returns the bar's thickness, falling back to the M3 default
 // for a missing or unusable value.
 func (b *NodeBase) ScrollbarWidth() float64 {
@@ -613,9 +687,29 @@ func (b *NodeBase) ScrollShadowColor() uint32 { return b.scrollShadowColor.Get()
 // "mandatory" or "proximity".
 func (b *NodeBase) SnapType() string { return b.scrollSnapType.Get() }
 
+// SetSnapType sets the container's scroll-snap style: "none", "mandatory" or
+// "proximity".
+func (b *NodeBase) SetSnapType(v string) { b.scrollSnapType.Set(v) }
+
+// SetSnapStop ends a gesture at the next snap point when on.
+func (b *NodeBase) SetSnapStop(v bool) {
+	if v {
+		b.scrollSnapStop.Set("stop")
+		return
+	}
+	b.scrollSnapStop.Set("normal")
+}
+
+// SetSnapPadding insets the start and end snap lines from the frame.
+func (b *NodeBase) SetSnapPadding(v float64) { b.scrollPadding.Set(v) }
+
 // SnapAlign returns the child's snap alignment: "", "none", "start", "center"
 // or "end".
 func (b *NodeBase) SnapAlign() string { return b.scrollSnapAlign.Get() }
+
+// SetSnapAlign sets where this child lines up with its scrolling parent:
+// "none", "start", "center" or "end".
+func (b *NodeBase) SetSnapAlign(v string) { b.scrollSnapAlign.Set(v) }
 
 // SnapStop reports whether the container stops at the next snap point instead
 // of letting a gesture pass more than one.
@@ -705,6 +799,13 @@ func (t *Table) paintOrder() []*NodeBase {
 
 // BorderColor returns 0xRRGGBBAA.
 func (b *NodeBase) BorderColor() uint32 { return b.borderColor.Get() }
+
+// SetBorderColor draws the outline in a solid colour, replacing a role the
+// design set. Zero returns the property to the scheme's role.
+func (b *NodeBase) SetBorderColor(rgba uint32) {
+	b.clearColorRole("borderColor")
+	b.borderColor.Set(rgba)
+}
 
 // Radius returns the largest corner radius, for the places that can only use
 // one: clip rounding and the M3 shapes. A per-corner box asks Radii.
