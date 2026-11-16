@@ -432,17 +432,20 @@ func (r Rotation) IsZero() bool { return r.Angle == 0 }
 func (b *NodeBase) Rotation() Rotation { return b.rotate.Get() }
 
 // Scale is a CSS `scale` value in the form paint needs: factors about the
-// element's centre. The zero value is not the identity, so it is built with 1s;
-// Z is kept for the three-value form even though the renderer is flat.
+// element's centre. Z is kept for the three-value form even though the renderer
+// is flat.
 type Scale struct {
 	X, Y, Z float64
+	// Set separates the zero value, which is the identity a node built without
+	// a scale carries, from an explicit `scale: 0` that hides the element.
+	Set bool
 }
 
 // IdentityScale is the scale that changes nothing.
-var IdentityScale = Scale{X: 1, Y: 1, Z: 1}
+var IdentityScale = Scale{X: 1, Y: 1, Z: 1, Set: true}
 
-// IsIdentity reports whether the scale is a no-op.
-func (s Scale) IsIdentity() bool { return s.X == 1 && s.Y == 1 }
+// IsIdentity reports whether the scale changes nothing.
+func (s Scale) IsIdentity() bool { return !s.Set || (s.X == 1 && s.Y == 1) }
 
 // Scaling returns the node's scale.
 func (b *NodeBase) Scaling() Scale { return b.scale.Get() }
@@ -450,7 +453,9 @@ func (b *NodeBase) Scaling() Scale { return b.scale.Get() }
 // SetScale stretches the node and its subtree by the factors about its centre,
 // like CSS `scale`. It marks the tree dirty, so an animation needs no repaint
 // call.
-func (b *NodeBase) SetScale(x, y float64) { b.scale.Set(Scale{X: x, Y: y, Z: 1}) }
+func (b *NodeBase) SetScale(x, y float64) {
+	b.scale.Set(Scale{X: x, Y: y, Z: 1, Set: true})
+}
 
 // SetRotation turns the node and its subtree by deg degrees about axis (the z
 // axis by default), like CSS `rotate`.

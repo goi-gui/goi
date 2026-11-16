@@ -2354,3 +2354,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   approximation when a non-uniform scale meets a rotation (recorded as a shortcut
   in the code). Hit-testing stays on the layout box, like `rotate`, and the docs
   say so.
+
+  The tree's `Scale` carries its own `Set` flag for a different zero value: a
+  component is built from an empty `NodeBase` (`newComponent` fills only the cells
+  it owns), so the zero `Scale` has to mean identity, or every component shrank to
+  nothing while plain elements kept drawing. `scale: 0` is still expressible
+  because the flag says the factors were written. Regression test:
+  `TestUnscaledComponentsStayUnscaled`.

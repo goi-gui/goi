@@ -791,3 +791,34 @@ func TestScaleComposesThroughThePivot(t *testing.T) {
 	}
 	t.Fatal("the rectangle did not paint")
 }
+
+// TestUnscaledComponentsStayUnscaled is the regression the zero value guards: a
+// component is built from a zero NodeBase, so a scale that treated 0, 0 as "off"
+// shrank every component to nothing while plain elements kept drawing.
+func TestUnscaledComponentsStayUnscaled(t *testing.T) {
+	l := list(t, `Window {
+		Column {
+			Button { label: "B" width: 120 height: 40 }
+			Card { label: "C" width: 120 height: 40 }
+			Rectangle { width: 120 height: 40 background: #ff0000 }
+			Text { text: "scaled" scale: 2 }
+		}
+	}`, 300, 400)
+	scaled := 0
+	for _, op := range l.Ops {
+		if op.Scale[2] == 0 {
+			continue
+		}
+		scaled++
+		if op.Kind == Text && op.Text == "scaled" {
+			if op.Scale[0] != 2 || op.Scale[1] != 2 {
+				t.Fatalf("the scaled text = %v, %v; want 2, 2", op.Scale[0], op.Scale[1])
+			}
+			continue
+		}
+		t.Fatalf("an element nobody scaled is scaled: %+v", op)
+	}
+	if scaled != 1 {
+		t.Fatalf("scaled ops = %d, want only the text", scaled)
+	}
+}

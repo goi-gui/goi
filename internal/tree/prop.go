@@ -374,7 +374,7 @@ func (p *NamedProp) SetLiteral(v syntax.Value) bool {
 // scaleOf converts a parsed scale to the factors paint needs: one value scales
 // both axes, percentages arrived as their factor, and none is 1.
 func scaleOf(sc *syntax.Scale) Scale {
-	return Scale{X: sc.X, Y: sc.Y, Z: sc.Z}
+	return Scale{X: sc.X, Y: sc.Y, Z: sc.Z, Set: true}
 }
 
 // rotationOf converts a parsed rotate to the radians paint needs. Only a
