@@ -10,11 +10,10 @@ on:
 # still installs the runtime library, because a test that opens a window needs
 # it on the machine; everything else runs headless.
 jobs:
-  # Tests run on Linux only. The macOS hosted runner is scarce enough that a
-  # job can sit queued until GitHub cancels it, which marks the run failed with
-  # no code to blame; the `cross` job still builds darwin/amd64 and arm64, so a
-  # macOS compile break is caught. Run the suite on a Mac by hand when touching
-  # platform/darwin code.
+  # The suite runs on every OS it ships for: Linux here and macOS below, the
+  # two platforms with a runtime library to install. Linux builds SDL3 from
+  # source because its package is not on every runner; macOS takes it from
+  # Homebrew.
   test:
     runs-on: ubuntu-latest
     steps:
@@ -41,6 +40,29 @@ jobs:
           cmake --build sdl-build --parallel
           sudo cmake --install sdl-build
           sudo ldconfig
+
+      - name: Build
+        run: CGO_ENABLED=0 go build -tags nofakecgo ./...
+
+      - name: Vet
+        run: CGO_ENABLED=0 go vet -tags nofakecgo ./...
+
+      - name: Test
+        run: CGO_ENABLED=0 go test -tags nofakecgo ./...
+
+  # The same build, vet and test as Linux, so an Apple-only break shows up
+  # before a release rather than in an app.
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.x"
+
+      # Only tests that open a window need the runtime; the build is cgo-free.
+      - name: SDL3 runtime
+        run: brew install sdl3
 
       - name: Build
         run: CGO_ENABLED=0 go build -tags nofakecgo ./...
