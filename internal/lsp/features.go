@@ -845,9 +845,15 @@ func animatedKind(kind string) bool {
 // transport on an animation or a player, and expand on a component with an
 // expanded state.
 func kindHasNodeMethod(kind, method string) bool {
-	if method == "expand" {
+	if method == "expand" || method == "setObscureText" {
 		el, ok := schema.Lookup(kind)
-		return ok && el.Prop("expanded") != nil
+		if !ok {
+			return false
+		}
+		if method == "expand" {
+			return el.Prop("expanded") != nil
+		}
+		return el.Prop("obscureText") != nil
 	}
 	return animatedKind(kind)
 }
@@ -875,6 +881,8 @@ func nodeMethodDoc(name string) string {
 		return "**audioTrack(0)**\n\nPicks the audio stream, 0 being the first."
 	case "expand":
 		return "**expand(on?)**\n\nSets the component's `expanded` state; with no argument it toggles. `split.expand(true)` opens, `split.expand()` flips it, and a design reads the result as `split.expanded`."
+	case "setObscureText":
+		return "**setObscureText(true|false)**\n\nHides or shows a text field's value; a hidden field paints one dot per character. The value is unchanged, so `onEdit` keeps reporting the real string."
 	case "toggleFullscreen":
 		return "**toggleFullscreen()**\n\nFlips between fullscreen and windowed."
 	}

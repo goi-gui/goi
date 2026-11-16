@@ -277,6 +277,23 @@ func (t *Tree) callNodeMethodX(id, method string, args []any) {
 		t.bridgeErr(fmt.Errorf("goi: no element with id %q", id))
 		return
 	}
+	// `id.setObscureText(false)` reveals a password field, the reveal button
+	// a design can wire without a Go handler.
+	if method == "setObscureText" {
+		if len(args) != 1 {
+			t.bridgeErr(fmt.Errorf("goi: %s.setObscureText takes one bool", n.Kind()))
+			return
+		}
+		v, ok := args[0].(bool)
+		if !ok {
+			t.bridgeErr(fmt.Errorf("goi: %s.setObscureText takes a bool", n.Kind()))
+			return
+		}
+		if !n.Base().SetPropBool("obscureText", v) {
+			t.bridgeErr(fmt.Errorf("goi: %s has no obscureText to set", n.Kind()))
+		}
+		return
+	}
 	// `id.expand()` toggles a component's expanded state and `id.expand(true)`
 	// sets it; the prop is what the design reads back as `id.expanded`.
 	if method == "expand" {

@@ -135,7 +135,7 @@ type EventDef struct {
 // `onClick: spin.pause()`. They are the transport of an animated Image or SVG,
 // and of an Audio or Video player.
 var NodeMethods = []string{"play", "pause", "stop", "toggle", "seek", "volume",
-	"fullscreen", "windowed", "toggleFullscreen", "audioTrack", "expand"}
+	"fullscreen", "windowed", "toggleFullscreen", "audioTrack", "expand", "setObscureText"}
 
 // NodeMethod reports whether name is a method an event can call on an element.
 func NodeMethod(name string) bool {

@@ -1484,7 +1484,7 @@ func (v *validator) checkEventCall(e *syntax.Element, ev EventDef, p *syntax.Pro
 		}
 		if !NodeMethod(call.Callee.Prop) {
 			v.add(at, end,
-				fmt.Sprintf("%s.%s: a handler call starts with bridge., or calls play, pause, stop, toggle, seek, volume, fullscreen, audioTrack or expand on an id",
+				fmt.Sprintf("%s.%s: a handler call starts with bridge., or calls play, pause, stop, toggle, seek, volume, fullscreen, audioTrack, expand or setObscureText on an id",
 					e.Name, p.Name),
 				syntax.Suggest(call.Callee.Prop, NodeMethods))
 			return
@@ -1500,6 +1500,23 @@ func (v *validator) checkEventCall(e *syntax.Element, ev EventDef, p *syntax.Pro
 			// A player's transport takes one number.
 			if len(call.Args) != 1 {
 				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes one number",
+					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+			}
+		case "setObscureText":
+			// A password field's reveal button: `field.setObscureText(false)`.
+			// The value is unchanged, so the argument is required.
+			if def, ok := Lookup(target.Name); ok && def.Prop("obscureText") == nil {
+				v.add(at, end,
+					fmt.Sprintf("%s.%s: %s has no obscureText to set", e.Name, p.Name, target.Name), "")
+				return
+			}
+			if len(call.Args) != 1 {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes one bool",
+					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+				return
+			}
+			if _, ok := call.Args[0].(*syntax.Bool); !ok && !boolishValue(call.Args[0]) {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes a bool",
 					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
 			}
 		case "expand":

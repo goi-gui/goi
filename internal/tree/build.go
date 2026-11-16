@@ -349,35 +349,27 @@ func (t *Tree) buildSlot(el *syntax.Element, parent *NodeBase, hooks *Hooks) (No
 			a.floats = true
 		}
 		return n, nil
-	case *ListItem:
-		// A list row centres whatever it is given in the icon square, the way
-		// the icon it replaces is centred.
+	case *TextField, *ListItem:
+		// A row and a field centre whatever they are given in the icon square,
+		// the way the icon it replaces is centred.
 		wrap.Members = append([]syntax.Member{
 			&syntax.Property{Name: "mainAxisAlign", Value: &syntax.Ident{Val: "center"}},
 			&syntax.Property{Name: "crossAxisAlign", Value: &syntax.Ident{Val: "center"}},
 		}, wrap.Members...)
-		switch el.Name {
-		case "$leading":
-			if p.LeadingNode != nil {
-				return nil, fmt.Errorf("%s appears twice under %s: a slot is written once", el.Name, kind)
-			}
-			n, err := t.build(wrap, parent, hooks)
-			if err != nil {
-				return nil, err
-			}
-			p.LeadingNode = n
-			return n, nil
-		case "$trailing":
-			if p.TrailingNode != nil {
-				return nil, fmt.Errorf("%s appears twice under %s: a slot is written once", el.Name, kind)
-			}
-			n, err := t.build(wrap, parent, hooks)
-			if err != nil {
-				return nil, err
-			}
-			p.TrailingNode = n
-			return n, nil
+		lead, trail := p.(interface{ slotNodes() (*Node, *Node) }).slotNodes()
+		slot := lead
+		if el.Name == "$trailing" {
+			slot = trail
 		}
+		if *slot != nil {
+			return nil, fmt.Errorf("%s appears twice under %s: a slot is written once", el.Name, kind)
+		}
+		n, err := t.build(wrap, parent, hooks)
+		if err != nil {
+			return nil, err
+		}
+		*slot = n
+		return n, nil
 	}
 	return nil, fmt.Errorf("%s: %s declares no slot build", el.Name, kind)
 }
@@ -652,7 +644,10 @@ func newM3Component(name string) Node {
 			Center:    newProp(nil, "center", DirtyPaint, math.NaN()),
 		}
 	case "TextField":
-		ti := &TextField{Component: newComponent()}
+		ti := &TextField{
+			Component: newComponent(),
+			Obscure:   newProp(nil, "obscureText", DirtyPaint, false),
+		}
 		ti.Max.Set(1)
 		return ti
 	case "SearchBar":

@@ -177,6 +177,8 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 			e.popoverChildren(b, kids, cw, ch, insetL, insetT)
 		case "ListItem":
 			e.listItemSlots(b, kids, cw, ch, insetL, insetT)
+		case "TextField":
+			e.textFieldSlots(b, kids, cw, ch, insetL, insetT)
 		case "ButtonGroup", "Row", "Toolbar", "Carousel":
 			e.linear(b, kids, cw, ch, insetL, true, insetT)
 		default:
@@ -229,6 +231,42 @@ func (e *Engine) listItemSlots(b *tree.NodeBase, kids []*tree.NodeBase, w, h, in
 	}
 	if li.Trailing.Get() == "" {
 		place(li.TrailingNode, w-40)
+	}
+}
+
+// textFieldSlots puts a field's $leading and $trailing bodies in the 40dp
+// columns its icons take, centred in the box the field draws (the supporting
+// line is not part of it). An explicit icon wins over the slot, so while it is
+// set the slot keeps no bounds: nothing of it paints or takes a press.
+func (e *Engine) textFieldSlots(b *tree.NodeBase, kids []*tree.NodeBase, w, h, insetL, insetT float64) {
+	tf, ok := b.Node().(*tree.TextField)
+	if !ok {
+		e.linear(b, kids, w, h, insetL, false, insetT)
+		return
+	}
+	if tf.Supporting.Get() != "" && h > 20 {
+		h -= 20
+	}
+	place := func(n tree.Node, x float64) {
+		if n == nil {
+			return
+		}
+		size := minf(40, h)
+		if size < 0 {
+			size = 0
+		}
+		x += insetL
+		if x < insetL {
+			x = insetL
+		}
+		n.Base().SetBounds(tree.Rect{X: x, Y: insetT + (h-size)/2, W: 40, H: size})
+		e.children(n.Base(), 40, size)
+	}
+	if tf.Icon.Get() == "" {
+		place(tf.LeadingNode, 8)
+	}
+	if tf.Trailing.Get() == "" {
+		place(tf.TrailingNode, w-48)
 	}
 }
 

@@ -114,6 +114,31 @@ func TestBridgeEventPayload(t *testing.T) {
 	}
 }
 
+// TestSetObscureTextDrivesTheField: a reveal button a design can wire on its
+// own, with the value it needs to show.
+func TestSetObscureTextDrivesTheField(t *testing.T) {
+	var errs []error
+	tr, diag := BuildSource([]byte(`Window { Column {
+		TextField { id: password label: "Password" obscureText: true }
+		Button { id: reveal label: "Show" onClick: password.setObscureText(false) }
+	} }`), &Hooks{Error: func(err error) { errs = append(errs, err) }})
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	password := tr.ids["password"].(*TextField)
+	reveal := tr.ids["reveal"].(*Button)
+	if !password.Obscure.Get() {
+		t.Fatal("obscureText: true was not applied")
+	}
+	reveal.Base().Click.Emit(ClickEvent{})
+	if password.Obscure.Get() {
+		t.Fatal("setObscureText(false) kept the value hidden")
+	}
+	if len(errs) != 0 {
+		t.Fatalf("%v", errs)
+	}
+}
+
 // TestExpandDrivesTheExpandedProp: `id.expand()` flips the state and
 // `id.expand(true)` sets it, which is the value a design reads back as
 // `id.expanded` and the icon switch follows.

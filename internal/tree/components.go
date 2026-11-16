@@ -3,6 +3,7 @@ package tree
 import (
 	"math"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/goi-gui/goi/internal/componentdef"
 	"github.com/goi-gui/goi/internal/highlight"
@@ -417,9 +418,13 @@ func (c *Slider) OnRange(fn func(lo, hi float64)) (off func()) {
 	return c.RangeEvent.On(func(v [2]float64) { fn(v[0], v[1]) })
 }
 
-// TextField is a filled or outlined text input.
+// TextField is a filled or outlined text input. LeadingNode and TrailingNode
+// hold the bodies built from its $leading and $trailing slots; an explicit
+// leadingIcon or trailingIcon wins over the slot, the way a list row works.
 type TextField struct {
 	Component
+	LeadingNode  Node
+	TrailingNode Node
 	// Type filters typed text: empty or "text" takes everything, "numeric"
 	// digits, "alpha" letters, "alphanumeric" both, and any other value is
 	// read as the set of characters to allow.
@@ -430,16 +435,91 @@ type TextField struct {
 	// Color overrides the colour of the value, its label and its placeholder.
 	// Zero keeps the scheme's onSurface.
 	Color Prop[uint32]
+	// Obscure hides the value the way a password field does: one dot per rune,
+	// in the value, the selection, the caret and the IME composition alike.
+	Obscure Prop[bool]
 }
 
 // Kind implements Node.
 func (*TextField) Kind() string { return "TextField" }
 func (c *TextField) namedProps() []NamedProp {
 	b := &c.NodeBase
-	return append(c.propsExcept("TextField", "color", "type", "mask"),
+	return append(c.propsExcept("TextField", "color", "type", "mask", "obscureText"),
 		StringProp(b, "type", &c.Type),
 		StringProp(b, "mask", &c.Mask),
-		ColorProp(b, "color", DirtyPaint, &c.Color))
+		ColorProp(b, "color", DirtyPaint, &c.Color),
+		BoolProp(b, "obscureText", DirtyPaint, &c.Obscure))
+}
+
+// slotNodes exposes the field's icon-square bodies to the builder.
+func (c *TextField) slotNodes() (*Node, *Node) { return &c.LeadingNode, &c.TrailingNode }
+
+// SetObscureText hides or shows the value: a hidden field paints one dot per
+// character and keeps the caret on the character it covers.
+func (c *TextField) SetObscureText(v bool) { c.Obscure.Set(v) }
+
+// MaskRune is what an obscured field paints for a character. One rune per rune
+// of the value is what keeps the caret and the selection on the characters they
+// cover, so the field looks the same length as the text it hides.
+const MaskRune = "•"
+
+// Obscured reports whether the element is a text field hiding its value.
+func (c *Component) Obscured() bool {
+	tf, ok := c.Node().(*TextField)
+	return ok && tf.Obscure.Get()
+}
+
+// FieldGutters reports whether a text field spends its 40dp icon column on a
+// side: an explicit icon and a $leading/$trailing slot both take it.
+func (c *Component) FieldGutters() (leading, trailing bool) {
+	tf, ok := c.Node().(*TextField)
+	if !ok {
+		return false, false
+	}
+	return c.Icon.Get() != "" || tf.LeadingNode != nil, c.Trailing.Get() != "" || tf.TrailingNode != nil
+}
+
+// FieldText is the value a field paints: s, or one MaskRune per rune when the
+// field hides it.
+func FieldText(s string, obscure bool) string {
+	if !obscure {
+		return s
+	}
+	return strings.Repeat(MaskRune, utf8.RuneCountInString(s))
+}
+
+// FieldIndex maps a byte index in a field's value to the byte index the same
+// character occupies in FieldText, so the caret and the selection follow the
+// dots.
+func FieldIndex(s string, i int, obscure bool) int {
+	if !obscure {
+		return i
+	}
+	if i < 0 {
+		i = 0
+	}
+	if i > len(s) {
+		i = len(s)
+	}
+	return utf8.RuneCountInString(s[:i]) * len(MaskRune)
+}
+
+// FieldValueIndex is the other direction: an index in the masked text back to
+// the value, so a click between two dots places the caret between the
+// characters they stand for.
+func FieldValueIndex(s string, i int, obscure bool) int {
+	if !obscure {
+		return i
+	}
+	if i <= 0 {
+		return 0
+	}
+	pos := 0
+	for n := i / len(MaskRune); n > 0 && pos < len(s); n-- {
+		_, size := utf8.DecodeRuneInString(s[pos:])
+		pos += size
+	}
+	return pos
 }
 
 // SearchBar is a rounded search input.
@@ -510,6 +590,9 @@ type ListItem struct {
 // Kind implements Node.
 func (*ListItem) Kind() string              { return "ListItem" }
 func (c *ListItem) namedProps() []NamedProp { return c.props("ListItem") }
+
+// slotNodes exposes the row's icon-square bodies to the builder.
+func (c *ListItem) slotNodes() (*Node, *Node) { return &c.LeadingNode, &c.TrailingNode }
 
 // Table is a data grid: TableColumn children declare the columns, TableRow
 // children hold the cells, and the header sorts on click.

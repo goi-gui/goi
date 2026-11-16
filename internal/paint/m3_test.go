@@ -1157,3 +1157,97 @@ func TestCodeDefaultsToBorderAndCopy(t *testing.T) {
 		t.Fatalf("filled Code without copy has %d borders and %d buttons", border, copy)
 	}
 }
+
+// TestObscuredTextFieldPaintsDots is the password contract: the value, the
+// selection and the caret all switch to one dot per rune together, so no typed
+// character reaches the list and the caret keeps sitting on the character it
+// covers.
+func TestObscuredTextFieldPaintsDots(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window {
+		TextField { id: field label: "Password" text: "hunter2" width: 320 obscureText: true }
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 400, 400)
+	n, _ := tr.ByID("field")
+	tf := n.(*tree.TextField)
+	c := tf.M3()
+	c.Focused = true
+	c.SelAnchor, c.Caret = 0, 3
+
+	l := &List{}
+	l.Build(tr, 400, 400)
+	style := l.style("bodyLarge")
+	var dots *Op
+	band, caret := -1.0, -1.0
+	sel := withAlpha(l.Theme.Colors.Primary, m3.SelectionOpacity)
+	for i := range l.Ops {
+		op := &l.Ops[i]
+		switch {
+		case op.Kind == Text && op.Text == "hunter2":
+			t.Fatal("the value painted its characters")
+		case op.Kind == Text && op.Text == "•••••••":
+			dots = op
+		case op.Kind == Fill && op.Shape == RoundedRect && op.Color == sel && op.Rect[2] > 0:
+			band = float64(op.Rect[2])
+		case op.Kind == Fill && op.Shape == RoundedRect && op.Rect[2] == 2 && op.Rect[3] == 20:
+			caret = float64(op.Rect[0])
+		}
+	}
+	if dots == nil {
+		t.Fatalf("no dots for a seven-character value:\n%s", l.Dump())
+	}
+	if want := textWidth(l, "•••", style); math.Abs(band-want) > 0.01 {
+		t.Fatalf("selection width = %v, want the three dots %v", band, want)
+	}
+	if want := float64(dots.TextX) + textWidth(l, "•••", style); math.Abs(caret-want) > 0.01 {
+		t.Fatalf("caret x = %v, want %v after three dots", caret, want)
+	}
+
+	// The setting is one property; hiding is not a one-way door.
+	tf.SetObscureText(false)
+	l = &List{}
+	l.Build(tr, 400, 400)
+	var plain bool
+	for _, op := range l.Ops {
+		if op.Kind == Text && op.Text == "hunter2" {
+			plain = true
+		}
+	}
+	if !plain {
+		t.Fatal("obscureText: false still hid the value")
+	}
+}
+
+// TestTextFieldSlotMakesRoomForTheValue: a $leading body takes the same 40dp a
+// leading icon does, so the value starts where it would beside the glyph.
+func TestTextFieldSlotMakesRoomForTheValue(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window {
+		TextField {
+			id:    field
+			label: "Search"
+			text:  "abc"
+			width: 320
+
+			$leading {
+				Rectangle { width: 24 height: 24 }
+			}
+		}
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 400, 400)
+	l := &List{}
+	l.Build(tr, 400, 400)
+	for _, op := range l.Ops {
+		if op.Kind == Text && op.Text == "abc" {
+			if op.TextX != 56 {
+				t.Fatalf("value x = %v, want 56 (16dp inset plus the 40dp slot)", op.TextX)
+			}
+			return
+		}
+	}
+	t.Fatalf("no value op:\n%s", l.Dump())
+}

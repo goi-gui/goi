@@ -330,3 +330,42 @@ Window {
 		t.Fatal("a string field fed a number parameter")
 	}
 }
+
+// TestSetObscureTextCallsAField keeps the reveal call honest: the value is a
+// required bool and only a field has one to set.
+func TestSetObscureTextCallsAField(t *testing.T) {
+	base := `Window { Column {
+		TextField { id: password label: "Password" }
+		Text { id: label text: "x" }
+		Button { %s }
+	} }`
+	for _, call := range []string{"password.setObscureText(true)", "password.setObscureText(false)"} {
+		if _, diag := validate(t, fmt.Sprintf(base, "onClick: "+call)); !diag.Empty() {
+			t.Errorf("%s: %v", call, diag)
+		}
+	}
+	for _, bad := range []string{"password.setObscureText()", "password.setObscureText(1)", "label.setObscureText(true)"} {
+		if _, diag := validate(t, fmt.Sprintf(base, "onClick: "+bad)); diag.Empty() {
+			t.Errorf("%s was accepted", bad)
+		}
+	}
+}
+
+// TestTextFieldTakesIconSlots keeps a password field's reveal control legal:
+// $leading and $trailing belong to the component, and an icon still wins over
+// either body without the design having to choose.
+func TestTextFieldTakesIconSlots(t *testing.T) {
+	src := `Window { TextField {
+		label:       "Password"
+		obscureText: true
+		$leading { Icon { icon: lock } }
+		$trailing { IconButton { icon: visibility } }
+	} }`
+	if _, diag := validate(t, src); !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	src = `Window { TextField { $popover { Icon { icon: lock } } } }`
+	if _, diag := validate(t, src); diag.Empty() {
+		t.Fatal("a field accepted a slot it does not declare")
+	}
+}

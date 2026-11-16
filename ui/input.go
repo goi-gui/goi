@@ -2803,9 +2803,13 @@ func (i *interactor) imeSync() {
 	// The caret sits after the value up to the caret, plus any composition
 	// text before its own caret.
 	value := f.Text.Get()
-	x := fieldTextStart(n) + i.textWidth(value[:minInt(f.Caret, len(value))])
+	obscure := f.Obscured()
+	nCaret := tree.FieldIndex(value, minInt(f.Caret, len(value)), obscure)
+	x := fieldTextStart(n) + i.textWidth(tree.FieldText(value, obscure)[:nCaret])
 	if f.Preedit != "" {
-		x += i.textWidth(f.Preedit[:minInt(f.PreeditCaret, len(f.Preedit))])
+		p := f.Preedit
+		nPre := tree.FieldIndex(p, minInt(f.PreeditCaret, len(p)), obscure)
+		x += i.textWidth(tree.FieldText(p, obscure)[:nPre])
 	}
 	y := box.Y + box.H/2 - 10
 	d.win.SetTextInput(true, x, y, 2, 20)
@@ -3479,20 +3483,24 @@ func (i *interactor) indexAtXY(f *tree.Component, x, y float64) int {
 	if rel <= 0 {
 		return 0
 	}
+	// A hidden field paints dots, and the click is measured against them, so
+	// the nearest boundary in that text is mapped back to the value it hides.
 	s := f.Text.Get()
+	obscure := f.Obscured()
+	shown := tree.FieldText(s, obscure)
 	best, bestD := 0, rel
-	for idx := range s {
+	for idx := range shown {
 		if idx == 0 {
 			continue
 		}
-		if d := math.Abs(i.textWidth(s[:idx]) - rel); d < bestD {
+		if d := math.Abs(i.textWidth(shown[:idx]) - rel); d < bestD {
 			best, bestD = idx, d
 		}
 	}
-	if d := math.Abs(i.textWidth(s) - rel); d < bestD {
-		best = len(s)
+	if d := math.Abs(i.textWidth(shown) - rel); d < bestD {
+		best = len(shown)
 	}
-	return best
+	return tree.FieldValueIndex(s, best, obscure)
 }
 
 // fieldTextStart is where the visible value text begins inside a field,
@@ -3525,11 +3533,12 @@ func fieldTextBox(n tree.Node) tree.Rect {
 	}
 	x, w := box.X+16, box.W-32
 	if c := comp(n); c != nil {
-		if c.Icon.Get() != "" {
+		lead, trail := c.FieldGutters()
+		if lead {
 			x += 40
 			w -= 40
 		}
-		if c.Trailing.Get() != "" {
+		if trail {
 			w -= 40
 		}
 	}

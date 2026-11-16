@@ -118,7 +118,7 @@ var props = map[string][]string{
 	"RadioButton":      {"label", "variant", "disabled", "checked"},
 	"Switch":           {"label", "variant", "disabled", "checked", "icon", "iconOn", "iconOff"},
 	"Slider":           {"variant", "disabled", "value", "end", "center", "min", "max", "step"},
-	"TextField":        {"label", "text", "placeholder", "supporting", "leadingIcon", "trailingIcon", "variant", "color", "disabled", "type", "mask"},
+	"TextField":        {"label", "text", "placeholder", "supporting", "leadingIcon", "trailingIcon", "variant", "color", "disabled", "type", "mask", "obscureText"},
 	"SearchBar":        {"label", "text", "placeholder", "leadingIcon", "trailingIcon", "variant", "disabled"},
 	"Tooltip":          {"text", "variant"},
 	"Card":             {"label", "supporting", "leadingIcon", "variant", "disabled"},
@@ -265,8 +265,9 @@ var kindDefaults = map[string]map[string]any{
 // slot is written `$popover { … }`, the way a fragment writes a named slot, but
 // it belongs to the component and needs no caller above it.
 var slots = map[string][]string{
-	"Popover":  {"popover"},
-	"ListItem": {"leading", "trailing"},
+	"Popover":   {"popover"},
+	"ListItem":  {"leading", "trailing"},
+	"TextField": {"leading", "trailing"},
 }
 
 // Slots returns the child slots a kind declares, without the `$`.
@@ -322,7 +323,7 @@ func TypeOfFor(kind, name string) PropType {
 // TypeOf returns the literal type of a component property.
 func TypeOf(name string) PropType {
 	switch name {
-	case "disabled", "checked", "selected", "expanded", "showCopy", "animated",
+	case "disabled", "checked", "selected", "expanded", "showCopy", "animated", "obscureText",
 		"sortable", "numeric", "striped", "showHeader", "stickyHeader", "sortAscending",
 		"grid", "axis", "legend", "values", "stacked", "horizontal", "smooth", "points",
 		"disablePan", "disableZoom", "reverseTileColors":

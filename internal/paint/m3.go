@@ -267,18 +267,13 @@ func textShift(caretX, width float64) float64 {
 // fieldCaretX is where the caret sits inside a field's value, composition
 // included, in pixels from the start of the text.
 func fieldCaretX(l *List, c *tree.Component, st m3.TextStyle) float64 {
+	obscure := c.Obscured()
 	s := c.Text.Get()
-	n := minInt(c.Caret, len(s))
-	if n < 0 {
-		n = 0
-	}
-	x := textWidth(l, s[:n], st)
+	n := tree.FieldIndex(s, minInt(c.Caret, len(s)), obscure)
+	x := textWidth(l, tree.FieldText(s, obscure)[:n], st)
 	if p := c.Preedit; p != "" {
-		m := minInt(c.PreeditCaret, len(p))
-		if m < 0 {
-			m = 0
-		}
-		x += textWidth(l, p[:m], st)
+		m := tree.FieldIndex(p, minInt(c.PreeditCaret, len(p)), obscure)
+		x += textWidth(l, tree.FieldText(p, obscure)[:m], st)
 	}
 	return x
 }
@@ -1191,14 +1186,19 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	}
 
 	// Floating label: sits above the value once the field has content or focus.
+	// A hidden field paints dots in place of the value, and the caret and the
+	// selection follow them, so every width below is measured on the dots.
+	obscure := c.Obscured()
+	value := tree.FieldText(c.Text.Get(), obscure)
 	hasValue := c.Text.Get() != "" || c.Preedit != "" || c.Focused
+	lead, trail := c.FieldGutters()
 	lx := r.X + 16
 	textW := r.W - 32
-	if c.Icon.Get() != "" {
-		lx += 40 // make room for the leading icon
+	if lead {
+		lx += 40 // make room for the leading icon or slot
 		textW -= 40
 	}
-	if c.Trailing.Get() != "" {
+	if trail {
 		textW -= 40
 	}
 	labelStyle := l.style("bodyLarge")
@@ -1217,9 +1217,10 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	// Selection sits under the value, in the same box as the caret.
 	if c.Focused {
 		if a, b, ok := c.Selection(); ok {
-			s := c.Text.Get()
-			x0 := lx - shift + textWidth(l, s[:a], labelStyle)
-			x1 := lx - shift + textWidth(l, s[:b], labelStyle)
+			a = tree.FieldIndex(c.Text.Get(), a, obscure)
+			b = tree.FieldIndex(c.Text.Get(), b, obscure)
+			x0 := lx - shift + textWidth(l, value[:a], labelStyle)
+			x1 := lx - shift + textWidth(l, value[:b], labelStyle)
 			l.Ops = append(l.Ops, Op{
 				Kind: Fill, Shape: RoundedRect,
 				Rect:   [4]float32{float32(x0), float32(r.Y + 26), float32(x1 - x0), 20},
@@ -1234,15 +1235,14 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		// Label shrinks to the top 16dp band, value occupies the rest.
 		l.textIn(c.Label.Get(), smallStyle, hint,
 			tree.Rect{X: lx, Y: r.Y + 8, W: textW, H: 16}, AlignStart, clip)
-		l.textIn(c.Text.Get(), labelStyle, fg,
+		l.textIn(value, labelStyle, fg,
 			tree.Rect{X: lx - shift, Y: r.Y + 22, W: textW + shift, H: 26}, AlignStart, textClip)
 		// IME composition: inserted at the caret, underlined so it reads as
 		// provisional. The caret then sits inside it, not after it.
 		if c.Preedit != "" {
-			value := c.Text.Get()
-			n := minInt(c.Caret, len(value))
+			n := tree.FieldIndex(c.Text.Get(), minInt(c.Caret, len(c.Text.Get())), obscure)
 			px := lx - shift + textWidth(l, value[:n], labelStyle)
-			l.preedit(c.Preedit, px, r.Y+22, labelStyle, fg, r.Y+44, textClip)
+			l.preedit(tree.FieldText(c.Preedit, obscure), px, r.Y+22, labelStyle, fg, r.Y+44, textClip)
 		}
 	} else {
 		label := c.Label.Get()
