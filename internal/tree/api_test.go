@@ -91,3 +91,68 @@ func TestScrollSnapSetters(t *testing.T) {
 		t.Fatal("SetSnapStop(false) kept the stop")
 	}
 }
+
+// TestPerSideSetters checks the one-side overrides: each writes its own cell,
+// a negative value removes it so the aggregate shows through, and a per-side
+// border colour replaces the role the design wrote on that side.
+func TestPerSideSetters(t *testing.T) {
+	tr, diag := BuildSource([]byte(`Window {
+		Column {
+			id:            page
+			margin:        4
+			padding:       8
+			radius:        5
+			borderWidth:   1
+			borderTopColor: theme.primary
+		}
+	} `), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	n, _ := tr.ByID("page")
+	b := n.Base()
+
+	b.SetMarginTop(12)
+	b.SetMarginRight(14)
+	b.SetMarginBottom(16)
+	b.SetMarginLeft(18)
+	if got := b.MarginEdges(); got != (Edges{Top: 12, Right: 14, Bottom: 16, Left: 18}) {
+		t.Fatalf("margin edges = %+v", got)
+	}
+
+	b.SetPaddingX(20)
+	b.SetPaddingY(22)
+	b.SetPaddingLeft(24)
+	b.SetPaddingTop(26)
+	if got := b.PaddingEdges(); got != (Edges{Top: 26, Right: 20, Bottom: 22, Left: 24}) {
+		t.Fatalf("padding edges = %+v", got)
+	}
+
+	// Removing an override falls back to the axis and then the aggregate.
+	b.SetPaddingLeft(-1)
+	b.SetPaddingY(-1)
+	b.SetPaddingX(-1)
+	if got := b.PaddingEdges(); got != (Edges{Top: 26, Right: 8, Bottom: 8, Left: 8}) {
+		t.Fatalf("cleared padding edges = %+v", got)
+	}
+
+	b.SetRadiusTopLeft(3)
+	b.SetRadiusBottomRight(7)
+	if got := b.Radii(); got != [4]float64{3, 5, 7, 5} {
+		t.Fatalf("radii = %v", got)
+	}
+
+	b.SetBorderLeftWidth(3)
+	if got := b.BorderEdges(); got != (Edges{Top: 1, Right: 1, Bottom: 1, Left: 3}) {
+		t.Fatalf("border edges = %+v", got)
+	}
+
+	b.SetBorderTopColor(0xAABBCCFF)
+	if got := b.BorderColors()[0]; got != 0xAABBCCFF || b.colorRoleFor("borderTopColor") != "" {
+		t.Fatalf("top border colour = %08x role %q", got, b.colorRoleFor("borderTopColor"))
+	}
+	b.SetBorderBottomColor(0x112233FF)
+	if got := b.BorderColors()[2]; got != 0x112233FF {
+		t.Fatalf("bottom border colour = %08x", got)
+	}
+}

@@ -523,6 +523,30 @@ func (b *NodeBase) SetMargin(v float64) { b.margin.Set(v) }
 // as they are and still win.
 func (b *NodeBase) SetPadding(v float64) { b.padding.Set(v) }
 
+// SetPaddingX sets the left and right padding; a negative value removes the
+// override, so both follow padding again.
+func (b *NodeBase) SetPaddingX(v float64) { b.paddingX.Set(v) }
+
+// SetPaddingY sets the top and bottom padding; a negative value removes the
+// override.
+func (b *NodeBase) SetPaddingY(v float64) { b.paddingY.Set(v) }
+
+// SetMarginTop, SetMarginRight, SetMarginBottom and SetMarginLeft override one
+// side of the margin; a negative value removes the override, so that side
+// follows margin again.
+func (b *NodeBase) SetMarginTop(v float64)    { b.marginTop.Set(v) }
+func (b *NodeBase) SetMarginRight(v float64)  { b.marginRight.Set(v) }
+func (b *NodeBase) SetMarginBottom(v float64) { b.marginBottom.Set(v) }
+func (b *NodeBase) SetMarginLeft(v float64)   { b.marginLeft.Set(v) }
+
+// SetPaddingTop, SetPaddingRight, SetPaddingBottom and SetPaddingLeft override
+// one side; a negative value removes the override, so the side follows its axis
+// and then padding again.
+func (b *NodeBase) SetPaddingTop(v float64)    { b.paddingTop.Set(v) }
+func (b *NodeBase) SetPaddingRight(v float64)  { b.paddingRight.Set(v) }
+func (b *NodeBase) SetPaddingBottom(v float64) { b.paddingBottom.Set(v) }
+func (b *NodeBase) SetPaddingLeft(v float64)   { b.paddingLeft.Set(v) }
+
 // SetFlex changes the node's share of its parent's leftover main-axis space.
 func (b *NodeBase) SetFlex(v float64) { b.flex.Set(v) }
 
@@ -535,6 +559,28 @@ func (b *NodeBase) SetScroll(v bool) { b.scroll.Set(v) }
 
 // SetRadius rounds all four corners.
 func (b *NodeBase) SetRadius(v float64) { b.radius.Set(v) }
+
+// SetRadiusTop, SetRadiusRight, SetRadiusBottom and SetRadiusLeft round both
+// corners on one side; a negative value removes the override.
+func (b *NodeBase) SetRadiusTop(v float64)    { b.radiusTop.Set(v) }
+func (b *NodeBase) SetRadiusRight(v float64)  { b.radiusRight.Set(v) }
+func (b *NodeBase) SetRadiusBottom(v float64) { b.radiusBottom.Set(v) }
+func (b *NodeBase) SetRadiusLeft(v float64)   { b.radiusLeft.Set(v) }
+
+// SetRadiusTopLeft, SetRadiusTopRight, SetRadiusBottomRight and
+// SetRadiusBottomLeft round one corner; a negative value removes the override.
+func (b *NodeBase) SetRadiusTopLeft(v float64)     { b.radiusTopLeft.Set(v) }
+func (b *NodeBase) SetRadiusTopRight(v float64)    { b.radiusTopRight.Set(v) }
+func (b *NodeBase) SetRadiusBottomRight(v float64) { b.radiusBottomRight.Set(v) }
+func (b *NodeBase) SetRadiusBottomLeft(v float64)  { b.radiusBottomLeft.Set(v) }
+
+// SetBorderTopWidth, SetBorderRightWidth, SetBorderBottomWidth and
+// SetBorderLeftWidth draw one side thicker; a negative value removes the
+// override, so the side follows borderWidth again.
+func (b *NodeBase) SetBorderTopWidth(v float64)    { b.borderTopW.Set(v) }
+func (b *NodeBase) SetBorderRightWidth(v float64)  { b.borderRightW.Set(v) }
+func (b *NodeBase) SetBorderBottomWidth(v float64) { b.borderBottomW.Set(v) }
+func (b *NodeBase) SetBorderLeftWidth(v float64)   { b.borderLeftW.Set(v) }
 
 // SetBorderWidth draws an outline around the box; 0 removes it.
 func (b *NodeBase) SetBorderWidth(v float64) { b.borderW.Set(v) }
@@ -805,6 +851,32 @@ func (b *NodeBase) BorderColor() uint32 { return b.borderColor.Get() }
 func (b *NodeBase) SetBorderColor(rgba uint32) {
 	b.clearColorRole("borderColor")
 	b.borderColor.Set(rgba)
+}
+
+// SetBorderTopColor, SetBorderRightColor, SetBorderBottomColor and
+// SetBorderLeftColor paint one side in a solid colour, replacing a role the
+// design set there. Zero falls back to borderColor.
+func (b *NodeBase) SetBorderTopColor(rgba uint32) {
+	b.clearColorRole("borderTopColor")
+	b.borderTopColor.Set(rgba)
+}
+
+// SetBorderRightColor paints the right side; zero falls back to borderColor.
+func (b *NodeBase) SetBorderRightColor(rgba uint32) {
+	b.clearColorRole("borderRightColor")
+	b.borderRightColor.Set(rgba)
+}
+
+// SetBorderBottomColor paints the bottom side; zero falls back to borderColor.
+func (b *NodeBase) SetBorderBottomColor(rgba uint32) {
+	b.clearColorRole("borderBottomColor")
+	b.borderBottomColor.Set(rgba)
+}
+
+// SetBorderLeftColor paints the left side; zero falls back to borderColor.
+func (b *NodeBase) SetBorderLeftColor(rgba uint32) {
+	b.clearColorRole("borderLeftColor")
+	b.borderLeftColor.Set(rgba)
 }
 
 // Radius returns the largest corner radius, for the places that can only use
