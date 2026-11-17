@@ -7,6 +7,9 @@ package mermaid
 import (
 	"context"
 	"fmt"
+	"image"
+	"image/color"
+	"image/draw"
 	"os"
 	"path/filepath"
 	"time"
@@ -66,11 +69,12 @@ func (e *Engine) Close() error {
 // colours replace Pele's palette, so a diagram sits on the same surfaces and
 // lines as the rest of the app.
 //
-// targetW is the logical box width the bitmap is going to be drawn at. The
-// raster scale follows it, at two device pixels per logical pixel, so a small
-// diagram scaled up by the design stays sharp instead of becoming a blurry
-// enlargement of its natural size. Zero keeps the old fixed 2x.
-func (e *Engine) Render(src string, theme *m3.Theme, targetW float64) (*img.Data, float64, float64, error) {
+// targetW and targetH are the logical box the bitmap is going to be drawn in.
+// The raster scale follows the contained size, at two device pixels per logical
+// pixel, so a small diagram scaled up by the design stays sharp instead of
+// becoming a blurry enlargement, and a tall diagram in a short box does not
+// allocate pixels it will never show. Zero keeps the fixed 2x.
+func (e *Engine) Render(src string, theme *m3.Theme, targetW, targetH float64) (*img.Data, float64, float64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), renderTimeout)
 	defer cancel()
 	res, err := e.renderer.Render(ctx, src, raster.Options{MaxWidth: maxWidth})
@@ -79,12 +83,16 @@ func (e *Engine) Render(src string, theme *m3.Theme, targetW float64) (*img.Data
 	}
 	scale := 2.0
 	if targetW > 0 && res.Width > 0 {
-		scale = targetW * 2 / res.Width
+		fit := targetW / res.Width
+		if targetH > 0 && res.Height > 0 && targetH/res.Height < fit {
+			fit = targetH / res.Height
+		}
+		scale = fit * 2
 		if scale < 1 {
 			scale = 1
 		}
-		if scale > 8 {
-			scale = 8
+		if scale > 4 {
+			scale = 4
 		}
 	}
 	im, err := e.raster.Rasterize(res, palette(theme), raster.RasterOptions{
@@ -99,7 +107,22 @@ func (e *Engine) Render(src string, theme *m3.Theme, targetW float64) (*img.Data
 		return nil, 0, 0, fmt.Errorf("mermaid: the diagram has no size")
 	}
 	b := im.Bounds()
-	return &img.Data{W: b.Dx(), H: b.Dy(), Pix: im.Pix}, w, h, nil
+	// The raster is transparent around the drawing, which leaves dark labels on
+	// a dark page and changes the picture with whatever sits behind it. Compose
+	// it onto the scheme's surface so the diagram carries its own background.
+	bg := m3.Light().Colors.Surface
+	if theme != nil {
+		bg = theme.Colors.Surface
+	}
+	out := image.NewRGBA(b)
+	draw.Draw(out, b, &image.Uniform{C: rgb(bg)}, image.Point{}, draw.Src)
+	draw.Draw(out, b, im, b.Min, draw.Over)
+	return &img.Data{W: b.Dx(), H: b.Dy(), Pix: out.Pix}, w, h, nil
+}
+
+// rgb turns an 0xRRGGBBAA role into an image colour.
+func rgb(c uint32) color.RGBA {
+	return color.RGBA{R: uint8(c >> 24), G: uint8(c >> 16), B: uint8(c >> 8), A: uint8(c)}
 }
 
 // palette maps Pele's variables to the current scheme: surfaces and lines match
@@ -109,17 +132,29 @@ func palette(theme *m3.Theme) raster.Theme {
 		return nil
 	}
 	c := theme.Colors
-	return raster.Theme{
+	th := raster.Theme{
 		"pele-bg":          hex(c.Surface),
 		"pele-fg":          hex(c.OnSurface),
 		"pele-muted":       hex(c.OnSurfaceVariant),
 		"pele-line":        hex(c.Outline),
 		"pele-surface":     hex(c.SurfaceContainerHigh),
 		"pele-surface-alt": hex(c.SurfaceContainerHighest),
-		"pele-border":      hex(c.OutlineVariant),
+		"pele-border":      hex(c.Outline),
 		"pele-accent":      hex(c.Primary),
 		"pele-radius":      "4px",
 	}
+	if theme.Dark {
+		// Labels on a coloured shape use the background colour for contrast; in
+		// a dark scheme that is nearly black, so the series have to be light
+		// enough to carry it. The light scheme keeps Pele's own palette, where
+		// those labels are white on a medium series colour.
+		light := []string{"#a8c7fa", "#f7d08a", "#a5d6a7", "#f4a6a6",
+			"#a8d8d4", "#f2e08a", "#d6b3d0", "#cbb3a4"}
+		for i, v := range light {
+			th[fmt.Sprintf("pele-series-%d", i+1)] = v
+		}
+	}
+	return th
 }
 
 // hex formats a theme colour as the #rrggbb the SVG expects.

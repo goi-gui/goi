@@ -52,7 +52,7 @@ func TestEveryDiagramType(t *testing.T) {
 	}
 	defer eng.Close()
 	for name, src := range cases {
-		data, w, h, err := eng.Render(src, light, 0)
+		data, w, h, err := eng.Render(src, light, 0, 0)
 		if err != nil {
 			t.Errorf("%s: %v", name, err)
 			continue
@@ -69,7 +69,7 @@ func TestInvalidSourceIsAnError(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer eng.Close()
-	if _, _, _, err := eng.Render("this is not a diagram", m3.Light(), 0); err == nil {
+	if _, _, _, err := eng.Render("this is not a diagram", m3.Light(), 0, 0); err == nil {
 		t.Fatal("garbage rendered")
 	}
 }

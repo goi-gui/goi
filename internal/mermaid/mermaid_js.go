@@ -21,7 +21,7 @@ func NewEngine() (*Engine, error) {
 }
 
 // Render always fails in the browser build.
-func (*Engine) Render(string, *m3.Theme, float64) (*img.Data, float64, float64, error) {
+func (*Engine) Render(string, *m3.Theme, float64, float64) (*img.Data, float64, float64, error) {
 	return nil, 0, 0, errors.New("mermaid: rendering is not available in the browser build")
 }
 
