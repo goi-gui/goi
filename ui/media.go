@@ -152,6 +152,9 @@ func (a *App) loadMedia(tr *tree.Tree) {
 			continue
 		}
 		a.hasMedia = true
+		if a.lazyDeferred(n) {
+			continue
+		}
 		m, _ := tree.MediaNode(n)
 		m.RenderedSrc = m.Src.Get()
 		a.loadSubtitles(m)
@@ -924,6 +927,9 @@ func (a *App) syncMedia() bool {
 		}
 		a.hasMedia = true
 		src := m.Src.Get()
+		if src != m.RenderedSrc && a.lazyDeferred(n) {
+			return
+		}
 		if src != m.RenderedSrc {
 			if p := a.playerFor(n); p != nil {
 				p.close()
@@ -961,7 +967,7 @@ func (a *App) syncMedia() bool {
 			}
 		}
 		if m.Autoplay.Get() && !m.Playing && !m.Paused && src != "" &&
-			m.LoadErr == nil && !m.Loading {
+			m.LoadErr == nil && !m.Loading && !a.lazyDeferred(n) {
 			a.playMedia(n)
 			changed = true
 		}

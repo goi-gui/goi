@@ -547,6 +547,7 @@ func newNode(name string) Node {
 			Fit:      newProp(nil, "fit", DirtyLayout, "cover"),
 			Paused:   newProp(nil, "paused", DirtyPaint, false),
 			Loop:     newProp(nil, "loop", DirtyPaint, true),
+			Lazy:     newProp(nil, "lazy", DirtyPaint, false),
 		}
 	case "SVG":
 		return &SVG{
@@ -556,6 +557,7 @@ func newNode(name string) Node {
 			Color:    newProp(nil, "color", DirtyPaint, uint32(0)),
 			Paused:   newProp(nil, "paused", DirtyPaint, false),
 			Loop:     newProp(nil, "loop", DirtyPaint, true),
+			Lazy:     newProp(nil, "lazy", DirtyPaint, false),
 		}
 	case "Positioned":
 		return &Positioned{

@@ -412,6 +412,7 @@ var elements = func() []Element {
 			Prop{Name: "fit", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"cover", "contain", "fill"}, Default: "cover"},
 			Prop{Name: "paused", Type: TypeBool, Dirty: DirtyPaint, Default: false},
 			Prop{Name: "loop", Type: TypeBool, Dirty: DirtyPaint, Default: true},
+			Prop{Name: "lazy", Type: TypeBool, Dirty: DirtyPaint, Default: false},
 		)},
 		{Name: "SVG", Children: false, Attrs: withCommon(
 			Prop{Name: "src", Type: TypeString, Dirty: DirtyLayout, Default: ""},
@@ -419,6 +420,7 @@ var elements = func() []Element {
 			Prop{Name: "color", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0)},
 			Prop{Name: "paused", Type: TypeBool, Dirty: DirtyPaint, Default: false},
 			Prop{Name: "loop", Type: TypeBool, Dirty: DirtyPaint, Default: true},
+			Prop{Name: "lazy", Type: TypeBool, Dirty: DirtyPaint, Default: false},
 		)},
 		{Name: "Text", Children: false, Attrs: withCommon(
 			Prop{Name: "text", Type: TypeString, Dirty: DirtyLayout, Default: ""},
@@ -470,6 +472,7 @@ var elements = func() []Element {
 	out = append(out,
 		Element{Name: "Audio", Attrs: withCommon(
 			Prop{Name: "src", Type: TypeString, Dirty: DirtyLayout, Default: ""},
+			Prop{Name: "lazy", Type: TypeBool, Dirty: DirtyPaint, Default: false},
 			Prop{Name: "controls", Type: TypeBool, Dirty: DirtyLayout, Default: true},
 			Prop{Name: "variant", Type: TypeEnum, Dirty: DirtyPaint, Enum: []string{"normal", "wavy"}, Default: "normal"},
 			Prop{Name: "color", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0)},
@@ -493,6 +496,7 @@ var elements = func() []Element {
 		)},
 		Element{Name: "Video", Attrs: withCommon(
 			Prop{Name: "src", Type: TypeString, Dirty: DirtyLayout, Default: ""},
+			Prop{Name: "lazy", Type: TypeBool, Dirty: DirtyPaint, Default: false},
 			Prop{Name: "controls", Type: TypeBool, Dirty: DirtyLayout, Default: true},
 			Prop{Name: "variant", Type: TypeEnum, Dirty: DirtyPaint, Enum: []string{"normal", "wavy"}, Default: "normal"},
 			Prop{Name: "color", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0)},

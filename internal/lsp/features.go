@@ -2637,6 +2637,11 @@ func propDoc(el string, p schema.Prop) string {
 			"angle (`1 1 1 90deg`). It turns the element and its subtree about its own " +
 			"centre; layout ignores it. The renderer is two-dimensional, so only a z-axis " +
 			"turn shows.")
+	case "lazy":
+		b.WriteString("\n\nDefers reading, fetching or probing the source until the element's " +
+			"box is on screen. The box itself is laid out at once, so declare a `width` and " +
+			"`height`; an image or SVG with no size loads immediately because its content is " +
+			"what gives it one. A player that has loaded stays loaded after it scrolls away.")
 	case "paused":
 		b.WriteString("\n\nHolds an animation where it is: a GIF or APNG frame, or an SVG's " +
 			"SMIL clock. A design can start it paused with `paused: true`; from Go, " +

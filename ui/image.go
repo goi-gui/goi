@@ -99,7 +99,9 @@ func (a *App) loadImages(tr *tree.Tree) {
 		}
 		if s, ok := n.(*tree.SVG); ok {
 			a.hasSVG = true
-			a.loadSVG(s)
+			if !a.lazyDeferred(s) {
+				a.loadSVG(s)
+			}
 			continue
 		}
 		im, ok := n.(*tree.Image)
@@ -107,7 +109,9 @@ func (a *App) loadImages(tr *tree.Tree) {
 			continue
 		}
 		a.hasImages = true
-		a.loadImage(im, im.Src.Get())
+		if !a.lazyDeferred(im) {
+			a.loadImage(im, im.Src.Get())
+		}
 	}
 }
 
@@ -170,6 +174,9 @@ func (a *App) syncImages() {
 			return
 		}
 		a.hasImages = true
+		if a.lazyDeferred(im) {
+			return
+		}
 		src := im.Src.Get()
 		if src == im.RenderedSrc {
 			return
@@ -583,6 +590,11 @@ func (a *App) syncSVGs() {
 			return
 		}
 		a.hasSVG = true
+		// Inline source is already in memory; only a file or URL waits for the
+		// viewport.
+		if s.InlineGen == 0 && a.lazyDeferred(s) {
+			return
+		}
 		color := s.Color.Get()
 		if s.InlineGen > 0 {
 			// A document from Go owns the node until another set replaces it.

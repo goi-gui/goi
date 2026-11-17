@@ -380,3 +380,43 @@ func TestMediaBarSeekPress(t *testing.T) {
 	}
 	win.app.closeMedia()
 }
+
+// TestLazyMediaWaitsForTheViewport: a lazy player in a page below the fold does
+// not probe or open anything until its box scrolls in. Both the audio and the
+// video share the rule, and their declared boxes exist before the probe.
+func TestLazyMediaWaitsForTheViewport(t *testing.T) {
+	clip := mediaClip(t)
+	a, win, _ := inputFixture(t, `Window {
+		Column {
+			id:     page
+			scroll: true
+			Rectangle { width: 100 height: 500 }
+			Audio { id: sound lazy: true width: 100 height: 48 }
+			Video { id: film lazy: true width: 100 height: 60 }
+		}
+	}`, 300, 100)
+	defer a.closeMedia()
+	sound := MustByID[*Audio](win, "sound")
+	film := MustByID[*Video](win, "film")
+	sound.Src.Set(clip)
+	film.Src.Set(clip)
+	a.loadMedia(win.tree)
+
+	for _, tc := range []struct {
+		name string
+		m    *tree.Media
+	}{{"audio", &sound.Media}, {"video", &film.Media}} {
+		if tc.m.RenderedSrc != "" || tc.m.Loading || tc.m.Duration != 0 {
+			t.Fatalf("%s started before the viewport: src=%q loading=%v duration=%v",
+				tc.name, tc.m.RenderedSrc, tc.m.Loading, tc.m.Duration)
+		}
+	}
+
+	page := MustByID[*Column](win, "page")
+	page.Base().SetScrollOffset(10_000)
+	layout.New(nil).Layout(win.tree.Root, 300, 100)
+	a.syncMedia()
+	if sound.RenderedSrc != clip || film.RenderedSrc != clip {
+		t.Fatalf("visible players did not start: audio=%q video=%q", sound.RenderedSrc, film.RenderedSrc)
+	}
+}

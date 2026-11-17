@@ -30,6 +30,9 @@ type Media struct {
 	NodeBase
 
 	Src Prop[string]
+	// Lazy defers probing the source until the element is on screen. The box is
+	// laid out at once from its declared size or the kind's own metrics.
+	Lazy Prop[bool]
 	// Controls draws the play/pause bar over the element. Off means the design
 	// draws its own, which is what a custom player does.
 	Controls Prop[bool]
@@ -150,6 +153,7 @@ var normalWavyValues = []string{"normal", "wavy"}
 func mediaProps(m *Media) []NamedProp {
 	return append(commonProps(&m.NodeBase, 21),
 		StringProp(&m.NodeBase, "src", &m.Src),
+		BoolProp(&m.NodeBase, "lazy", DirtyPaint, &m.Lazy),
 		BoolProp(&m.NodeBase, "controls", DirtyLayout, &m.Controls),
 		BoolProp(&m.NodeBase, "autoplay", DirtyPaint, &m.Autoplay),
 		BoolProp(&m.NodeBase, "loop", DirtyPaint, &m.Loop),
@@ -252,6 +256,7 @@ func newMedia() Media {
 		SurfaceColor: newProp(nil, "surfaceColor", DirtyPaint, uint32(0)),
 		StartAt:      newProp(nil, "startAt", DirtyPaint, 0.0),
 		Buffer:       newProp(nil, "buffer", DirtyPaint, DefaultBufferSeconds),
+		Lazy:         newProp(nil, "lazy", DirtyPaint, false),
 		// The bar starts visible and hides on its own after the pointer rests.
 		ControlsShown: true,
 	}

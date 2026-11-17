@@ -2462,3 +2462,16 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   filled keeps the 34dp band under the label. The variant is narrowed to
   `filled`/`outlined` in componentdef, so completion and the checker stop
   offering words the painter would treat as outlined by accident.
+
+- **A lazy image, SVG or player loads when its box enters the viewport.** The
+  new `lazy` property defers the work the first frame would otherwise do: a
+  local image is not read, a remote one is not fetched, an SVG is not parsed and
+  a player is not probed. The box itself is laid out immediately from the
+  declared size, or the kind's own metrics for a player, so scrolling does not
+  jump when the content arrives. Visibility is the node's window-space box
+  intersected with every clipping ancestor, using the previous layout pass,
+  which is why the check runs in the same pre-layout syncs that already load a
+  changed src. An image or SVG with no declared size is the one exception: its
+  content is what gives it a size, so waiting would leave a zero-sized hole;
+  those load at once. Loaded content is not unloaded when it scrolls away, so a
+  page that scrolls back and forth decodes once.

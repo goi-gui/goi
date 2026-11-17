@@ -479,6 +479,9 @@ type Image struct {
 	// Loop keeps an animation running after its first pass; false plays it
 	// once and holds the last frame. True by default.
 	Loop Prop[bool]
+	// Lazy defers reading or decoding src until the element is on screen. The
+	// box is laid out at once, so a design with a declared size reserves it.
+	Lazy Prop[bool]
 }
 
 // Kind implements Node.
@@ -511,6 +514,7 @@ func (i *Image) namedProps() []NamedProp {
 		EnumProp(&i.NodeBase, "fit", DirtyLayout, &i.Fit, FitValues),
 		BoolProp(&i.NodeBase, "paused", DirtyPaint, &i.Paused),
 		BoolProp(&i.NodeBase, "loop", DirtyPaint, &i.Loop),
+		BoolProp(&i.NodeBase, "lazy", DirtyPaint, &i.Lazy),
 	)
 }
 
@@ -595,6 +599,8 @@ type SVG struct {
 	// Loop keeps a SMIL animation running after its first pass; false plays it
 	// once and holds the last frame. True by default.
 	Loop Prop[bool]
+	// Lazy defers reading or rasterizing src until the element is on screen.
+	Lazy Prop[bool]
 }
 
 // Kind implements Node.
@@ -649,6 +655,7 @@ func (s *SVG) namedProps() []NamedProp {
 		commonProps(&s.NodeBase, 5),
 		BoolProp(&s.NodeBase, "paused", DirtyPaint, &s.Paused),
 		BoolProp(&s.NodeBase, "loop", DirtyPaint, &s.Loop),
+		BoolProp(&s.NodeBase, "lazy", DirtyPaint, &s.Lazy),
 		StringProp(&s.NodeBase, "src", &s.Src),
 		EnumProp(&s.NodeBase, "fit", DirtyLayout, &s.Fit, FitValues),
 		ColorProp(&s.NodeBase, "color", DirtyPaint, &s.Color),
