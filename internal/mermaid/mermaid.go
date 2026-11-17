@@ -65,15 +65,30 @@ func (e *Engine) Close() error {
 // Render turns Mermaid source into a bitmap and its logical size. The theme
 // colours replace Pele's palette, so a diagram sits on the same surfaces and
 // lines as the rest of the app.
-func (e *Engine) Render(src string, theme *m3.Theme) (*img.Data, float64, float64, error) {
+//
+// targetW is the logical box width the bitmap is going to be drawn at. The
+// raster scale follows it, at two device pixels per logical pixel, so a small
+// diagram scaled up by the design stays sharp instead of becoming a blurry
+// enlargement of its natural size. Zero keeps the old fixed 2x.
+func (e *Engine) Render(src string, theme *m3.Theme, targetW float64) (*img.Data, float64, float64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), renderTimeout)
 	defer cancel()
 	res, err := e.renderer.Render(ctx, src, raster.Options{MaxWidth: maxWidth})
 	if err != nil {
 		return nil, 0, 0, err
 	}
+	scale := 2.0
+	if targetW > 0 && res.Width > 0 {
+		scale = targetW * 2 / res.Width
+		if scale < 1 {
+			scale = 1
+		}
+		if scale > 8 {
+			scale = 8
+		}
+	}
 	im, err := e.raster.Rasterize(res, palette(theme), raster.RasterOptions{
-		Scale:   2,
+		Scale:   scale,
 		Timeout: renderTimeout,
 	})
 	if err != nil {

@@ -1,6 +1,9 @@
 package ui
 
 import (
+	"fmt"
+	"math"
+
 	"github.com/goi-gui/goi/internal/img"
 	"github.com/goi-gui/goi/internal/m3"
 	"github.com/goi-gui/goi/internal/mermaid"
@@ -38,7 +41,12 @@ func (a *App) syncMermaid() bool {
 			return
 		}
 		src := m.Source.Get()
-		key := themeKey + "\x00" + src
+		// The key carries a coarse box width: a resize re-renders at a scale
+		// that keeps the diagram sharp, while a few pixels of layout jitter do
+		// not start a new render.
+		boxW := absoluteRect(m).W
+		widthKey := int(math.Round(boxW/64)) * 64
+		key := themeKey + "\x00" + fmt.Sprint(widthKey) + "\x00" + src
 		if src == "" {
 			if m.RenderedKey != key || m.Data != nil || m.Loading {
 				m.RenderedKey, m.PendingKey = key, ""
@@ -66,7 +74,7 @@ func (a *App) syncMermaid() bool {
 		}
 		if !a.mermaidPending[key] {
 			a.mermaidPending[key] = true
-			a.renderMermaidAsync(key, src, theme)
+			a.renderMermaidAsync(key, src, theme, boxW)
 		}
 		m.Base().MarkDirty(tree.DirtyPaint)
 		changed = true
@@ -85,7 +93,7 @@ func applyMermaid(m *tree.Mermaid, key string, b mermaidBitmap) {
 // engine and its wasm rasterizer are serialised by mermaidMu, because the
 // rasterizer is not safe for concurrent use. The first call also compiles resvg,
 // which is what used to freeze a window when the first diagram appeared.
-func (a *App) renderMermaidAsync(key, src string, theme *m3.Theme) {
+func (a *App) renderMermaidAsync(key, src string, theme *m3.Theme, targetW float64) {
 	go func() {
 		a.mermaidMu.Lock()
 		defer a.mermaidMu.Unlock()
@@ -96,7 +104,7 @@ func (a *App) renderMermaidAsync(key, src string, theme *m3.Theme) {
 		var data *img.Data
 		var w, h float64
 		if err == nil {
-			data, w, h, err = engine.Render(src, theme)
+			data, w, h, err = engine.Render(src, theme, targetW)
 		}
 		a.Post(func() { a.finishMermaid(key, data, w, h, err) })
 	}()

@@ -33,7 +33,7 @@ func (a *App) nodeOnScreen(n tree.Node) bool {
 	}
 	r := absoluteRect(n)
 	if r.W <= 0 || r.H <= 0 {
-		return true
+		return false // not placed: hidden or collapsed, not on screen
 	}
 	clip := tree.Rect{W: vw, H: vh}
 	var chain []tree.Node
