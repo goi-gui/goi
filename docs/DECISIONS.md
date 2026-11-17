@@ -2439,3 +2439,15 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   The default lives in `kindDefaults`, not in the painter, so completion and the
   checker name `secondary` before a design writes it, and no existing `.goi`
   file changes shape.
+
+- **A text field's label floats on content, placeholder or focus, and the
+  outlined line is cut behind it.** The label used to float only for a value or
+  focus, so a field with a placeholder kept its label in the value area, on top
+  of the placeholder. The rule is now one predicate on `TextField`, shared by
+  paint and the animator: text, IME composition, placeholder or focus lifts it.
+  An outlined field paints its border as a fill plus a ring in three clipped
+  bands when the label is on the line, so the top edge stops at each side of the
+  label instead of running through it; the notch opens as the label's box
+  reaches the border, not before. The travel itself is a per-field eased value
+  advanced by the interactor, the way the Switch handle is, and the first frame
+  adopts the design's state so loading a page does not slide every label.

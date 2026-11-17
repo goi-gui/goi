@@ -453,6 +453,11 @@ type TextField struct {
 	// Obscure hides the value the way a password field does: one dot per rune,
 	// in the value, the selection, the caret and the IME composition alike.
 	Obscure Prop[bool]
+	// LabelFloat is the label's travel: 0 sits inside the field, 1 above it.
+	// LabelPosed is set by the first frame, so loading a page starts at rest
+	// instead of sliding every label.
+	LabelFloat float64
+	LabelPosed bool
 }
 
 // Kind implements Node.
@@ -468,6 +473,12 @@ func (c *TextField) namedProps() []NamedProp {
 
 // slotNodes exposes the field's icon-square bodies to the builder.
 func (c *TextField) slotNodes() (*Node, *Node) { return &c.LeadingNode, &c.TrailingNode }
+
+// LabelFloats reports whether the label belongs above the field: a value, an
+// IME composition, a placeholder or focus puts it there.
+func (c *TextField) LabelFloats() bool {
+	return c.Text.Get() != "" || c.Preedit != "" || c.Focused || c.Placeholder.Get() != ""
+}
 
 // SetObscureText hides or shows the value: a hidden field paints one dot per
 // character and keeps the caret on the character it covers.

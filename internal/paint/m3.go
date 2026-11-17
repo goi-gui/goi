@@ -1255,6 +1255,49 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	}
 
 	radii := componentRadii(c.Base(), m3.ShapeExtraSmall)
+	// Label geometry: its travel also decides the notch in an outlined border.
+	lead, trail := c.FieldGutters()
+	lx := r.X + 16
+	textW := r.W - 32
+	if lead {
+		lx += 40 // make room for the leading icon or slot
+		textW -= 40
+	}
+	if trail {
+		textW -= 40
+	}
+	labelStyle := l.style("bodyLarge")
+	smallStyle := l.style("bodySmall")
+	tf, _ := c.Node().(*tree.TextField)
+	label := c.Label.Get()
+	placeholder := c.Placeholder.Get()
+	float := 0.0
+	if tf != nil {
+		if tf.LabelPosed {
+			float = clamp01(tf.LabelFloat)
+		} else if tf.LabelFloats() {
+			float = 1 // a still frame shows the resting state, not frame zero
+		}
+	}
+	floatStyle := labelStyle
+	floatStyle.Size += (smallStyle.Size - labelStyle.Size) * float
+	labelCenter := r.Y + r.H/2
+	floatCenter := r.Y + 16
+	if !filled {
+		floatCenter = r.Y // the floated label sits on the outline
+	}
+	labelCenter += (floatCenter - labelCenter) * float
+	// An outlined border is cut behind a floating label, so the line does not
+	// run through the glyphs.
+	gapStart, gapEnd := 0.0, 0.0
+	// The notch opens as the label's box reaches the line, so the border is not
+	// cut early while the label is still inside.
+	if !filled && label != "" && labelCenter-10 <= r.Y+bw {
+		gapStart = lx - 4
+		gapEnd = gapStart + textWidth(l, label, floatStyle) + 8
+		gapStart = maxf(gapStart, r.X)
+		gapEnd = minf(gapEnd, r.Right())
+	}
 	if !filled {
 		// An outlined field is transparent until the design gives it a fill, so
 		// its own container colour is no fallback.
@@ -1296,31 +1339,32 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		if c.Focused && !c.Base().BorderSet() {
 			border, bw = col.Primary, 2
 		}
-		l.fillShape(r, fill, gradient, radii, border, bw, clip)
+		if gapEnd > gapStart {
+			// Fill without the border, then the ring in bands: the sides and
+			// bottom as one, and the top edge as two pieces around the notch.
+			l.fillShape(r, fill, gradient, radii, 0, 0, clip)
+			band := maxf(maxf(radii[0], radii[1]), maxf(radii[2], radii[3]))
+			band = maxf(band, bw)
+			l.fillShape(r, 0, nil, radii, border, bw, intersect(clip,
+				tree.Rect{X: r.X, Y: r.Y + band, W: r.W, H: r.H - band}))
+			l.fillShape(r, 0, nil, radii, border, bw, intersect(clip,
+				tree.Rect{X: r.X, Y: r.Y, W: gapStart - r.X, H: band}))
+			l.fillShape(r, 0, nil, radii, border, bw, intersect(clip,
+				tree.Rect{X: gapEnd, Y: r.Y, W: r.Right() - gapEnd, H: band}))
+		} else {
+			l.fillShape(r, fill, gradient, radii, border, bw, clip)
+		}
 	}
 	if v := componentColor(c); v != 0 {
 		fg = v
 		hint = withAlpha(v, 0.7)
 	}
 
-	// Floating label: sits above the value once the field has content or focus.
 	// A hidden field paints dots in place of the value, and the caret and the
 	// selection follow them, so every width below is measured on the dots.
 	obscure := c.Obscured()
 	value := tree.FieldText(c.Text.Get(), obscure)
 	hasValue := c.Text.Get() != "" || c.Preedit != "" || c.Focused
-	lead, trail := c.FieldGutters()
-	lx := r.X + 16
-	textW := r.W - 32
-	if lead {
-		lx += 40 // make room for the leading icon or slot
-		textW -= 40
-	}
-	if trail {
-		textW -= 40
-	}
-	labelStyle := l.style("bodyLarge")
-	smallStyle := l.style("bodySmall")
 
 	// The value scrolls instead of running past the field edge: shift it left
 	// just enough for the caret to stay visible, and keep every value glyph
@@ -1350,9 +1394,6 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	}
 
 	if hasValue {
-		// Label shrinks to the top 16dp band, value occupies the rest.
-		l.textIn(c.Label.Get(), smallStyle, hint,
-			tree.Rect{X: lx, Y: r.Y + 8, W: textW, H: 16}, AlignStart, clip)
 		l.textIn(value, labelStyle, fg,
 			tree.Rect{X: lx - shift, Y: r.Y + 22, W: textW + shift, H: 26}, AlignStart, textClip)
 		// IME composition: inserted at the caret, underlined so it reads as
@@ -1362,12 +1403,13 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 			px := lx - shift + textWidth(l, value[:n], labelStyle)
 			l.preedit(tree.FieldText(c.Preedit, obscure), px, r.Y+22, labelStyle, fg, r.Y+44, textClip)
 		}
-	} else {
-		label := c.Label.Get()
-		if label == "" {
-			label = c.Placeholder.Get()
-		}
-		l.textIn(label, labelStyle, hint, tree.Rect{X: lx, Y: r.Y, W: textW, H: r.H}, AlignStart, clip)
+	} else if placeholder != "" {
+		l.textIn(placeholder, labelStyle, hint,
+			tree.Rect{X: lx, Y: r.Y + 22, W: textW, H: 26}, AlignStart, textClip)
+	}
+	if label != "" {
+		l.textIn(label, floatStyle, hint,
+			tree.Rect{X: lx, Y: labelCenter - 10, W: textW, H: 20}, AlignStart, clip)
 	}
 
 	if c.Icon.Get() != "" {
