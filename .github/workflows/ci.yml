@@ -44,6 +44,9 @@ jobs:
       - name: Build
         run: CGO_ENABLED=0 go build -tags nofakecgo ./...
 
+      - name: Build without Mermaid
+        run: CGO_ENABLED=0 go build -tags "nofakecgo nomermaid" ./...
+
       - name: Vet
         run: CGO_ENABLED=0 go vet -tags nofakecgo ./...
 

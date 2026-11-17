@@ -1,3 +1,5 @@
+//go:build !js && !nomermaid
+
 package ui
 
 import (
@@ -100,5 +102,59 @@ func TestMermaidMultilineData(t *testing.T) {
 	}
 	if !strings.Contains(m.Source.Get(), "\n\n") {
 		t.Fatal("the blank line did not survive")
+	}
+}
+
+// TestMermaidReleasesAnOffscreenBitmap: scrolling a rendered diagram away keeps
+// its intrinsic size for layout but drops the pixels; scrolling back uses the
+// cache instead of starting from a blank box.
+func TestMermaidReleasesAnOffscreenBitmap(t *testing.T) {
+	a, win := reloadApp(t, `Window {
+		Column {
+			id:     page
+			scroll: true
+			Mermaid {
+				id:     chart
+				width:  200
+				height: 150
+				data:   "flowchart LR\n A --> B"
+			}
+			Rectangle { width: 100 height: 900 }
+		}
+	}`)
+	defer a.closeMermaid()
+	win.tree.SetViewport(300, 200)
+	layout.New(textMeasurer{}).Layout(win.tree.Root, 300, 200)
+	m := MustByID[*Mermaid](win, "chart")
+	a.syncMermaid()
+	deadline := time.Now().Add(60 * time.Second)
+	for m.Data == nil && m.LoadErr == nil && time.Now().Before(deadline) {
+		a.drainPosted()
+		time.Sleep(5 * time.Millisecond)
+	}
+	if m.Data == nil {
+		t.Fatalf("first render failed: %v", m.LoadErr)
+	}
+	first := m.Data
+	w, h := m.IntrinsicW, m.IntrinsicH
+
+	page := MustByID[*Column](win, "page")
+	page.Base().SetScrollOffset(10_000)
+	layout.New(textMeasurer{}).Layout(win.tree.Root, 300, 200)
+	a.syncMermaid()
+	if m.Data != nil {
+		t.Fatal("an off-screen diagram kept its bitmap")
+	}
+	if m.IntrinsicW != w || m.IntrinsicH != h {
+		t.Fatalf("size changed on unload: %vx%v -> %vx%v", w, h, m.IntrinsicW, m.IntrinsicH)
+	}
+
+	page.Base().SetScrollOffset(0)
+	layout.New(textMeasurer{}).Layout(win.tree.Root, 300, 200)
+	if !a.syncMermaid() || m.Data == nil {
+		t.Fatal("the cached diagram did not come back")
+	}
+	if m.Data != first {
+		t.Fatal("the cached bitmap was not reused")
 	}
 }

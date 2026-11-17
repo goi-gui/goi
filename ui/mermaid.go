@@ -37,7 +37,19 @@ func (a *App) syncMermaid() bool {
 	changed := false
 	a.win.tree.Walk(func(n tree.Node) {
 		m, ok := n.(*tree.Mermaid)
-		if !ok || !a.nodeOnScreen(n) {
+		if !ok {
+			return
+		}
+		if !a.nodeOnScreen(n) {
+			// The bitmap is the large part. Keep the intrinsic size so the page
+			// does not jump, but let the pixels go; scrolling back takes them
+			// from the cache or renders again.
+			if m.Data != nil {
+				m.Data = nil
+				m.RenderedKey = ""
+				m.Base().MarkDirty(tree.DirtyPaint)
+				changed = true
+			}
 			return
 		}
 		src := m.Source.Get()

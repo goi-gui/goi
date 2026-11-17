@@ -1,3 +1,5 @@
+//go:build !js && !nomermaid
+
 package mermaid
 
 import (
