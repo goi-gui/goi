@@ -1376,6 +1376,12 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	}
 	shift := c.TextScroll
 	textClip := intersect(clip, tree.Rect{X: lx, Y: r.Y, W: textW, H: r.H})
+	// A filled field keeps its value under the label band. An outlined label
+	// lives on the border instead, so its value takes the middle of the box.
+	valueTop, valueH := r.Y+22.0, 26.0
+	if !filled {
+		valueTop = r.Y + maxf((r.H-valueH)/2, 0)
+	}
 
 	// Selection sits under the value, in the same box as the caret.
 	if c.Focused {
@@ -1386,7 +1392,7 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 			x1 := lx - shift + textWidth(l, value[:b], labelStyle)
 			l.Ops = append(l.Ops, Op{
 				Kind: Fill, Shape: RoundedRect,
-				Rect:   [4]float32{float32(x0), float32(r.Y + 26), float32(x1 - x0), 20},
+				Rect:   [4]float32{float32(x0), float32(valueTop + 4), float32(x1 - x0), 20},
 				Radius: [4]float32{2, 2, 2, 2},
 				Color:  withAlpha(col.Primary, m3.SelectionOpacity),
 				Clip:   clipArr(textClip),
@@ -1396,17 +1402,17 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 
 	if hasValue {
 		l.textIn(value, labelStyle, fg,
-			tree.Rect{X: lx - shift, Y: r.Y + 22, W: textW + shift, H: 26}, AlignStart, textClip)
+			tree.Rect{X: lx - shift, Y: valueTop, W: textW + shift, H: valueH}, AlignStart, textClip)
 		// IME composition: inserted at the caret, underlined so it reads as
 		// provisional. The caret then sits inside it, not after it.
 		if c.Preedit != "" {
 			n := tree.FieldIndex(c.Text.Get(), minInt(c.Caret, len(c.Text.Get())), obscure)
 			px := lx - shift + textWidth(l, value[:n], labelStyle)
-			l.preedit(tree.FieldText(c.Preedit, obscure), px, r.Y+22, labelStyle, fg, r.Y+44, textClip)
+			l.preedit(tree.FieldText(c.Preedit, obscure), px, valueTop, labelStyle, fg, valueTop+22, textClip)
 		}
 	} else if placeholder != "" {
 		l.textIn(placeholder, labelStyle, hint,
-			tree.Rect{X: lx, Y: r.Y + 22, W: textW, H: 26}, AlignStart, textClip)
+			tree.Rect{X: lx, Y: valueTop, W: textW, H: valueH}, AlignStart, textClip)
 	}
 	if label != "" {
 		l.textIn(label, floatStyle, hint,
@@ -1423,7 +1429,7 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	// Caret.
 	if c.Focused {
 		caretX := lx - shift + fieldCaretX(l, c, labelStyle)
-		caretTop := r.Y + 26
+		caretTop := valueTop + 4
 		l.Ops = append(l.Ops, Op{
 			Kind: Fill, Shape: RoundedRect,
 			Rect:  [4]float32{float32(caretX), float32(caretTop), 2, 20},

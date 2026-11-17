@@ -161,3 +161,32 @@ func TestPlaceholderShowsUnderAFloatedLabel(t *testing.T) {
 		t.Fatalf("placeholder baseline = %v, want it in the value area", hint.TextY)
 	}
 }
+
+// TestTextFieldValueIsVerticallyPlaced: an outlined label eats no room inside
+// the box, so its value and placeholder sit on the field's centre line; a
+// filled field keeps them under the label band.
+func TestTextFieldValueIsVerticallyPlaced(t *testing.T) {
+	for _, variant := range []string{"filled", "outlined"} {
+		for _, tc := range []struct{ name, body, text string }{
+			{"value", `text: "Ada"`, "Ada"},
+			{"placeholder", `placeholder: "you@example.com"`, "you@example.com"},
+		} {
+			t.Run(variant+"/"+tc.name, func(t *testing.T) {
+				src := `Window { Column { TextField { id: f variant: ` + variant + ` label: "Name" ` + tc.body + ` width: 260 } } }`
+				l, _, box := textFieldPaint(t, src, nil)
+				op := labelOp(l, tc.text)
+				if op == nil {
+					t.Fatalf("no %q", tc.text)
+				}
+				centre := float64(op.TextY) - float64(op.FontSize)*0.342
+				want := box.Y + box.H/2
+				if variant == "filled" {
+					want = box.Y + 35 // the 22..48 value band
+				}
+				if math.Abs(centre-want) > 1 {
+					t.Fatalf("%s centre = %v, want %v", tc.text, centre, want)
+				}
+			})
+		}
+	}
+}
