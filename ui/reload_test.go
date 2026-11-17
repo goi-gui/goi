@@ -281,6 +281,7 @@ func TestReloadKeepsScrollPosition(t *testing.T) {
 func TestReloadKeepsScrollWithoutAnID(t *testing.T) {
 	a, win, _ := inputFixture(t, `Window {
 		Column {
+			scroll:  false
 			padding: 4
 
 			Column {
@@ -300,6 +301,7 @@ func TestReloadKeepsScrollWithoutAnID(t *testing.T) {
 
 	if err := applyReloadSource(t, a, `Window {
 		Column {
+			scroll:  false
 			padding: 8
 
 			Column {

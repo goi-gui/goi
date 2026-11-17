@@ -29,16 +29,16 @@ const (
 // sideways.
 func (b *NodeBase) ScrollAxis() Axis {
 	switch b.Node().Kind() {
-	case "Carousel":
-		return AxisX
 	case "List", "Menu", "NavigationDrawer", "Dialog", "DatePicker":
+		// These scroll whenever their content overflows; they have no `scroll`
+		// switch to turn it off.
 		return AxisY
 	}
 	if !b.scroll.Get() {
 		return AxisNone
 	}
 	switch b.Node().Kind() {
-	case "Row", "TitleBar":
+	case "Row", "TitleBar", "Carousel":
 		return AxisX
 	case "Flex":
 		if b.Node().(*Flex).Direction.Get() != "column" {
@@ -64,7 +64,14 @@ func (b *NodeBase) scrollsOn(axis Axis) bool {
 // shadow or a focus ring is not cut at the edge of the row it sits in.
 func (b *NodeBase) ClipsChildren() bool {
 	if b.ScrollAxis() != AxisNone {
-		return true
+		// A scrolling box only cuts what actually overflows it. A column that
+		// happens to be a scroll container now clips nothing until its content
+		// is taller than the frame, so a child's shadow or focus ring at the
+		// edge is not cut for no reason.
+		if sx, sy := b.ScrollShift(); sx != 0 || sy != 0 {
+			return true
+		}
+		return b.ScrollMaxFor(AxisX) > 0 || b.ScrollMaxFor(AxisY) > 0
 	}
 	switch b.Node().Kind() {
 	case "Column", "Row", "Flex", "TitleBar", "Positioned", "Wrap", "Grid", "Toolbar",

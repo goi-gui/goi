@@ -573,6 +573,17 @@ var elements = func() []Element {
 		// than handed over from Go.
 		out = append(out, Element{Name: k.Name, Children: k.Container || componentdef.Chart(k.Name), Attrs: withCommon(attrs...)})
 	}
+	// These containers scroll as soon as their content overflows. The property
+	// stays writable, so a design that wants the old overflow can say
+	// `scroll: false`.
+	for i := range out {
+		switch out[i].Name {
+		case "Column", "Row", "Flex", "Carousel", "NavigationRail":
+			if p := out[i].Prop("scroll"); p != nil {
+				p.Default = true
+			}
+		}
+	}
 	// Every element is a hit area; only components have the value-carrying
 	// events. The list stays in one place so the validator, the builder and the
 	// language server cannot drift apart.

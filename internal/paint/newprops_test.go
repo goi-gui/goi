@@ -524,6 +524,33 @@ func TestTextPaddingShiftsTheGlyphs(t *testing.T) {
 	t.Fatalf("no glyph:\n%s", l.Dump())
 }
 
+// TestColumnClipsOnlyWhenItOverflows: a column is a scroll container by
+// default, but it only cuts its children once they are taller than the frame;
+// the shadow of a button in a fitting column stays outside the box.
+func TestColumnClipsOnlyWhenItOverflows(t *testing.T) {
+	clipOf := func(src string) [4]float32 {
+		tr, diag := tree.BuildSource([]byte(src), nil)
+		if !diag.Empty() {
+			t.Fatalf("%v", diag)
+		}
+		layout.New(nil).Layout(tr.Root, 300, 200)
+		l := &List{}
+		l.Build(tr, 300, 200)
+		for _, op := range l.Ops {
+			if op.Kind == Fill && op.Rect[3] == 600 {
+				return op.Clip
+			}
+		}
+		return [4]float32{}
+	}
+	if got := clipOf(`Window { Column { width: 100 height: 100 Rectangle { width: 100 height: 600 background: #ff0000 } } }`); got != [4]float32{0, 0, 100, 100} {
+		t.Fatalf("overflowing column clip = %v, want its frame", got)
+	}
+	if got := clipOf(`Window { Column { scroll: false width: 100 height: 100 Rectangle { width: 100 height: 600 background: #ff0000 } } }`); got != [4]float32{0, 0, 300, 200} {
+		t.Fatalf("plain column clip = %v, want the window", got)
+	}
+}
+
 // TestDisabledDimsCardMenuAndTab: a disabled Card, FAB menu and Tab look
 // disabled, not only refuse the press.
 func TestDisabledDimsCardMenuAndTab(t *testing.T) {

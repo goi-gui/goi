@@ -187,6 +187,7 @@ func TestSnapProximityLeavesAFarStopAlone(t *testing.T) {
 func TestSnapIgnoresANonScrollingNode(t *testing.T) {
 	tr := snapTree(t, `Window { Column {
 		id: page
+		scroll: false
 		scrollSnapType: mandatory
 		width: 200
 		height: 300

@@ -417,3 +417,45 @@ func TestBreadcrumbKeepsItsGapDefault(t *testing.T) {
 		t.Fatalf("gap: 8 gave %v", got)
 	}
 }
+
+// TestScrollDefaultsByKind: a page column, a row, a flex container, a carousel
+// and a navigation rail scroll as soon as their content overflows. The property
+// is still writable, so `scroll: false` restores plain overflow.
+func TestScrollDefaultsByKind(t *testing.T) {
+	axes := map[string]Axis{
+		"Column":         AxisY,
+		"Row":            AxisX,
+		"Flex":           AxisX,
+		"Carousel":       AxisX,
+		"NavigationRail": AxisY,
+	}
+	for kind, want := range axes {
+		src := `Window { ` + kind + ` { Rectangle { width: 10 height: 10 } } }`
+		tr, diag := BuildSource([]byte(src), nil)
+		if !diag.Empty() {
+			t.Fatalf("%s: %v", kind, diag)
+		}
+		n := tr.Root.Children()[0].Base()
+		if got := n.ScrollAxis(); got != want {
+			t.Errorf("%s default axis = %v, want %v", kind, got, want)
+		}
+
+		off := `Window { ` + kind + ` { scroll: false Rectangle { width: 10 height: 10 } } }`
+		tr, diag = BuildSource([]byte(off), nil)
+		if !diag.Empty() {
+			t.Fatalf("%s: %v", kind, diag)
+		}
+		if got := tr.Root.Children()[0].Base().ScrollAxis(); got != AxisNone {
+			t.Errorf("%s scroll: false = %v, want none", kind, got)
+		}
+	}
+
+	// An element outside the set keeps its own default.
+	tr, diag := BuildSource([]byte(`Window { Stack { Rectangle { width: 10 height: 10 } } }`), nil)
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	if got := tr.Root.Children()[0].Base().ScrollAxis(); got != AxisNone {
+		t.Errorf("Stack default axis = %v, want none", got)
+	}
+}
