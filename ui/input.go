@@ -410,6 +410,17 @@ func pressTarget(hit tree.Node) tree.Node {
 	return cell
 }
 
+// rippleHost is the nearest node that asked for press feedback, so a press on
+// one of its children starts the ripple on the surface that draws it.
+func rippleHost(n tree.Node) tree.Node {
+	for ; n != nil; n = n.Base().Parent() {
+		if b := n.Base(); b.RippleSet() && b.WantsRipple() {
+			return n
+		}
+	}
+	return nil
+}
+
 // dragRegionAt reports whether n or an ancestor moves the window on a press.
 func dragRegionAt(n tree.Node) bool {
 	for ; n != nil; n = n.Base().Parent() {
@@ -917,6 +928,14 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 	if i.pressed == nil {
 		if g, gn := gestureAt(hit); g != nil && g.Base().Click.Len() > 0 {
 			i.pressed = gn
+		}
+	}
+	// A press on a child of a card-like surface belongs to the surface when the
+	// child itself has nothing to activate: `ripple: true` on a Row should
+	// answer a press on its image or label, not only on its empty space.
+	if !i.clickable(hit, x, y) && selectableAt(hit) == nil {
+		if host := rippleHost(hit); host != nil {
+			hit = host
 		}
 	}
 	if i.clickable(hit, x, y) {

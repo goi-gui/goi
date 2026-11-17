@@ -1745,3 +1745,42 @@ func TestSliderHoverPicksTheNearerHandle(t *testing.T) {
 	}
 	in.MouseUp(box.X+box.W*0.55, y, 0)
 }
+
+// TestRippleFromAChildBelongsToTheSurface: `ripple: true` on a row answers a
+// press on its picture or label, not only on its bare background, while a
+// clickable child keeps its own feedback.
+func TestRippleFromAChildBelongsToTheSurface(t *testing.T) {
+	const src = `Window {
+		Column {
+			Row {
+				id:     cart
+				ripple: true
+				width:  300
+				height: 80
+				Rectangle { id: picture width: 40 height: 40 background: #ff0000 }
+				Text { id: caption text: "Cart" }
+				IconButton { id: plus icon: add }
+			}
+		}
+	}`
+	_, win, in := inputFixture(t, src, 400, 300)
+	cart := MustByID[*Row](win, "cart")
+	picture := absoluteRect(MustByID[*Rectangle](win, "picture"))
+	in.MouseDown(picture.X+5, picture.Y+5, 0, false)
+	if !cart.Base().RippleOn || cart.Base().Ripple <= 0 {
+		t.Fatal("a press on the row's picture did not ripple the row")
+	}
+	in.MouseUp(picture.X+5, picture.Y+5, 0)
+
+	// A real control inside the same surface keeps its own ripple.
+	cart.Base().RippleOn = false
+	plus := MustByID[*IconButton](win, "plus")
+	box := absoluteRect(plus)
+	in.MouseDown(box.X+box.W/2, box.Y+box.H/2, 0, false)
+	if !plus.M3().RippleOn {
+		t.Fatal("the icon button did not take its own press")
+	}
+	if cart.Base().RippleOn {
+		t.Fatal("the row also rippled under a control")
+	}
+}
