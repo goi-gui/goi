@@ -83,18 +83,19 @@ func (l *List) iconIn(name string, size float64, color uint32, cx, cy float64, c
 	}
 	box := tree.Rect{X: cx - size/2, Y: cy - size/2, W: size, H: size}
 	l.Ops = append(l.Ops, Op{
-		Kind:     Text,
-		Rect:     rectArr(box),
-		Color:    color,
-		Clip:     clipArr(clip),
-		Text:     name,
-		FontSize: float32(size),
-		Weight:   400,
-		Icon:     true,
-		Align:    AlignCenter,
-		TextX:    float32(box.X),
-		TextY:    float32(cy + size*iconBaseline),
-		BoxW:     float32(size),
+		Kind:       Text,
+		Rect:       rectArr(box),
+		Color:      color,
+		Clip:       clipArr(clip),
+		Text:       name,
+		FontSize:   float32(size),
+		Weight:     400,
+		Icon:       true,
+		FilledIcon: l.filledIcons,
+		Align:      AlignCenter,
+		TextX:      float32(box.X),
+		TextY:      float32(cy + size*iconBaseline),
+		BoxW:       float32(size),
 	})
 }
 

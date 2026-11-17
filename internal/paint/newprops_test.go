@@ -270,3 +270,35 @@ func TestImageBorderAndRoundedCrop(t *testing.T) {
 		t.Fatal("the rounded crop rounded the visible rect instead of the image's box")
 	}
 }
+
+// TestFilledIconProperty: `filledIcon` reaches every glyph a component paints,
+// and only that component's: a nested control keeps its own setting.
+func TestFilledIconProperty(t *testing.T) {
+	icon := func(l *List, name string) *Op {
+		for i := range l.Ops {
+			if l.Ops[i].Kind == Text && l.Ops[i].Icon && l.Ops[i].Text == name {
+				return &l.Ops[i]
+			}
+		}
+		return nil
+	}
+
+	op := icon(m3list(t, `Window { Button { label: "Go" leadingIcon: add filledIcon: true } }`), "add")
+	if op == nil || !op.FilledIcon {
+		t.Fatalf("a filled button icon = %+v", op)
+	}
+	op = icon(m3list(t, `Window { Button { label: "Go" leadingIcon: add } }`), "add")
+	if op == nil || op.FilledIcon {
+		t.Fatalf("the default is not outlined: %+v", op)
+	}
+	op = icon(m3list(t, `Window { Icon { icon: home filledIcon: true } }`), "home")
+	if op == nil || !op.FilledIcon {
+		t.Fatalf("a standalone filled icon = %+v", op)
+	}
+
+	// A filled container must not fill the control inside it.
+	l := m3list(t, `Window { Card { filledIcon: true Button { label: "Go" leadingIcon: add } } }`)
+	if op := icon(l, "add"); op == nil || op.FilledIcon {
+		t.Fatalf("the card's setting leaked into the button: %+v", op)
+	}
+}

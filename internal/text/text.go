@@ -64,6 +64,9 @@ type Library struct {
 	families  map[string]familyFace
 	familyTag uint16
 	icon      *font.Face
+	// iconFilled is the same family with the FILL axis at 1, the face
+	// `filledIcon: true` draws with.
+	iconFilled *font.Face
 	// emoji is Noto Color Emoji, the face a rune Roboto has no glyph for falls
 	// back to; emojiCache holds its decoded bitmaps per size and glyph.
 	emoji      *font.Face
@@ -84,6 +87,7 @@ type faceKey struct {
 	weight Weight
 	size   int // 1/4 pixels, so 12.5 and 12.75 do not collide
 	icon   bool
+	filled bool // the filled Material Symbols instance
 	italic bool
 	emoji  bool
 	// family is the registered name, so two families at one size get their own
@@ -130,6 +134,9 @@ func NewLibrary() *Library {
 	load(WeightBlack, robotoBlack)
 	if f, err := font.ParseTTF(bytes.NewReader(materialSymbols)); err == nil {
 		l.icon = f
+	}
+	if f, err := font.ParseTTF(bytes.NewReader(materialSymbolsFilled)); err == nil {
+		l.iconFilled = f
 	}
 	return l
 }
@@ -206,33 +213,39 @@ func (l *Library) Atlas() *Atlas { return l.atlas }
 
 // Face returns the face for a size and weight, creating it once.
 func (l *Library) Face(size float64, weight Weight) *Face {
-	return l.face(size, weight, false, false, "")
+	return l.face(size, weight, false, false, false, "")
 }
 
 // FamilyFace returns the face of a registered family, falling back to Roboto
 // when the name is unknown or empty, so a design that names a font the app never
 // loaded still draws.
 func (l *Library) FamilyFace(size float64, weight Weight, family string) *Face {
-	return l.face(size, weight, false, false, family)
+	return l.face(size, weight, false, false, false, family)
 }
 
 // FamilyItalicFace is FamilyFace slanted for `fontStyle: italic`.
 func (l *Library) FamilyItalicFace(size float64, weight Weight, family string) *Face {
-	return l.face(size, weight, false, true, family)
+	return l.face(size, weight, false, false, true, family)
 }
 
 // ItalicFace returns the same face slanted for `fontStyle: italic`. Roboto has
 // no italic file embedded, so the slant is synthesized at raster time.
 func (l *Library) ItalicFace(size float64, weight Weight) *Face {
-	return l.face(size, weight, false, true, "")
+	return l.face(size, weight, false, false, true, "")
 }
 
 // IconFace returns the face for Material Symbols at a size.
 func (l *Library) IconFace(size float64) *Face {
-	return l.face(size, WeightRegular, true, false, "")
+	return l.face(size, WeightRegular, true, false, false, "")
 }
 
-func (l *Library) face(size float64, weight Weight, icon, italic bool, family string) *Face {
+// FilledIconFace is IconFace with the FILL axis at 1, the glyph `filledIcon:
+// true` asks for.
+func (l *Library) FilledIconFace(size float64) *Face {
+	return l.face(size, WeightRegular, true, true, false, "")
+}
+
+func (l *Library) face(size float64, weight Weight, icon, filled, italic bool, family string) *Face {
 	if size <= 0 {
 		size = 16
 	}
@@ -240,12 +253,13 @@ func (l *Library) face(size float64, weight Weight, icon, italic bool, family st
 		italic = false
 		family = ""
 	} else {
+		filled = false
 		weight = NearestWeight(weight)
 	}
-	key := faceKey{weight: weight, size: int(size * 4), icon: icon, italic: italic, family: family}
+	key := faceKey{weight: weight, size: int(size * 4), icon: icon, filled: filled, italic: italic, family: family}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	slot := &l.front[(key.size^int(weight)*7^boolInt(italic)*5)&3]
+	slot := &l.front[(key.size^int(weight)*7^boolInt(italic)*5^boolInt(filled)*11)&3]
 	if slot.f != nil && slot.key == key {
 		return slot.f
 	}
@@ -257,6 +271,13 @@ func (l *Library) face(size float64, weight Weight, icon, italic bool, family st
 		if italic {
 			// Keep slanted glyphs in their own atlas entries.
 			tag++
+		}
+	} else if icon && filled {
+		src = l.iconFilled
+		tag = 6
+		if src == nil {
+			// A build without the filled instance still draws the icon.
+			src, tag = l.icon, 3
 		}
 	} else if icon {
 		src = l.icon

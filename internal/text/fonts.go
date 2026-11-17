@@ -18,6 +18,8 @@ var (
 	robotoBlack []byte
 	//go:embed fonts/material-symbols.woff
 	materialSymbols []byte
+	//go:embed fonts/material-symbols-filled.woff
+	materialSymbolsFilled []byte
 )
 
 // Weight is a Roboto weight. The M3 type scale uses regular, medium and bold;

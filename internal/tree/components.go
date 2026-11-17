@@ -31,6 +31,9 @@ type Component struct {
 	Placeholder Prop[string]
 	Icon        Prop[string]
 	Trailing    Prop[string]
+	// FilledIcon draws the icons the component paints from the filled Material
+	// Symbols instance, so one property covers a leading and a trailing glyph.
+	FilledIcon Prop[bool]
 	// ListItem colours: each falls back to its M3 role when zero, so a design
 	// that wants its own row can tint one part without touching the others.
 	LeadingIconColor  Prop[uint32]
@@ -126,6 +129,7 @@ func newComponent() Component {
 		Placeholder:       newProp(nil, "placeholder", DirtyLayout, ""),
 		Icon:              newProp(nil, "icon", DirtyLayout, ""),
 		Trailing:          newProp(nil, "trailingIcon", DirtyLayout, ""),
+		FilledIcon:        newProp(nil, "filledIcon", DirtyPaint, false),
 		LeadingIconColor:  newProp(nil, "leadingIconColor", DirtyPaint, uint32(0)),
 		TrailingIconColor: newProp(nil, "trailingIconColor", DirtyPaint, uint32(0)),
 		LabelColor:        newProp(nil, "labelColor", DirtyPaint, uint32(0)),
@@ -207,6 +211,8 @@ func (c *Component) one(kind, name string) NamedProp {
 		return ColorProp(b, "leadingIconColor", DirtyPaint, &c.LeadingIconColor)
 	case "trailingIconColor":
 		return ColorProp(b, "trailingIconColor", DirtyPaint, &c.TrailingIconColor)
+	case "filledIcon":
+		return BoolProp(b, "filledIcon", DirtyPaint, &c.FilledIcon)
 	case "labelColor":
 		return ColorProp(b, "labelColor", DirtyPaint, &c.LabelColor)
 	case "supportingColor":
