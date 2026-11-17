@@ -1291,12 +1291,15 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	// run through the glyphs.
 	gapStart, gapEnd := 0.0, 0.0
 	// The notch opens as the label's box reaches the line, so the border is not
-	// cut early while the label is still inside.
+	// cut early while the label is still inside. The corners stay whole: a large
+	// radius can reach past the label's 16dp inset.
+	band := maxf(maxf(radii[0], radii[1]), maxf(radii[2], radii[3]))
+	band = maxf(band, bw)
 	if !filled && label != "" && labelCenter-10 <= r.Y+bw {
 		gapStart = lx - 4
 		gapEnd = gapStart + textWidth(l, label, floatStyle) + 8
-		gapStart = maxf(gapStart, r.X)
-		gapEnd = minf(gapEnd, r.Right())
+		gapStart = maxf(gapStart, r.X+band)
+		gapEnd = minf(gapEnd, r.Right()-band)
 	}
 	if !filled {
 		// An outlined field is transparent until the design gives it a fill, so
@@ -1343,8 +1346,6 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 			// Fill without the border, then the ring in bands: the sides and
 			// bottom as one, and the top edge as two pieces around the notch.
 			l.fillShape(r, fill, gradient, radii, 0, 0, clip)
-			band := maxf(maxf(radii[0], radii[1]), maxf(radii[2], radii[3]))
-			band = maxf(band, bw)
 			l.fillShape(r, 0, nil, radii, border, bw, intersect(clip,
 				tree.Rect{X: r.X, Y: r.Y + band, W: r.W, H: r.H - band}))
 			l.fillShape(r, 0, nil, radii, border, bw, intersect(clip,
