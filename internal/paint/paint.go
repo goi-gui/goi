@@ -308,7 +308,7 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 		childClip = intersect(clip, inner)
 	}
 	outerScroll := l.scrollClip
-	if b.ScrollAxis() != tree.AxisNone {
+	if b.ScrollAxis() != tree.AxisNone && b.ClipsChildren() {
 		l.scrollClip = intersect(l.scrollClip, inner)
 	}
 	fromClip := len(l.Ops)
@@ -443,7 +443,7 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 		childClip = intersect(clip, inner)
 	}
 	outerScroll := l.scrollClip
-	if b.ScrollAxis() != tree.AxisNone {
+	if b.ScrollAxis() != tree.AxisNone && b.ClipsChildren() {
 		l.scrollClip = intersect(l.scrollClip, inner)
 	}
 	fromClip := len(l.Ops)

@@ -2420,3 +2420,13 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   language and the runtime agree. This is a break for `.goi` files that used the
   bare spelling, taken while the module is v0.x; the examples, the docs and the
   tests were swept with the checker's own role list.
+
+- **A panel is clipped by a scroller that really scrolls, not by every default
+  one.** Columns scroll by default now, so a column that only wraps a `Popover`
+  reports a scroll axis even though its content fits its frame. Paint and hit
+  testing narrowed the panel's clip at every such ancestor, which cut the panel
+  to the wrapper's 40dp box and made the gallery's popover example look dead.
+  The clip is narrowed only where `ClipsChildren` agrees the box actually clips,
+  which is the same condition the content uses, so a wrapper that does not
+  overflow lets the panel out while a long page still cuts it. The paint and hit
+  walks have the same rule, so the picture and the press agree.

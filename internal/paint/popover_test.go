@@ -140,3 +140,48 @@ func TestPopoverPanelClipsToItsScroller(t *testing.T) {
 		t.Fatal("the panel did not paint once its anchor scrolled into view")
 	}
 }
+
+// TestPopoverPanelEscapesAColumnThatDoesNotOverflow: a default Column is a
+// scroll container, but a panel is not part of its scroll content, so a column
+// that only wraps the popover must not cut the panel to its own 40dp box. The
+// page it sits in still clips, because that column really does overflow.
+func TestPopoverPanelEscapesAColumnThatDoesNotOverflow(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window {
+		Column {
+			padding: 20
+
+			Column {
+				Popover {
+					Button { label: "Share" }
+					$popover {
+						Card { id: panel label: "Panel" width: 200 height: 100 }
+					}
+				}
+			}
+		}
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	layout.New(nil).Layout(tr.Root, 400, 300)
+	panel, _ := tr.ByID("panel")
+	box := absolute(panel)
+	l := &List{}
+	l.Build(tr, 400, 300)
+
+	found := false
+	for _, op := range l.Ops {
+		if op.Rect[2] != 200 || op.Rect[3] != 100 {
+			continue
+		}
+		found = true
+		clip := tree.Rect{X: float64(op.Clip[0]), Y: float64(op.Clip[1]),
+			W: float64(op.Clip[2]), H: float64(op.Clip[3])}
+		if clip.H < box.H || clip.Y > box.Y || clip.Bottom() < box.Bottom() {
+			t.Fatalf("panel clip = %+v, want the window; the wrapping column cut it", clip)
+		}
+	}
+	if !found {
+		t.Fatal("the panel painted nothing")
+	}
+}

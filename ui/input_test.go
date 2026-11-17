@@ -1660,3 +1660,45 @@ func TestRippleOnAPlainNode(t *testing.T) {
 		t.Fatal("a box without ripple started the press feedback")
 	}
 }
+
+// TestPopoverPanelIsHitThroughAColumnThatDoesNotOverflow: a column is a scroll
+// container by default, but the panel is not its scroll content, so the hit
+// walk must not cut the panel to the column's own box.
+func TestPopoverPanelIsHitThroughAColumnThatDoesNotOverflow(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		Column {
+			Column {
+				Popover {
+					SplitButton {
+						id:      anchor
+						label:   "Share"
+						onClick: anchor.expand()
+					}
+					$popover {
+						Card {
+							id:      panel
+							visible: anchor.expanded
+							label:   "Panel"
+							width:   200
+							height:  100
+						}
+					}
+				}
+			}
+		}
+	}`, 400, 300)
+	anchor := absoluteRect(MustByID[*SplitButton](win, "anchor"))
+	in.MouseDown(anchor.X+anchor.W/2, anchor.Y+anchor.H/2, 0, false)
+	in.MouseUp(anchor.X+anchor.W/2, anchor.Y+anchor.H/2, 0)
+	win.tree.ApplyExpressions()
+	layout.New(textMeasurer{}).Layout(win.tree.Root, 400, 300)
+	panelBox := MustByID[*Card](win, "panel")
+	if !panelBox.Base().Visible() {
+		t.Fatal("the press did not open the panel")
+	}
+	panel := absoluteRect(panelBox)
+	hit := in.hit(panel.X+panel.W/2, panel.Y+panel.H/2)
+	if hit == nil || hit.Base().ID() != "panel" {
+		t.Fatalf("hit = %v, want the panel below the wrapping column", hit)
+	}
+}
