@@ -345,3 +345,37 @@ func TestFilledIconSlots(t *testing.T) {
 		t.Fatalf("filledLeadingIcon on a button: %v", got)
 	}
 }
+
+// TestSelectedNavigationItemFillsItsIcon: selection is a state signal, so the
+// active destination draws the filled glyph even when the design left the
+// filled properties off; an idle one stays outlined.
+func TestSelectedNavigationItemFillsItsIcon(t *testing.T) {
+	icon := func(l *List, name string) *Op {
+		for i := range l.Ops {
+			if l.Ops[i].Kind == Text && l.Ops[i].Icon && l.Ops[i].Text == name {
+				return &l.Ops[i]
+			}
+		}
+		return nil
+	}
+	l := m3list(t, `Window { NavigationRail {
+		height: 200
+		NavigationItem { label: "On" leadingIcon: home selected: true }
+		NavigationItem { label: "Off" leadingIcon: search }
+	} }`)
+	if op := icon(l, "home"); op == nil || !op.FilledIcon {
+		t.Fatalf("the selected destination is not filled: %+v", op)
+	}
+	if op := icon(l, "search"); op == nil || op.FilledIcon {
+		t.Fatalf("an idle destination is filled: %+v", op)
+	}
+
+	// The idle item can still be filled by the property.
+	l = m3list(t, `Window { NavigationRail {
+		height: 200
+		NavigationItem { label: "Off" leadingIcon: search filledLeadingIcon: true }
+	} }`)
+	if op := icon(l, "search"); op == nil || !op.FilledIcon {
+		t.Fatalf("filledLeadingIcon stopped working: %+v", op)
+	}
+}

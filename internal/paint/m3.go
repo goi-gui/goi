@@ -1731,8 +1731,12 @@ func (l *List) paintNavigationItem(c *tree.Component, r tree.Rect, clip tree.Rec
 		}
 	}
 
+	// A selected destination shows the filled glyph: the state is the signal, so
+	// the icon follows it even when the design left the filled properties off.
+	filled := selected || l.filledIcons || l.filledLeading
+
 	if nav == "NavigationDrawer" {
-		l.leadingIconIn(c.Icon.Get(), 24, disabledAlpha(c, icon), r.X+24, r.Y+r.H/2, clip)
+		l.iconInFilled(c.Icon.Get(), 24, disabledAlpha(c, icon), r.X+24, r.Y+r.H/2, clip, filled)
 		l.textIn(c.Label.Get(), l.style("labelMedium"), disabledAlpha(c, label),
 			tree.Rect{X: r.X + 52, Y: r.Y, W: r.W - 60, H: r.H}, AlignStart, clip)
 		return
@@ -1743,7 +1747,7 @@ func (l *List) paintNavigationItem(c *tree.Component, r tree.Rect, clip tree.Rec
 	if nav == "NavigationRail" {
 		iconY, labelY = r.Y+20, r.Y+40
 	}
-	l.leadingIconIn(c.Icon.Get(), 24, disabledAlpha(c, icon), r.X+r.W/2, iconY, clip)
+	l.iconInFilled(c.Icon.Get(), 24, disabledAlpha(c, icon), r.X+r.W/2, iconY, clip, filled)
 	l.textIn(c.Label.Get(), l.style("labelMedium"), disabledAlpha(c, label),
 		tree.Rect{X: r.X, Y: labelY, W: r.W, H: 16}, AlignCenter, clip)
 }
