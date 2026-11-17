@@ -315,10 +315,11 @@ func interactive(n tree.Node) bool {
 	return false
 }
 
-// clickable reports whether a press at x,y on n activates it: an interactive
-// component, a sortable header or a table cell, any node the app attached a
-// click handler to, or a link under the pointer.
-func (i *interactor) clickable(n tree.Node, x, y float64) bool {
+// activatable reports whether a press at x,y on n does something: an
+// interactive component, a sortable header or a table cell, a click handler,
+// or a link under the pointer. A `ripple: true` box is not included: the
+// feedback must not claim the pointing-hand cursor by itself.
+func (i *interactor) activatable(n tree.Node, x, y float64) bool {
 	if c := comp(n); c != nil {
 		if c.Disabled.Get() {
 			return false
@@ -330,13 +331,22 @@ func (i *interactor) clickable(n tree.Node, x, y float64) bool {
 	if n.Base().Click.Len() > 0 {
 		return true
 	}
-	// `ripple: true` asks for press feedback, which means the element has to
-	// take the press even without a click handler.
-	if n.Base().RippleSet() && n.Base().WantsRipple() {
-		return true
-	}
 	_, ok := i.linkAt(n, x, y)
 	return ok
+}
+
+// clickable reports whether a press at x,y on n activates it or answers it with
+// press feedback, which is what the press walk needs.
+func (i *interactor) clickable(n tree.Node, x, y float64) bool {
+	if i.activatable(n, x, y) {
+		return true
+	}
+	// `ripple: true` asks for press feedback, which means the element has to
+	// take the press even without a click handler.
+	if c := comp(n); c != nil && c.Disabled.Get() {
+		return false
+	}
+	return n.Base().RippleSet() && n.Base().WantsRipple()
 }
 
 // tableTarget reports whether a table part reacts to a press: a sortable header
@@ -749,7 +759,7 @@ func (i *interactor) pointerAt(hit tree.Node) {
 		i.pointer(platform.CursorMove)
 		return
 	}
-	if i.clickable(hit, i.cursorX, i.cursorY) {
+	if i.activatable(hit, i.cursorX, i.cursorY) {
 		i.pointer(platform.CursorPointer)
 		return
 	}

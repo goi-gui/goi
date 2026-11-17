@@ -394,3 +394,71 @@ func TestCursorExampleTilesResolve(t *testing.T) {
 		t.Fatalf("%d declarations, %d checked; want the whole example", seen, checked)
 	}
 }
+
+// TestRippleDoesNotClaimThePointerCursor: press feedback is not activation, so
+// a ripple-only row keeps the arrow until the design names a cursor.
+func TestRippleDoesNotClaimThePointerCursor(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		Column {
+			Row {
+				id:     cart
+				ripple: true
+				width:  200
+				height: 80
+				Text { id: caption text: "Cart" }
+			}
+		}
+	}`, 400, 300)
+	var got platform.Cursor
+	in.setCursor = func(c platform.Cursor) { got = c }
+	hover := func(n tree.Node) platform.Cursor {
+		r := absoluteRect(n)
+		got = -1
+		in.MouseMove(r.X+r.W/2, r.Y+r.H/2)
+		return got
+	}
+	cart := MustByID[*Row](win, "cart")
+	if c := hover(cart); c != platform.CursorArrow {
+		t.Fatalf("ripple row hover = %v, want the arrow", c)
+	}
+	if c := hover(MustByID[*Text](win, "caption")); c != platform.CursorArrow {
+		t.Fatalf("ripple row child hover = %v, want the arrow", c)
+	}
+
+	// A declared cursor still wins, and children inherit it.
+	cart.Base().SetCursor("wait")
+	if c := hover(cart); c != platform.CursorWait {
+		t.Fatalf("declared cursor = %v, want wait", c)
+	}
+	if c := hover(MustByID[*Text](win, "caption")); c != platform.CursorWait {
+		t.Fatalf("child cursor = %v, want the inherited wait", c)
+	}
+}
+
+// TestCursorInheritsThroughAComponent: a component's declared cursor covers its
+// children, including a control that would otherwise pick its own shape.
+func TestCursorInheritsThroughAComponent(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		Column {
+			Card {
+				id:     panel
+				cursor: wait
+				width:  300
+				height: 160
+				Text { id: note text: "note" }
+				Button { id: action label: "Go" }
+			}
+		}
+	}`, 400, 300)
+	var got platform.Cursor
+	in.setCursor = func(c platform.Cursor) { got = c }
+	for _, id := range []string{"note", "action"} {
+		n, _ := win.tree.ByID(id)
+		r := absoluteRect(n)
+		got = -1
+		in.MouseMove(r.X+r.W/2, r.Y+r.H/2)
+		if got != platform.CursorWait {
+			t.Errorf("cursor over %s = %v, want the card's wait", id, got)
+		}
+	}
+}
