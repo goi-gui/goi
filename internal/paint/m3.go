@@ -1933,6 +1933,7 @@ func m3Of(b *tree.NodeBase) *tree.Component {
 
 func (l *List) paintTabs(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
+	primary := variant(c, "secondary") == "primary"
 	l.fillRect(r, col.Surface, 0, 0, 0, clip)
 	// Divider under the row.
 	l.Ops = append(l.Ops, Op{
@@ -1951,8 +1952,9 @@ func (l *List) paintTabs(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		}
 	}
 	for i, k := range kids {
+		kc := m3Of(k)
 		active := false
-		if kc := m3Of(k); kc != nil {
+		if kc != nil {
 			active = kc.Selected.Get()
 		}
 		if !anySelected {
@@ -1963,9 +1965,20 @@ func (l *List) paintTabs(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		}
 		kb := k.Bounds()
 		indicator := tree.Rect{X: r.X + kb.X + 8, Y: r.Bottom() - 3, W: kb.W - 16, H: 3}
+		radius := [4]float32{3, 3, 0, 0}
+		if primary {
+			// A primary tab's indicator hugs the content instead of the cell.
+			w := 24.0
+			if kc != nil {
+				w = maxf(textWidth(l, kc.Label.Get(), l.style("titleSmall")), 24)
+			}
+			w = minf(w, kb.W-16)
+			indicator = tree.Rect{X: r.X + kb.X + (kb.W-w)/2, Y: r.Bottom() - 3, W: w, H: 3}
+			radius = [4]float32{3, 3, 3, 3}
+		}
 		l.Ops = append(l.Ops, Op{
 			Kind: Fill, Shape: RoundedRect, Rect: rectArr(indicator),
-			Radius: [4]float32{3, 3, 0, 0}, Color: col.Primary, Clip: clipArr(clip),
+			Radius: radius, Color: col.Primary, Clip: clipArr(clip),
 		})
 	}
 }

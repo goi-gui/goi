@@ -2423,7 +2423,6 @@ func TestPopoverSlotIsOfferedAndExplained(t *testing.T) {
 // writing a removed name reports a diagnostic instead of doing nothing.
 func TestRemovedPropertiesAreNotOffered(t *testing.T) {
 	cases := []struct{ element, prop, normal string }{
-		{"Tabs", "variant", "spacing"},
 		{"List", "variant", "spacing"},
 		{"Toolbar", "variant", "spacing"},
 		{"Chip", "checked", "label"},

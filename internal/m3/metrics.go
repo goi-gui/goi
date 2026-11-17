@@ -229,6 +229,11 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 	case "NavigationItem":
 		return Metrics{W: 0, H: 64, FillW: true, Top: 12, Bottom: 12}
 	case "Tabs":
+		// Primary tabs stack an icon over the label; secondary ones are the
+		// shorter, text-only bar.
+		if c.Variant == "primary" {
+			return Metrics{W: 0, H: 64, FillW: true}
+		}
 		return Metrics{W: 0, H: 48, FillW: true}
 	case "LinearProgress":
 		// A wavy bar is a ribbon, so it needs the room the wave's own height

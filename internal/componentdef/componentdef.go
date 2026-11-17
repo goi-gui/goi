@@ -143,7 +143,7 @@ var props = map[string][]string{
 	"NavigationDrawer": {"label"},
 	"NavigationItem":   {"label", "leadingIcon", "filledIcon", "filledLeadingIcon", "disabled", "selected", "labelColor", "selectedLabelColor", "iconColor", "selectedIconColor", "selectedContainerColor"},
 	"Breadcrumb":       {"separator", "separatorColor", "separatorSize"},
-	"Tabs":             {},
+	"Tabs":             {"variant"},
 	"Tab":              {"label", "leadingIcon", "filledIcon", "filledLeadingIcon", "disabled", "selected"},
 	"LinearProgress":   {"variant", "value", "min", "max", "thickness"},
 	"CircularProgress": {"variant", "value", "min", "max", "thickness"},
@@ -264,6 +264,7 @@ var defaults = map[string]any{
 // a position string, and neither can take the other's default.
 var kindDefaults = map[string]map[string]any{
 	"Slider":     {"center": math.NaN()},
+	"Tabs":       {"variant": "secondary"},
 	"Popover":    {"align": "start"},
 	"Breadcrumb": {"spacing": 32.0},
 }
@@ -372,6 +373,7 @@ func ListElem(name string) PropType {
 // would ignore.
 var variantValues = map[string][]string{
 	"NavigationBar":    {"compact", "medium"},
+	"Tabs":             {"primary", "secondary"},
 	"Table":            {"outlined", "filled", "plain"},
 	"TimePicker":       {"dial", "input"},
 	"Slider":           {"standard", "centered", "range"},

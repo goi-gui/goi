@@ -2430,3 +2430,12 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   which is the same condition the content uses, so a wrapper that does not
   overflow lets the panel out while a long page still cuts it. The paint and hit
   walks have the same rule, so the picture and the press agree.
+
+- **Tabs has two variants, and the existing one is secondary.** The bar always
+  had the M3 Expressive shape — icon over label, selected in the primary
+  colour — but only the full-width indicator. That is the secondary tab, so it
+  keeps the name and stays the default; `variant: primary` adds the taller
+  64dp bar and an indicator that hugs the tab's content instead of its cell.
+  The default lives in `kindDefaults`, not in the painter, so completion and the
+  checker name `secondary` before a design writes it, and no existing `.goi`
+  file changes shape.
