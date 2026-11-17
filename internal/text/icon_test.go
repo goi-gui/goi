@@ -53,3 +53,23 @@ func TestFilledIconFaceIsTheFilledInstance(t *testing.T) {
 		t.Fatal("the filled and outlined faces rasterized the same glyph")
 	}
 }
+
+// TestHasIconFindsTheAgeingNames: the filled instance comes from a newer icon
+// set than the outlined file, so a name the outlined font still carries has no
+// ligature in the filled one. HasIcon is what makes the renderer fall back.
+func TestHasIconFindsTheAgeingNames(t *testing.T) {
+	lib := NewLibrary()
+	plain, filled := lib.IconFace(24), lib.FilledIconFace(24)
+	if !plain.HasIcon("home") || !filled.HasIcon("home") {
+		t.Fatal("home is not an icon in both faces")
+	}
+	if !plain.HasIcon("mail_person") {
+		t.Fatal("the outlined face lost mail_person")
+	}
+	if filled.HasIcon("mail_person") {
+		t.Skip("the filled instance carries mail_person now")
+	}
+	if plain.HasIcon("not_an_icon_name") {
+		t.Fatal("a name that is not an icon read as one")
+	}
+}

@@ -245,6 +245,24 @@ func (l *Library) FilledIconFace(size float64) *Face {
 	return l.face(size, WeightRegular, true, true, false, "")
 }
 
+// HasIcon reports whether the face resolves name to one ligature glyph. A name
+// the font does not carry shapes to the letters it is spelled with, which is
+// what tells the filled instance (a newer icon set) to fall back to the
+// outlined one.
+func (f *Face) HasIcon(name string) bool {
+	if f == nil || name == "" {
+		return false
+	}
+	n := 0
+	for _, r := range f.ShapeRuns(name) {
+		n += len(r.Output.Glyphs)
+		if n > 1 {
+			return false
+		}
+	}
+	return n == 1
+}
+
 func (l *Library) face(size float64, weight Weight, icon, filled, italic bool, family string) *Face {
 	if size <= 0 {
 		size = 16

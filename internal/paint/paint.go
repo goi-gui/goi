@@ -201,6 +201,10 @@ type List struct {
 	// filledIcons is the `filledIcon` of the component being painted, so its
 	// glyphs, including the ones it draws itself, come from the filled face.
 	filledIcons bool
+	// filledLeading and filledTrailing are the per-slot properties: an icon in
+	// one slot can be filled while the other stays outlined.
+	filledLeading  bool
+	filledTrailing bool
 	// wrap caches wrapped text runs across frames: a repaint re-wraps every
 	// visible paragraph, and the answer only changes with the text, the column
 	// and the style. Reset keeps it, because it is still valid.
@@ -487,11 +491,13 @@ func (l *List) paintContent(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
 	}
 	if c, ok := b.Node().(componentNode); ok {
 		l.suppressElev = b.ShadowSet()
-		outerFilled := l.filledIcons
+		outerFilled, outerLead, outerTrail := l.filledIcons, l.filledLeading, l.filledTrailing
 		l.filledIcons = c.M3().FilledIcon.Get()
+		l.filledLeading = c.M3().FilledLeadingIcon.Get()
+		l.filledTrailing = c.M3().FilledTrailingIcon.Get()
 		from := len(l.Ops)
 		l.paintComponent(c.M3(), r, clip)
-		l.filledIcons = outerFilled
+		l.filledIcons, l.filledLeading, l.filledTrailing = outerFilled, outerLead, outerTrail
 		l.suppressElev = false
 		l.paintComponentBox(b, r, clip, from)
 	} else {

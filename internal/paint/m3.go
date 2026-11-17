@@ -76,8 +76,24 @@ func (l *List) textIn(s string, st m3.TextStyle, color uint32, box tree.Rect, al
 	})
 }
 
-// iconIn appends an icon op centered at cx, cy.
+// iconIn appends an icon op centered at cx, cy, in the face the component's
+// `filledIcon` picks.
 func (l *List) iconIn(name string, size float64, color uint32, cx, cy float64, clip tree.Rect) {
+	l.iconInFilled(name, size, color, cx, cy, clip, l.filledIcons)
+}
+
+// leadingIconIn is iconIn for the glyph in a component's leading slot, which
+// `filledLeadingIcon` fills on its own.
+func (l *List) leadingIconIn(name string, size float64, color uint32, cx, cy float64, clip tree.Rect) {
+	l.iconInFilled(name, size, color, cx, cy, clip, l.filledIcons || l.filledLeading)
+}
+
+// trailingIconIn is leadingIconIn for the trailing slot.
+func (l *List) trailingIconIn(name string, size float64, color uint32, cx, cy float64, clip tree.Rect) {
+	l.iconInFilled(name, size, color, cx, cy, clip, l.filledIcons || l.filledTrailing)
+}
+
+func (l *List) iconInFilled(name string, size float64, color uint32, cx, cy float64, clip tree.Rect, filled bool) {
 	if name == "" {
 		return
 	}
@@ -91,7 +107,7 @@ func (l *List) iconIn(name string, size float64, color uint32, cx, cy float64, c
 		FontSize:   float32(size),
 		Weight:     400,
 		Icon:       true,
-		FilledIcon: l.filledIcons,
+		FilledIcon: filled,
 		Align:      AlignCenter,
 		TextX:      float32(box.X),
 		TextY:      float32(cy + size*iconBaseline),
@@ -519,7 +535,7 @@ func (l *List) paintButton(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		// Icon then label, as one centred pair.
 		labelWidth := textWidth(l, c.Label.Get(), l.style("labelLarge")) + 8 + 18
 		start := r.X + (r.W-labelWidth)/2
-		l.iconIn(c.Icon.Get(), 18, disabledAlpha(c, fg), start+9, r.Y+r.H/2, clip)
+		l.leadingIconIn(c.Icon.Get(), 18, disabledAlpha(c, fg), start+9, r.Y+r.H/2, clip)
 		l.textIn(c.Label.Get(), l.style("labelLarge"), disabledAlpha(c, fg),
 			tree.Rect{X: start + 18 + 8, Y: r.Y, W: labelWidth - 26, H: r.H}, AlignStart, clip)
 		return
@@ -701,7 +717,7 @@ func (l *List) paintSplitButton(c *tree.Component, r tree.Rect, clip tree.Rect) 
 		// Icon then label, as one centred pair inside the leading segment.
 		labelWidth := textWidth(l, c.Label.Get(), l.style("labelLarge")) + 8 + 18
 		start := main.X + (main.W-labelWidth)/2
-		l.iconIn(c.Icon.Get(), 18, fg, start+9, r.Y+r.H/2, clip)
+		l.leadingIconIn(c.Icon.Get(), 18, fg, start+9, r.Y+r.H/2, clip)
 		l.textIn(c.Label.Get(), l.style("labelLarge"), fg,
 			tree.Rect{X: start + 18 + 8, Y: r.Y, W: labelWidth - 26, H: r.H}, AlignStart, clip)
 	} else {
@@ -711,7 +727,7 @@ func (l *List) paintSplitButton(c *tree.Component, r tree.Rect, clip tree.Rect) 
 	if trailIcon == "" {
 		trailIcon = "arrow_drop_down"
 	}
-	l.iconIn(trailIcon, 24, fg, trail.X+trail.W/2, r.Y+r.H/2, clip)
+	l.trailingIconIn(trailIcon, 24, fg, trail.X+trail.W/2, r.Y+r.H/2, clip)
 }
 
 func (l *List) paintSegmentedButton(c *tree.Component, r tree.Rect, clip tree.Rect) {
@@ -759,7 +775,7 @@ func (l *List) paintSegmentedButton(c *tree.Component, r tree.Rect, clip tree.Re
 		if c.Selected.Get() && name == "" {
 			name = "check"
 		}
-		l.iconIn(name, 18, fg, start+9, r.Y+r.H/2, clip)
+		l.leadingIconIn(name, 18, fg, start+9, r.Y+r.H/2, clip)
 	}
 	if labelW > 0 {
 		l.textIn(c.Label.Get(), l.style("labelLarge"), fg,
@@ -833,7 +849,7 @@ func (l *List) paintChip(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		lead = "check"
 	}
 	if lead != "" {
-		l.iconIn(lead, 18, iconColor, r.X+17, r.Y+r.H/2, clip)
+		l.leadingIconIn(lead, 18, iconColor, r.X+17, r.Y+r.H/2, clip)
 		x = r.X + 8 + 18 + 8
 	}
 	trail := c.Trailing.Get()
@@ -844,7 +860,7 @@ func (l *List) paintChip(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	l.textIn(c.Label.Get(), l.style("labelLarge"), labelColor,
 		tree.Rect{X: x, Y: r.Y, W: r.Right() - x - endPad, H: r.H}, AlignStart, clip)
 	if trail != "" {
-		l.iconIn(trail, 18, trailColor, r.Right()-17, r.Y+r.H/2, clip)
+		l.trailingIconIn(trail, 18, trailColor, r.Right()-17, r.Y+r.H/2, clip)
 	}
 }
 
@@ -1268,10 +1284,10 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	}
 
 	if c.Icon.Get() != "" {
-		l.iconIn(c.Icon.Get(), 24, hint, r.X+28, r.Y+r.H/2, clip)
+		l.leadingIconIn(c.Icon.Get(), 24, hint, r.X+28, r.Y+r.H/2, clip)
 	}
 	if c.Trailing.Get() != "" {
-		l.iconIn(c.Trailing.Get(), 24, hint, r.Right()-28, r.Y+r.H/2, clip)
+		l.trailingIconIn(c.Trailing.Get(), 24, hint, r.Right()-28, r.Y+r.H/2, clip)
 	}
 
 	// Caret.
@@ -1366,7 +1382,7 @@ func (l *List) paintSearchBar(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		})
 	}
 	if c.Trailing.Get() != "" {
-		l.iconIn(c.Trailing.Get(), 24, hint, r.Right()-28, r.Y+r.H/2, clip)
+		l.trailingIconIn(c.Trailing.Get(), 24, hint, r.Right()-28, r.Y+r.H/2, clip)
 	}
 }
 
@@ -1538,7 +1554,7 @@ func (l *List) paintListItem(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	x := r.X + 16
 	if c.Icon.Get() != "" {
 		leading = c.Icon.Get()
-		l.iconIn(leading, 24, leadColor, x+12, r.Y+r.H/2, clip)
+		l.leadingIconIn(leading, 24, leadColor, x+12, r.Y+r.H/2, clip)
 		x += 40
 	} else if slots != nil && slots.LeadingNode != nil {
 		x += 40
@@ -1547,7 +1563,7 @@ func (l *List) paintListItem(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	if c.Trailing.Get() != "" {
 		trailing = c.Trailing.Get()
 		textW -= 40
-		l.iconIn(trailing, 24, trailColor, r.Right()-28, r.Y+r.H/2, clip)
+		l.trailingIconIn(trailing, 24, trailColor, r.Right()-28, r.Y+r.H/2, clip)
 	} else if slots != nil && slots.TrailingNode != nil {
 		textW -= 40
 	}
@@ -1580,13 +1596,13 @@ func (l *List) paintMenuItem(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	l.stateLayer(c, r, 0, col.OnSurface, clip)
 	x := r.X + 12
 	if c.Icon.Get() != "" {
-		l.iconIn(c.Icon.Get(), 24, col.OnSurfaceVariant, x+12, r.Y+r.H/2, clip)
+		l.leadingIconIn(c.Icon.Get(), 24, col.OnSurfaceVariant, x+12, r.Y+r.H/2, clip)
 		x += 36
 	}
 	textW := r.Right() - x - 12
 	if c.Trailing.Get() != "" {
 		textW -= 36
-		l.iconIn(c.Trailing.Get(), 24, col.OnSurfaceVariant, r.Right()-24, r.Y+r.H/2, clip)
+		l.trailingIconIn(c.Trailing.Get(), 24, col.OnSurfaceVariant, r.Right()-24, r.Y+r.H/2, clip)
 	}
 	l.textIn(c.Label.Get(), l.style("labelLarge"), disabledAlpha(c, col.OnSurface),
 		tree.Rect{X: x, Y: r.Y, W: textW, H: r.H}, AlignStart, clip)
@@ -1610,13 +1626,13 @@ func (l *List) paintTopAppBar(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	// M3 edge inset rather than leaving a gap where the icon was.
 	textX := r.X + 16
 	if name := c.Icon.Get(); name != "" {
-		l.iconIn(name, 24, col.OnSurface, r.X+28, r.Y+r.H/2, clip)
+		l.leadingIconIn(name, 24, col.OnSurface, r.X+28, r.Y+r.H/2, clip)
 		textX = r.X + 56
 	}
 	l.textIn(c.Label.Get(), l.style("titleLarge"), col.OnSurface,
 		tree.Rect{X: textX, Y: r.Y, W: r.Right() - textX - 64, H: r.H}, AlignStart, clip)
 	if c.Trailing.Get() != "" {
-		l.iconIn(c.Trailing.Get(), 24, col.OnSurface, r.Right()-28, r.Y+r.H/2, clip)
+		l.trailingIconIn(c.Trailing.Get(), 24, col.OnSurface, r.Right()-28, r.Y+r.H/2, clip)
 	}
 }
 
@@ -1716,7 +1732,7 @@ func (l *List) paintNavigationItem(c *tree.Component, r tree.Rect, clip tree.Rec
 	}
 
 	if nav == "NavigationDrawer" {
-		l.iconIn(c.Icon.Get(), 24, disabledAlpha(c, icon), r.X+24, r.Y+r.H/2, clip)
+		l.leadingIconIn(c.Icon.Get(), 24, disabledAlpha(c, icon), r.X+24, r.Y+r.H/2, clip)
 		l.textIn(c.Label.Get(), l.style("labelMedium"), disabledAlpha(c, label),
 			tree.Rect{X: r.X + 52, Y: r.Y, W: r.W - 60, H: r.H}, AlignStart, clip)
 		return
@@ -1727,7 +1743,7 @@ func (l *List) paintNavigationItem(c *tree.Component, r tree.Rect, clip tree.Rec
 	if nav == "NavigationRail" {
 		iconY, labelY = r.Y+20, r.Y+40
 	}
-	l.iconIn(c.Icon.Get(), 24, disabledAlpha(c, icon), r.X+r.W/2, iconY, clip)
+	l.leadingIconIn(c.Icon.Get(), 24, disabledAlpha(c, icon), r.X+r.W/2, iconY, clip)
 	l.textIn(c.Label.Get(), l.style("labelMedium"), disabledAlpha(c, label),
 		tree.Rect{X: r.X, Y: labelY, W: r.W, H: 16}, AlignCenter, clip)
 }
@@ -1795,7 +1811,7 @@ func (l *List) paintTab(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	l.stateLayer(c, r, 0, fg, clip)
 	box := tree.Rect{X: r.X, Y: r.Y, W: r.W, H: r.H}
 	if c.Icon.Get() != "" {
-		l.iconIn(c.Icon.Get(), 24, fg, r.X+r.W/2, r.Y+r.H/2-10, clip)
+		l.leadingIconIn(c.Icon.Get(), 24, fg, r.X+r.W/2, r.Y+r.H/2-10, clip)
 		l.textIn(c.Label.Get(), l.style("titleSmall"), fg,
 			tree.Rect{X: r.X, Y: r.Y + 20, W: r.W, H: r.H - 20}, AlignCenter, clip)
 		return

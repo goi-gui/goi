@@ -31,9 +31,12 @@ type Component struct {
 	Placeholder Prop[string]
 	Icon        Prop[string]
 	Trailing    Prop[string]
-	// FilledIcon draws the icons the component paints from the filled Material
-	// Symbols instance, so one property covers a leading and a trailing glyph.
-	FilledIcon Prop[bool]
+	// FilledIcon draws every icon the component paints from the filled Material
+	// Symbols instance. FilledLeadingIcon and FilledTrailingIcon fill one slot,
+	// for a component that wants the two to differ.
+	FilledIcon         Prop[bool]
+	FilledLeadingIcon  Prop[bool]
+	FilledTrailingIcon Prop[bool]
 	// ListItem colours: each falls back to its M3 role when zero, so a design
 	// that wants its own row can tint one part without touching the others.
 	LeadingIconColor  Prop[uint32]
@@ -122,26 +125,28 @@ type Component struct {
 // newComponent seeds the shared defaults.
 func newComponent() Component {
 	return Component{
-		SelAnchor:         -1,
-		Label:             newProp(nil, "label", DirtyLayout, ""),
-		Supporting:        newProp(nil, "supporting", DirtyLayout, ""),
-		Text:              newProp(nil, "text", DirtyLayout, ""),
-		Placeholder:       newProp(nil, "placeholder", DirtyLayout, ""),
-		Icon:              newProp(nil, "icon", DirtyLayout, ""),
-		Trailing:          newProp(nil, "trailingIcon", DirtyLayout, ""),
-		FilledIcon:        newProp(nil, "filledIcon", DirtyPaint, false),
-		LeadingIconColor:  newProp(nil, "leadingIconColor", DirtyPaint, uint32(0)),
-		TrailingIconColor: newProp(nil, "trailingIconColor", DirtyPaint, uint32(0)),
-		LabelColor:        newProp(nil, "labelColor", DirtyPaint, uint32(0)),
-		SupportingColor:   newProp(nil, "supportingColor", DirtyPaint, uint32(0)),
-		IconOn:            newProp(nil, "iconOn", DirtyLayout, ""),
-		IconOff:           newProp(nil, "iconOff", DirtyLayout, ""),
-		Language:          newProp(nil, "language", DirtyPaint, ""),
-		ShowCopy:          newProp(nil, "showCopy", DirtyPaint, true),
-		Variant:           newProp(nil, "variant", DirtyPaint, ""),
-		Thickness:         newProp(nil, "thickness", DirtyLayout, 0.0),
-		Disabled:          newProp(nil, "disabled", DirtyPaint, false),
-		Checked:           newProp(nil, "checked", DirtyPaint, false),
+		SelAnchor:          -1,
+		Label:              newProp(nil, "label", DirtyLayout, ""),
+		Supporting:         newProp(nil, "supporting", DirtyLayout, ""),
+		Text:               newProp(nil, "text", DirtyLayout, ""),
+		Placeholder:        newProp(nil, "placeholder", DirtyLayout, ""),
+		Icon:               newProp(nil, "icon", DirtyLayout, ""),
+		Trailing:           newProp(nil, "trailingIcon", DirtyLayout, ""),
+		FilledIcon:         newProp(nil, "filledIcon", DirtyPaint, false),
+		FilledLeadingIcon:  newProp(nil, "filledLeadingIcon", DirtyPaint, false),
+		FilledTrailingIcon: newProp(nil, "filledTrailingIcon", DirtyPaint, false),
+		LeadingIconColor:   newProp(nil, "leadingIconColor", DirtyPaint, uint32(0)),
+		TrailingIconColor:  newProp(nil, "trailingIconColor", DirtyPaint, uint32(0)),
+		LabelColor:         newProp(nil, "labelColor", DirtyPaint, uint32(0)),
+		SupportingColor:    newProp(nil, "supportingColor", DirtyPaint, uint32(0)),
+		IconOn:             newProp(nil, "iconOn", DirtyLayout, ""),
+		IconOff:            newProp(nil, "iconOff", DirtyLayout, ""),
+		Language:           newProp(nil, "language", DirtyPaint, ""),
+		ShowCopy:           newProp(nil, "showCopy", DirtyPaint, true),
+		Variant:            newProp(nil, "variant", DirtyPaint, ""),
+		Thickness:          newProp(nil, "thickness", DirtyLayout, 0.0),
+		Disabled:           newProp(nil, "disabled", DirtyPaint, false),
+		Checked:            newProp(nil, "checked", DirtyPaint, false),
 		// A selected chip or segment shows a check in place of its leading icon,
 		// which changes its width, so this one is a layout change.
 		Selected:   newProp(nil, "selected", DirtyLayout, false),
@@ -213,6 +218,10 @@ func (c *Component) one(kind, name string) NamedProp {
 		return ColorProp(b, "trailingIconColor", DirtyPaint, &c.TrailingIconColor)
 	case "filledIcon":
 		return BoolProp(b, "filledIcon", DirtyPaint, &c.FilledIcon)
+	case "filledLeadingIcon":
+		return BoolProp(b, "filledLeadingIcon", DirtyPaint, &c.FilledLeadingIcon)
+	case "filledTrailingIcon":
+		return BoolProp(b, "filledTrailingIcon", DirtyPaint, &c.FilledTrailingIcon)
 	case "labelColor":
 		return ColorProp(b, "labelColor", DirtyPaint, &c.LabelColor)
 	case "supportingColor":

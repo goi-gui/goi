@@ -302,3 +302,46 @@ func TestFilledIconProperty(t *testing.T) {
 		t.Fatalf("the card's setting leaked into the button: %+v", op)
 	}
 }
+
+// TestFilledIconSlots: filledIcon fills both glyphs of a two-slot component,
+// and the per-slot properties fill one without touching the other.
+func TestFilledIconSlots(t *testing.T) {
+	icons := func(l *List) map[string]bool {
+		out := map[string]bool{}
+		for i := range l.Ops {
+			if l.Ops[i].Kind == Text && l.Ops[i].Icon {
+				out[l.Ops[i].Text] = l.Ops[i].FilledIcon
+			}
+		}
+		return out
+	}
+	fields := func(props string) map[string]bool {
+		return icons(m3list(t, `Window { TextField {
+			label: "Name" text: "Ada" leadingIcon: person trailingIcon: clear `+props+`
+		} }`))
+	}
+
+	if got := fields(`filledLeadingIcon: true`); !got["person"] || got["clear"] {
+		t.Fatalf("filledLeadingIcon only: %v", got)
+	}
+	if got := fields(`filledTrailingIcon: true`); got["person"] || !got["clear"] {
+		t.Fatalf("filledTrailingIcon only: %v", got)
+	}
+	both := fields(`filledLeadingIcon: true filledTrailingIcon: true`)
+	if !both["person"] || !both["clear"] {
+		t.Fatalf("both slots: %v", both)
+	}
+	if got := fields(`filledIcon: true`); !got["person"] || !got["clear"] {
+		t.Fatalf("filledIcon fills both: %v", got)
+	}
+	none := fields(``)
+	if none["person"] || none["clear"] {
+		t.Fatalf("defaults are filled: %v", none)
+	}
+
+	// A leading-only component takes the slot property too.
+	got := icons(m3list(t, `Window { Button { label: "Go" leadingIcon: add filledLeadingIcon: true } }`))
+	if !got["add"] {
+		t.Fatalf("filledLeadingIcon on a button: %v", got)
+	}
+}

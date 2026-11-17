@@ -180,6 +180,11 @@ func (t *textRenderer) shapeOp(op paint.Op, atlas *text.Atlas) (int, int) {
 	switch {
 	case op.Icon && op.FilledIcon:
 		face = lib.FilledIconFace(float64(op.FontSize) * scale)
+		if !face.HasIcon(op.Text) {
+			// The filled instance is a newer cut of the family; an icon it no
+			// longer carries stays legible in the outlined one.
+			face = lib.IconFace(float64(op.FontSize) * scale)
+		}
 	case op.Icon:
 		face = lib.IconFace(float64(op.FontSize) * scale)
 	case op.FontFamily != "" && op.Italic:
