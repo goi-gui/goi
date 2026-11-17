@@ -79,6 +79,8 @@ var Kinds = []Kind{
 	{"DatePicker", true},
 	{"TimePicker", true},
 	{"ColorPicker", false},
+	// Diagrams.
+	{"Mermaid", false},
 	// Charts.
 	{"LineChart", false},
 	{"AreaChart", false},
@@ -157,6 +159,7 @@ var props = map[string][]string{
 	"TextArea":         {"label", "text", "placeholder", "supporting", "variant", "disabled"},
 	"Code":             {"text", "language", "variant", "showCopy"},
 	"Markdown":         {"text"},
+	"Mermaid":          {"data"},
 	"Map":              {"tiles", "attribution", "center", "zoom", "bbox", "reverseTileColors", "disablePan", "disableZoom"},
 	"Geom":             {"data", "lineColor", "fillColor"},
 	"Point":            {"coordinate"},
@@ -320,6 +323,10 @@ func Default(kind, name string) (any, bool) {
 func TypeOfFor(kind, name string) PropType {
 	if kind == "TableCell" && name == "value" {
 		return Scalar
+	}
+	// A Mermaid chart's `data` is source text; a Geom's is coordinate pairs.
+	if kind == "Mermaid" && name == "data" {
+		return String
 	}
 	// A Slider's center is a number; a Map's is a `lat,lon` string.
 	if kind == "Map" && name == "center" {

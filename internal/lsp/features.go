@@ -2637,6 +2637,12 @@ func propDoc(el string, p schema.Prop) string {
 			"angle (`1 1 1 90deg`). It turns the element and its subtree about its own " +
 			"centre; layout ignores it. The renderer is two-dimensional, so only a z-axis " +
 			"turn shows.")
+	case "data":
+		if el == "Mermaid" {
+			b.WriteString("\n\nThe Mermaid source. A block string (`!\"…\"!`) keeps line breaks and " +
+				"strips the common indentation. The diagram is rendered when its box is on screen, " +
+				"off the UI goroutine, and the bitmap is cached by source and scheme.")
+		}
 	case "lazy":
 		b.WriteString("\n\nDefers reading, fetching or probing the source until the element's " +
 			"box is on screen. The box itself is laid out at once, so declare a `width` and " +

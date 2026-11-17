@@ -17,6 +17,42 @@ func lazyNode(n tree.Node) bool {
 	return false
 }
 
+// nodeOnScreen reports whether any part of n is inside the window and every
+// clipping ancestor's frame. The previous layout pass supplies the bounds, so
+// callers run before layout and see the boxes the last frame drew.
+func (a *App) nodeOnScreen(n tree.Node) bool {
+	if a.win == nil || a.win.tree == nil || n == nil {
+		return false
+	}
+	if !n.Base().Visible() {
+		return false
+	}
+	vw, vh := a.win.tree.Viewport()
+	if vw <= 0 || vh <= 0 {
+		return false
+	}
+	r := absoluteRect(n)
+	if r.W <= 0 || r.H <= 0 {
+		return true
+	}
+	clip := tree.Rect{W: vw, H: vh}
+	var chain []tree.Node
+	for p := n.Base().Parent(); p != nil; p = p.Base().Parent() {
+		if !p.Base().Visible() {
+			return false
+		}
+		chain = append(chain, p)
+	}
+	for i := len(chain) - 1; i >= 0; i-- {
+		p := chain[i]
+		if p.Base().ClipsChildren() {
+			clip = intersectRect(clip, p.Base().ScrollClip(absoluteRect(p)))
+		}
+	}
+	vis := intersectRect(r, clip)
+	return vis.W > 0 && vis.H > 0
+}
+
 // lazyDeferred reports whether a lazy element should still wait. The box is
 // laid out first, so this only asks whether any part of it is inside the window
 // and the clipping ancestors' frames. A zero-sized box is not deferred: its
@@ -29,32 +65,14 @@ func (a *App) lazyDeferred(n tree.Node) bool {
 	if a.win == nil || a.win.tree == nil {
 		return false
 	}
-	if !n.Base().Visible() {
-		return true
-	}
 	vw, vh := a.win.tree.Viewport()
 	if vw <= 0 || vh <= 0 {
-		a.lazyWait = true // ask for the frame after the first layout
+		a.viewportWait = true // ask for the frame after the first layout
 		return true
 	}
 	r := absoluteRect(n)
 	if r.W <= 0 || r.H <= 0 {
 		return false
 	}
-	clip := tree.Rect{W: vw, H: vh}
-	var chain []tree.Node
-	for p := n.Base().Parent(); p != nil; p = p.Base().Parent() {
-		if !p.Base().Visible() {
-			return true
-		}
-		chain = append(chain, p)
-	}
-	for i := len(chain) - 1; i >= 0; i-- {
-		p := chain[i]
-		if p.Base().ClipsChildren() {
-			clip = intersectRect(clip, p.Base().ScrollClip(absoluteRect(p)))
-		}
-	}
-	vis := intersectRect(r, clip)
-	return vis.W <= 0 || vis.H <= 0
+	return !a.nodeOnScreen(n)
 }

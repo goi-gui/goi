@@ -134,6 +134,7 @@ type (
 	RadioButton      = tree.RadioButton
 	Switch           = tree.Switch
 	Slider           = tree.Slider
+	Mermaid          = tree.Mermaid
 	TextField        = tree.TextField
 	SearchBar        = tree.SearchBar
 	Tooltip          = tree.Tooltip

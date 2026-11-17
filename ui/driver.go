@@ -288,6 +288,11 @@ func (a *App) frame() {
 	// An Image src written as an expression, or a row built by a loop, only has
 	// its value once the expression pass above has run.
 	a.syncImages()
+	// A Mermaid diagram renders off the UI goroutine; this starts one when its
+	// box is on screen and applies a finished bitmap.
+	if a.syncMermaid() {
+		a.needsFrame = true
+	}
 	// A Markdown's children are built from its source, so a text change from Go
 	// or an expression has to land before layout measures them.
 	if a.syncMarkdown() {
@@ -323,8 +328,8 @@ func (a *App) frame() {
 	if a.hasMaps {
 		a.syncMaps()
 	}
-	if a.lazyWait {
-		a.lazyWait = false
+	if a.viewportWait {
+		a.viewportWait = false
 		a.needsFrame = true
 	}
 	// Half a second is long enough to smooth frame-time jitter and short enough

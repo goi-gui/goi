@@ -2475,3 +2475,17 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   content is what gives it a size, so waiting would leave a zero-sized hole;
   those load at once. Loaded content is not unloaded when it scrolls away, so a
   page that scrolls back and forth decodes once.
+
+- **Mermaid renders off the UI goroutine and only for a visible box.** The
+  first version laid out and rasterized synchronously on the frame that first
+  showed a diagram; compiling resvg's wasm there froze the window, and hidden
+  gallery pages paid it too. The engine now lives behind a mutex in `ui`, a
+  worker compiles it on first use and renders the source, and the result is
+  posted back as one bitmap. A compiled resvg module is cached in the user cache
+  directory, so the next run skips the compile. The source is the `data`
+  property, so a block string can carry the document; `ThemeKey` names the
+  palette in the cache key, which lets two nodes share a render and lets a page
+  reopened with the same scheme paint at once. The browser build has a stub
+  rather than pulling the wasm runtime into every wasm page. Memory is capped by
+  a pixel budget on the diagram cache; nodes keep their own bitmap if the cache
+  evicts it.

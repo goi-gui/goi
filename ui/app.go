@@ -11,6 +11,7 @@ import (
 	"github.com/goi-gui/goi/internal/i18n"
 	"github.com/goi-gui/goi/internal/img"
 	"github.com/goi-gui/goi/internal/m3"
+	"github.com/goi-gui/goi/internal/mermaid"
 	"github.com/goi-gui/goi/internal/svg"
 	"github.com/goi-gui/goi/internal/tree"
 )
@@ -61,9 +62,9 @@ type App struct {
 	driver     driver
 	quitOnce   sync.Once
 	needsFrame bool
-	// lazyWait is set when a lazy element had no viewport to test yet, so the
-	// frame after layout looks again and loads the ones that turned out visible.
-	lazyWait bool
+	// viewportWait is set when a lazy element or a diagram had no viewport to
+	// test yet, so the frame after layout looks again.
+	viewportWait bool
 	// showFPS is the debug overlay switch; off unless the app asks for it.
 	showFPS bool
 	// imageBudget is how many decoded image bytes the cache may hold, 0 for
@@ -131,6 +132,17 @@ type App struct {
 	mapInFlight int
 	// hasSVGAnim is true while the tree holds an animated SVG document.
 	hasSVGAnim bool
+	// mermaid renders diagrams off the UI goroutine. mermaidMu guards the
+	// engine and its rasterizer, which is not safe for concurrent use; the
+	// cache keeps a diagram shared by several nodes or pages.
+	mermaidMu      sync.Mutex
+	mermaidEng     *mermaid.Engine
+	mermaidErr     error
+	mermaidClosed  bool
+	mermaidCache   map[string]mermaidBitmap
+	mermaidOrder   []string
+	mermaidBytes   int
+	mermaidPending map[string]bool
 	// pending holds the URLs with a fetch in flight, so two nodes with the same
 	// src share one request and a reload does not start a second.
 	pending map[string]bool
@@ -462,6 +474,7 @@ func (a *App) Close() {
 	// The decoders are child processes: leaving them running would keep the
 	// sound playing after the window is gone.
 	a.closeMedia()
+	a.closeMermaid()
 	if a.watcher != nil {
 		a.watcher.Close()
 		a.watcher = nil
