@@ -19,7 +19,7 @@ func FromSeed(seed uint32, dark bool) *Theme {
 	// A vivid seed gives a vivid scheme, a muted one a muted scheme; the clamps
 	// keep a nearly grey seed from producing a saturated hue.
 	chroma := math.Hypot(a, bb)
-	p := palette{hue, clampf(chroma*0.6, 8, 36)}
+	p := palette{hue, clampf(chroma, 8, 48)}
 	s := palette{hue, clampf(chroma*0.25, 4, 16)}
 	t := palette{hue + 60, clampf(chroma*0.4, 6, 24)}
 	n := palette{hue, clampf(chroma*0.06, 1.5, 4)}

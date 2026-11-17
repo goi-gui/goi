@@ -90,3 +90,29 @@ func luminance(c uint32) float64 {
 	}
 	return 0.2126*ch(c>>24) + 0.7152*ch(c>>16&0xFF) + 0.0722*ch(c>>8&0xFF)
 }
+
+// TestFromSeedPrimaryMatchesTheMaterialBaseline: #6750A4 is Material's baseline
+// seed, and its tone-40 primary is that same colour. The primary palette keeps
+// the seed's own chroma (up to 48), so a vivid seed stays vivid instead of
+// washing out to a dusty tone.
+func TestFromSeedPrimaryMatchesTheMaterialBaseline(t *testing.T) {
+	close := func(a, b uint32) bool {
+		for _, sh := range []uint{24, 16, 8} {
+			got := int(a >> sh & 0xFF)
+			want := int(b >> sh & 0xFF)
+			if d := got - want; d < -14 || d > 14 {
+				return false
+			}
+		}
+		return true
+	}
+	if c := FromSeed(0x6750A4FF, false).Colors.Primary; !close(c, 0x6750A4FF) {
+		t.Fatalf("baseline primary = #%08x, want the seed's own tone", c)
+	}
+	// A pink seed is a pink scheme, not a grey one with a hint of red.
+	pink := FromSeed(0xE91E63FF, false).Colors.Primary
+	hi, lo := pink>>24&0xFF, pink>>8&0xFF
+	if spread := int(hi) - int(lo); spread < 80 {
+		t.Fatalf("pink seed primary #%08x is nearly grey (spread %d)", pink, spread)
+	}
+}
