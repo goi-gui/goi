@@ -1060,3 +1060,53 @@ func TestTextFieldSupportingReservesItsLine(t *testing.T) {
 		t.Fatalf("field after area starts at %g, area ends at %g", after.Y, area.Y+area.H)
 	}
 }
+
+// TestNaturalSizeCountsChildMargins: a column or row with no declared size
+// hugs its children including their margins. Measuring without them made the
+// box shorter than the content it then laid out, so a default scroll container
+// clipped and scrolled a box that should have fit.
+func TestNaturalSizeCountsChildMargins(t *testing.T) {
+	tr := build(t, `Window {
+		Column {
+			Column {
+				id: inner
+				Rectangle { id: a width: 50 height: 10 marginTop: 20 marginBottom: 5 }
+				Rectangle { id: b width: 50 height: 10 marginTop: 5 }
+			}
+		}
+	}`)
+	New(nil).Layout(tr.Root, 300, 200)
+	want(t, bounds(t, tr, "a"), 0, 20, 50, 10)
+	want(t, bounds(t, tr, "b"), 0, 40, 50, 10)
+	if got := bounds(t, tr, "inner").H; got != 50 {
+		t.Fatalf("column height = %v, want 50 (children plus margins)", got)
+	}
+	inner, _ := tr.ByID("inner")
+	if inner.Base().ScrollMax() != 0 || inner.Base().ClipsChildren() {
+		t.Fatalf("the column scrolls %v and clips %v, want a box that fits its content",
+			inner.Base().ScrollMax(), inner.Base().ClipsChildren())
+	}
+
+	tr = build(t, `Window {
+		Column {
+			crossAxisAlign: start
+			Row {
+				height: 10
+				Row {
+					id: row
+					Rectangle { width: 10 height: 10 marginLeft: 7 marginRight: 3 }
+					Rectangle { id: second width: 10 height: 10 marginLeft: 5 }
+				}
+			}
+		}
+	}`)
+	New(nil).Layout(tr.Root, 300, 200)
+	want(t, bounds(t, tr, "second"), 25, 0, 10, 10)
+	if got := bounds(t, tr, "row").W; got != 35 {
+		t.Fatalf("row width = %v, want 35 (children plus margins)", got)
+	}
+	row, _ := tr.ByID("row")
+	if row.Base().ScrollMax() != 0 {
+		t.Fatalf("the row scrolls %v, want a box that fits its content", row.Base().ScrollMax())
+	}
+}

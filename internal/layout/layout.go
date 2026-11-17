@@ -1610,16 +1610,26 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 				ch = v
 			}
 		}
+		// Margins take room in the flow, so a column with no declared height
+		// must reserve them; without them its measured box was shorter than
+		// the children it then laid out, and it chose to scroll instead of
+		// hugging its content.
+		me := c.MarginEdges()
 		switch {
 		case horizontal:
-			mainSum += cw
+			mainSum += cw + me.Left + me.Right
 		case stack:
 			mainSum = maxf(mainSum, cw)
 		default:
-			mainSum += ch
+			mainSum += ch + me.Top + me.Bottom
 		}
-		maxW = maxf(maxW, cw)
-		maxH = maxf(maxH, ch)
+		if stack {
+			maxW = maxf(maxW, cw)
+			maxH = maxf(maxH, ch)
+		} else {
+			maxW = maxf(maxW, cw+me.Left+me.Right)
+			maxH = maxf(maxH, ch+me.Top+me.Bottom)
+		}
 		if i > 0 && !stack {
 			mainSum += spacing
 		}
