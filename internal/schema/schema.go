@@ -345,6 +345,15 @@ var elements = func() []Element {
 			Prop{Name: "crossAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
 			Prop{Name: "mainAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "spaceBetween", "spaceAround", "spaceEvenly"}, Default: "start"},
 		)},
+		{Name: "Flex", Children: true, Attrs: withCommon(
+			// The axis is a property, so an expression or a Go call can flip it:
+			// row is a Row, column a Column.
+			Prop{Name: "direction", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"row", "column"}, Default: "row"},
+			Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
+			Prop{Name: "gap", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
+			Prop{Name: "crossAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
+			Prop{Name: "mainAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "spaceBetween", "spaceAround", "spaceEvenly"}, Default: "start"},
+		)},
 		{Name: "TitleBar", Children: true, Attrs: withCommon(
 			Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
 			Prop{Name: "gap", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},

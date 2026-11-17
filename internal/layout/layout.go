@@ -190,6 +190,8 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 	switch b.Node().Kind() {
 	case "Row", "TitleBar":
 		e.linear(b, kids, cw, ch, pe.Left+be.Left, true, pe.Top+be.Top)
+	case "Flex":
+		e.linear(b, kids, cw, ch, pe.Left+be.Left, flowHorizontal(b), pe.Top+be.Top)
 	case "Stack", "ClipRRect", "Positioned", "AspectRatio", "GestureDetector":
 		e.stackChildren(b, w, h, pe.Left+be.Left, pe.Top+be.Top, pe.Right+be.Right, pe.Bottom+be.Bottom)
 	case "Wrap":
@@ -1084,11 +1086,14 @@ func (e *Engine) naturalSize(k *tree.NodeBase, availW, availH float64) (float64,
 	return e.containerNatural(k, availW, availH)
 }
 
-// flowHorizontal reports containers whose children run left to right.
-func flowHorizontal(kind string) bool {
-	switch kind {
+// flowHorizontal reports containers whose children run left to right. A Flex
+// asks its own direction, since that is a property rather than a kind.
+func flowHorizontal(b *tree.NodeBase) bool {
+	switch b.Node().Kind() {
 	case "Row", "TitleBar", "ButtonGroup", "Toolbar", "Carousel", "Tabs", "NavigationBar", "Breadcrumb":
 		return true
+	case "Flex":
+		return b.Node().(*tree.Flex).Direction.Get() != "column"
 	}
 	return false
 }
@@ -1098,7 +1103,7 @@ func flowHorizontal(kind string) bool {
 func (e *Engine) contentHeight(k *tree.NodeBase, availW float64, mt m3.Metrics) float64 {
 	spacing := e.containerSpacing(k)
 	total := mt.Top + mt.Bottom
-	horizontal := flowHorizontal(k.Node().Kind())
+	horizontal := flowHorizontal(k)
 	first := true
 	for _, c := range visibleChildren(k) {
 		_, h := e.natural(c, availW-mt.Left-mt.Right, 0)
@@ -1124,7 +1129,7 @@ func (e *Engine) contentHeight(k *tree.NodeBase, availW float64, mt m3.Metrics) 
 func (e *Engine) contentWidth(k *tree.NodeBase, availW, h float64, mt m3.Metrics) float64 {
 	spacing := e.containerSpacing(k)
 	total := mt.Left + mt.Right
-	horizontal := flowHorizontal(k.Node().Kind())
+	horizontal := flowHorizontal(k)
 	first := true
 	for _, c := range visibleChildren(k) {
 		w, _ := e.natural(c, availW-mt.Left-mt.Right, h)
@@ -1260,6 +1265,8 @@ func containerOf(b *tree.NodeBase) *tree.Container {
 		return &n.Container
 	case *tree.Row:
 		return &n.Container
+	case *tree.Flex:
+		return &n.Container
 	case *tree.TitleBar:
 		return &n.Container
 	case *tree.Stack:
@@ -1289,6 +1296,8 @@ func containerKind(b *tree.NodeBase) (*tree.Container, bool) {
 	case *tree.Column:
 		return &n.Container, true
 	case *tree.Row:
+		return &n.Container, true
+	case *tree.Flex:
 		return &n.Container, true
 	case *tree.TitleBar:
 		return &n.Container, true
@@ -1545,6 +1554,7 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 			e.gridHeight(kids, innerW, cols, spacing) + insetH
 	}
 
+	horizontal := flowHorizontal(k)
 	stack := kind == "Stack" || kind == "GestureDetector" || kind == "Point"
 	var mainSum, maxW, maxH float64
 	for i, c := range kids {
@@ -1561,7 +1571,7 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 			}
 		}
 		switch {
-		case kind == "Row" || kind == "TitleBar":
+		case horizontal:
 			mainSum += cw
 		case stack:
 			mainSum = maxf(mainSum, cw)
@@ -1574,7 +1584,7 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 			mainSum += spacing
 		}
 	}
-	if kind == "Row" || kind == "TitleBar" {
+	if horizontal {
 		return mainSum + insetW, maxH + insetH
 	}
 	if kind == "Stack" || kind == "Point" {
@@ -1589,7 +1599,7 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 // pill that hugs its actions, like a FAB menu.
 func isContainer(k *tree.NodeBase) bool {
 	switch k.Node().Kind() {
-	case "Window", "Column", "Row", "TitleBar", "Stack", "Positioned", "Wrap", "Grid",
+	case "Window", "Column", "Row", "Flex", "TitleBar", "Stack", "Positioned", "Wrap", "Grid",
 		"AspectRatio", "GestureDetector",
 		"Card", "Dialog", "BottomSheet", "SideSheet", "List", "Menu",
 		"NavigationDrawer", "NavigationBar", "NavigationRail", "Tabs",

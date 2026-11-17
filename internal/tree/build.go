@@ -491,7 +491,7 @@ func newNode(name string) Node {
 			Maximized:     newProp(nil, "maximized", DirtyPaint, false),
 			Fullscreen:    newProp(nil, "fullscreen", DirtyPaint, false),
 		}
-	case "Column", "Row", "Stack", "ClipRRect", "Wrap", "Grid", "TitleBar", "AspectRatio", "GestureDetector":
+	case "Column", "Row", "Flex", "Stack", "ClipRRect", "Wrap", "Grid", "TitleBar", "AspectRatio", "GestureDetector":
 		c := Container{
 			NodeBase:   b(),
 			Spacing:    newProp(nil, "spacing", DirtyLayout, 0.0),
@@ -505,6 +505,8 @@ func newNode(name string) Node {
 			return &ClipRRect{Container: c}
 		case "Row":
 			return &Row{Container: c}
+		case "Flex":
+			return &Flex{Container: c, Direction: newProp(nil, "direction", DirtyLayout, "row")}
 		case "TitleBar":
 			return &TitleBar{Container: c}
 		case "Wrap":

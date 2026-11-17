@@ -106,6 +106,7 @@ type (
 	WindowNode = tree.Window
 	// Layout primitives.
 	Column     = tree.Column
+	Flex       = tree.Flex
 	Row        = tree.Row
 	TitleBar   = tree.TitleBar
 	Stack      = tree.Stack

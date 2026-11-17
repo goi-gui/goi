@@ -262,6 +262,26 @@ func (*TitleBar) Kind() string { return "TitleBar" }
 // clickable child such as a window button keeps its own press.
 func (*TitleBar) DragRegion() bool { return true }
 
+// Flex lays its children along one axis, chosen by a property: `direction: row`
+// is a Row and `direction: column` a Column. A Row cannot become a Column
+// because its axis is its kind, so a layout that flips with the window needs
+// this one.
+type Flex struct {
+	Container
+	Direction Prop[string]
+}
+
+// Kind implements Node.
+func (*Flex) Kind() string { return "Flex" }
+
+func (c *Flex) namedProps() []NamedProp {
+	return append(c.Container.namedProps(),
+		EnumProp(&c.NodeBase, "direction", DirtyLayout, &c.Direction, DirectionValues))
+}
+
+// DirectionValues lists the axes a Flex runs along.
+var DirectionValues = []string{"row", "column"}
+
 // Stack overlays children, last on top.
 type Stack struct{ Container }
 
