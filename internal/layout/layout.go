@@ -389,6 +389,17 @@ func (e *Engine) linear(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH,
 			cs = cross
 		}
 		cs = clampSize(cs, minSize(k, !horizontal), maxSize(k, !horizontal))
+		// A wrapped Text takes the column's width instead of keeping its
+		// unwrapped one: a block that overflows a narrow column would paint
+		// outside it and reserve a height for the wrong line count.
+		if !horizontal && k.Height() < 0 {
+			if tx, ok := k.Node().(*tree.Text); ok && tx.Width() < 0 &&
+				(tx.Wrap.Get() || tx.MaxLines.Get() > 0) && cs > cross {
+				cs = maxf(cross, 0)
+				_, sz = e.textSize(tx.Text.Get(), tx, cs)
+				sz = clampSize(sz, minSize(k, horizontal), maxSize(k, horizontal))
+			}
+		}
 		// An AspectRatio takes its width from the parent and derives its height,
 		// or its height in a Row and derives its width. A declared dimension
 		// still wins for its own axis, and the other follows the ratio.
@@ -1215,7 +1226,11 @@ func (e *Engine) textSize(s string, t *tree.Text, availW float64) (float64, floa
 	}
 	limit := textLimit(t, availW)
 	if limit <= 0 {
-		return e.measureFamily(s, size, weight, family)
+		// No column yet: reserve one line at the line height paint will draw
+		// with, not the measurer's ascent+descent, which is a few pixels less and
+		// left a wrapped card short by that much per line.
+		w, _ := e.measureFamily(s, size, weight, family)
+		return w, lineHeight
 	}
 	// Layout and paint must break in the same places or the reserved height is
 	// wrong, so both use the shared greedy wrap with the same advances.
@@ -1556,13 +1571,17 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 
 	horizontal := flowHorizontal(k)
 	stack := kind == "Stack" || kind == "GestureDetector" || kind == "Point"
+	innerH := maxf(availH-insetH, 0)
 	var mainSum, maxW, maxH float64
 	for i, c := range kids {
 		var cw, ch float64
 		if stack && c.Node().Kind() == "Positioned" {
-			cw, ch = e.positionedExtent(c, innerW, maxf(availH-insetH, 0))
+			cw, ch = e.positionedExtent(c, innerW, innerH)
 		} else {
-			cw, ch = e.natural(c, availW, availH)
+			// Children are measured inside this box's padding and border, the
+			// same width they are laid out at. Measuring at the outer width made
+			// a padded card reserve the wrong number of wrapped lines.
+			cw, ch = e.natural(c, innerW, innerH)
 			if v := c.Width(); v >= 0 {
 				cw = v
 			}
