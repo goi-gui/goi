@@ -68,11 +68,17 @@ type NodeBase struct {
 	// declaration can set one edge without repeating the others.
 	marginTop, marginRight, marginBottom, marginLeft     Prop[float64]
 	paddingTop, paddingRight, paddingBottom, paddingLeft Prop[float64]
-	// Axis shorthands: left and right follow paddingX, top and bottom follow
-	// paddingY, which follow padding in turn.
+	// Axis shorthands: left and right follow marginX/paddingX, top and bottom
+	// follow marginY/paddingY, which follow margin/padding in turn.
+	marginX, marginY                                     Prop[float64]
 	paddingX, paddingY                                   Prop[float64]
 	borderT                                              Prop[float64]
 	borderTopT, borderRightT, borderBottomT, borderLeftT Prop[float64]
+	// Axis shorthands for the border: left and right follow borderXThickness,
+	// top and bottom borderYThickness, which follow borderThickness. The same
+	// shape holds for borderXColor/borderYColor and borderColor.
+	borderXT, borderYT         Prop[float64]
+	borderXColor, borderYColor Prop[uint32]
 	// borderType is solid, dashed or dotted, the way CSS spells it. Only a
 	// drawn border reads it.
 	borderType                         Prop[string]
@@ -248,11 +254,12 @@ func (b *NodeBase) Padding() float64 { return b.padding.Get() }
 // unset side follows margin.
 func (b *NodeBase) MarginEdges() Edges {
 	v := b.margin.Get()
+	x, y := edgeOr(b.marginX.Get(), v), edgeOr(b.marginY.Get(), v)
 	return Edges{
-		Top:    edgeOr(b.marginTop.Get(), v),
-		Right:  edgeOr(b.marginRight.Get(), v),
-		Bottom: edgeOr(b.marginBottom.Get(), v),
-		Left:   edgeOr(b.marginLeft.Get(), v),
+		Top:    edgeOr(b.marginTop.Get(), y),
+		Right:  edgeOr(b.marginRight.Get(), x),
+		Bottom: edgeOr(b.marginBottom.Get(), y),
+		Left:   edgeOr(b.marginLeft.Get(), x),
 	}
 }
 
@@ -333,11 +340,12 @@ func (b *NodeBase) BorderEdges() Edges {
 		// draw, and a component keeps its own outline.
 		v = 0
 	}
+	x, y := edgeOr(b.borderXT.Get(), v), edgeOr(b.borderYT.Get(), v)
 	return Edges{
-		Top:    edgeOr(b.borderTopT.Get(), v),
-		Right:  edgeOr(b.borderRightT.Get(), v),
-		Bottom: edgeOr(b.borderBottomT.Get(), v),
-		Left:   edgeOr(b.borderLeftT.Get(), v),
+		Top:    edgeOr(b.borderTopT.Get(), y),
+		Right:  edgeOr(b.borderRightT.Get(), x),
+		Bottom: edgeOr(b.borderBottomT.Get(), y),
+		Left:   edgeOr(b.borderLeftT.Get(), x),
 	}
 }
 
@@ -345,15 +353,22 @@ func (b *NodeBase) BorderEdges() Edges {
 // bottom, left. A side that was not written follows borderColor.
 func (b *NodeBase) BorderColors() [4]uint32 {
 	v := b.borderColor.Get()
-	pick := func(c Prop[uint32]) uint32 {
+	axis := func(c Prop[uint32]) uint32 {
 		if got := c.Get(); got != 0 {
 			return got
 		}
 		return v
 	}
+	x, y := axis(b.borderXColor), axis(b.borderYColor)
+	pick := func(c Prop[uint32], fallback uint32) uint32 {
+		if got := c.Get(); got != 0 {
+			return got
+		}
+		return fallback
+	}
 	return [4]uint32{
-		pick(b.borderTopColor), pick(b.borderRightColor),
-		pick(b.borderBottomColor), pick(b.borderLeftColor),
+		pick(b.borderTopColor, y), pick(b.borderRightColor, x),
+		pick(b.borderBottomColor, y), pick(b.borderLeftColor, x),
 	}
 }
 
@@ -362,7 +377,7 @@ func (b *NodeBase) BorderColors() [4]uint32 {
 // it is what removes a component's own outline. A component whose box the
 // design styled draws that border in place of its own.
 func (b *NodeBase) BorderSet() bool {
-	if b.borderT.Get() >= 0 {
+	if b.borderT.Get() >= 0 || b.borderXT.Get() >= 0 || b.borderYT.Get() >= 0 {
 		return true
 	}
 	return b.borderTopT.Get() >= 0 || b.borderRightT.Get() >= 0 ||
@@ -559,6 +574,8 @@ func (b *NodeBase) SetPaddingY(v float64) { b.paddingY.Set(v) }
 // SetMarginTop, SetMarginRight, SetMarginBottom and SetMarginLeft override one
 // side of the margin; a negative value removes the override, so that side
 // follows margin again.
+func (b *NodeBase) SetMarginX(v float64)      { b.marginX.Set(v) }
+func (b *NodeBase) SetMarginY(v float64)      { b.marginY.Set(v) }
 func (b *NodeBase) SetMarginTop(v float64)    { b.marginTop.Set(v) }
 func (b *NodeBase) SetMarginRight(v float64)  { b.marginRight.Set(v) }
 func (b *NodeBase) SetMarginBottom(v float64) { b.marginBottom.Set(v) }
@@ -610,6 +627,12 @@ func (b *NodeBase) SetBorderLeftThickness(v float64)   { b.borderLeftT.Set(v) }
 // SetBorderThickness draws an outline around the box; 0 removes it, and -1
 // keeps a component's own outline.
 func (b *NodeBase) SetBorderThickness(v float64) { b.borderT.Set(v) }
+
+// SetBorderXThickness and SetBorderYThickness set the left and right, or the
+// top and bottom, thickness at once; a negative value follows borderThickness
+// again.
+func (b *NodeBase) SetBorderXThickness(v float64) { b.borderXT.Set(v) }
+func (b *NodeBase) SetBorderYThickness(v float64) { b.borderYT.Set(v) }
 
 // SetBorderType picks the stroke: solid, dashed or dotted.
 func (b *NodeBase) SetBorderType(v string) { b.borderType.Set(v) }
@@ -889,9 +912,22 @@ func (b *NodeBase) SetBorderColor(rgba uint32) {
 	b.borderColor.Set(rgba)
 }
 
+// SetBorderXColor and SetBorderYColor paint the left and right, or the top and
+// bottom, in a solid colour. Zero falls back to borderColor.
+func (b *NodeBase) SetBorderXColor(rgba uint32) {
+	b.clearColorRole("borderXColor")
+	b.borderXColor.Set(rgba)
+}
+
+// SetBorderYColor paints the top and bottom; zero falls back to borderColor.
+func (b *NodeBase) SetBorderYColor(rgba uint32) {
+	b.clearColorRole("borderYColor")
+	b.borderYColor.Set(rgba)
+}
+
 // SetBorderTopColor, SetBorderRightColor, SetBorderBottomColor and
 // SetBorderLeftColor paint one side in a solid colour, replacing a role the
-// design set there. Zero falls back to borderColor.
+// design set there. Zero falls back to its axis colour, then borderColor.
 func (b *NodeBase) SetBorderTopColor(rgba uint32) {
 	b.clearColorRole("borderTopColor")
 	b.borderTopColor.Set(rgba)

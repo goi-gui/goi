@@ -22,7 +22,7 @@ type Node interface {
 // commonPropCount is how many cells the shared table has. Naming it keeps the
 // per-node table one exact allocation instead of the three or four that append
 // growth used to make (the largest heap cost of a big design).
-const commonPropCount = 63
+const commonPropCount = 69
 
 // commonProps returns the property table shared by every element. extra is how
 // many cells the caller will append, so the slice is sized once. "id" is absent
@@ -41,6 +41,8 @@ func commonProps(b *NodeBase, extra int) []NamedProp {
 		NumberProp(b, "padding", DirtyLayout, &b.padding),
 		NumberProp(b, "paddingX", DirtyLayout, &b.paddingX),
 		NumberProp(b, "paddingY", DirtyLayout, &b.paddingY),
+		NumberProp(b, "marginX", DirtyLayout, &b.marginX),
+		NumberProp(b, "marginY", DirtyLayout, &b.marginY),
 		NumberProp(b, "marginTop", DirtyLayout, &b.marginTop),
 		NumberProp(b, "marginRight", DirtyLayout, &b.marginRight),
 		NumberProp(b, "marginBottom", DirtyLayout, &b.marginBottom),
@@ -52,10 +54,14 @@ func commonProps(b *NodeBase, extra int) []NamedProp {
 		ColorProp(b, "background", DirtyPaint, &b.background),
 		ColorProp(b, "borderColor", DirtyPaint, &b.borderColor),
 		NumberProp(b, "borderThickness", DirtyLayout, &b.borderT),
+		NumberProp(b, "borderXThickness", DirtyLayout, &b.borderXT),
+		NumberProp(b, "borderYThickness", DirtyLayout, &b.borderYT),
 		NumberProp(b, "borderTopThickness", DirtyLayout, &b.borderTopT),
 		NumberProp(b, "borderRightThickness", DirtyLayout, &b.borderRightT),
 		NumberProp(b, "borderBottomThickness", DirtyLayout, &b.borderBottomT),
 		NumberProp(b, "borderLeftThickness", DirtyLayout, &b.borderLeftT),
+		ColorProp(b, "borderXColor", DirtyPaint, &b.borderXColor),
+		ColorProp(b, "borderYColor", DirtyPaint, &b.borderYColor),
 		ColorProp(b, "borderTopColor", DirtyPaint, &b.borderTopColor),
 		ColorProp(b, "borderRightColor", DirtyPaint, &b.borderRightColor),
 		ColorProp(b, "borderBottomColor", DirtyPaint, &b.borderBottomColor),

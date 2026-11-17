@@ -156,3 +156,75 @@ func TestPerSideSetters(t *testing.T) {
 		t.Fatalf("bottom border colour = %08x", got)
 	}
 }
+
+// TestMarginAndBorderAxes: the axis shorthands sit between the aggregate and
+// one side, for margins and for the two border dimensions.
+func TestMarginAndBorderAxes(t *testing.T) {
+	tr, diag := BuildSource([]byte(`Window {
+		Column {
+			id:     page
+			margin: 4 marginX: 6 marginY: 8 marginTop: 10
+
+			borderThickness:    1
+			borderXThickness:   2
+			borderYThickness:   3
+			borderTopThickness: 4
+			borderColor:        #111111
+			borderXColor:       #222222
+			borderLeftColor:    #333333
+		}
+	} `), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	n, _ := tr.ByID("page")
+	b := n.Base()
+
+	if got := b.MarginEdges(); got != (Edges{Top: 10, Right: 6, Bottom: 8, Left: 6}) {
+		t.Fatalf("margin edges = %+v", got)
+	}
+	if got := b.BorderEdges(); got != (Edges{Top: 4, Right: 2, Bottom: 3, Left: 2}) {
+		t.Fatalf("border edges = %+v", got)
+	}
+	if got := b.BorderColors(); got != [4]uint32{0x111111FF, 0x222222FF, 0x111111FF, 0x333333FF} {
+		t.Fatalf("border colours = %08x", got)
+	}
+
+	// Go setters, and the fallback when an override is cleared.
+	b.SetMarginX(12)
+	b.SetMarginY(14)
+	if got := b.MarginEdges(); got != (Edges{Top: 10, Right: 12, Bottom: 14, Left: 12}) {
+		t.Fatalf("after SetMarginX/Y = %+v", got)
+	}
+	b.SetMarginTop(-1)
+	b.SetMarginX(-1)
+	if got := b.MarginEdges(); got != (Edges{Top: 14, Right: 4, Bottom: 14, Left: 4}) {
+		t.Fatalf("cleared margins = %+v", got)
+	}
+
+	b.SetBorderYColor(0x444444FF)
+	if got := b.BorderColors(); got[0] != 0x444444FF || got[2] != 0x444444FF {
+		t.Fatalf("SetBorderYColor = %08x", got)
+	}
+	b.SetBorderXThickness(0)
+	b.SetBorderYThickness(-1)
+	if got := b.BorderEdges(); got != (Edges{Top: 4, Right: 0, Bottom: 1, Left: 0}) {
+		t.Fatalf("after axis thickness setters = %+v", got)
+	}
+
+	// An explicit zero on an axis removes those two sides, and still counts as
+	// a declared border, so a component's own outline is replaced.
+	tr, diag = BuildSource([]byte(`Window { Column {
+		id: page borderThickness: 1 borderYThickness: 0
+	} }`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	n, _ = tr.ByID("page")
+	if got := n.Base().BorderEdges(); got != (Edges{Top: 0, Right: 1, Bottom: 0, Left: 1}) {
+		t.Fatalf("zero axis = %+v", got)
+	}
+	if !n.Base().BorderSet() {
+		t.Fatal("an explicit zero axis does not count as a border declaration")
+	}
+}

@@ -218,6 +218,8 @@ var common = []Prop{
 	{Name: "paddingX", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
 	{Name: "paddingY", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
 	// -1 means "follow margin/padding", so a side can be set on its own.
+	{Name: "marginX", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
+	{Name: "marginY", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
 	{Name: "marginTop", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
 	{Name: "marginRight", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
 	{Name: "marginBottom", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
@@ -233,10 +235,14 @@ var common = []Prop{
 	{Name: "borderThickness", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
 	// A side width or colour overrides borderThickness/borderColor for that side;
 	// -1 follows borderThickness, and 0 follows borderColor.
+	{Name: "borderXThickness", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
+	{Name: "borderYThickness", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
 	{Name: "borderTopThickness", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
 	{Name: "borderRightThickness", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
 	{Name: "borderBottomThickness", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
 	{Name: "borderLeftThickness", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
+	{Name: "borderXColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
+	{Name: "borderYColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
 	{Name: "borderTopColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
 	{Name: "borderRightColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
 	{Name: "borderBottomColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},

@@ -591,3 +591,48 @@ func TestTabSelectedDrivesTheIndicator(t *testing.T) {
 		t.Fatalf("indicator at %v, want one under the second tab", under)
 	}
 }
+
+// TestBorderAxesDrawOnlyTheirSides: borderX draws the left and right bands in
+// their own colour, and leaves the top and bottom alone.
+func TestBorderAxesDrawOnlyTheirSides(t *testing.T) {
+	l := m3list(t, `Window { Column {
+		Rectangle {
+			id:     box
+			width:  100
+			height: 60
+			borderXThickness: 2
+			borderXColor:     #ff0000
+		}
+	} }`)
+	var bands []Op
+	for _, op := range l.Ops {
+		if op.Kind == Fill && op.Color == 0xFF0000FF && op.Rect[3] > 10 {
+			bands = append(bands, op)
+		}
+	}
+	if len(bands) != 2 {
+		t.Fatalf("%d red bands, want the two vertical sides:\n%s", len(bands), l.Dump())
+	}
+	for _, op := range bands {
+		if op.Rect[2] != 2 {
+			t.Fatalf("band width = %v, want 2", op.Rect[2])
+		}
+		if op.Rect[0] == 0 && op.Rect[2] != 2 {
+			t.Fatalf("unexpected band %+v", op)
+		}
+	}
+
+	// The horizontal axis colours only the top and bottom.
+	l = m3list(t, `Window { Column {
+		Rectangle { width: 100 height: 60 borderYThickness: 3 borderYColor: #00ff00 }
+	} }`)
+	var horizontal int
+	for _, op := range l.Ops {
+		if op.Kind == Fill && op.Color == 0x00FF00FF && op.Rect[2] > 10 && op.Rect[3] == 3 {
+			horizontal++
+		}
+	}
+	if horizontal != 2 {
+		t.Fatalf("%d horizontal bands, want the two horizontal sides:\n%s", horizontal, l.Dump())
+	}
+}
