@@ -9,7 +9,7 @@ import (
 // TestCustomColorResolves checks the design side of SetCustomColor: a name that
 // is not a scheme role resolves to the value the app defined.
 func TestCustomColorResolves(t *testing.T) {
-	a, w := reloadApp(t, `Window { Rectangle { id: box background: myBrand } }`)
+	a, w := reloadApp(t, `Window { Rectangle { id: box background: customColor.myBrand } }`)
 	box := MustByID[*Rectangle](w, "box")
 
 	w.SetCustomColor("myBrand", 0x411F89FF)
@@ -33,8 +33,8 @@ func TestCustomColorResolves(t *testing.T) {
 // TestCustomColorsMap covers the plural form.
 func TestCustomColorsMap(t *testing.T) {
 	a, w := reloadApp(t, `Window { Column {
-		Rectangle { id: a background: myBrand }
-		Rectangle { id: b background: otherColor }
+		Rectangle { id: a background: customColor.myBrand }
+		Rectangle { id: b background: customColor.otherColor }
 	} }`)
 	w.SetCustomColors(map[string]uint32{
 		"myBrand":    0x411F89FF,
@@ -75,7 +75,7 @@ func TestCustomColorMayReuseARoleName(t *testing.T) {
 // TestMissingCustomColorFallsBack keeps a typo visible: the element still draws
 // a theme colour (onSurface) instead of nothing.
 func TestMissingCustomColorFallsBack(t *testing.T) {
-	a, w := reloadApp(t, `Window { Rectangle { id: box background: notDefined } }`)
+	a, w := reloadApp(t, `Window { Rectangle { id: box background: customColor.notDefined } }`)
 	box := MustByID[*Rectangle](w, "box")
 
 	a.resolveColors()

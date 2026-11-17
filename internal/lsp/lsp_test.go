@@ -711,10 +711,10 @@ func TestHoverExplainsColours(t *testing.T) {
 		return h.Contents.Value
 	}
 
-	if got := hover("primary"); !strings.Contains(got, "theme role") {
+	if got := hover("primary"); !strings.Contains(got, "write `theme.primary`") {
 		t.Fatalf("role hover = %q", got)
 	}
-	if got := hover("myBrand"); !strings.Contains(got, "SetCustomColor") {
+	if got := hover("myBrand"); !strings.Contains(got, "customColor.myBrand") {
 		t.Fatalf("custom hover = %q", got)
 	}
 }

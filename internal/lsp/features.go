@@ -1561,7 +1561,8 @@ func (s *Server) hover(raw json.RawMessage) any {
 // name follows the app, and anything else is a typo the runtime warns about.
 func colourDoc(name string) string {
 	if _, ok := (m3.Colors{}).Role(name); ok {
-		return "`" + name + "` is a theme role: it follows the light/dark scheme."
+		return "`" + name + "` is a theme colour, but a role is a reference: write " +
+			"`theme." + name + "` so it follows the light/dark scheme."
 	}
 	if strings.HasPrefix(name, "#") {
 		return "`" + name + "` is a fixed hex literal: it does not follow the scheme."
@@ -1579,8 +1580,8 @@ func colourDoc(name string) string {
 		return "`" + name + "` is a CSS gradient. The stops may carry a position " +
 			"(`0%`, `50%`, `100%`); a missing one is spread between its neighbours."
 	}
-	return "`" + name + "` is a custom colour: the app defines it with `ui.SetCustomColor`. " +
-		"If nothing defines it, the runtime logs a warning and draws `onSurface`."
+	return "`" + name + "` is not a colour. Write `customColor." + name + "` for a colour " +
+		"the app defines with `ui.SetCustomColor`, or a CSS colour such as `#rrggbb`."
 }
 
 // namespaceDoc explains one of the two colour namespaces.

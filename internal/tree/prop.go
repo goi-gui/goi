@@ -389,16 +389,16 @@ func (p *NamedProp) setLiteral(v syntax.Value) bool {
 				cp.val = 0
 				return true
 			}
-			// A CSS colour keyword is a literal, not a theme role.
-			if rgba, ok := csscolor.Parse(c.Val); ok {
-				cp.base.clearColorRole(p.Name)
-				cp.base.setGradient(p.Name, nil)
-				cp.val = rgba
-				return true
-			}
-			if !cp.base.setColorRole(p.Name, c.Val) {
+			// A CSS colour keyword is a literal. A scheme colour is a
+			// reference (`theme.primary`), never a bare name, so anything else
+			// is rejected here too; the schema reports the typo first.
+			rgba, ok := csscolor.Parse(c.Val)
+			if !ok {
 				return false
 			}
+			cp.base.clearColorRole(p.Name)
+			cp.base.setGradient(p.Name, nil)
+			cp.val = rgba
 		default:
 			return false
 		}

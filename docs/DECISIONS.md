@@ -2409,3 +2409,14 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   cases and a Go icon change re-lays it out. Slots are not "children": the
   validator's `cannot contain child elements` check skips `$name` members so a
   leaf component can declare one.
+
+- **A theme colour is a reference, never a bare word.** `background: surfaceContainerHigh`
+  used to be accepted and stored as a role, while `theme.surfaceContainerHigh`
+  was the documented form: two spellings of one thing, and the bare one reads
+  like a CSS keyword. The validator now rejects an identifier in a colour
+  position unless it is a CSS colour name, and a name the scheme owns gets the
+  hint `write theme.<name>`; an app colour has to be `customColor.<name>`. The
+  tree's fallback that stored a bare word as a role is gone with it, so the
+  language and the runtime agree. This is a break for `.goi` files that used the
+  bare spelling, taken while the module is v0.x; the examples, the docs and the
+  tests were swept with the checker's own role list.

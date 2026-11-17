@@ -51,7 +51,7 @@ func TestGradientKeepsRadiusAndBorder(t *testing.T) {
 			width: 100
 			height: 60
 			radius: 12
-			borderColor: primary
+			borderColor: theme.primary
 			borderThickness: 1
 			background: "radial-gradient(circle, red 0%, blue 100%)"
 		}

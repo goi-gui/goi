@@ -37,7 +37,7 @@ type Series struct {
 //	BarChart {
 //		categories: "Jan, Feb, Mar"
 //		ChartSeries { label: "2026" values: "12, 18, 9" }
-//		ChartSeries { label: "2027" values: "10, 14, 20" color: tertiary }
+//		ChartSeries { label: "2027" values: "10, 14, 20" color: theme.tertiary }
 //	}
 //
 // From Go, SetData replaces the whole picture:

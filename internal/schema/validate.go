@@ -985,12 +985,20 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 				v.add(at, end, fmt.Sprintf("%s.%s is not a valid color: %q (a hex literal, a CSS colour name, rgb()/rgba() or a gradient)", e.Name, pd.Name, c.Val), "")
 			}
 		case *syntax.Ident:
-			// A bare word is a theme role such as surfaceContainerHigh, or a
-			// name the app defined with ui.SetCustomColor. The schema cannot
-			// see the latter, so an unknown name is accepted here and the
-			// runtime logs a warning with a "did you mean" hint if nobody
-			// defines it.
-			_ = c
+			// A CSS keyword is a fixed colour. A scheme role has to be written
+			// as a reference: a bare `surfaceContainerHigh` is a typo the
+			// compiler can catch, and a bare word that is neither a role nor a
+			// CSS colour is not a colour at all.
+			if _, ok := csscolor.Parse(c.Val); ok {
+				return
+			}
+			if _, ok := (m3.Colors{}).Role(c.Val); ok {
+				v.add(at, end, fmt.Sprintf("%s.%s: %q is a theme colour; write theme.%s",
+					e.Name, pd.Name, c.Val, c.Val), "")
+				return
+			}
+			v.add(at, end, fmt.Sprintf("%s.%s: %q is not a colour; write theme.<role> or customColor.<name>, or a CSS colour such as #rrggbb",
+				e.Name, pd.Name, c.Val), "")
 		default:
 			fail("a color like #3b82f6 or a role like surfaceContainerHigh")
 		}

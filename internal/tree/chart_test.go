@@ -1,6 +1,9 @@
 package tree
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestChartSeriesBecomeData covers the declarative path from both sides: the
 // children become the chart's data with their style, and the categories string
@@ -12,7 +15,7 @@ func TestChartSeriesBecomeData(t *testing.T) {
 			categories: ["Jan", "Feb", "Mar"]
 			values:     true
 			ChartSeries { id: first label: "2026" values: [12, 18, 9] }
-			ChartSeries { label: "2027" values: [10, 14, 20] color: tertiary }
+			ChartSeries { label: "2027" values: [10, 14, 20] color: theme.tertiary }
 			ChartSeries { label: "2028" values: [4] color: #ff0000ff }
 		}
 	}`), nil)
@@ -85,7 +88,7 @@ func TestChartColorsFromDesign(t *testing.T) {
 	tr, diag := BuildSource([]byte(`Window {
 		PieChart {
 			id:         channels
-			textColor:  onSurfaceVariant
+			textColor: theme.onSurfaceVariant
 			gridColor:  #808080ff
 			categories: ["Direct", "Search", "Social"]
 
@@ -102,7 +105,7 @@ func TestChartColorsFromDesign(t *testing.T) {
 	chart := n.(*PieChart).ChartCore()
 	// A role cell is not resolved at build time: the tree's colour pass writes
 	// it from the scheme, which is what keeps a theme change working.
-	if role := chart.Base().colorRoleFor("textColor"); role != "onSurfaceVariant" {
+	if role := chart.Base().colorRoleFor("textColor"); role != "theme:onSurfaceVariant" {
 		t.Fatalf("textColor role = %q", role)
 	}
 	if got := chart.GridColor.Get(); got != 0x808080FF {
@@ -117,12 +120,12 @@ func TestChartColorsFromDesign(t *testing.T) {
 	}
 }
 
-// TestChartColorRoleFollowsTheScheme is what makes `textColor: onSurface` worth
+// TestChartColorRoleFollowsTheScheme is what makes `textColor: theme.onSurface` worth
 // writing: the role is resolved by the tree's colour pass, so switching the
 // theme repaints the labels.
 func TestChartColorRoleFollowsTheScheme(t *testing.T) {
 	tr, diag := BuildSource([]byte(`Window {
-		BarChart { id: bars textColor: primary gridColor: #808080ff }
+		BarChart { id: bars textColor: theme.primary gridColor: #808080ff }
 	}`), nil)
 	if !diag.Empty() {
 		t.Fatalf("%v", diag)
@@ -130,7 +133,7 @@ func TestChartColorRoleFollowsTheScheme(t *testing.T) {
 	n, _ := tr.ByID("bars")
 	chart := n.(*BarChart).ChartCore()
 	role := func(name string) (uint32, bool) {
-		if name == "primary" {
+		if strings.TrimPrefix(name, "theme:") == "primary" {
 			return 0x6750A4FF, true
 		}
 		return 0, false

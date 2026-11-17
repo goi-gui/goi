@@ -22,10 +22,12 @@ func brandTheme() *m3.Theme {
 func TestRegisteredThemeIsUsed(t *testing.T) {
 	a, win := reloadApp(t, `Window {
 		theme: brand
-		Column { Text { id: label text: "x" color: primary } }
+		Column { Text { id: label text: "x" color: theme.primary } }
 	}`)
 	win.DefineTheme(brandTheme())
-	win.tree.ResolveColors(themeFor(win).Colors.Role)
+	win.tree.ResolveColors(func(name string) (uint32, bool) {
+		return themeFor(win).Colors.Role(strings.TrimPrefix(name, "theme:"))
+	})
 	if got := themeFor(win).Name; got != "brand" {
 		t.Fatalf("resolved theme = %q, want brand", got)
 	}

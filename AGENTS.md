@@ -85,8 +85,9 @@ Tests that enforce the above: `TestEveryComponentValidates`,
   (`app.dark ? "light_mode" : "dark_mode"`). Behaviour belongs in Go.
 - A list comes from `for … range` over a bridge slice, whose rows are rebuilt by
   `ui.SetData`; `ui.Instantiate`/`ui.Fill` are for a fixed set of children.
-- Colours as M3 role names (`primary`, `surfaceContainer`, `onSurfaceVariant`)
-  follow the scheme; hex literals are deliberately fixed. Prefer roles.
+- Colours as M3 role names (`theme.primary`, `theme.surfaceContainer`,
+  `theme.onSurfaceVariant`) follow the scheme; a bare role is a diagnostic, and
+  hex literals are deliberately fixed. Prefer roles.
 - `spacing` and `gap` are the same cell; the only intentional alias.
 - `Positioned` reserves `-1` for "auto", so animation slides use
   `translateX`/`translateY`, not `left`.

@@ -125,7 +125,7 @@ func TestSVGRemoteFailureStopsLoading(t *testing.T) {
 func TestSVGColorBeatsRole(t *testing.T) {
 	a, w := svgApp(t, `Window {
 		Column {
-			SVG { id: icon src: "goi://icon.svg" color: primary }
+			SVG { id: icon src: "goi://icon.svg" color: theme.primary }
 		}
 	}`)
 	n := MustByID[*SVG](w, "icon")

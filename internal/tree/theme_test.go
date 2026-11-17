@@ -12,7 +12,7 @@ import (
 // light in light mode and dark in dark mode, without touching the design.
 func TestRoleColorsFollowTheScheme(t *testing.T) {
 	tr, diag := BuildSource([]byte(`Window {
-		Rectangle { id: box background: surfaceContainerHigh borderColor: onSurface }
+		Rectangle { id: box background: theme.surfaceContainerHigh borderColor: theme.onSurface }
 	}`), nil)
 	if !diag.Empty() {
 		t.Fatal(diag)
@@ -22,12 +22,16 @@ func TestRoleColorsFollowTheScheme(t *testing.T) {
 		t.Fatalf("unresolved background = %08x, want 0", got)
 	}
 	light := m3.Light().Colors
-	tr.ResolveColors(light.Role)
+	tr.ResolveColors(func(name string) (uint32, bool) {
+		return light.Role(strings.TrimPrefix(name, "theme:"))
+	})
 	if got := box.Background(); got != light.SurfaceContainerHigh {
 		t.Fatalf("light background = %08x, want %08x", got, light.SurfaceContainerHigh)
 	}
 	dark := m3.Dark().Colors
-	tr.ResolveColors(dark.Role)
+	tr.ResolveColors(func(name string) (uint32, bool) {
+		return dark.Role(strings.TrimPrefix(name, "theme:"))
+	})
 	if got := box.Background(); got != dark.SurfaceContainerHigh {
 		t.Fatalf("dark background = %08x, want %08x", got, dark.SurfaceContainerHigh)
 	}
@@ -130,7 +134,7 @@ Window {
 // TestLiteralColorReplacesRole guards hot reload: a literal written over a role
 // must stop following the theme.
 func TestLiteralColorReplacesRole(t *testing.T) {
-	tr, diag := BuildSource([]byte(`Window { Rectangle { id: box background: primary } }`), nil)
+	tr, diag := BuildSource([]byte(`Window { Rectangle { id: box background: theme.primary } }`), nil)
 	if !diag.Empty() {
 		t.Fatal(diag)
 	}
@@ -146,7 +150,7 @@ func TestLiteralColorReplacesRole(t *testing.T) {
 // the design's role, or the frame loop would put the scheme's colour back on the
 // next tick.
 func TestGoSetColorReplacesRole(t *testing.T) {
-	tr, diag := BuildSource([]byte(`Window { Text { id: label text: "x" color: primary } }`), nil)
+	tr, diag := BuildSource([]byte(`Window { Text { id: label text: "x" color: theme.primary } }`), nil)
 	if !diag.Empty() {
 		t.Fatal(diag)
 	}

@@ -194,7 +194,7 @@ Column {
 	width:      280
 	padding:    12
 	spacing:    6
-	background: surfaceContainer
+	background: theme.surfaceContainer
 
 	Text {
 		text: props.title

@@ -103,7 +103,7 @@ func TestTableCellValueTakesScalars(t *testing.T) {
 func TestColorAcceptsCSSForms(t *testing.T) {
 	for _, v := range []string{
 		`white`, `"red"`, `"rgb(42, 123, 155)"`, `"rgba(0,0,0,0.5)"`,
-		`"hsl(200 40% 50%)"`, `#fff`, `primary`,
+		`"hsl(200 40% 50%)"`, `#fff`, `theme.primary`, `customColor.brand`,
 	} {
 		src := fmt.Sprintf("Window { Rectangle { background: %s } }", v)
 		if _, diag := validate(t, src); !diag.Empty() {

@@ -195,11 +195,11 @@ func TestExpressionValues(t *testing.T) {
 // name nobody defined.
 func TestColorRoles(t *testing.T) {
 	_, diag := validate(t, `Window {
-		background: surface
+		background: theme.surface
 		Column {
-			Rectangle { id: a background: surfaceContainerHigh borderColor: outlineVariant }
-			Text { text: "hi" color: onSurfaceVariant }
-			Text { text: "custom" color: myBrand }
+			Rectangle { id: a background: theme.surfaceContainerHigh borderColor: theme.outlineVariant }
+			Text { text: "hi" color: theme.onSurfaceVariant }
+			Text { text: "custom" color: customColor.myBrand }
 		}
 	}`)
 	if !diag.Empty() {
@@ -717,7 +717,7 @@ func TestChartChildrenAreSeries(t *testing.T) {
 		src := `Window { ` + kind + ` {
 			` + cats + `
 			ChartSeries { label: "2026" values: [12, 18] }
-			ChartSeries { values: [1] color: tertiary }
+			ChartSeries { values: [1] color: theme.tertiary }
 		} }`
 		if _, diag := validate(t, src); !diag.Empty() {
 			t.Errorf("%s: %v", kind, diag)

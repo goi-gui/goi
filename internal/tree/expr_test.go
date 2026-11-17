@@ -33,7 +33,7 @@ func TestThemeExpressions(t *testing.T) {
 	tr, diag := BuildSource([]byte(`Window {
 		theme: light
 		Column {
-			Text { id: label text: app.dark ? "Dark" : "Light" color: app.dark ? onSurface : onPrimary }
+			Text { id: label text: app.dark ? "Dark" : "Light" color: app.dark ? theme.onSurface : theme.onPrimary }
 			Rectangle { id: box visible: app.dark width: 40 height: 20 }
 		}
 	}`), nil)
@@ -46,7 +46,7 @@ func TestThemeExpressions(t *testing.T) {
 	if got, _ := label.PropValue("text"); got != "Light" {
 		t.Fatalf("light text = %v", got)
 	}
-	if got := label.colorRoleFor("color"); got != "onPrimary" {
+	if got := label.colorRoleFor("color"); got != "theme:onPrimary" {
 		t.Fatalf("light role = %q", got)
 	}
 	if box := tr.ids["box"].Base(); box.Visible() {
@@ -58,7 +58,7 @@ func TestThemeExpressions(t *testing.T) {
 	if got, _ := label.PropValue("text"); got != "Dark" {
 		t.Fatalf("dark text = %v", got)
 	}
-	if got := label.colorRoleFor("color"); got != "onSurface" {
+	if got := label.colorRoleFor("color"); got != "theme:onSurface" {
 		t.Fatalf("dark role = %q", got)
 	}
 	if box := tr.ids["box"].Base(); !box.Visible() {

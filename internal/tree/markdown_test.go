@@ -193,7 +193,7 @@ func TestRichTextChildrenBecomeSpans(t *testing.T) {
 			Text { text: "it" fontStyle: italic }
 			Text { text: "under" decoration: underline }
 			Text { text: "gone" decoration: line-through color: #ff0000ff }
-			Text { text: "role" color: tertiary }
+			Text { text: "role" color: theme.tertiary }
 			Text { text: "docs" link: "https://goi.dev/docs" }
 		}
 	}`), nil)
