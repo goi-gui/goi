@@ -173,7 +173,7 @@ func (s *Server) initialize(raw json.RawMessage) any {
 		},
 		"serverInfo": map[string]any{
 			"name":    "goipls",
-			"version": "0.1.0",
+			"version": Version(),
 		},
 	}
 }

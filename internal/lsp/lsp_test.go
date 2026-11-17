@@ -2416,3 +2416,121 @@ func TestPopoverSlotIsOfferedAndExplained(t *testing.T) {
 		t.Fatalf("hover on $popover = %q", h.Contents.Value)
 	}
 }
+
+// TestRemovedPropertiesAreNotOffered: the vocabulary is the schema, so a
+// property that no longer exists is neither completed nor accepted. This is the
+// goipls half of the cleanup: completion offers only what the painter reads, and
+// writing a removed name reports a diagnostic instead of doing nothing.
+func TestRemovedPropertiesAreNotOffered(t *testing.T) {
+	cases := []struct{ element, prop, normal string }{
+		{"Tabs", "variant", "spacing"},
+		{"List", "variant", "spacing"},
+		{"Toolbar", "variant", "spacing"},
+		{"Chip", "checked", "label"},
+		{"SearchBar", "leadingIcon", "placeholder"},
+		{"FAB", "expanded", "icon"},
+		{"BottomSheet", "supporting", "label"},
+		{"SideSheet", "supporting", "label"},
+		{"DatePicker", "variant", "label"},
+		{"Card", "leadingIcon", "label"},
+		{"ButtonGroup", "disabled", "spacing"},
+		{"Text", "surfaceColor", "text"},
+		{"SVG", "surfaceColor", "src"},
+	}
+	for _, tc := range cases {
+		c := newClient(t)
+		dir := t.TempDir()
+
+		// Completion: the removed name is absent, a real one is present.
+		src := "Window {\n\t" + tc.element + " {\n\t\t\n\t}\n}\n"
+		uri := writeDesign(t, dir, "main.goi", src)
+		c.openDoc(uri, src)
+		res := c.request("textDocument/completion", map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     at(t, src, "\t\t\n", 2),
+		})
+		var list completionList
+		if err := json.Unmarshal(res, &list); err != nil {
+			t.Fatal(err)
+		}
+		labels := map[string]bool{}
+		for _, it := range list.Items {
+			labels[it.Label] = true
+		}
+		if labels[tc.prop] {
+			t.Errorf("%s still completes %q", tc.element, tc.prop)
+		}
+		if !labels[tc.normal] {
+			t.Errorf("%s: %q is no longer offered either: %v", tc.element, tc.normal, list.Items)
+		}
+
+		// A design that writes it reports a diagnostic.
+		bad := "Window {\n\t" + tc.element + " {\n\t\t" + tc.prop + ": 1\n\t}\n}\n"
+		badURI := writeDesign(t, dir, "bad.goi", bad)
+		c.openDoc(badURI, bad)
+		diags := c.diagnostics(badURI)
+		if len(diags) == 0 {
+			t.Errorf("%s.%s produced no diagnostic", tc.element, tc.prop)
+			continue
+		}
+		found := false
+		for _, d := range diags {
+			if strings.Contains(d.Message, tc.prop) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s.%s diagnostic does not name the property: %v", tc.element, tc.prop, diags)
+		}
+	}
+}
+
+// TestKeptPropertiesAreStillOffered: the cleanup must not take a property that
+// still does something.
+func TestKeptPropertiesAreStillOffered(t *testing.T) {
+	cases := []struct{ element, prop string }{
+		{"Button", "variant"},
+		{"Chip", "variant"},
+		{"Chip", "selected"},
+		{"SegmentedButton", "variant"},
+		{"DatePicker", "label"},
+		{"Card", "disabled"},
+		{"FAB", "label"},
+		{"TimePicker", "variant"},
+	}
+	for _, tc := range cases {
+		c := newClient(t)
+		dir := t.TempDir()
+		src := "Window {\n\t" + tc.element + " {\n\t\t\n\t}\n}\n"
+		uri := writeDesign(t, dir, "main.goi", src)
+		c.openDoc(uri, src)
+		res := c.request("textDocument/completion", map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     at(t, src, "\t\t\n", 2),
+		})
+		var list completionList
+		if err := json.Unmarshal(res, &list); err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, it := range list.Items {
+			if it.Label == tc.prop {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s no longer completes %q", tc.element, tc.prop)
+		}
+	}
+}
+
+// TestVersionIsReported keeps the editor's serverInfo useful: a goipls built
+// from a tag reports it, a checkout says "dev".
+func TestVersionIsReported(t *testing.T) {
+	if Version() == "" {
+		t.Fatal("no version")
+	}
+	if got := Version(); got != "dev" && !strings.HasPrefix(got, "v") {
+		t.Fatalf("version = %q, want dev or a module version", got)
+	}
+}
