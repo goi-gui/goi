@@ -118,7 +118,7 @@ var props = map[string][]string{
 	"Checkbox":         {"label", "disabled", "checked"},
 	"RadioButton":      {"label", "disabled", "checked"},
 	"Switch":           {"label", "disabled", "checked", "icon", "iconOn", "iconOff", "filledIcon"},
-	"Slider":           {"variant", "disabled", "value", "end", "center", "min", "max", "step"},
+	"Slider":           {"variant", "disabled", "value", "end", "center", "min", "max", "step", "showTooltip"},
 	"TextField":        {"label", "text", "placeholder", "supporting", "leadingIcon", "trailingIcon", "filledIcon", "filledLeadingIcon", "filledTrailingIcon", "variant", "color", "disabled", "type", "mask", "obscureText"},
 	"SearchBar":        {"label", "text", "placeholder", "trailingIcon", "filledIcon", "filledTrailingIcon", "disabled"},
 	"Tooltip":          {"text"},
@@ -330,7 +330,7 @@ func TypeOfFor(kind, name string) PropType {
 // TypeOf returns the literal type of a component property.
 func TypeOf(name string) PropType {
 	switch name {
-	case "disabled", "checked", "selected", "expanded", "showCopy", "animated", "obscureText",
+	case "disabled", "checked", "selected", "expanded", "showCopy", "showTooltip", "animated", "obscureText",
 		"filledIcon", "filledLeadingIcon", "filledTrailingIcon",
 		"sortable", "numeric", "striped", "showHeader", "stickyHeader", "sortAscending",
 		"grid", "axis", "legend", "values", "stacked", "horizontal", "smooth", "points",

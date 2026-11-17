@@ -2,6 +2,7 @@ package paint
 
 import (
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1129,6 +1130,11 @@ func (l *List) paintSlider(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	// clear space around it.
 	const edge = handleW + gap
 
+	// The value indicator names the handle the pointer would move: the grabbed
+	// one while dragging, otherwise the one under the pointer.
+	showTip := s != nil && s.ShowTooltip.Get() && !c.Disabled.Get() && (c.Hover || c.Pressed)
+	tipX, tipV := math.NaN(), 0.0
+
 	switch variant(c, "standard") {
 	case "range":
 		loV, hiV := s.Range()
@@ -1140,6 +1146,19 @@ func (l *List) paintSlider(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		dot(track.Right() - cornerFull)
 		handleAt(xa, pressed(0))
 		handleAt(xb, pressed(1))
+		if showTip {
+			// A drag owns the handle it took even when the pointer crosses the
+			// other one; only a plain hover asks which is nearer.
+			high := s.HoverGrab == 1
+			if c.Pressed {
+				high = s.Grab == 1
+			}
+			if high {
+				tipX, tipV = xb, hiV
+			} else {
+				tipX, tipV = xa, loV
+			}
+		}
 
 	case "centered":
 		cf := 0.5
@@ -1159,6 +1178,9 @@ func (l *List) paintSlider(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		dot(track.X + cornerFull)
 		dot(track.Right() - cornerFull)
 		handleAt(xh, pressed(0))
+		if showTip {
+			tipX, tipV = xh, c.Value.Get()
+		}
 
 	default:
 		hx := xOf(frac)
@@ -1166,7 +1188,44 @@ func (l *List) paintSlider(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		bar(hx+edge, track.Right(), inactive)
 		dot(track.Right() - cornerFull)
 		handleAt(hx, pressed(0))
+		if showTip {
+			tipX, tipV = hx, c.Value.Get()
+		}
 	}
+	if showTip && !math.IsNaN(tipX) {
+		l.paintSliderTooltip(tipX, cy, tipV, clip)
+	}
+}
+
+// paintSliderTooltip draws the M3 value indicator: a rounded bubble above the
+// handle, kept inside the clip so a slider at the edge stays readable.
+func (l *List) paintSliderTooltip(cx, cy, v float64, clip tree.Rect) {
+	col := l.Theme.Colors
+	st := l.style("labelLarge")
+	const padX, h, gap = 12.0, 32.0, 6.0
+	txt := sliderValueText(v)
+	w := math.Max(textWidth(l, txt, st)+padX*2, h)
+	x := cx - w/2
+	if lo := clip.X + 2; x < lo {
+		x = lo
+	}
+	if hi := clip.X + clip.W - w - 2; x > hi && hi > clip.X {
+		x = hi
+	}
+	// The handle is 44dp tall and centred on the track, so the bubble clears
+	// its top by the same gap the segments leave around the handle.
+	box := tree.Rect{X: x, Y: cy - 22 - gap - h, W: w, H: h}
+	l.fillRect(box, col.InverseSurface, h/2, 0, 0, clip)
+	l.textIn(txt, st, col.InverseOnSurface, box, AlignCenter, clip)
+}
+
+// sliderValueText shows a slider number without float noise: the shortest
+// spelling, rounded to four decimals.
+func sliderValueText(v float64) string {
+	if v == 0 {
+		v = 0 // -0 prints as "-0"
+	}
+	return strconv.FormatFloat(math.Round(v*1e4)/1e4, 'f', -1, 64)
 }
 
 func clamp01(v float64) float64 {

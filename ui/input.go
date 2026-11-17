@@ -528,6 +528,7 @@ func (i *interactor) MouseMove(x, y float64) {
 	// that hides it again.
 	i.showMediaControls(mediaAt(hit))
 	i.updateScrollHover(hit)
+	i.updateSliderHover(hit, x)
 	// A chart highlights the point under the pointer, which changes without the
 	// hovered node changing.
 	i.updateChartHover(x, y)
@@ -3453,6 +3454,32 @@ func (i *interactor) drag(x, y float64) {
 	i.markDirty()
 }
 
+// updateSliderHover records which handle the pointer is over, so a range
+// slider's value tooltip names the handle a press would move.
+func (i *interactor) updateSliderHover(hit tree.Node, x float64) {
+	if s, ok := hit.(*tree.Slider); ok {
+		s.HoverGrab = sliderHandleAt(s, x)
+	}
+}
+
+// sliderHandleAt is the handle nearest a pointer position: the low one unless
+// the high one of a range slider is nearer.
+func sliderHandleAt(s *tree.Slider, x float64) int {
+	if s.Variant.Get() != "range" {
+		return 0
+	}
+	lo, hi := s.Min.Get(), s.Max.Get()
+	if hi <= lo {
+		return 0
+	}
+	frac := sliderFrac(absoluteRect(s), x)
+	a, b := s.Range()
+	if math.Abs(frac-(b-lo)/(hi-lo)) < math.Abs(frac-(a-lo)/(hi-lo)) {
+		return 1
+	}
+	return 0
+}
+
 // grabSlider picks the handle a press takes: in range mode the nearer of the
 // two, otherwise the only one.
 func (i *interactor) grabSlider(n tree.Node, x float64) {
@@ -3460,19 +3487,8 @@ func (i *interactor) grabSlider(n tree.Node, x float64) {
 	if !ok {
 		return
 	}
-	s.Grab = 0
-	if s.Variant.Get() != "range" {
-		return
-	}
-	lo, hi := s.Min.Get(), s.Max.Get()
-	if hi <= lo {
-		return
-	}
-	frac := sliderFrac(absoluteRect(n), x)
-	a, b := s.Range()
-	if math.Abs(frac-(b-lo)/(hi-lo)) < math.Abs(frac-(a-lo)/(hi-lo)) {
-		s.Grab = 1
-	}
+	s.Grab = sliderHandleAt(s, x)
+	s.HoverGrab = s.Grab
 }
 
 // sliderFrac turns an x position into a 0..1 track fraction.

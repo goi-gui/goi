@@ -1702,3 +1702,46 @@ func TestPopoverPanelIsHitThroughAColumnThatDoesNotOverflow(t *testing.T) {
 		t.Fatalf("hit = %v, want the panel below the wrapping column", hit)
 	}
 }
+
+// TestSliderHoverPicksTheNearerHandle is what makes a range slider's tooltip
+// honest: the pointer names the handle a press would take, and a drag keeps the
+// one it grabbed.
+func TestSliderHoverPicksTheNearerHandle(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		Column {
+			Slider {
+				id:          s
+				variant:     range
+				value:       20
+				end:         70
+				min:         0
+				max:         100
+				showTooltip: true
+				width:       300
+				height:      40
+			}
+		}
+	}`, 400, 300)
+	s := MustByID[*Slider](win, "s")
+	box := absoluteRect(s)
+	y := box.Y + box.H/2
+
+	in.MouseMove(box.X+box.W*0.85, y)
+	if s.HoverGrab != 1 {
+		t.Fatalf("hover near the high handle picked %d, want 1", s.HoverGrab)
+	}
+	in.MouseMove(box.X+box.W*0.15, y)
+	if s.HoverGrab != 0 {
+		t.Fatalf("hover near the low handle picked %d, want 0", s.HoverGrab)
+	}
+
+	in.MouseDown(box.X+box.W*0.8, y, 0, false)
+	if s.Grab != 1 || s.HoverGrab != 1 {
+		t.Fatalf("press near the high handle took grab %d hover %d, want 1/1", s.Grab, s.HoverGrab)
+	}
+	in.MouseMove(box.X+box.W*0.55, y)
+	if s.Grab != 1 {
+		t.Fatalf("the drag switched to handle %d", s.Grab)
+	}
+	in.MouseUp(box.X+box.W*0.55, y, 0)
+}

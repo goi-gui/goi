@@ -386,6 +386,11 @@ type Slider struct {
 	// Grab is the handle the pointer took: 0 is Value, 1 is End. Paint uses it
 	// to narrow only the handle being dragged.
 	Grab int
+	// ShowTooltip shows the value above the handle while it is hovered or
+	// dragged, naming the handle a range slider would move.
+	ShowTooltip Prop[bool]
+	// HoverGrab is the handle under the pointer: 0 is Value, 1 is End.
+	HoverGrab int
 	// RangeEvent fires in range mode with both values, low first.
 	RangeEvent Event[[2]float64]
 }
@@ -394,9 +399,10 @@ type Slider struct {
 func (*Slider) Kind() string { return "Slider" }
 
 func (c *Slider) namedProps() []NamedProp {
-	return append(c.propsExcept("Slider", "end", "center"),
+	return append(c.propsExcept("Slider", "end", "center", "showTooltip"),
 		NumberProp(&c.NodeBase, "end", DirtyPaint, &c.End),
 		NumberProp(&c.NodeBase, "center", DirtyPaint, &c.Center),
+		BoolProp(&c.NodeBase, "showTooltip", DirtyPaint, &c.ShowTooltip),
 	)
 }
 
