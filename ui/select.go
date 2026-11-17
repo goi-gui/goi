@@ -163,11 +163,18 @@ func (i *interactor) textIndexAt(t *tree.Text, x, y float64) int {
 	if lh <= 0 {
 		lh = st.Size * 1.2
 	}
-	lines := i.textLines(t, r.W)
+	// The glyphs sit inside the padding and border, the same box paint wraps in.
+	pe, be := t.PaddingEdges(), t.BorderEdges()
+	inner := tree.Rect{
+		X: r.X + pe.Left + be.Left, Y: r.Y + pe.Top + be.Top,
+		W: r.W - (pe.Left + pe.Right + be.Left + be.Right),
+		H: r.H - (pe.Top + pe.Bottom + be.Top + be.Bottom),
+	}
+	lines := i.textLines(t, maxf(inner.W, 0))
 	if len(lines) == 0 {
 		return 0
 	}
-	li := int((y - r.Y) / lh)
+	li := int((y - inner.Y) / lh)
 	if li < 0 {
 		li = 0
 	}
@@ -179,11 +186,11 @@ func (i *interactor) textIndexAt(t *tree.Text, x, y float64) int {
 	off := 0.0
 	switch t.Align.Get() {
 	case "center":
-		off = (r.W - lineW) / 2
+		off = (inner.W - lineW) / 2
 	case "end":
-		off = r.W - lineW
+		off = inner.W - lineW
 	}
-	rel := x - (r.X + off)
+	rel := x - (inner.X + off)
 	if rel <= 0 {
 		return line.Start
 	}

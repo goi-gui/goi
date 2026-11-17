@@ -108,3 +108,33 @@ func TestMaxLinesReservesOnlyItsLines(t *testing.T) {
 		t.Fatalf("maxLines: 2 height = %v, want two lines", got)
 	}
 }
+
+// TestTextPaddingWrapsAndSizesInsideItsBox: a Text keeps its padding, so the
+// glyphs wrap in the content width and the box grows by the padding on each
+// side.
+func TestTextPaddingWrapsAndSizesInsideItsBox(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window { Column { crossAxisAlign: start
+		Text { id: plain text: "hello" }
+		Text { id: padded text: "hello" padding: 10 }
+		Text { id: wrapped text: "`+review+`" width: 200 padding: 10 wrap: true }
+	} }`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 500, 500)
+	plain, _ := tr.ByID("plain")
+	padded, _ := tr.ByID("padded")
+	wrapped, _ := tr.ByID("wrapped")
+
+	pb, db := plain.Base().Bounds(), padded.Base().Bounds()
+	if db.W != pb.W+20 || db.H != pb.H+20 {
+		t.Fatalf("padded box = %+v, plain %+v", db, pb)
+	}
+	wb := wrapped.Base().Bounds()
+	if wb.W != 200 {
+		t.Fatalf("declared width = %v, want 200", wb.W)
+	}
+	if want := wrappedHeight(review, 180, "bodyMedium") + 20; wb.H != want {
+		t.Fatalf("padded wrap height = %v, want %v (glyphs in 180dp)", wb.H, want)
+	}
+}

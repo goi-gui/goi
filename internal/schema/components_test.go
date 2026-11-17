@@ -369,3 +369,40 @@ func TestTextFieldTakesIconSlots(t *testing.T) {
 		t.Fatal("a field accepted a slot it does not declare")
 	}
 }
+
+// TestRemovedPropertiesAreRejected: a property that never did anything is gone
+// from the vocabulary, so goipls and the checker stop offering it.
+func TestRemovedPropertiesAreRejected(t *testing.T) {
+	for _, src := range []string{
+		`Window { Tabs { variant: filled } }`,
+		`Window { List { variant: plain } }`,
+		`Window { Chip { label: "x" checked: true } }`,
+		`Window { SearchBar { leadingIcon: star } }`,
+		`Window { FAB { icon: add expanded: true } }`,
+		`Window { BottomSheet { supporting: "x" } }`,
+		`Window { SideSheet { supporting: "x" } }`,
+		`Window { DatePicker { variant: input } }`,
+		`Window { Card { leadingIcon: star } }`,
+		`Window { ButtonGroup { disabled: true } }`,
+		`Window { Text { text: "x" surfaceColor: #ff0000 } }`,
+		`Window { RichText { surfaceColor: #ff0000 } }`,
+		`Window { SVG { src: "a.svg" surfaceColor: #ff0000 } }`,
+		`Window { LineChart { ChartSeries { values: [1] surfaceColor: #ff0000 } } }`,
+	} {
+		if _, diag := validate(t, src); diag.Empty() {
+			t.Errorf("%s was accepted", src)
+		}
+	}
+	// The same names still work where they mean something.
+	for _, src := range []string{
+		`Window { Button { label: "x" variant: outlined } }`,
+		`Window { SegmentedButton { label: "a" variant: single } }`,
+		`Window { Chip { label: "x" selected: true } }`,
+		`Window { FABMenu { icon: add expanded: true } }`,
+		`Window { Audio { src: "a.mp3" surfaceColor: #ff0000 } }`,
+	} {
+		if _, diag := validate(t, src); !diag.Empty() {
+			t.Errorf("%s was rejected: %v", src, diag)
+		}
+	}
+}

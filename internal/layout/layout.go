@@ -1208,6 +1208,9 @@ func (e *Engine) textSize(s string, t *tree.Text, availW float64) (float64, floa
 		lineHeight = size * 1.2
 	}
 	family := t.FontFamily()
+	// A Text's padding and border are part of its box; the glyphs live inside,
+	// so the wrap column is the box minus those insets.
+	padX, padY := textInsets(t)
 	maxLines := int(t.MaxLines.Get())
 	if maxLines < 0 {
 		maxLines = 0
@@ -1216,28 +1219,39 @@ func (e *Engine) textSize(s string, t *tree.Text, availW float64) (float64, floa
 		// One line, cut to the box: the glyphs beyond it are never drawn, so the
 		// reserved size stops at the edge.
 		w, _ := e.measureFamily(s, size, weight, family)
-		if limit := textLimit(t, availW); limit > 0 && w > limit {
-			w = limit
+		boxW := textLimit(t, availW)
+		inner := boxW - padX
+		if inner > 0 {
+			if w > inner {
+				w = inner
+			}
+			if t.Width() >= 0 {
+				w = boxW
+			} else {
+				w += padX
+			}
 		}
-		return w, lineHeight
+		return w, lineHeight + padY
 	}
 	if !t.Wrap.Get() && maxLines == 0 {
-		return e.measureFamily(s, size, weight, family)
+		w, _ := e.measureFamily(s, size, weight, family)
+		return w + padX, lineHeight + padY
 	}
 	limit := textLimit(t, availW)
-	if limit <= 0 {
+	inner := limit - padX
+	if limit <= 0 || inner <= 0 {
 		// No column yet: reserve one line at the line height paint will draw
 		// with, not the measurer's ascent+descent, which is a few pixels less and
 		// left a wrapped card short by that much per line.
 		w, _ := e.measureFamily(s, size, weight, family)
-		return w, lineHeight
+		return w + padX, lineHeight + padY
 	}
 	// Layout and paint must break in the same places or the reserved height is
 	// wrong, so both use the shared greedy wrap with the same advances.
-	key := wrapKey{s: s, width: limit, size: size, weight: weight, family: t.FontFamily()}
+	key := wrapKey{s: s, width: inner, size: size, weight: weight, family: family}
 	n, ok := e.wraps[key]
 	if !ok {
-		n = len(text.WrapRanges(s, limit, func(run string) float64 {
+		n = len(text.WrapRanges(s, inner, func(run string) float64 {
 			w, _ := e.measureFamily(run, size, weight, key.family)
 			return w
 		}))
@@ -1249,7 +1263,14 @@ func (e *Engine) textSize(s string, t *tree.Text, availW float64) (float64, floa
 	if maxLines > 0 && n > maxLines {
 		n = maxLines
 	}
-	return limit, float64(n) * lineHeight
+	return limit, float64(n)*lineHeight + padY
+}
+
+// textInsets is the horizontal and vertical room a Text's padding and border
+// take from its box.
+func textInsets(t *tree.Text) (x, y float64) {
+	pe, be := t.PaddingEdges(), t.BorderEdges()
+	return pe.Left + pe.Right + be.Left + be.Right, pe.Top + pe.Bottom + be.Top + be.Bottom
 }
 
 // textLimit is the column a wrapped or truncated Text measures against: its own

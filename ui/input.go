@@ -1055,7 +1055,25 @@ func (i *interactor) activate(n tree.Node, c *tree.Component, x, y float64) {
 			c.Selected.Set(!c.Selected.Get())
 			c.Toggle.Emit(c.Selected.Get())
 		}
-	case "Tab", "MenuItem", "ListItem":
+	case "Tab":
+		// Tabs are a radio group: picking one clears its siblings, so the
+		// underline and the label colour cannot disagree.
+		if p := n.Base().Parent(); p != nil {
+			for idx, kid := range p.Base().Kids() {
+				if kid.Base() == n.Base() {
+					if pc := comp(p); pc != nil {
+						pc.SelectedIndex = idx
+						pc.Select.Emit(idx)
+					}
+					continue
+				}
+				if kc := comp(kid.Node()); kc != nil && kc.Selected.Get() {
+					kc.Selected.Set(false)
+				}
+			}
+		}
+		c.Selected.Set(true)
+	case "MenuItem", "ListItem":
 		if p := n.Base().Parent(); p != nil {
 			if pc := comp(p); pc != nil {
 				for idx, kid := range p.Base().Kids() {
@@ -1065,9 +1083,6 @@ func (i *interactor) activate(n tree.Node, c *tree.Component, x, y float64) {
 					}
 				}
 			}
-		}
-		if n.Kind() != "MenuItem" && n.Kind() != "ListItem" {
-			c.Selected.Set(true)
 		}
 	case "SegmentedButton":
 		i.activateSegment(n, c)

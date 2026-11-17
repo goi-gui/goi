@@ -675,6 +675,10 @@ func (l *List) paintFABMenu(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	case "tertiary":
 		bg, fg = col.TertiaryContainer, col.OnTertiaryContainer
 	}
+	if c.Disabled.Get() {
+		bg = withAlpha(bg, m3.DisabledContainerOpacity)
+		fg = withAlpha(fg, m3.DisabledOpacity)
+	}
 	radius := radiusFor(m3.ShapeLarge, box)
 	l.shadow(box, radius, m3.Elevation3, clip)
 	l.fillRect(box, bg, radius, 0, 0, clip)
@@ -1445,21 +1449,42 @@ func (l *List) paintTooltip(c *tree.Component, r tree.Rect, clip tree.Rect) {
 func (l *List) paintCard(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
 	radius := m3.ShapeMedium
+	fg, sub := col.OnSurface, col.OnSurfaceVariant
 	switch variant(c, "elevated") {
 	case "filled":
-		l.fillRect(r, col.SurfaceContainerHighest, radius, 0, 0, clip)
+		bg := col.SurfaceContainerHighest
+		if c.Disabled.Get() {
+			bg = withAlpha(bg, m3.DisabledContainerOpacity)
+			fg = withAlpha(fg, m3.DisabledOpacity)
+			sub = withAlpha(sub, m3.DisabledOpacity)
+		}
+		l.fillRect(r, bg, radius, 0, 0, clip)
 	case "outlined":
-		l.fillRect(r, col.Surface, radius, col.OutlineVariant, 1, clip)
+		border := col.OutlineVariant
+		if c.Disabled.Get() {
+			border = withAlpha(border, m3.DisabledContainerOpacity)
+			fg = withAlpha(fg, m3.DisabledOpacity)
+			sub = withAlpha(sub, m3.DisabledOpacity)
+		}
+		l.fillRect(r, col.Surface, radius, border, 1, clip)
 	default: // elevated
-		l.shadow(r, radius, m3.Elevation1, clip)
-		l.fillRect(r, col.SurfaceContainerLow, radius, 0, 0, clip)
+		if !c.Disabled.Get() {
+			l.shadow(r, radius, m3.Elevation1, clip)
+		}
+		bg := col.SurfaceContainerLow
+		if c.Disabled.Get() {
+			bg = withAlpha(bg, m3.DisabledContainerOpacity)
+			fg = withAlpha(fg, m3.DisabledOpacity)
+			sub = withAlpha(sub, m3.DisabledOpacity)
+		}
+		l.fillRect(r, bg, radius, 0, 0, clip)
 	}
 	if c.Label.Get() != "" {
 		box := tree.Rect{X: r.X + 16, Y: r.Y + 16, W: r.W - 32, H: 24}
-		l.textIn(c.Label.Get(), l.style("titleMedium"), col.OnSurface, box, AlignStart, clip)
+		l.textIn(c.Label.Get(), l.style("titleMedium"), fg, box, AlignStart, clip)
 	}
 	if c.Supporting.Get() != "" {
-		l.textIn(c.Supporting.Get(), l.style("bodyMedium"), col.OnSurfaceVariant,
+		l.textIn(c.Supporting.Get(), l.style("bodyMedium"), sub,
 			tree.Rect{X: r.X + 16, Y: r.Y + 40, W: r.W - 32, H: 20}, AlignStart, clip)
 	}
 }
@@ -1808,6 +1833,14 @@ func (l *List) paintBreadcrumb(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	}
 }
 
+// m3Of returns the component state behind a node, or nil for a layout node.
+func m3Of(b *tree.NodeBase) *tree.Component {
+	if c, ok := b.Node().(interface{ M3() *tree.Component }); ok {
+		return c.M3()
+	}
+	return nil
+}
+
 func (l *List) paintTabs(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
 	l.fillRect(r, col.Surface, 0, 0, 0, clip)
@@ -1817,8 +1850,25 @@ func (l *List) paintTabs(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		Rect:  [4]float32{float32(r.X), float32(r.Bottom() - 1), float32(r.W), 1},
 		Color: col.SurfaceVariant, Clip: clipArr(clip),
 	})
-	for i, k := range c.Base().Kids() {
-		if i != c.SelectedIndex || i >= len(c.Base().Kids()) {
+	kids := c.Base().Kids()
+	// A design marks the active tab with `selected: true`; code that only set
+	// the container's SelectedIndex still gets the underline on that tab.
+	anySelected := false
+	for _, k := range kids {
+		if kc := m3Of(k); kc != nil && kc.Selected.Get() {
+			anySelected = true
+			break
+		}
+	}
+	for i, k := range kids {
+		active := false
+		if kc := m3Of(k); kc != nil {
+			active = kc.Selected.Get()
+		}
+		if !anySelected {
+			active = i == c.SelectedIndex
+		}
+		if !active {
 			continue
 		}
 		kb := k.Bounds()
@@ -1836,6 +1886,7 @@ func (l *List) paintTab(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	if c.Selected.Get() {
 		fg = col.Primary
 	}
+	fg = disabledAlpha(c, fg)
 	l.stateLayer(c, r, 0, fg, clip)
 	box := tree.Rect{X: r.X, Y: r.Y, W: r.W, H: r.H}
 	if c.Icon.Get() != "" {
@@ -2245,6 +2296,16 @@ func (l *List) paintText(t *tree.Text, r tree.Rect, clip tree.Rect) {
 	// layout pass used, so the reserved height and the drawn lines agree. A
 	// single line keeps the node's box, which is what centers short text.
 	src := t.Text.Get()
+	// Padding and border are inside the box the design gave the Text, so the
+	// glyphs wrap and align in the remaining room.
+	pe, be := t.PaddingEdges(), t.BorderEdges()
+	insetL, insetT := pe.Left+be.Left, pe.Top+be.Top
+	insetR, insetB := pe.Right+be.Right, pe.Bottom+be.Bottom
+	inner := tree.Rect{
+		X: r.X + insetL, Y: r.Y + insetT,
+		W: r.W - insetL - insetR, H: r.H - insetT - insetB,
+	}
+	inner.W, inner.H = maxf(inner.W, 0), maxf(inner.H, 0)
 	var lines []text.Line
 	lh := st.LineHeight
 	if lh <= 0 {
@@ -2259,11 +2320,11 @@ func (l *List) paintText(t *tree.Text, r tree.Rect, clip tree.Rect) {
 	switch {
 	case t.Truncate.Get():
 		// One line, cut to the box; the ellipsis says the rest is not shown.
-		single[0] = text.Line{Text: l.ellipsize(src, r.W, st), Start: 0, End: len(src)}
+		single[0] = text.Line{Text: l.ellipsize(src, inner.W, st), Start: 0, End: len(src)}
 		lines = single[:]
 		wrapped = false
 	case wrapped:
-		lines = l.wrapLines(src, r.W, st)
+		lines = l.wrapLines(src, inner.W, st)
 		if maxLines > 0 && len(lines) > maxLines {
 			// Copy before rewriting the last line: wrapLines returns the cached
 			// slice, and the next paint must still see the whole paragraph.
@@ -2271,7 +2332,7 @@ func (l *List) paintText(t *tree.Text, r tree.Rect, clip tree.Rect) {
 			copy(clamped, lines[:maxLines])
 			// The clamp hid at least one line, so the last one ends with the
 			// ellipsis even when it happens to fit by itself.
-			clamped[maxLines-1].Text = l.endWithEllipsis(clamped[maxLines-1].Text, r.W, st)
+			clamped[maxLines-1].Text = l.endWithEllipsis(clamped[maxLines-1].Text, inner.W, st)
 			lines = clamped
 		}
 	default:
@@ -2283,9 +2344,9 @@ func (l *List) paintText(t *tree.Text, r tree.Rect, clip tree.Rect) {
 		selA, selB = selB, selA
 	}
 	for i, line := range lines {
-		box := r
+		box := inner
 		if wrapped {
-			box = tree.Rect{X: r.X, Y: r.Y + float64(i)*lh, W: r.W, H: lh}
+			box = tree.Rect{X: inner.X, Y: inner.Y + float64(i)*lh, W: inner.W, H: lh}
 		}
 		// The highlight sits under the glyphs and only spans the selected
 		// characters, so a line that follows a wrapped paragraph still reads.

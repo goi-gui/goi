@@ -297,7 +297,7 @@ func TestFilledIconProperty(t *testing.T) {
 	}
 
 	// A filled container must not fill the control inside it.
-	l := m3list(t, `Window { Card { filledIcon: true Button { label: "Go" leadingIcon: add } } }`)
+	l := m3list(t, `Window { Dialog { filledIcon: true Button { label: "Go" leadingIcon: add } } }`)
 	if op := icon(l, "add"); op == nil || op.FilledIcon {
 		t.Fatalf("the card's setting leaked into the button: %+v", op)
 	}
@@ -498,5 +498,69 @@ func TestRippleDrawsOverAnImage(t *testing.T) {
 	}
 	if got := l.Ops[disc]; float64(got.ClipRadius) != 8 {
 		t.Fatalf("ripple radius = %v, want the image's 8", got.ClipRadius)
+	}
+}
+
+// TestTextPaddingShiftsTheGlyphs: paint draws inside the padding, not at the
+// box edge.
+func TestTextPaddingShiftsTheGlyphs(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window { Column { crossAxisAlign: start
+		Text { text: "hello" padding: 10 }
+	} }`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 500, 500)
+	l := &List{}
+	l.Build(tr, 500, 500)
+	for _, op := range l.Ops {
+		if op.Kind == Text && op.Text == "hello" {
+			if op.TextX != 10 {
+				t.Fatalf("glyph x = %v, want the 10dp padding", op.TextX)
+			}
+			return
+		}
+	}
+	t.Fatalf("no glyph:\n%s", l.Dump())
+}
+
+// TestDisabledDimsCardMenuAndTab: a disabled Card, FAB menu and Tab look
+// disabled, not only refuse the press.
+func TestDisabledDimsCardMenuAndTab(t *testing.T) {
+	alpha := func(c uint32) uint32 { return c & 0xFF }
+	dimmed := func(l *List, kind Kind, text string) bool {
+		for _, op := range l.Ops {
+			if op.Kind == kind && (text == "" || op.Text == text) && alpha(op.Color) < 0xFF {
+				return true
+			}
+		}
+		return false
+	}
+
+	if !dimmed(m3list(t, `Window { Card { label: "x" disabled: true } }`), Text, "x") {
+		t.Fatal("a disabled card did not dim its label")
+	}
+	if !dimmed(m3list(t, `Window { FABMenu { icon: add disabled: true } }`), Fill, "") {
+		t.Fatal("a disabled FAB menu did not dim its container")
+	}
+	if !dimmed(m3list(t, `Window { Tabs { Tab { label: "a" disabled: true } } }`), Text, "a") {
+		t.Fatal("a disabled tab did not dim its label")
+	}
+}
+
+// TestTabSelectedDrivesTheIndicator: `selected: true` in a design marks the
+// active tab, underline included, so the design and a click agree.
+func TestTabSelectedDrivesTheIndicator(t *testing.T) {
+	l := m3list(t, `Window { Tabs { Tab { label: "a" } Tab { label: "b" selected: true } } }`)
+	var under []float32
+	for _, op := range l.Ops {
+		if op.Kind == Fill && op.Rect[3] == 3 {
+			under = append(under, op.Rect[0])
+		}
+	}
+	// Two tabs in a 400dp window: the second starts at 200, and its underline
+	// sits 8dp in.
+	if len(under) != 1 || under[0] != 208 {
+		t.Fatalf("indicator at %v, want one under the second tab", under)
 	}
 }
