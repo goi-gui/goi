@@ -11,6 +11,21 @@ and `for` loops. Go finds elements by id, holds the
 state and attaches the behaviour. Edit a `.goi` file and the window updates
 without a restart: hot reload is built in.
 
+## Shopping
+
+One `.goi` file and a small `main.go`: a rail of categories that becomes a
+bottom bar on a phone, a picture column that turns from a row into a column,
+size and colour pickers, and a review card. Both schemes are built from one rose
+seed with `ui.NewThemeFromSeed`.
+
+| | Light | Dark |
+| --- | --- | --- |
+| **Desktop**<br>1000 × 800 | <img src="https://raw.githubusercontent.com/goi-gui/examples/main/images/shopping-light.png" alt="shopping on a desktop, light scheme" width="430"> | <img src="https://raw.githubusercontent.com/goi-gui/examples/main/images/shopping-dark.png" alt="shopping on a desktop, dark scheme" width="430"> |
+| **Phone**<br>500 × 1000 | <img src="https://raw.githubusercontent.com/goi-gui/examples/main/images/shopping-mobile-light.png" alt="shopping on a phone, light scheme" width="215"> | <img src="https://raw.githubusercontent.com/goi-gui/examples/main/images/shopping-mobile-dark.png" alt="shopping on a phone, dark scheme" width="215"> |
+
+Run it from the [examples](https://github.com/goi-gui/examples/tree/main/shopping)
+checkout with `make shopping`.
+
 ## Counter
 
 The design declares the values it reads and the handlers it calls in a `bridge`
