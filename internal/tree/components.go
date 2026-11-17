@@ -84,6 +84,11 @@ type Component struct {
 	Hover   bool
 	Pressed bool
 	Focused bool
+	// LabelFloat is a text field or area label's travel: 0 sits inside the
+	// field, 1 above it. LabelPosed is set by the first frame, so loading a
+	// page starts at rest instead of sliding every label.
+	LabelFloat float64
+	LabelPosed bool
 	// FocusRing is set only when the focus came from the keyboard. A pointer
 	// press moves focus too, but M3 only shows the ring for keyboard users.
 	FocusRing bool
@@ -453,11 +458,6 @@ type TextField struct {
 	// Obscure hides the value the way a password field does: one dot per rune,
 	// in the value, the selection, the caret and the IME composition alike.
 	Obscure Prop[bool]
-	// LabelFloat is the label's travel: 0 sits inside the field, 1 above it.
-	// LabelPosed is set by the first frame, so loading a page starts at rest
-	// instead of sliding every label.
-	LabelFloat float64
-	LabelPosed bool
 }
 
 // Kind implements Node.
@@ -474,12 +474,6 @@ func (c *TextField) namedProps() []NamedProp {
 // slotNodes exposes the field's icon-square bodies to the builder.
 func (c *TextField) slotNodes() (*Node, *Node) { return &c.LeadingNode, &c.TrailingNode }
 
-// LabelFloats reports whether the label belongs above the field: a value, an
-// IME composition, a placeholder or focus puts it there.
-func (c *TextField) LabelFloats() bool {
-	return c.Text.Get() != "" || c.Preedit != "" || c.Focused || c.Placeholder.Get() != ""
-}
-
 // SetObscureText hides or shows the value: a hidden field paints one dot per
 // character and keeps the caret on the character it covers.
 func (c *TextField) SetObscureText(v bool) { c.Obscure.Set(v) }
@@ -493,6 +487,12 @@ const MaskRune = "•"
 func (c *Component) Obscured() bool {
 	tf, ok := c.Node().(*TextField)
 	return ok && tf.Obscure.Get()
+}
+
+// LabelFloats reports whether a text field or area's label belongs above the
+// field: a value, an IME composition, a placeholder or focus puts it there.
+func (c *Component) LabelFloats() bool {
+	return c.Text.Get() != "" || c.Preedit != "" || c.Focused || c.Placeholder.Get() != ""
 }
 
 // FieldGutters reports whether a text field spends its 40dp icon column on a

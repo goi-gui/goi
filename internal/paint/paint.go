@@ -744,6 +744,27 @@ func (l *List) fillShape(r tree.Rect, color uint32, g *tree.Gradient, radii [4]f
 	})
 }
 
+// notchedOutline fills r and draws its border with the top edge broken between
+// gapStart and gapEnd, which is where a floating label sits. The ring is drawn
+// in bands so the break does not leave a hole in the bottom or the sides; the
+// corner band keeps the rounded ends whole.
+func (l *List) notchedOutline(r tree.Rect, color uint32, g *tree.Gradient, radii [4]float64,
+	borderColor uint32, thickness, gapStart, gapEnd float64, clip tree.Rect) {
+	l.fillShape(r, color, g, radii, 0, 0, clip)
+	if gapEnd <= gapStart || borderColor == 0 || thickness <= 0 {
+		l.fillShape(r, 0, nil, radii, borderColor, thickness, clip)
+		return
+	}
+	band := maxf(maxf(radii[0], radii[1]), maxf(radii[2], radii[3]))
+	band = maxf(band, thickness)
+	l.fillShape(r, 0, nil, radii, borderColor, thickness,
+		intersect(clip, tree.Rect{X: r.X, Y: r.Y + band, W: r.W, H: r.H - band}))
+	l.fillShape(r, 0, nil, radii, borderColor, thickness,
+		intersect(clip, tree.Rect{X: r.X, Y: r.Y, W: gapStart - r.X, H: band}))
+	l.fillShape(r, 0, nil, radii, borderColor, thickness,
+		intersect(clip, tree.Rect{X: gapEnd, Y: r.Y, W: r.Right() - gapEnd, H: band}))
+}
+
 // paintSideBorders draws an uneven border as four bands, each in its own colour
 // and width. The bands are cut to the box's rounded outline when every corner
 // shares a radius; an uneven border on uneven corners keeps square corners,

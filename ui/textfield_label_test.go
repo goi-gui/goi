@@ -82,3 +82,26 @@ func TestTextFieldLabelStartsAtRest(t *testing.T) {
 		})
 	}
 }
+
+// TestTextAreaLabelUsesTheSameTravel: the multiline field shares the label
+// animation, and a placeholder alone is enough to put the label up.
+func TestTextAreaLabelUsesTheSameTravel(t *testing.T) {
+	const src = `Window { Column { TextArea { id: a label: "Notes" width: 300 height: 140 } } }`
+	_, win, in := inputFixture(t, src, 480, 320)
+	a := MustByID[*TextArea](win, "a")
+	if in.tickFieldLabels(1.0 / 60) {
+		t.Fatal("an untouched text area is already animating")
+	}
+	if a.LabelFloat != 0 {
+		t.Fatalf("resting float = %v, want 0", a.LabelFloat)
+	}
+	a.Placeholder.Set("Write a note")
+	if !in.tickFieldLabels(1.0 / 60) {
+		t.Fatal("a placeholder did not start the label")
+	}
+	for in.tickFieldLabels(1.0 / 60) {
+	}
+	if a.LabelFloat != 1 {
+		t.Fatalf("floated = %v, want 1", a.LabelFloat)
+	}
+}

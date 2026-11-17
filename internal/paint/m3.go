@@ -1268,16 +1268,13 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	}
 	labelStyle := l.style("bodyLarge")
 	smallStyle := l.style("bodySmall")
-	tf, _ := c.Node().(*tree.TextField)
 	label := c.Label.Get()
 	placeholder := c.Placeholder.Get()
 	float := 0.0
-	if tf != nil {
-		if tf.LabelPosed {
-			float = clamp01(tf.LabelFloat)
-		} else if tf.LabelFloats() {
-			float = 1 // a still frame shows the resting state, not frame zero
-		}
+	if c.LabelPosed {
+		float = clamp01(c.LabelFloat)
+	} else if c.LabelFloats() {
+		float = 1 // a still frame shows the resting state, not frame zero
 	}
 	floatStyle := labelStyle
 	floatStyle.Size += (smallStyle.Size - labelStyle.Size) * float
@@ -1343,15 +1340,7 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 			border, bw = col.Primary, 2
 		}
 		if gapEnd > gapStart {
-			// Fill without the border, then the ring in bands: the sides and
-			// bottom as one, and the top edge as two pieces around the notch.
-			l.fillShape(r, fill, gradient, radii, 0, 0, clip)
-			l.fillShape(r, 0, nil, radii, border, bw, intersect(clip,
-				tree.Rect{X: r.X, Y: r.Y + band, W: r.W, H: r.H - band}))
-			l.fillShape(r, 0, nil, radii, border, bw, intersect(clip,
-				tree.Rect{X: r.X, Y: r.Y, W: gapStart - r.X, H: band}))
-			l.fillShape(r, 0, nil, radii, border, bw, intersect(clip,
-				tree.Rect{X: gapEnd, Y: r.Y, W: r.Right() - gapEnd, H: band}))
+			l.notchedOutline(r, fill, gradient, radii, border, bw, gapStart, gapEnd, clip)
 		} else {
 			l.fillShape(r, fill, gradient, radii, border, bw, clip)
 		}

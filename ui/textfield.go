@@ -25,34 +25,34 @@ func (i *interactor) tickFieldLabels(dt float64) bool {
 	}
 	moving := false
 	i.tree.Walk(func(n tree.Node) {
-		if n.Kind() != "TextField" {
+		if n.Kind() != "TextField" && n.Kind() != "TextArea" {
 			return
 		}
-		tf, ok := n.(*tree.TextField)
-		if !ok {
+		c := comp(n)
+		if c == nil {
 			return
 		}
 		target := 0.0
-		if tf.LabelFloats() {
+		if c.LabelFloats() {
 			target = 1
 		}
-		if !tf.LabelPosed {
+		if !c.LabelPosed {
 			// The first frame after a reload starts where the design says, so
 			// loading a page does not animate every label up.
-			tf.LabelPosed = true
-			tf.LabelFloat = target
+			c.LabelPosed = true
+			c.LabelFloat = target
 			return
 		}
-		pos := tf.LabelFloat
+		pos := c.LabelFloat
 		if math.Abs(target-pos) <= fieldLabelSettled {
 			if pos != target {
-				tf.LabelFloat = target
-				tf.Base().MarkDirty(tree.DirtyPaint)
+				c.LabelFloat = target
+				c.Base().MarkDirty(tree.DirtyPaint)
 			}
 			return
 		}
-		tf.LabelFloat = pos + (target-pos)*(1-math.Exp(-dt/fieldLabelTau))
-		tf.Base().MarkDirty(tree.DirtyPaint)
+		c.LabelFloat = pos + (target-pos)*(1-math.Exp(-dt/fieldLabelTau))
+		c.Base().MarkDirty(tree.DirtyPaint)
 		moving = true
 	})
 	return moving

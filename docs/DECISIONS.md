@@ -2451,3 +2451,14 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   reaches the border, not before. The travel itself is a per-field eased value
   advanced by the interactor, the way the Switch handle is, and the first frame
   adopts the design's state so loading a page does not slide every label.
+
+- **A TextArea follows the TextField label rules, per variant.** The multiline
+  field kept its label inside the box for both variants, ignored a placeholder
+  until the field had focus, and started its value at the filled 34dp band even
+  when outlined. The label travel and the `LabelFloats` predicate moved to
+  `Component`, so one interactor tick animates both kinds and a placeholder
+  lifts the label in either. `TextAreaBox` now takes the variant: outlined
+  starts at the 16dp top padding and cuts its border behind the floating label,
+  filled keeps the 34dp band under the label. The variant is narrowed to
+  `filled`/`outlined` in componentdef, so completion and the checker stop
+  offering words the painter would treat as outlined by accident.

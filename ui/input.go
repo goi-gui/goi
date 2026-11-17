@@ -2808,7 +2808,7 @@ func (i *interactor) imeSync() {
 	if isMultiline(f) {
 		// A multiline field puts the candidate window on the caret's own line,
 		// which may be scrolled out of the single-line box.
-		box := paint.TextAreaBox(absoluteRect(n), f.Supporting.Get() != "")
+		box := paint.TextAreaBox(absoluteRect(n), f.Supporting.Get() != "", areaFilled(f))
 		lines := i.areaLines(f)
 		lh := textAreaLineHeight()
 		line, x := 0, 0.0
@@ -3664,6 +3664,10 @@ func (i *interactor) moveCaretVertical(f *tree.Component, dir int, extend bool) 
 	i.caretTo(f, best, extend)
 }
 
+// areaFilled reports whether a multiline field uses the filled variant, whose
+// content starts under the label band.
+func areaFilled(f *tree.Component) bool { return f.Variant.Get() != "outlined" }
+
 // areaLines wraps the focused TextArea's value the way the painter does, so the
 // caret and the pointer agree on which visual line is which.
 func (i *interactor) areaLines(f *tree.Component) []text.Line {
@@ -3671,7 +3675,7 @@ func (i *interactor) areaLines(f *tree.Component) []text.Line {
 	if n == nil {
 		return nil
 	}
-	box := paint.TextAreaBox(absoluteRect(n), f.Supporting.Get() != "")
+	box := paint.TextAreaBox(absoluteRect(n), f.Supporting.Get() != "", areaFilled(f))
 	return paint.TextAreaLines(f.Text.Get(), box.W, i.textWidth)
 }
 
@@ -3681,7 +3685,7 @@ func (i *interactor) areaIndexAt(f *tree.Component, x, y float64) int {
 	if n == nil {
 		return 0
 	}
-	box := paint.TextAreaBox(absoluteRect(n), f.Supporting.Get() != "")
+	box := paint.TextAreaBox(absoluteRect(n), f.Supporting.Get() != "", areaFilled(f))
 	lines := i.areaLines(f)
 	if len(lines) == 0 {
 		return 0

@@ -25,14 +25,20 @@ func TextFieldBox(r tree.Rect, supporting bool) tree.Rect {
 }
 
 // TextAreaBox is the visible text box inside a TextArea, in the same coordinate
-// space as r. supporting shrinks the field so its helper line has room.
-func TextAreaBox(r tree.Rect, supporting bool) tree.Rect {
+// space as r. supporting shrinks the field so its helper line has room; filled
+// starts under the label band, outlined at the top padding because its label
+// lives on the border.
+func TextAreaBox(r tree.Rect, supporting, filled bool) tree.Rect {
 	r = TextFieldBox(r, supporting)
+	top := textAreaPad
+	if filled {
+		top = textAreaLabel
+	}
 	return tree.Rect{
 		X: r.X + textAreaPad,
-		Y: r.Y + textAreaLabel,
+		Y: r.Y + top,
 		W: maxf(r.W-2*textAreaPad, 0),
-		H: maxf(r.H-textAreaLabel-textAreaBottom, 0),
+		H: maxf(r.H-top-textAreaBottom, 0),
 	}
 }
 
@@ -57,6 +63,44 @@ func (l *List) paintTextArea(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	}
 
 	radius := m3.ShapeExtraSmall
+	body := l.style("bodyLarge")
+	small := l.style("bodySmall")
+	lh := body.LineHeight
+	if lh <= 0 {
+		lh = body.Size * 1.2
+	}
+
+	box := TextAreaBox(r, false, filled)
+	label := c.Label.Get()
+	placeholder := c.Placeholder.Get()
+	// The label travels between the first text line and the top band of a
+	// filled field, or the border of an outlined one.
+	float := 0.0
+	if c.LabelPosed {
+		float = clamp01(c.LabelFloat)
+	} else if c.LabelFloats() {
+		float = 1 // a still frame shows the resting state, not frame zero
+	}
+	floatStyle := body
+	floatStyle.Size += (small.Size - body.Size) * float
+	labelCenter := box.Y + lh/2
+	floatCenter := r.Y + 16
+	if !filled {
+		floatCenter = r.Y
+	}
+	labelCenter += (floatCenter - labelCenter) * float
+
+	// An outlined border is cut behind the floating label, the way a text
+	// field's is, so the line does not run through the glyphs.
+	band := maxf(radius, bw)
+	gapStart, gapEnd := 0.0, 0.0
+	if !filled && label != "" && labelCenter-10 <= r.Y+bw {
+		gapStart = box.X - 4
+		gapEnd = gapStart + textWidth(l, label, floatStyle) + 8
+		gapStart = maxf(gapStart, r.X+band)
+		gapEnd = minf(gapEnd, r.Right()-band)
+	}
+
 	if filled {
 		l.fillRect(r, container, radius, 0, 0, clip)
 		ind := col.OnSurfaceVariant
@@ -73,32 +117,8 @@ func (l *List) paintTextArea(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		if c.Focused {
 			border, bw = col.Primary, 2
 		}
-		l.fillRect(r, 0, radius, border, bw, clip)
-	}
-
-	body := l.style("bodyLarge")
-	small := l.style("bodySmall")
-	lh := body.LineHeight
-	if lh <= 0 {
-		lh = body.Size * 1.2
-	}
-
-	box := TextAreaBox(r, false)
-	hasValue := c.Text.Get() != "" || c.Preedit != "" || c.Focused
-	if hasValue {
-		// Content or focus floats the label into the top band; the text line
-		// below is free for the value or an empty-field placeholder.
-		l.textIn(c.Label.Get(), small, hint,
-			tree.Rect{X: box.X, Y: r.Y + 8, W: box.W, H: 16}, AlignStart, clip)
-	} else {
-		// Empty and unfocused: one line, and a label wins over a placeholder so
-		// the two never draw on top of each other.
-		label := c.Label.Get()
-		if label == "" {
-			label = c.Placeholder.Get()
-		}
-		l.textIn(label, body, hint,
-			tree.Rect{X: box.X, Y: box.Y, W: box.W, H: lh}, AlignStart, clip)
+		radii := [4]float64{radius, radius, radius, radius}
+		l.notchedOutline(r, 0, nil, radii, border, bw, gapStart, gapEnd, clip)
 	}
 
 	lines := TextAreaLines(c.Text.Get(), box.W, func(s string) float64 {
@@ -122,10 +142,10 @@ func (l *List) paintTextArea(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		}
 		l.textIn(ln.Text, body, fg, tree.Rect{X: box.X, Y: y, W: box.W, H: lh}, AlignStart, textClip)
 	}
-	// Placeholder text while the empty field has focus; an unfocused empty
-	// field above already shows its label instead.
-	if c.Focused && c.Text.Get() == "" && c.Preedit == "" && c.Placeholder.Get() != "" {
-		l.textIn(c.Placeholder.Get(), body, hint,
+	// A placeholder keeps its line whether or not the field has focus; the
+	// label has floated away because a placeholder is present.
+	if c.Text.Get() == "" && c.Preedit == "" && placeholder != "" {
+		l.textIn(placeholder, body, hint,
 			tree.Rect{X: box.X, Y: box.Y, W: box.W, H: lh}, AlignStart, textClip)
 	}
 	advance := func(s string) float64 { return textWidth(l, s, body) }
@@ -144,6 +164,10 @@ func (l *List) paintTextArea(c *tree.Component, r tree.Rect, clip tree.Rect) {
 				Color: col.Primary, Clip: clipArr(textClip),
 			})
 		}
+	}
+	if label != "" {
+		l.textIn(label, floatStyle, hint,
+			tree.Rect{X: box.X, Y: labelCenter - 10, W: box.W, H: 20}, AlignStart, clip)
 	}
 	if c.Supporting.Get() != "" {
 		l.textIn(c.Supporting.Get(), small, hint,
