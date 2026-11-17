@@ -404,6 +404,8 @@ func (l *List) paintComponent(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		l.paintNavigationDrawer(c, r, clip)
 	case "NavigationItem":
 		l.paintNavigationItem(c, r, clip)
+	case "Breadcrumb":
+		l.paintBreadcrumb(c, r, clip)
 	case "Tabs":
 		l.paintTabs(c, r, clip)
 	case "Tab":
@@ -677,7 +679,7 @@ func (l *List) paintSplitButton(c *tree.Component, r tree.Rect, clip tree.Rect) 
 		l.Ops = append(l.Ops, Op{
 			Kind: Fill, Shape: RoundedRect, Rect: rectArr(s.r),
 			Radius: s.radii, Color: bg,
-			BorderColor: border, BorderWidth: float32(bw),
+			BorderColor: border, BorderThickness: float32(bw),
 			Clip: clipArr(clip),
 		})
 	}
@@ -734,7 +736,7 @@ func (l *List) paintSegmentedButton(c *tree.Component, r tree.Rect, clip tree.Re
 		Kind: Fill, Shape: RoundedRect, Rect: rectArr(r),
 		Radius:      radii,
 		Color:       bg,
-		BorderColor: col.Outline, BorderWidth: 1,
+		BorderColor: col.Outline, BorderThickness: 1,
 		Clip: clipArr(clip),
 	})
 	l.ripple(c, r, 0, fg, clip)
@@ -809,6 +811,18 @@ func (l *List) paintChip(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	}
 	l.fillRect(r, bg, radius, border, bw, clip)
 	l.stateLayer(c, r, radius, fg, clip)
+	iconColor := fg
+	if v := c.LeadingIconColor.Get(); v != 0 {
+		iconColor = disabledAlpha(c, v)
+	}
+	labelColor := fg
+	if v := c.LabelColor.Get(); v != 0 {
+		labelColor = disabledAlpha(c, v)
+	}
+	trailColor := fg
+	if v := c.TrailingIconColor.Get(); v != 0 {
+		trailColor = disabledAlpha(c, v)
+	}
 
 	// A leading icon sits 8dp from the edge with an 8dp gap, which pushes the
 	// label 18dp further in than the plain 16dp padding.
@@ -818,7 +832,7 @@ func (l *List) paintChip(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		lead = "check"
 	}
 	if lead != "" {
-		l.iconIn(lead, 18, fg, r.X+17, r.Y+r.H/2, clip)
+		l.iconIn(lead, 18, iconColor, r.X+17, r.Y+r.H/2, clip)
 		x = r.X + 8 + 18 + 8
 	}
 	trail := c.Trailing.Get()
@@ -826,10 +840,10 @@ func (l *List) paintChip(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	if trail != "" {
 		endPad = 8 + 18 + 8
 	}
-	l.textIn(c.Label.Get(), l.style("labelLarge"), fg,
+	l.textIn(c.Label.Get(), l.style("labelLarge"), labelColor,
 		tree.Rect{X: x, Y: r.Y, W: r.Right() - x - endPad, H: r.H}, AlignStart, clip)
 	if trail != "" {
-		l.iconIn(trail, 18, fg, r.Right()-17, r.Y+r.H/2, clip)
+		l.iconIn(trail, 18, trailColor, r.Right()-17, r.Y+r.H/2, clip)
 	}
 }
 
@@ -1605,52 +1619,17 @@ func (l *List) paintTopAppBar(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	}
 }
 
-// destination items are children; the bar paints the container and the
-// active indicator behind the selected child.
+// The bar paints the container; each destination draws its own indicator, so
+// an item nested inside a Column still shows its state.
 func (l *List) paintNavigationBar(c *tree.Component, r tree.Rect, clip tree.Rect) {
-	col := l.Theme.Colors
-	l.fillRect(r, col.SurfaceContainer, 0, 0, 0, clip)
-	// The indicator follows the destination's own selected flag, so a nav bar, a
-	// rail and a drawer all read the same state. The shift matters on a scrolled
-	// rail: the item moves with the content, so the band has to move with it.
-	sx, sy := scrollShift(c.Base())
-	for _, k := range c.Base().Kids() {
-		kc := m3Of(k)
-		if kc == nil || !kc.Selected.Get() {
-			continue
-		}
-		kb := k.Bounds()
-		cx := r.X + kb.X + sx + kb.W/2
-		l.fillRect(tree.Rect{X: cx - 32, Y: r.Y + kb.Y + sy + 12, W: 64, H: 32}, col.SecondaryContainer, 16, 0, 0, clip)
-	}
+	l.fillRect(r, l.Theme.Colors.SurfaceContainer, 0, 0, 0, clip)
 }
 
 func (l *List) paintNavigationRail(c *tree.Component, r tree.Rect, clip tree.Rect) {
-	col := l.Theme.Colors
-	// SurfaceContainer, like the bottom bar, plus a 1dp edge line. A rail on
-	// plain Surface was invisible against a Surface page, and the container
-	// alone is only a few units off it; the hairline is what makes the rail
-	// read as its own surface in both schemes.
-	l.fillRect(r, col.SurfaceContainer, 0, 0, 0, clip)
-	l.fillRect(tree.Rect{X: r.Right() - 1, Y: r.Y, W: 1, H: r.H}, col.OutlineVariant, 0, 0, 0, clip)
-	sx, sy := scrollShift(c.Base())
-	for _, k := range c.Base().Kids() {
-		kc := m3Of(k)
-		if kc == nil || !kc.Selected.Get() {
-			continue
-		}
-		kb := k.Bounds()
-		cx := r.X + kb.X + sx + kb.W/2
-		l.fillRect(tree.Rect{X: cx - 28, Y: r.Y + kb.Y + sy + 4, W: 56, H: 32}, col.SecondaryContainer, 16, 0, 0, clip)
-	}
-}
-
-// m3Of returns the component state behind a node, or nil for a layout node.
-func m3Of(b *tree.NodeBase) *tree.Component {
-	if c, ok := b.Node().(interface{ M3() *tree.Component }); ok {
-		return c.M3()
-	}
-	return nil
+	// No edge line of its own: a rail on Surface was invisible against a
+	// Surface page, so it sits on SurfaceContainer, and a design that wants a
+	// divider asks for one with borderRightThickness or a Divider.
+	l.fillRect(r, l.Theme.Colors.SurfaceContainer, 0, 0, 0, clip)
 }
 
 func (l *List) paintNavigationDrawer(c *tree.Component, r tree.Rect, clip tree.Rect) {
@@ -1667,46 +1646,121 @@ func (l *List) paintNavigationDrawer(c *tree.Component, r tree.Rect, clip tree.R
 		l.textIn(c.Label.Get(), l.style("titleSmall"), col.OnSurfaceVariant,
 			tree.Rect{X: r.X + 28, Y: r.Y + 16, W: r.W - 56, H: 20}, AlignStart, clip)
 	}
-	// The active destination is whichever item says so; NavigationItem draws
-	// its own icon and label on top of this band. The drawer scrolls, so the
-	// band follows the item by the same shift its children paint with.
-	sx, sy := scrollShift(c.Base())
-	for _, k := range c.Base().Kids() {
-		if kc := m3Of(k); kc != nil && kc.Selected.Get() {
-			kb := k.Bounds()
-			l.fillRect(tree.Rect{X: r.X + kb.X + sx, Y: r.Y + kb.Y + sy, W: kb.W, H: kb.H},
-				col.SecondaryContainer, 28, 0, 0, clip)
+}
+
+// enclosingNav is the nearest navigation container above a node, so an item
+// wrapped in a Column for layout still knows how its parent arranges it.
+func enclosingNav(b *tree.NodeBase) string {
+	for p := b.Parent(); p != nil; p = p.Base().Parent() {
+		switch p.Kind() {
+		case "NavigationBar", "NavigationRail", "NavigationDrawer":
+			return p.Kind()
 		}
 	}
+	return ""
 }
 
 func (l *List) paintNavigationItem(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
+	nav := enclosingNav(c.Base())
+	selected := c.Selected.Get()
+	ni, _ := c.Node().(*tree.NavigationItem)
+
+	// The indicator belongs to the item, so it follows the item wherever the
+	// design puts it, and the container only paints its own surface.
+	if selected {
+		container := col.SecondaryContainer
+		if ni != nil {
+			if v := ni.SelectedContainerColor.Get(); v != 0 {
+				container = v
+			}
+		}
+		switch nav {
+		case "NavigationDrawer":
+			l.fillRect(r, container, 28, 0, 0, clip)
+		case "NavigationRail":
+			cx := r.X + r.W/2
+			l.fillRect(tree.Rect{X: cx - 28, Y: r.Y + 4, W: 56, H: 32}, container, 16, 0, 0, clip)
+		default:
+			cx := r.X + r.W/2
+			l.fillRect(tree.Rect{X: cx - 32, Y: r.Y + 12, W: 64, H: 32}, container, 16, 0, 0, clip)
+		}
+	}
+
 	fg := col.OnSurfaceVariant
-	if c.Selected.Get() {
+	if selected {
 		fg = col.OnSecondaryContainer
 	}
-	// The parent decides the arrangement, not the item width: a destination in a
-	// wide navigation bar is still stacked.
-	parent := ""
-	if p := c.Base().Parent(); p != nil {
-		parent = p.Kind()
+	icon, label := fg, fg
+	if v := c.LeadingIconColor.Get(); v != 0 {
+		icon = v
 	}
-	if parent == "NavigationDrawer" {
-		l.iconIn(c.Icon.Get(), 24, fg, r.X+24, r.Y+r.H/2, clip)
-		l.textIn(c.Label.Get(), l.style("labelMedium"), fg,
+	if ni != nil {
+		if v := ni.IconColor.Get(); v != 0 {
+			icon = v
+		}
+		if selected {
+			if v := ni.SelectedIconColor.Get(); v != 0 {
+				icon = v
+			}
+		}
+	}
+	if v := c.LabelColor.Get(); v != 0 {
+		label = v
+	}
+	if ni != nil && selected {
+		if v := ni.SelectedLabelColor.Get(); v != 0 {
+			label = v
+		}
+	}
+
+	if nav == "NavigationDrawer" {
+		l.iconIn(c.Icon.Get(), 24, disabledAlpha(c, icon), r.X+24, r.Y+r.H/2, clip)
+		l.textIn(c.Label.Get(), l.style("labelMedium"), disabledAlpha(c, label),
 			tree.Rect{X: r.X + 52, Y: r.Y, W: r.W - 60, H: r.H}, AlignStart, clip)
 		return
 	}
 	// Icon sits in the 32dp indicator; the label follows underneath. The
 	// indicator is at 12dp in a bar and 4dp in a rail.
 	iconY, labelY := r.Y+28, r.Y+48
-	if parent == "NavigationRail" {
+	if nav == "NavigationRail" {
 		iconY, labelY = r.Y+20, r.Y+40
 	}
-	l.iconIn(c.Icon.Get(), 24, fg, r.X+r.W/2, iconY, clip)
-	l.textIn(c.Label.Get(), l.style("labelMedium"), fg,
+	l.iconIn(c.Icon.Get(), 24, disabledAlpha(c, icon), r.X+r.W/2, iconY, clip)
+	l.textIn(c.Label.Get(), l.style("labelMedium"), disabledAlpha(c, label),
 		tree.Rect{X: r.X, Y: labelY, W: r.W, H: 16}, AlignCenter, clip)
+}
+
+// paintBreadcrumb draws the separator in each gap. The crumbs are the children
+// and paint themselves, so a crumb can be a Text, a link or anything else.
+func (l *List) paintBreadcrumb(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	bc, ok := c.Node().(*tree.Breadcrumb)
+	if !ok || bc.Separator.Get() == "" {
+		return
+	}
+	size := bc.SeparatorSize.Get()
+	if size <= 0 {
+		size = 18
+	}
+	col := l.Theme.Colors.OnSurfaceVariant
+	if v := bc.SeparatorColor.Get(); v != 0 {
+		col = v
+	}
+	sx, sy := scrollShift(c.Base())
+	var prev tree.Rect
+	have := false
+	for _, k := range c.Base().Kids() {
+		if !k.Visible() {
+			continue
+		}
+		b := k.Bounds()
+		if have {
+			cx := r.X + sx + (prev.X+prev.W+b.X)/2
+			cy := r.Y + sy + (prev.Y+prev.H/2+b.Y+b.H/2)/2
+			l.iconIn(bc.Separator.Get(), size, col, cx, cy, clip)
+		}
+		prev, have = b, true
+	}
 }
 
 func (l *List) paintTabs(c *tree.Component, r tree.Rect, clip tree.Rect) {
@@ -2151,10 +2205,31 @@ func (l *List) paintText(t *tree.Text, r tree.Rect, clip tree.Rect) {
 	if lh <= 0 {
 		lh = st.Size * 1.2
 	}
+	maxLines := int(t.MaxLines.Get())
+	if maxLines < 0 {
+		maxLines = 0
+	}
 	var single [1]text.Line
-	if t.Wrap.Get() {
+	wrapped := t.Wrap.Get() || maxLines > 0
+	switch {
+	case t.Truncate.Get():
+		// One line, cut to the box; the ellipsis says the rest is not shown.
+		single[0] = text.Line{Text: l.ellipsize(src, r.W, st), Start: 0, End: len(src)}
+		lines = single[:]
+		wrapped = false
+	case wrapped:
 		lines = l.wrapLines(src, r.W, st)
-	} else {
+		if maxLines > 0 && len(lines) > maxLines {
+			// Copy before rewriting the last line: wrapLines returns the cached
+			// slice, and the next paint must still see the whole paragraph.
+			clamped := make([]text.Line, maxLines)
+			copy(clamped, lines[:maxLines])
+			// The clamp hid at least one line, so the last one ends with the
+			// ellipsis even when it happens to fit by itself.
+			clamped[maxLines-1].Text = l.endWithEllipsis(clamped[maxLines-1].Text, r.W, st)
+			lines = clamped
+		}
+	default:
 		single[0] = text.Line{Text: src, Start: 0, End: len(src)}
 		lines = single[:]
 	}
@@ -2164,7 +2239,7 @@ func (l *List) paintText(t *tree.Text, r tree.Rect, clip tree.Rect) {
 	}
 	for i, line := range lines {
 		box := r
-		if t.Wrap.Get() {
+		if wrapped {
 			box = tree.Rect{X: r.X, Y: r.Y + float64(i)*lh, W: r.W, H: lh}
 		}
 		// The highlight sits under the glyphs and only spans the selected
@@ -2209,6 +2284,33 @@ func (l *List) paintText(t *tree.Text, r tree.Rect, clip tree.Rect) {
 			l.textDecoration(t, box, lineW, align, color, st.Size, clip)
 		}
 	}
+}
+
+// ellipsize cuts a run to the longest prefix that fits width once an ellipsis is
+// added. It is what `truncate` and the last line of `maxLines` end a run with.
+func (l *List) ellipsize(s string, width float64, st m3.TextStyle) string {
+	if width <= 0 || textWidth(l, s, st) <= width {
+		return s
+	}
+	return l.endWithEllipsis(s, width, st)
+}
+
+// endWithEllipsis cuts s so the run plus an ellipsis fits width, trimming even a
+// line that fits on its own.
+func (l *List) endWithEllipsis(s string, width float64, st m3.TextStyle) string {
+	const mark = "…"
+	markW := textWidth(l, mark, st)
+	runes := []rune(s)
+	lo, hi := 0, len(runes)
+	for lo < hi {
+		mid := (lo + hi + 1) / 2
+		if textWidth(l, string(runes[:mid]), st)+markW <= width {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
+	}
+	return string(runes[:lo]) + mark
 }
 
 // alignOffset is where a run starts inside a box of width boxW.

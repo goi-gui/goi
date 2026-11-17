@@ -156,6 +156,7 @@ type (
 	NavigationRail   = tree.NavigationRail
 	NavigationDrawer = tree.NavigationDrawer
 	NavigationItem   = tree.NavigationItem
+	Breadcrumb       = tree.Breadcrumb
 	Tabs             = tree.Tabs
 	Tab              = tree.Tab
 	LinearProgress   = tree.LinearProgress

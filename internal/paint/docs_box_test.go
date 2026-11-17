@@ -70,7 +70,7 @@ func TestEveryComponentTakesTheBoxProps(t *testing.T) {
 			continue
 		}
 		n.Base().SetPropLiteral("borderColor", &syntax.Color{RGBA: 0x445566FF})
-		n.Base().SetPropLiteral("borderWidth", &syntax.Number{Val: 2})
+		n.Base().SetPropLiteral("borderThickness", &syntax.Number{Val: 2})
 		n.Base().SetPropLiteral("radius", &syntax.Number{Val: 6})
 		layout.New(nil).Layout(tr.Root, 500, 500)
 		r = absRect(n)
@@ -84,7 +84,7 @@ func TestEveryComponentTakesTheBoxProps(t *testing.T) {
 			if op.Color == 0x112233FF {
 				bg = true
 			}
-			if op.BorderColor == 0x445566FF && op.BorderWidth == 2 {
+			if op.BorderColor == 0x445566FF && op.BorderThickness == 2 {
 				border = true
 			}
 			if op.Radius[0] > 0 {

@@ -228,17 +228,21 @@ var common = []Prop{
 	{Name: "paddingLeft", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
 	{Name: "background", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
 	{Name: "borderColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
-	{Name: "borderWidth", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0, Common: true},
-	// A side width or colour overrides borderWidth/borderColor for that side;
-	// -1 follows borderWidth, and 0 follows borderColor.
-	{Name: "borderTopWidth", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
-	{Name: "borderRightWidth", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
-	{Name: "borderBottomWidth", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
-	{Name: "borderLeftWidth", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
+	// -1 means "no border": a component keeps its own outline, and an explicit 0
+	// removes it. A thickness alone restyles the border the component draws.
+	{Name: "borderThickness", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
+	// A side width or colour overrides borderThickness/borderColor for that side;
+	// -1 follows borderThickness, and 0 follows borderColor.
+	{Name: "borderTopThickness", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
+	{Name: "borderRightThickness", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
+	{Name: "borderBottomThickness", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
+	{Name: "borderLeftThickness", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0, Common: true},
 	{Name: "borderTopColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
 	{Name: "borderRightColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
 	{Name: "borderBottomColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
 	{Name: "borderLeftColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0), Common: true},
+	// The style a border draws in; solid unless the design says otherwise.
+	{Name: "borderType", Type: TypeEnum, Dirty: DirtyPaint, Enum: []string{"solid", "dashed", "dotted"}, Default: "solid", Common: true},
 	{Name: "radius", Type: TypeNumber, Dirty: DirtyPaint, Default: 0.0, Common: true},
 	// A side radius rounds both corners on that side; a corner radius rounds
 	// that one corner. -1 follows the broader property.
@@ -417,6 +421,10 @@ var elements = func() []Element {
 			Prop{Name: "surfaceColor", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0)},
 			Prop{Name: "align", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end"}, Default: "start"},
 			Prop{Name: "wrap", Type: TypeBool, Dirty: DirtyLayout, Default: false},
+			// truncate is one line and an ellipsis; maxLines wraps up to that
+			// many lines and ellipsizes the last, the way CSS line-clamp does.
+			Prop{Name: "truncate", Type: TypeBool, Dirty: DirtyLayout, Default: false},
+			Prop{Name: "maxLines", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
 			Prop{Name: "role", Type: TypeEnum, Dirty: DirtyLayout, Enum: textRoles, Default: "bodyMedium"},
 		)},
 		// RichText is the inline model: one paragraph whose runs may be bold,
@@ -501,10 +509,18 @@ var elements = func() []Element {
 		var attrs []Prop
 		if componentdef.Flow(k.Name) {
 			// Containers that lay their children out in a row or column accept
-			// the same spacing and alignment as Row and Column.
+			// the same spacing and alignment as Row and Column. A breadcrumb
+			// gives the gap to its separators, so it starts wider than 0.
+			spacing := 0.0
+			if d, ok := componentdef.Default(k.Name, "spacing"); ok {
+				spacing, _ = d.(float64)
+			}
 			attrs = append(
 				attrs,
-				Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0},
+				Prop{Name: "spacing", Type: TypeNumber, Dirty: DirtyLayout, Default: spacing},
+				// gap is the same cell as spacing; it carries the same default so
+				// applying it cannot wipe the spacing a component starts with.
+				Prop{Name: "gap", Type: TypeNumber, Dirty: DirtyLayout, Default: spacing},
 				Prop{Name: "crossAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
 				Prop{Name: "mainAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "spaceBetween", "spaceAround", "spaceEvenly"}, Default: "start"},
 			)
@@ -513,7 +529,7 @@ var elements = func() []Element {
 			// A flow container's layout properties are already typed above,
 			// with their defaults; Props() lists them again for the node tree,
 			// and a second entry would show up twice in completion.
-			if componentdef.Flow(k.Name) && (name == "spacing" || name == "crossAxisAlign" || name == "mainAxisAlign") {
+			if componentdef.Flow(k.Name) && (name == "spacing" || name == "gap" || name == "crossAxisAlign" || name == "mainAxisAlign") {
 				continue
 			}
 			p := Prop{Name: name}

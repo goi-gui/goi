@@ -81,11 +81,13 @@ func WrapRanges(s string, maxWidth float64, advance func(string) float64) []Line
 }
 
 // splitToWidth cuts one line into the longest rune prefix that fits and the
-// rest. It always makes progress, so the caller's loop terminates.
+// rest. It always makes progress, so the caller's loop terminates: when even one
+// rune is wider than the column the prefix is that rune, so the line overflows
+// instead of spinning on an empty head.
 func splitToWidth(line string, maxWidth float64, advance func(string) float64) (string, string) {
 	runes := []rune(line)
 	n := len(runes) - 1
-	for n > 0 && advance(string(runes[:n])) > maxWidth {
+	for n > 1 && advance(string(runes[:n])) > maxWidth {
 		n--
 	}
 	return string(runes[:n]), string(runes[n:])

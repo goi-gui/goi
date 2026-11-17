@@ -31,15 +31,15 @@ func TestComponentBoxPropsApply(t *testing.T) {
 		Column {
 			padding: 20
 			spacing: 12
-			Button { id: b label: "B" background: #112233 borderColor: #445566 borderWidth: 2 radius: 6 }
-			Card { id: c label: "C" width: 180 height: 72 background: #112233 borderColor: #445566 borderWidth: 2 radius: 6 }
-			TextField { id: f width: 180 background: #112233 borderColor: #445566 borderWidth: 2 radius: 6 }
-			Switch { id: s label: "S" background: #112233 borderColor: #445566 borderWidth: 2 radius: 6 }
-			Checkbox { id: k label: "K" background: #112233 borderColor: #445566 borderWidth: 2 radius: 6 }
-			IconButton { id: i icon: add background: #112233 borderColor: #445566 borderWidth: 2 radius: 6 }
-			Divider { id: d width: 180 background: #112233 borderColor: #445566 borderWidth: 2 radius: 6 }
-			Slider { id: r width: 180 background: #112233 borderColor: #445566 borderWidth: 2 radius: 6 }
-			Tabs { id: t background: #112233 borderColor: #445566 borderWidth: 2 radius: 6
+			Button { id: b label: "B" background: #112233 borderColor: #445566 borderThickness: 2 radius: 6 }
+			Card { id: c label: "C" width: 180 height: 72 background: #112233 borderColor: #445566 borderThickness: 2 radius: 6 }
+			TextField { id: f width: 180 background: #112233 borderColor: #445566 borderThickness: 2 radius: 6 }
+			Switch { id: s label: "S" background: #112233 borderColor: #445566 borderThickness: 2 radius: 6 }
+			Checkbox { id: k label: "K" background: #112233 borderColor: #445566 borderThickness: 2 radius: 6 }
+			IconButton { id: i icon: add background: #112233 borderColor: #445566 borderThickness: 2 radius: 6 }
+			Divider { id: d width: 180 background: #112233 borderColor: #445566 borderThickness: 2 radius: 6 }
+			Slider { id: r width: 180 background: #112233 borderColor: #445566 borderThickness: 2 radius: 6 }
+			Tabs { id: t background: #112233 borderColor: #445566 borderThickness: 2 radius: 6
 				Tab { label: "One" selected: true }
 				Tab { label: "Two" }
 			}
@@ -67,7 +67,7 @@ func TestComponentBoxPropsApply(t *testing.T) {
 			if op.Color == 0x112233FF && op.Radius[0] > 0 {
 				bg = true
 			}
-			if op.BorderColor == 0x445566FF && op.BorderWidth == 2 {
+			if op.BorderColor == 0x445566FF && op.BorderThickness == 2 {
 				border = true
 			}
 		}

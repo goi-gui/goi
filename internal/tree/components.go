@@ -608,6 +608,9 @@ type Table struct {
 	// Selectable is none, single or multiple; none is the default.
 	Selectable  Prop[string]
 	SelectedRow Prop[float64]
+	// SelectionColor is the band under selected rows; zero follows
+	// SecondaryContainer.
+	SelectionColor Prop[uint32]
 	// SortEvent fires when a header is clicked, with the column index and the
 	// new direction. SortBy from Go does not fire it, because the caller
 	// already knows.
@@ -620,7 +623,7 @@ func (*Table) Kind() string { return "Table" }
 func (c *Table) namedProps() []NamedProp {
 	return append(c.propsExcept("Table",
 		"striped", "showHeader", "stickyHeader", "rowHeight", "headerHeight",
-		"sortColumn", "sortAscending", "selectable", "selectedRow"),
+		"sortColumn", "sortAscending", "selectable", "selectedRow", "selectionColor"),
 		BoolProp(&c.NodeBase, "striped", DirtyPaint, &c.Striped),
 		BoolProp(&c.NodeBase, "showHeader", DirtyLayout, &c.ShowHeader),
 		BoolProp(&c.NodeBase, "stickyHeader", DirtyLayout, &c.StickyHeader),
@@ -630,6 +633,7 @@ func (c *Table) namedProps() []NamedProp {
 		BoolProp(&c.NodeBase, "sortAscending", DirtyLayout, &c.SortAscending),
 		EnumProp(&c.NodeBase, "selectable", DirtyPaint, &c.Selectable, TableSelectableValues),
 		NumberProp(&c.NodeBase, "selectedRow", DirtyPaint, &c.SelectedRow),
+		ColorProp(&c.NodeBase, "selectionColor", DirtyPaint, &c.SelectionColor),
 	)
 }
 
@@ -743,12 +747,51 @@ type NavigationDrawer struct{ Component }
 func (*NavigationDrawer) Kind() string              { return "NavigationDrawer" }
 func (c *NavigationDrawer) namedProps() []NamedProp { return c.props("NavigationDrawer") }
 
-// NavigationItem is one destination in a bar, rail or drawer.
-type NavigationItem struct{ Component }
+// NavigationItem is one destination in a bar, rail or drawer. Each part has a
+// colour of its own, in both states: the label and the icon read their plain
+// colour when idle and their selected one while active, and the indicator
+// behind them takes SelectedContainerColor.
+type NavigationItem struct {
+	Component
+	IconColor              Prop[uint32]
+	SelectedLabelColor     Prop[uint32]
+	SelectedIconColor      Prop[uint32]
+	SelectedContainerColor Prop[uint32]
+}
 
 // Kind implements Node.
-func (*NavigationItem) Kind() string              { return "NavigationItem" }
-func (c *NavigationItem) namedProps() []NamedProp { return c.props("NavigationItem") }
+func (*NavigationItem) Kind() string { return "NavigationItem" }
+func (c *NavigationItem) namedProps() []NamedProp {
+	b := &c.NodeBase
+	return append(c.propsExcept("NavigationItem",
+		"iconColor", "selectedLabelColor", "selectedIconColor", "selectedContainerColor"),
+		ColorProp(b, "iconColor", DirtyPaint, &c.IconColor),
+		ColorProp(b, "selectedLabelColor", DirtyPaint, &c.SelectedLabelColor),
+		ColorProp(b, "selectedIconColor", DirtyPaint, &c.SelectedIconColor),
+		ColorProp(b, "selectedContainerColor", DirtyPaint, &c.SelectedContainerColor),
+	)
+}
+
+// Breadcrumb is a trail of destinations: its children are the crumbs, and it
+// draws the separator between them, so a design composes whatever each crumb
+// needs (a Text, a link, an Icon) instead of naming fields.
+type Breadcrumb struct {
+	Component
+	Separator      Prop[string]
+	SeparatorColor Prop[uint32]
+	SeparatorSize  Prop[float64]
+}
+
+// Kind implements Node.
+func (*Breadcrumb) Kind() string { return "Breadcrumb" }
+func (c *Breadcrumb) namedProps() []NamedProp {
+	b := &c.NodeBase
+	return append(c.propsExcept("Breadcrumb", "separator", "separatorColor", "separatorSize"),
+		StringProp(b, "separator", &c.Separator),
+		ColorProp(b, "separatorColor", DirtyPaint, &c.SeparatorColor),
+		NumberProp(b, "separatorSize", DirtyLayout, &c.SeparatorSize),
+	)
+}
 
 // Tabs is a row of tabs.
 type Tabs struct{ Component }

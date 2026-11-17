@@ -373,7 +373,47 @@ func TestGradientStopsResolveTheirRoles(t *testing.T) {
 // per-node table from it, so a property added to the table without updating the
 // count would grow the slice again.
 func TestCommonPropCount(t *testing.T) {
-	if got := len(commonProps(&NodeBase{}, 0)); got != commonPropCount {
+	props := commonProps(&NodeBase{}, 0)
+	if got := len(props); got != commonPropCount {
 		t.Fatalf("commonProps has %d entries, commonPropCount says %d", got, commonPropCount)
+	}
+	// A duplicated name binds twice and the second cell wins, so the property a
+	// design writes and the one the tree reads can differ.
+	seen := make(map[string]bool, len(props))
+	for _, p := range props {
+		if seen[p.Name] {
+			t.Errorf("commonProps lists %q twice", p.Name)
+		}
+		seen[p.Name] = true
+	}
+}
+
+// TestBreadcrumbKeepsItsGapDefault guards the flow alias: `gap` shares the
+// spacing cell, so its own default must not overwrite the wider gap a
+// breadcrumb gives its separators.
+func TestBreadcrumbKeepsItsGapDefault(t *testing.T) {
+	src := `Window { Breadcrumb { Text { text: "a" } Text { text: "b" } } }`
+	tr, diag := BuildSource([]byte(src), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	bc, ok := tr.Root.Children()[0].(*Breadcrumb)
+	if !ok {
+		t.Fatal("no breadcrumb")
+	}
+	if got := bc.Spacing.Get(); got != 32 {
+		t.Fatalf("default spacing = %v, want 32", got)
+	}
+	if got := bc.Separator.Get(); got != "chevron_right" || bc.SeparatorSize.Get() != 20 {
+		t.Fatalf("separator defaults = %q %v", got, bc.SeparatorSize.Get())
+	}
+
+	// A design still has the last word, under either name.
+	tr, diag = BuildSource([]byte(`Window { Breadcrumb { gap: 8 Text { text: "a" } } }`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	if got := tr.Root.Children()[0].(*Breadcrumb).Spacing.Get(); got != 8 {
+		t.Fatalf("gap: 8 gave %v", got)
 	}
 }

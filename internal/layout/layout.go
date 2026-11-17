@@ -179,7 +179,7 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 			e.listItemSlots(b, kids, cw, ch, insetL, insetT)
 		case "TextField":
 			e.textFieldSlots(b, kids, cw, ch, insetL, insetT)
-		case "ButtonGroup", "Row", "Toolbar", "Carousel":
+		case "ButtonGroup", "Row", "Toolbar", "Carousel", "Breadcrumb":
 			e.linear(b, kids, cw, ch, insetL, true, insetT)
 		default:
 			e.linear(b, kids, cw, ch, insetL, false, insetT)
@@ -1087,7 +1087,7 @@ func (e *Engine) naturalSize(k *tree.NodeBase, availW, availH float64) (float64,
 // flowHorizontal reports containers whose children run left to right.
 func flowHorizontal(kind string) bool {
 	switch kind {
-	case "Row", "TitleBar", "ButtonGroup", "Toolbar", "Carousel", "Tabs", "NavigationBar":
+	case "Row", "TitleBar", "ButtonGroup", "Toolbar", "Carousel", "Tabs", "NavigationBar", "Breadcrumb":
 		return true
 	}
 	return false
@@ -1192,13 +1192,23 @@ func (e *Engine) textSize(s string, t *tree.Text, availW float64) (float64, floa
 		lineHeight = size * 1.2
 	}
 	family := t.FontFamily()
-	if !t.Wrap.Get() {
+	maxLines := int(t.MaxLines.Get())
+	if maxLines < 0 {
+		maxLines = 0
+	}
+	if t.Truncate.Get() {
+		// One line, cut to the box: the glyphs beyond it are never drawn, so the
+		// reserved size stops at the edge.
+		w, _ := e.measureFamily(s, size, weight, family)
+		if limit := textLimit(t, availW); limit > 0 && w > limit {
+			w = limit
+		}
+		return w, lineHeight
+	}
+	if !t.Wrap.Get() && maxLines == 0 {
 		return e.measureFamily(s, size, weight, family)
 	}
-	limit := availW
-	if v := t.Width(); v >= 0 {
-		limit = v
-	}
+	limit := textLimit(t, availW)
 	if limit <= 0 {
 		return e.measureFamily(s, size, weight, family)
 	}
@@ -1216,7 +1226,19 @@ func (e *Engine) textSize(s string, t *tree.Text, availW float64) (float64, floa
 		}
 		e.wraps[key] = n
 	}
+	if maxLines > 0 && n > maxLines {
+		n = maxLines
+	}
 	return limit, float64(n) * lineHeight
+}
+
+// textLimit is the column a wrapped or truncated Text measures against: its own
+// width when the design pins one, the space the parent offers otherwise.
+func textLimit(t *tree.Text, availW float64) float64 {
+	if v := t.Width(); v >= 0 {
+		return v
+	}
+	return availW
 }
 
 // measureFamily measures one run in a design's font family, falling back to the

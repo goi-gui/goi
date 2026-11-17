@@ -628,7 +628,7 @@ func contains(r tree.Rect, x, y float64) bool {
 
 // paintChart draws the surface, the axes, the series and the hover state.
 func (l *List) paintChart(c *tree.Chart, r tree.Rect, clip tree.Rect) {
-	if c.Background() != 0 || c.BorderWidth() > 0 {
+	if c.Background() != 0 || c.BorderThickness() > 0 {
 		l.paintBox(c.Base(), r, clip)
 	}
 	area := chartArea(r)
@@ -968,7 +968,7 @@ func (l *List) paintBars(c *tree.Chart, lay ChartLayout, clip tree.Rect, pal []u
 	if r := c.BarRadius.Get(); r >= 0 {
 		rad = r
 	}
-	bw := math.Max(0, c.BarBorderWidth.Get())
+	bw := math.Max(0, c.BarBorderThickness.Get())
 	bc := c.BarBorderColor.Get()
 	if bw > 0 && bc == 0 {
 		bc = l.Theme.Colors.OnSurface

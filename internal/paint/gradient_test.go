@@ -52,14 +52,14 @@ func TestGradientKeepsRadiusAndBorder(t *testing.T) {
 			height: 60
 			radius: 12
 			borderColor: primary
-			borderWidth: 1
+			borderThickness: 1
 			background: "radial-gradient(circle, red 0%, blue 100%)"
 		}
 	} }`
 	l := list(t, src, 400, 300)
 	for _, op := range l.Ops {
 		if op.Gradient != nil {
-			if op.Radius[0] != 12 || op.BorderWidth != 1 {
+			if op.Radius[0] != 12 || op.BorderThickness != 1 {
 				t.Fatalf("gradient op lost its chrome: %+v", op)
 			}
 			if op.Gradient.Kind != tree.RadialKind {

@@ -479,7 +479,7 @@ func TestBarChartGapAndShape(t *testing.T) {
 
 	// Radius and border reach the bar op itself; an unset barRadius follows the
 	// node's radius, which is where the bars took it from before.
-	tr, l := chartNode(t, "BarChart", "barRadius: 6 barBorderWidth: 2 barBorderColor: #ff0000", data, 300, 200)
+	tr, l := chartNode(t, "BarChart", "barRadius: 6 barBorderThickness: 2 barBorderColor: #ff0000", data, 300, 200)
 	c = core(t, tr)
 	lay = ChartLayoutOf(c, c.Base().Bounds())
 	bar := lay.Bars[0][0]
@@ -497,8 +497,8 @@ func TestBarChartGapAndShape(t *testing.T) {
 	if op.Radius[0] != 6 {
 		t.Fatalf("bar radius = %v, want 6", op.Radius[0])
 	}
-	if op.BorderColor != 0xFF0000FF || op.BorderWidth != 2 {
-		t.Fatalf("bar border = %08x/%v, want #ff0000/2", op.BorderColor, op.BorderWidth)
+	if op.BorderColor != 0xFF0000FF || op.BorderThickness != 2 {
+		t.Fatalf("bar border = %08x/%v, want #ff0000/2", op.BorderColor, op.BorderThickness)
 	}
 
 	tr, l = chartNode(t, "BarChart", "radius: 10", data, 300, 200)

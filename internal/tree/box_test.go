@@ -55,14 +55,14 @@ func TestBorderEdgesAndColors(t *testing.T) {
 	tr, diag := BuildSource([]byte(`Window {
 		Column {
 			id: a
-			borderWidth: 1
+			borderThickness: 1
 			borderColor: #ff0000
-			borderTopWidth: 4
+			borderTopThickness: 4
 			borderBottomColor: #00ff00
 		}
 		Column {
 			id: b
-			borderWidth: 2
+			borderThickness: 2
 		}
 	}`), nil)
 	if !diag.Empty() {

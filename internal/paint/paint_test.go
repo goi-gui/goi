@@ -90,9 +90,9 @@ func TestNestedClip(t *testing.T) {
 }
 
 func TestBorderAndRadius(t *testing.T) {
-	l := list(t, `Window { Rectangle { width: 10 height: 10 background: #112233 radius: 4 borderColor: #ffffff borderWidth: 2 } }`, 100, 100)
+	l := list(t, `Window { Rectangle { width: 10 height: 10 background: #112233 radius: 4 borderColor: #ffffff borderThickness: 2 } }`, 100, 100)
 	op := l.Ops[0]
-	if op.Radius[0] != 4 || op.BorderWidth != 2 || op.BorderColor != 0xFFFFFFFF {
+	if op.Radius[0] != 4 || op.BorderThickness != 2 || op.BorderColor != 0xFFFFFFFF {
 		t.Fatalf("op = %+v", op)
 	}
 }
@@ -196,7 +196,7 @@ func TestOpacityFadesSubtree(t *testing.T) {
 		Column {
 			opacity: 0.5
 			Rectangle { width: 10 height: 10 background: #ff0000 }
-			Rectangle { width: 10 height: 10 background: #00ff00 borderColor: #0000ff borderWidth: 2 }
+			Rectangle { width: 10 height: 10 background: #00ff00 borderColor: #0000ff borderThickness: 2 }
 		}
 	}`, 100, 100)
 	var fills int
@@ -208,7 +208,7 @@ func TestOpacityFadesSubtree(t *testing.T) {
 		if op.Color&0xFF != 0x80 && op.Color != 0 {
 			t.Fatalf("fill alpha = %#x, want half", op.Color&0xFF)
 		}
-		if op.BorderWidth > 0 && op.BorderColor&0xFF != 0x80 {
+		if op.BorderThickness > 0 && op.BorderColor&0xFF != 0x80 {
 			t.Fatalf("border alpha = %#x, want half", op.BorderColor&0xFF)
 		}
 	}

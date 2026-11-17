@@ -565,7 +565,7 @@ func TestFocusedButtonDrawsRing(t *testing.T) {
 		l := &List{}
 		l.Build(tr, 400, 400)
 		for _, op := range l.Ops {
-			if op.Kind == Fill && op.Color == 0 && op.BorderColor == col.Primary && op.BorderWidth == 2 {
+			if op.Kind == Fill && op.Color == 0 && op.BorderColor == col.Primary && op.BorderThickness == 2 {
 				return true
 			}
 		}
@@ -1139,7 +1139,7 @@ func TestCodeDefaultsToBorderAndCopy(t *testing.T) {
 			if op.Kind != Fill {
 				continue
 			}
-			if op.BorderWidth == 1 && op.BorderColor == col.OutlineVariant {
+			if op.BorderThickness == 1 && op.BorderColor == col.OutlineVariant {
 				border++
 			}
 			if op.Color == withAlpha(col.SecondaryContainer, 0.9) {

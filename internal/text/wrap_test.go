@@ -3,6 +3,7 @@ package text
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // advancePretend is 10px per rune, which makes the expected break points easy to
@@ -119,5 +120,21 @@ func TestWrapEditBreaksLongWord(t *testing.T) {
 	}
 	if lines[0].Text != "abc" || lines[3].Text != "j" {
 		t.Fatalf("unexpected break: %+v", lines)
+	}
+}
+
+// TestWrapLinesNarrowerThanOneRune is the shop example's hang: a column thinner
+// than a single glyph made splitToWidth return an empty head, so the wrap loop
+// never consumed the line and the frame never finished.
+func TestWrapLinesNarrowerThanOneRune(t *testing.T) {
+	done := make(chan []string, 1)
+	go func() { done <- WrapLines("abcdef", 1, advancePretend) }()
+	select {
+	case lines := <-done:
+		if len(lines) != 6 {
+			t.Fatalf("lines = %q, want one per rune", lines)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("wrapping a column narrower than one rune did not finish")
 	}
 }

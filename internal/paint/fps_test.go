@@ -61,28 +61,49 @@ func TestTopAppBarWithoutIconDropsTheHamburger(t *testing.T) {
 	}
 }
 
-// TestRailSitsOnItsOwnSurface guards the rail being visible: it paints the same
-// container tone as the bottom bar, plus a hairline on its right edge, because a
-// rail on plain Surface blended into a Surface page.
+// TestRailSitsOnItsOwnSurface guards the rail being visible without drawing a
+// line of its own: it paints the container tone, and a design asks for an edge
+// divider with borderRightThickness when it wants one.
 func TestRailSitsOnItsOwnSurface(t *testing.T) {
+	edge := func(l *List) bool {
+		for _, op := range l.Ops {
+			if op.Kind == Fill && op.Color == m3.Light().Colors.OutlineVariant && op.Rect[2] <= 1 {
+				return true
+			}
+		}
+		return false
+	}
 	l := m3list(t, `Window {
 		NavigationRail { height: 200 NavigationItem { label: "One" leadingIcon: tune } }
 	}`)
-	col := m3.Light().Colors
-	var container, edge bool
+	var container bool
 	for _, op := range l.Ops {
-		if op.Kind != Fill {
-			continue
-		}
-		if op.Color == col.SurfaceContainer && op.Rect[2] > 60 {
+		if op.Kind == Fill && op.Color == m3.Light().Colors.SurfaceContainer && op.Rect[2] > 60 {
 			container = true
 		}
-		if op.Color == col.OutlineVariant && op.Rect[2] <= 1 {
-			edge = true
+	}
+	if !container {
+		t.Fatalf("rail has no container surface:\n%s", l.Dump())
+	}
+	if edge(l) {
+		t.Fatal("the rail drew an edge it was not asked for")
+	}
+
+	// A design's border is the divider, on the side it names. A role stays a
+	// name until the theme resolves it, so the painter test uses a literal.
+	l = m3list(t, `Window {
+		NavigationRail { height: 200 borderRightThickness: 1 borderRightColor: #cac4d0
+			NavigationItem { label: "One" leadingIcon: tune }
+		}
+	}`)
+	var drawn bool
+	for _, op := range l.Ops {
+		if op.Kind == Fill && op.Color == 0xCAC4D0FF && op.Rect[2] == 1 {
+			drawn = true
 		}
 	}
-	if !container || !edge {
-		t.Fatalf("rail surface: container=%v edge=%v\n%s", container, edge, l.Dump())
+	if !drawn {
+		t.Fatalf("a declared right border did not paint:\n%s", l.Dump())
 	}
 }
 

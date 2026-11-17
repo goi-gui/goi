@@ -22,7 +22,7 @@ type Node interface {
 // commonPropCount is how many cells the shared table has. Naming it keeps the
 // per-node table one exact allocation instead of the three or four that append
 // growth used to make (the largest heap cost of a big design).
-const commonPropCount = 69
+const commonPropCount = 62
 
 // commonProps returns the property table shared by every element. extra is how
 // many cells the caller will append, so the slice is sized once. "id" is absent
@@ -51,23 +51,16 @@ func commonProps(b *NodeBase, extra int) []NamedProp {
 		NumberProp(b, "paddingLeft", DirtyLayout, &b.paddingLeft),
 		ColorProp(b, "background", DirtyPaint, &b.background),
 		ColorProp(b, "borderColor", DirtyPaint, &b.borderColor),
-		NumberProp(b, "borderWidth", DirtyLayout, &b.borderW),
-		NumberProp(b, "borderTopWidth", DirtyLayout, &b.borderTopW),
-		NumberProp(b, "borderRightWidth", DirtyLayout, &b.borderRightW),
-		NumberProp(b, "borderBottomWidth", DirtyLayout, &b.borderBottomW),
-		NumberProp(b, "borderLeftWidth", DirtyLayout, &b.borderLeftW),
+		NumberProp(b, "borderThickness", DirtyLayout, &b.borderT),
+		NumberProp(b, "borderTopThickness", DirtyLayout, &b.borderTopT),
+		NumberProp(b, "borderRightThickness", DirtyLayout, &b.borderRightT),
+		NumberProp(b, "borderBottomThickness", DirtyLayout, &b.borderBottomT),
+		NumberProp(b, "borderLeftThickness", DirtyLayout, &b.borderLeftT),
 		ColorProp(b, "borderTopColor", DirtyPaint, &b.borderTopColor),
 		ColorProp(b, "borderRightColor", DirtyPaint, &b.borderRightColor),
 		ColorProp(b, "borderBottomColor", DirtyPaint, &b.borderBottomColor),
 		ColorProp(b, "borderLeftColor", DirtyPaint, &b.borderLeftColor),
-		ColorProp(b, "borderTopColor", DirtyPaint, &b.borderTopColor),
-		ColorProp(b, "borderRightColor", DirtyPaint, &b.borderRightColor),
-		ColorProp(b, "borderBottomColor", DirtyPaint, &b.borderBottomColor),
-		ColorProp(b, "borderLeftColor", DirtyPaint, &b.borderLeftColor),
-		NumberProp(b, "borderTopWidth", DirtyLayout, &b.borderTopW),
-		NumberProp(b, "borderRightWidth", DirtyLayout, &b.borderRightW),
-		NumberProp(b, "borderBottomWidth", DirtyLayout, &b.borderBottomW),
-		NumberProp(b, "borderLeftWidth", DirtyLayout, &b.borderLeftW),
+		EnumProp(b, "borderType", DirtyPaint, &b.borderType, BorderTypeValues),
 		NumberProp(b, "radius", DirtyPaint, &b.radius),
 		NumberProp(b, "radiusTop", DirtyPaint, &b.radiusTop),
 		NumberProp(b, "radiusRight", DirtyPaint, &b.radiusRight),
@@ -663,6 +656,11 @@ type Text struct {
 	DecorationThickness Prop[float64]
 	DecorationColor     Prop[uint32]
 	Selectable          Prop[bool]
+	// Truncate keeps the text on one line and ends it with an ellipsis when it
+	// does not fit its box, the way CSS text-overflow does. MaxLines wraps and
+	// stops after that many lines, ending the last one with an ellipsis.
+	Truncate Prop[bool]
+	MaxLines Prop[float64]
 	// Link is the URL, deep link or path this text points at. A text with one is
 	// a link: it draws in the primary colour, and a click opens it unless a
 	// LinkClick handler says otherwise. Inside a RichText it is the run's link.
@@ -724,6 +722,8 @@ func (t *Text) namedProps() []NamedProp {
 		NumberProp(&t.NodeBase, "decorationThickness", DirtyPaint, &t.DecorationThickness),
 		ColorProp(&t.NodeBase, "decorationColor", DirtyPaint, &t.DecorationColor),
 		BoolProp(&t.NodeBase, "selectable", DirtyPaint, &t.Selectable),
+		BoolProp(&t.NodeBase, "truncate", DirtyLayout, &t.Truncate),
+		NumberProp(&t.NodeBase, "maxLines", DirtyLayout, &t.MaxLines),
 		StringProp(&t.NodeBase, "link", &t.Link),
 	)
 }

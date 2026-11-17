@@ -94,12 +94,12 @@ type Chart struct {
 	// node's own radius, so a design that set `radius` for the bars keeps the
 	// look it asked for. The border outlines the bar inside its box, and BarGap
 	// separates the bars of one group, which only a vertical chart has room for.
-	BarRadius      Prop[float64]
-	BarBorderWidth Prop[float64]
-	BarBorderColor Prop[uint32]
-	BarGap         Prop[float64]
-	Min            Prop[float64] // 0 means "from the data"
-	Max            Prop[float64]
+	BarRadius          Prop[float64]
+	BarBorderThickness Prop[float64]
+	BarBorderColor     Prop[uint32]
+	BarGap             Prop[float64]
+	Min                Prop[float64] // 0 means "from the data"
+	Max                Prop[float64]
 
 	// HoverSeries and HoverIndex are the point under the pointer, or -1. The
 	// input layer writes them and paint reads them.
@@ -343,7 +343,7 @@ func chartProps(c *Chart, kind string, own ...NamedProp) []NamedProp {
 		"grid", "axis", "legend", "values", "categories", "textColor", "gridColor",
 		"stacked", "horizontal", "smooth", "points",
 		"innerRadius", "startAngle", "min", "max",
-		"barRadius", "barGap", "barBorderWidth", "barBorderColor",
+		"barRadius", "barGap", "barBorderThickness", "barBorderColor",
 	), own...)
 }
 
@@ -401,7 +401,7 @@ func (c *BarChart) namedProps() []NamedProp {
 			BoolProp(&c.NodeBase, "horizontal", DirtyPaint, &c.Horizontal),
 			NumberProp(&c.NodeBase, "barRadius", DirtyPaint, &c.BarRadius),
 			NumberProp(&c.NodeBase, "barGap", DirtyPaint, &c.BarGap),
-			NumberProp(&c.NodeBase, "barBorderWidth", DirtyPaint, &c.BarBorderWidth),
+			NumberProp(&c.NodeBase, "barBorderThickness", DirtyPaint, &c.BarBorderThickness),
 			ColorProp(&c.NodeBase, "barBorderColor", DirtyPaint, &c.BarBorderColor),
 		)...)
 }
@@ -464,30 +464,30 @@ func (c *GaugeChart) namedProps() []NamedProp {
 // runtime point set to "none".
 func newChart() Chart {
 	return Chart{
-		Component:      newComponent(),
-		Categories:     ListProp[string]{parse: listParse[string](schema.TypeString)},
-		TextColor:      newProp(nil, "textColor", DirtyPaint, uint32(0)),
-		GridColor:      newProp(nil, "gridColor", DirtyPaint, uint32(0)),
-		Grid:           newProp(nil, "grid", DirtyPaint, true),
-		Axis:           newProp(nil, "axis", DirtyPaint, true),
-		Legend:         newProp(nil, "legend", DirtyLayout, false),
-		Values:         newProp(nil, "values", DirtyPaint, false),
-		Stacked:        newProp(nil, "stacked", DirtyPaint, false),
-		Horizontal:     newProp(nil, "horizontal", DirtyPaint, false),
-		Smooth:         newProp(nil, "smooth", DirtyPaint, false),
-		Points:         newProp(nil, "points", DirtyPaint, true),
-		InnerRadius:    newProp(nil, "innerRadius", DirtyPaint, 0.0),
-		StartAngle:     newProp(nil, "startAngle", DirtyPaint, 0.0),
-		BarRadius:      newProp(nil, "barRadius", DirtyPaint, -1.0),
-		BarGap:         newProp(nil, "barGap", DirtyPaint, 0.0),
-		BarBorderWidth: newProp(nil, "barBorderWidth", DirtyPaint, 0.0),
-		BarBorderColor: newProp(nil, "barBorderColor", DirtyPaint, uint32(0)),
-		Min:            newProp(nil, "min", DirtyPaint, 0.0),
-		Max:            newProp(nil, "max", DirtyPaint, 0.0),
-		HoverSeries:    -1,
-		HoverIndex:     -1,
-		SelectedSeries: -1,
-		SelectedIndex:  -1,
+		Component:          newComponent(),
+		Categories:         ListProp[string]{parse: listParse[string](schema.TypeString)},
+		TextColor:          newProp(nil, "textColor", DirtyPaint, uint32(0)),
+		GridColor:          newProp(nil, "gridColor", DirtyPaint, uint32(0)),
+		Grid:               newProp(nil, "grid", DirtyPaint, true),
+		Axis:               newProp(nil, "axis", DirtyPaint, true),
+		Legend:             newProp(nil, "legend", DirtyLayout, false),
+		Values:             newProp(nil, "values", DirtyPaint, false),
+		Stacked:            newProp(nil, "stacked", DirtyPaint, false),
+		Horizontal:         newProp(nil, "horizontal", DirtyPaint, false),
+		Smooth:             newProp(nil, "smooth", DirtyPaint, false),
+		Points:             newProp(nil, "points", DirtyPaint, true),
+		InnerRadius:        newProp(nil, "innerRadius", DirtyPaint, 0.0),
+		StartAngle:         newProp(nil, "startAngle", DirtyPaint, 0.0),
+		BarRadius:          newProp(nil, "barRadius", DirtyPaint, -1.0),
+		BarGap:             newProp(nil, "barGap", DirtyPaint, 0.0),
+		BarBorderThickness: newProp(nil, "barBorderThickness", DirtyPaint, 0.0),
+		BarBorderColor:     newProp(nil, "barBorderColor", DirtyPaint, uint32(0)),
+		Min:                newProp(nil, "min", DirtyPaint, 0.0),
+		Max:                newProp(nil, "max", DirtyPaint, 0.0),
+		HoverSeries:        -1,
+		HoverIndex:         -1,
+		SelectedSeries:     -1,
+		SelectedIndex:      -1,
 	}
 }
 

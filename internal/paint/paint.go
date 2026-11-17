@@ -84,8 +84,11 @@ type Op struct {
 	Radius [4]float32
 	Color  uint32 // 0xRRGGBBAA
 
-	BorderColor uint32
-	BorderWidth float32
+	BorderColor     uint32
+	BorderThickness float32
+	// BorderDash is the style a rounded border draws in: 0 solid, 1 dashed,
+	// 2 dotted. A border on a gradient reads it too.
+	BorderDash float32
 
 	// Blur is the shadow falloff in logical pixels.
 	Blur float32
@@ -539,8 +542,12 @@ func (l *List) paintComponentBox(b *tree.NodeBase, r tree.Rect, clip tree.Rect, 
 	hasPaint := color != 0 || grad != nil
 	radii := b.Radii()
 	hasRadius := b.RadiusSet()
-	be := b.BorderEdges()
-	hasBorder := be.Top > 0 || be.Right > 0 || be.Bottom > 0 || be.Left > 0
+	be, cols := b.BorderEdges(), b.BorderColors()
+	hasColour := cols[0] != 0 || cols[1] != 0 || cols[2] != 0 || cols[3] != 0
+	// A thickness alone restyles the outline the component already draws, so
+	// there is nothing to replace it with: keep it. An explicit 0 draws no
+	// border, and clearing the component's own is the point.
+	hasBorder := b.BorderSet() && (hasColour || maxEdge(be) <= 0)
 	if !hasPaint && !hasRadius && !hasBorder {
 		return
 	}
@@ -569,7 +576,7 @@ func (l *List) paintComponentBox(b *tree.NodeBase, r tree.Rect, clip tree.Rect, 
 			// only the component's own filled boxes are in this range.
 			for i := from; i < len(l.Ops); i++ {
 				if op := &l.Ops[i]; op.Kind == Fill && rectEqual(op.Rect, r) {
-					op.BorderColor, op.BorderWidth = 0, 0
+					op.BorderColor, op.BorderThickness = 0, 0
 				}
 			}
 		}
@@ -592,8 +599,11 @@ func (l *List) paintComponentBox(b *tree.NodeBase, r tree.Rect, clip tree.Rect, 
 // and children. The border belongs to the whole box, not to the surface the
 // component painted, so it runs after the child walk.
 func (l *List) paintComponentBorder(b *tree.NodeBase, r tree.Rect, clip tree.Rect, from int) {
+	if !b.BorderSet() {
+		return
+	}
 	be, cols := b.BorderEdges(), b.BorderColors()
-	if be.Top <= 0 && be.Right <= 0 && be.Bottom <= 0 && be.Left <= 0 {
+	if maxEdge(be) <= 0 {
 		return
 	}
 	radii := b.Radii()
@@ -608,7 +618,11 @@ func (l *List) paintComponentBorder(b *tree.NodeBase, r tree.Rect, clip tree.Rec
 	}
 	if b.UniformBorder() {
 		if cols[0] != 0 && be.Top > 0 {
+			before := len(l.Ops)
 			l.fillShape(r, 0, nil, radii, cols[0], be.Top, clip)
+			if len(l.Ops) > before {
+				l.Ops[len(l.Ops)-1].BorderDash = dashOf(b)
+			}
 		}
 		return
 	}
@@ -646,13 +660,17 @@ func (l *List) paintBox(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
 	// A border whose sides agree is one rounded op. Per-side colours weight no
 	// more than the fallback, so this stays the fast path for ordinary boxes.
 	uniform := b.UniformBorder()
-	borderColor, borderWidth := cols[0], be.Top
+	borderColor, borderThickness := cols[0], be.Top
 	if !uniform {
-		borderColor, borderWidth = 0, 0
+		borderColor, borderThickness = 0, 0
 	}
 	g := b.Gradient("background")
-	if g != nil || b.Background() != 0 || borderWidth > 0 {
-		l.fillShape(r, b.Background(), g, radii, borderColor, borderWidth, clip)
+	if g != nil || b.Background() != 0 || borderThickness > 0 {
+		before := len(l.Ops)
+		l.fillShape(r, b.Background(), g, radii, borderColor, borderThickness, clip)
+		if borderThickness > 0 && len(l.Ops) > before {
+			l.Ops[len(l.Ops)-1].BorderDash = dashOf(b)
+		}
 	}
 	if uniform {
 		return
@@ -660,11 +678,28 @@ func (l *List) paintBox(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
 	l.paintSideBorders(b, r, radii, be, cols, clip)
 }
 
+// maxEdge is the thickest side of a border.
+func maxEdge(e tree.Edges) float64 {
+	return math.Max(math.Max(e.Top, e.Right), math.Max(e.Bottom, e.Left))
+}
+
+// dashOf maps a border style to the shader's pattern code: 0 solid, 1 dashed,
+// 2 dotted.
+func dashOf(b *tree.NodeBase) float32 {
+	switch b.BorderType() {
+	case "dashed":
+		return 1
+	case "dotted":
+		return 2
+	}
+	return 0
+}
+
 // fillShape is fillRect and fillGradient with one radius per corner, which is
 // what a design with radiusTop or radiusTopLeft asks for. A uniform radius
 // still goes through the same op; only the array differs.
-func (l *List) fillShape(r tree.Rect, color uint32, g *tree.Gradient, radii [4]float64, borderColor uint32, borderWidth float64, clip tree.Rect) {
-	if color == 0 && g == nil && (borderColor == 0 || borderWidth <= 0) {
+func (l *List) fillShape(r tree.Rect, color uint32, g *tree.Gradient, radii [4]float64, borderColor uint32, borderThickness float64, clip tree.Rect) {
+	if color == 0 && g == nil && (borderColor == 0 || borderThickness <= 0) {
 		return
 	}
 	shape := RoundedRect
@@ -672,15 +707,15 @@ func (l *List) fillShape(r tree.Rect, color uint32, g *tree.Gradient, radii [4]f
 		shape = CSSGradient
 	}
 	l.Ops = append(l.Ops, Op{
-		Kind:        Fill,
-		Shape:       shape,
-		Gradient:    g,
-		Rect:        rectArr(r),
-		Radius:      radiusArr(radii, r),
-		Color:       color,
-		BorderColor: borderColor,
-		BorderWidth: float32(borderWidth),
-		Clip:        clipArr(clip),
+		Kind:            Fill,
+		Shape:           shape,
+		Gradient:        g,
+		Rect:            rectArr(r),
+		Radius:          radiusArr(radii, r),
+		Color:           color,
+		BorderColor:     borderColor,
+		BorderThickness: float32(borderThickness),
+		Clip:            clipArr(clip),
 	})
 }
 
@@ -873,6 +908,7 @@ func (l *List) paintBitmap(d *img.Data, fit string, base *tree.NodeBase, loading
 			l.fillRect(r, withAlpha(col.OnSurface, alpha), base.Radius(), 0, 0,
 				intersect(clip, r))
 		}
+		l.imageBorder(base, r, clip)
 		return
 	}
 	uv := [4]float32{0, 0, 1, 1}
@@ -909,8 +945,36 @@ func (l *List) paintBitmap(d *img.Data, fit string, base *tree.NodeBase, loading
 	l.Ops = append(l.Ops, Op{
 		Kind: Bitmap, Rect: rectArr(quad), Clip: clipArr(intersect(clip, r)),
 		Radius: [4]float32{r0, r0, r0, r0}, ClipRadius: r0,
-		Src: d, UV: uv,
+		// The rounded crop follows the image's own box. Rounding the visible
+		// rect instead would put a corner on the edge a scroll cut, so an image
+		// half out of view would look rounded in the middle.
+		ClipBox: rectArr(r),
+		Src:     d, UV: uv,
 	})
+	l.imageBorder(base, r, clip)
+}
+
+// imageBorder draws the design's border over a bitmap: the image crops itself
+// to its radius, so the ring is a separate shape on top rather than a border on
+// the bitmap op.
+func (l *List) imageBorder(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
+	if !b.BorderSet() {
+		return
+	}
+	be, cols := b.BorderEdges(), b.BorderColors()
+	if maxEdge(be) <= 0 || cols[0] == 0 {
+		return
+	}
+	radii := b.Radii()
+	if b.UniformBorder() {
+		before := len(l.Ops)
+		l.fillShape(r, 0, nil, radii, cols[0], be.Top, clip)
+		if len(l.Ops) > before {
+			l.Ops[len(l.Ops)-1].BorderDash = dashOf(b)
+		}
+		return
+	}
+	l.paintSideBorders(b, r, radii, be, cols, clip)
 }
 
 // componentNode is implemented by every Material 3 component (they all embed
@@ -926,20 +990,20 @@ func scrollShift(b *tree.NodeBase) (x, y float64) {
 }
 
 // fillRect appends a rounded rectangle with an optional border.
-func (l *List) fillRect(r tree.Rect, color uint32, radius float64, borderColor uint32, borderWidth float64, clip tree.Rect) {
-	if color == 0 && (borderColor == 0 || borderWidth <= 0) {
+func (l *List) fillRect(r tree.Rect, color uint32, radius float64, borderColor uint32, borderThickness float64, clip tree.Rect) {
+	if color == 0 && (borderColor == 0 || borderThickness <= 0) {
 		return
 	}
 	rad := float32(clampRadius(radius, r))
 	l.Ops = append(l.Ops, Op{
-		Kind:        Fill,
-		Shape:       RoundedRect,
-		Rect:        rectArr(r),
-		Radius:      [4]float32{rad, rad, rad, rad},
-		Color:       color,
-		BorderColor: borderColor,
-		BorderWidth: float32(borderWidth),
-		Clip:        clipArr(clip),
+		Kind:            Fill,
+		Shape:           RoundedRect,
+		Rect:            rectArr(r),
+		Radius:          [4]float32{rad, rad, rad, rad},
+		Color:           color,
+		BorderColor:     borderColor,
+		BorderThickness: float32(borderThickness),
+		Clip:            clipArr(clip),
 	})
 }
 
@@ -1039,7 +1103,7 @@ func (l *List) Dump() string {
 			fmt.Fprintf(&b, "%s %g,%g %gx%g r=%g/%g/%g/%g color=#%08x border=#%08x/%g",
 				name, op.Rect[0], op.Rect[1], op.Rect[2], op.Rect[3],
 				op.Radius[0], op.Radius[1], op.Radius[2], op.Radius[3],
-				op.Color, op.BorderColor, op.BorderWidth)
+				op.Color, op.BorderColor, op.BorderThickness)
 			if op.Shape == Arc {
 				fmt.Fprintf(&b, " arc=%g..%g t=%g", op.StartAngle, op.EndAngle, op.Thickness)
 			}

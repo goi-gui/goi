@@ -175,7 +175,7 @@ func (c *Markdown) buildBlock(blk mdBlock, spaced bool) []Node {
 		// The tree link has to exist before a role is written: the resolver
 		// finds its nodes through the tree's list.
 		col.tree = c.tree
-		col.borderLeftW.Set(3)
+		col.borderLeftT.Set(3)
 		col.writeRole("borderLeftColor", "outlineVariant")
 		col.paddingLeft.Set(12)
 		if spaced {

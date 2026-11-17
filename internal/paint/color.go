@@ -150,11 +150,11 @@ func (l *List) paintColorPicker(c *tree.Component, r tree.Rect, clip tree.Rect) 
 	// The hex field: editable, so it shows the raw text while the header keeps
 	// the last colour that parsed.
 	style := l.style("bodyLarge")
-	border, borderW := col.Outline, 1.0
+	border, borderT := col.Outline, 1.0
 	if cp.HexActive {
-		border, borderW = col.Primary, 2
+		border, borderT = col.Primary, 2
 	}
-	l.fillRect(cl.Hex, col.Surface, 8, border, borderW, clip)
+	l.fillRect(cl.Hex, col.Surface, 8, border, borderT, clip)
 	textX, textW := cl.Hex.X+12, cl.Hex.W-24
 	raw := c.Text.Get()
 	shown, fg := raw, col.OnSurface

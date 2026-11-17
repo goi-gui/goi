@@ -229,6 +229,26 @@ fn gradient_t(head: vec4f, idx: f32, local: vec2f, size: vec2f) -> f32 {
 	return dot(c, dir) / max(len, 0.001) + 0.5;
 }
 
+// dash_mask is a border pattern: 0 solid, 1 dashed, 2 dotted. It runs along the
+// edge nearest the fragment, so a dash on a wide band is horizontal and on a
+// tall one vertical; a corner takes whichever edge is closer. Approximating the
+// perimeter this way keeps a chip's dashed outline on its long edges without
+// carrying an arc-length parameter through the shader.
+fn dash_mask(local: vec2f, size: vec2f, bw: f32, mode: f32, px: f32) -> f32 {
+	if (mode < 0.5 || bw <= 0.0) { return 1.0; }
+	let dotted = mode > 1.5;
+	let period = select(3.0 * bw, 2.0 * bw, dotted);
+	let on = select(1.5 * bw, bw, dotted);
+	let dl = local.x;
+	let dr = size.x - local.x;
+	let dt = local.y;
+	let db = size.y - local.y;
+	let m = min(min(dl, dr), min(dt, db));
+	let along = select(local.y, local.x, m == dt || m == db);
+	let t = along - floor(along / period) * period;
+	return 1.0 - smoothstep(on - px, on + px, t);
+}
+
 @fragment
 fn fs_main(in: VSOut) -> @location(0) vec4f {
 	// Hard clip against the node's content box.
@@ -323,7 +343,8 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 			let inner = 1.0 - smoothstep(-aa, aa, d + bw);
 			let band = abs(d + bw * 0.5) - bw * 0.5;
 			let fa = g.a * inner;
-			let ba = in.border.a * (1.0 - smoothstep(-aa, aa, band));
+			let ba = in.border.a * (1.0 - smoothstep(-aa, aa, band)) *
+				dash_mask(in.local, in.size, bw, in.params.w, aa);
 			let a = fa + ba;
 			if (a <= 0.0) { discard; }
 			return vec4f((g.rgb * fa + in.border.rgb * ba) / a, a);
@@ -479,7 +500,8 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 		let inner = 1.0 - smoothstep(-aa, aa, d + bw);
 		let band = abs(d + bw * 0.5) - bw * 0.5;
 		let fa = in.color.a * inner;
-		let ba = in.border.a * (1.0 - smoothstep(-aa, aa, band));
+		let ba = in.border.a * (1.0 - smoothstep(-aa, aa, band)) *
+			dash_mask(in.local, in.size, bw, in.params.w, aa);
 		let a = fa + ba;
 		if (a <= 0.0) { discard; }
 		return vec4f((in.color.rgb * fa + in.border.rgb * ba) / a, a);
@@ -1161,6 +1183,11 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 		case paint.Fill:
 			rect := instanceRect(op, g.scale)
 			params := [4]float32{shapeKind(op.Shape), 0, op.StartAngle, op.EndAngle}
+			if op.BorderDash > 0 {
+				// A rounded rect has no sweep, so params.w carries its border
+				// pattern instead of an end angle.
+				params[3] = op.BorderDash
+			}
 			misc := [4]float32{op.Thickness, 0, op.ClipRadius, 0}
 			if op.Shape == paint.Loading {
 				misc = [4]float32{op.Depth, op.Square, op.ClipRadius, op.Squash}
@@ -1177,7 +1204,7 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 				Rect:    rect,
 				Radius:  op.Radius,
 				Color:   rgba(op.Color),
-				Border:  borderVec(op.BorderColor, op.BorderWidth),
+				Border:  borderVec(op.BorderColor, op.BorderThickness),
 				Clip:    clipVec(op.Clip),
 				ClipBox: clipVec(op.ClipBox),
 				Params:  params,

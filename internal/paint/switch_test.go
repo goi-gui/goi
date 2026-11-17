@@ -73,7 +73,7 @@ func TestSwitchMidTravelFadesTheOutline(t *testing.T) {
 	col := m3.Light().Colors
 	for _, op := range l.Ops {
 		if op.Kind == Fill && op.BorderColor == col.Outline &&
-			op.BorderWidth > 0.5 && op.BorderWidth < 1.5 {
+			op.BorderThickness > 0.5 && op.BorderThickness < 1.5 {
 			return
 		}
 	}

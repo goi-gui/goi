@@ -102,7 +102,7 @@ func TestPerSideSetters(t *testing.T) {
 			margin:        4
 			padding:       8
 			radius:        5
-			borderWidth:   1
+			borderThickness:   1
 			borderTopColor: theme.primary
 		}
 	} `), nil)
@@ -142,7 +142,7 @@ func TestPerSideSetters(t *testing.T) {
 		t.Fatalf("radii = %v", got)
 	}
 
-	b.SetBorderLeftWidth(3)
+	b.SetBorderLeftThickness(3)
 	if got := b.BorderEdges(); got != (Edges{Top: 1, Right: 1, Bottom: 1, Left: 3}) {
 		t.Fatalf("border edges = %+v", got)
 	}

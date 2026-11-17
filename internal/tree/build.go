@@ -428,11 +428,12 @@ func newNode(name string) Node {
 			paddingRight:      newProp(nil, "paddingRight", DirtyLayout, -1.0),
 			paddingBottom:     newProp(nil, "paddingBottom", DirtyLayout, -1.0),
 			paddingLeft:       newProp(nil, "paddingLeft", DirtyLayout, -1.0),
-			borderW:           newProp(nil, "borderWidth", DirtyLayout, 0.0),
-			borderTopW:        newProp(nil, "borderTopWidth", DirtyLayout, -1.0),
-			borderRightW:      newProp(nil, "borderRightWidth", DirtyLayout, -1.0),
-			borderBottomW:     newProp(nil, "borderBottomWidth", DirtyLayout, -1.0),
-			borderLeftW:       newProp(nil, "borderLeftWidth", DirtyLayout, -1.0),
+			borderT:           newProp(nil, "borderThickness", DirtyLayout, -1.0),
+			borderType:        newProp(nil, "borderType", DirtyPaint, "solid"),
+			borderTopT:        newProp(nil, "borderTopThickness", DirtyLayout, -1.0),
+			borderRightT:      newProp(nil, "borderRightThickness", DirtyLayout, -1.0),
+			borderBottomT:     newProp(nil, "borderBottomThickness", DirtyLayout, -1.0),
+			borderLeftT:       newProp(nil, "borderLeftThickness", DirtyLayout, -1.0),
 			borderTopColor:    newProp(nil, "borderTopColor", DirtyPaint, uint32(0)),
 			borderRightColor:  newProp(nil, "borderRightColor", DirtyPaint, uint32(0)),
 			borderBottomColor: newProp(nil, "borderBottomColor", DirtyPaint, uint32(0)),
@@ -670,15 +671,16 @@ func newM3Component(name string) Node {
 		return &ListItem{Component: newComponent()}
 	case "Table":
 		return &Table{
-			Component:     newComponent(),
-			Striped:       newProp(nil, "striped", DirtyPaint, false),
-			ShowHeader:    newProp(nil, "showHeader", DirtyLayout, true),
-			RowHeight:     newProp(nil, "rowHeight", DirtyLayout, DefaultRowHeight),
-			HeaderHeight:  newProp(nil, "headerHeight", DirtyLayout, DefaultHeaderHeight),
-			SortColumn:    newProp(nil, "sortColumn", DirtyLayout, -1.0),
-			SortAscending: newProp(nil, "sortAscending", DirtyLayout, true),
-			Selectable:    newProp(nil, "selectable", DirtyPaint, "none"),
-			SelectedRow:   newProp(nil, "selectedRow", DirtyPaint, -1.0),
+			Component:      newComponent(),
+			Striped:        newProp(nil, "striped", DirtyPaint, false),
+			ShowHeader:     newProp(nil, "showHeader", DirtyLayout, true),
+			RowHeight:      newProp(nil, "rowHeight", DirtyLayout, DefaultRowHeight),
+			HeaderHeight:   newProp(nil, "headerHeight", DirtyLayout, DefaultHeaderHeight),
+			SortColumn:     newProp(nil, "sortColumn", DirtyLayout, -1.0),
+			SortAscending:  newProp(nil, "sortAscending", DirtyLayout, true),
+			Selectable:     newProp(nil, "selectable", DirtyPaint, "none"),
+			SelectedRow:    newProp(nil, "selectedRow", DirtyPaint, -1.0),
+			SelectionColor: newProp(nil, "selectionColor", DirtyPaint, uint32(0)),
 		}
 	case "TableColumn":
 		return &TableColumn{
@@ -716,7 +718,21 @@ func newM3Component(name string) Node {
 	case "NavigationDrawer":
 		return &NavigationDrawer{Component: newComponent()}
 	case "NavigationItem":
-		return &NavigationItem{Component: newComponent()}
+		return &NavigationItem{
+			Component:              newComponent(),
+			IconColor:              newProp(nil, "iconColor", DirtyPaint, uint32(0)),
+			SelectedLabelColor:     newProp(nil, "selectedLabelColor", DirtyPaint, uint32(0)),
+			SelectedIconColor:      newProp(nil, "selectedIconColor", DirtyPaint, uint32(0)),
+			SelectedContainerColor: newProp(nil, "selectedContainerColor", DirtyPaint, uint32(0)),
+		}
+	case "Breadcrumb":
+		bc := &Breadcrumb{
+			Component:      newComponent(),
+			Separator:      newProp(nil, "separator", DirtyLayout, "chevron_right"),
+			SeparatorColor: newProp(nil, "separatorColor", DirtyPaint, uint32(0)),
+			SeparatorSize:  newProp(nil, "separatorSize", DirtyLayout, 18.0),
+		}
+		return bc
 	case "Tabs":
 		return &Tabs{Component: newComponent()}
 	case "Tab":

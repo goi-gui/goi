@@ -119,7 +119,11 @@ func (l *List) paintTable(t *tree.Table, r tree.Rect, clip tree.Rect) {
 			}
 		}
 		if selected[i] {
-			band(tree.Rect{X: contentX, Y: y, W: contentW, H: rh}, col.SecondaryContainer, rowsClip)
+			rowBand := col.SecondaryContainer
+			if v := t.SelectionColor.Get(); v != 0 {
+				rowBand = v
+			}
+			band(tree.Rect{X: contentX, Y: y, W: contentW, H: rh}, rowBand, rowsClip)
 		} else if t.Striped.Get() && i%2 == 1 {
 			band(tree.Rect{X: contentX, Y: y, W: contentW, H: rh}, withAlpha(col.OnSurface, 0.03), rowsClip)
 		}

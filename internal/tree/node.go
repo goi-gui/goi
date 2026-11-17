@@ -71,12 +71,15 @@ type NodeBase struct {
 	// Axis shorthands: left and right follow paddingX, top and bottom follow
 	// paddingY, which follow padding in turn.
 	paddingX, paddingY                                   Prop[float64]
-	borderW                                              Prop[float64]
-	borderTopW, borderRightW, borderBottomW, borderLeftW Prop[float64]
-	borderTopColor, borderRightColor                     Prop[uint32]
-	borderBottomColor, borderLeftColor                   Prop[uint32]
-	flex                                                 Prop[float64]
-	alignSelf                                            Prop[string]
+	borderT                                              Prop[float64]
+	borderTopT, borderRightT, borderBottomT, borderLeftT Prop[float64]
+	// borderType is solid, dashed or dotted, the way CSS spells it. Only a
+	// drawn border reads it.
+	borderType                         Prop[string]
+	borderTopColor, borderRightColor   Prop[uint32]
+	borderBottomColor, borderLeftColor Prop[uint32]
+	flex                               Prop[float64]
+	alignSelf                          Prop[string]
 	// rotate turns the node and its subtree; layout ignores it, the way CSS
 	// rotate does.
 	rotate Prop[Rotation]
@@ -307,19 +310,24 @@ func edgeOr(v, fallback float64) float64 {
 	return v
 }
 
-// BorderWidth returns the border thickness in logical pixels, the value a
+// BorderThickness returns the border thickness in logical pixels, the value a
 // single-width border reads. An uneven border asks BorderEdges per side.
-func (b *NodeBase) BorderWidth() float64 { return b.borderW.Get() }
+func (b *NodeBase) BorderThickness() float64 { return b.borderT.Get() }
 
 // BorderEdges returns the border thickness per side: a side override wins, and
-// an unset side follows borderWidth.
+// an unset side follows borderThickness.
 func (b *NodeBase) BorderEdges() Edges {
-	v := b.borderW.Get()
+	v := b.borderT.Get()
+	if v < 0 {
+		// -1 is "no border of its own": only the sides that name a thickness
+		// draw, and a component keeps its own outline.
+		v = 0
+	}
 	return Edges{
-		Top:    edgeOr(b.borderTopW.Get(), v),
-		Right:  edgeOr(b.borderRightW.Get(), v),
-		Bottom: edgeOr(b.borderBottomW.Get(), v),
-		Left:   edgeOr(b.borderLeftW.Get(), v),
+		Top:    edgeOr(b.borderTopT.Get(), v),
+		Right:  edgeOr(b.borderRightT.Get(), v),
+		Bottom: edgeOr(b.borderBottomT.Get(), v),
+		Left:   edgeOr(b.borderLeftT.Get(), v),
 	}
 }
 
@@ -340,15 +348,22 @@ func (b *NodeBase) BorderColors() [4]uint32 {
 }
 
 // BorderSet reports whether the design declared a border, uniformly or on a
-// single side. A component whose box the design styled draws that border in
-// place of its own.
+// single side. Thickness defaults to -1, so an explicit 0 is a declaration too:
+// it is what removes a component's own outline. A component whose box the
+// design styled draws that border in place of its own.
 func (b *NodeBase) BorderSet() bool {
-	if b.borderW.Get() > 0 {
+	if b.borderT.Get() >= 0 {
 		return true
 	}
-	return b.borderTopW.Get() > 0 || b.borderRightW.Get() > 0 ||
-		b.borderBottomW.Get() > 0 || b.borderLeftW.Get() > 0
+	return b.borderTopT.Get() >= 0 || b.borderRightT.Get() >= 0 ||
+		b.borderBottomT.Get() >= 0 || b.borderLeftT.Get() >= 0
 }
+
+// BorderTypeValues lists the styles a border can draw in.
+var BorderTypeValues = []string{"solid", "dashed", "dotted"}
+
+// BorderType returns the style a border draws in: solid, dashed or dotted.
+func (b *NodeBase) BorderType() string { return b.borderType.Get() }
 
 // RadiusSet reports whether the design declared a corner radius. A component
 // uses it for the same reason it uses BorderSet.
@@ -574,16 +589,20 @@ func (b *NodeBase) SetRadiusTopRight(v float64)    { b.radiusTopRight.Set(v) }
 func (b *NodeBase) SetRadiusBottomRight(v float64) { b.radiusBottomRight.Set(v) }
 func (b *NodeBase) SetRadiusBottomLeft(v float64)  { b.radiusBottomLeft.Set(v) }
 
-// SetBorderTopWidth, SetBorderRightWidth, SetBorderBottomWidth and
-// SetBorderLeftWidth draw one side thicker; a negative value removes the
-// override, so the side follows borderWidth again.
-func (b *NodeBase) SetBorderTopWidth(v float64)    { b.borderTopW.Set(v) }
-func (b *NodeBase) SetBorderRightWidth(v float64)  { b.borderRightW.Set(v) }
-func (b *NodeBase) SetBorderBottomWidth(v float64) { b.borderBottomW.Set(v) }
-func (b *NodeBase) SetBorderLeftWidth(v float64)   { b.borderLeftW.Set(v) }
+// SetBorderTopThickness, SetBorderRightThickness, SetBorderBottomThickness and
+// SetBorderLeftThickness draw one side thicker; a negative value removes the
+// override, so the side follows borderThickness again.
+func (b *NodeBase) SetBorderTopThickness(v float64)    { b.borderTopT.Set(v) }
+func (b *NodeBase) SetBorderRightThickness(v float64)  { b.borderRightT.Set(v) }
+func (b *NodeBase) SetBorderBottomThickness(v float64) { b.borderBottomT.Set(v) }
+func (b *NodeBase) SetBorderLeftThickness(v float64)   { b.borderLeftT.Set(v) }
 
-// SetBorderWidth draws an outline around the box; 0 removes it.
-func (b *NodeBase) SetBorderWidth(v float64) { b.borderW.Set(v) }
+// SetBorderThickness draws an outline around the box; 0 removes it, and -1
+// keeps a component's own outline.
+func (b *NodeBase) SetBorderThickness(v float64) { b.borderT.Set(v) }
+
+// SetBorderType picks the stroke: solid, dashed or dotted.
+func (b *NodeBase) SetBorderType(v string) { b.borderType.Set(v) }
 
 // Background returns 0xRRGGBBAA.
 func (b *NodeBase) Background() uint32 { return b.background.Get() }

@@ -328,7 +328,7 @@ func TestTableScrollsBandsWithContent(t *testing.T) {
 	var stripe float32
 	for _, op := range l.Ops {
 		// The striped band is the first wide fill inside the table frame.
-		if op.Kind == Fill && op.BorderWidth == 0 && op.Rect[2] > 250 && op.Rect[1] > 40 {
+		if op.Kind == Fill && op.BorderThickness == 0 && op.Rect[2] > 250 && op.Rect[1] > 40 {
 			stripe = op.Rect[0]
 			break
 		}
@@ -348,7 +348,7 @@ func TestTableColumnDividers(t *testing.T) {
 		l := list(t, tableSource("variant: "+variant, ""), 500, 400)
 		n := 0
 		for _, op := range l.Ops {
-			if op.Kind == Fill && op.BorderWidth == 0 && op.Rect[2] == 1 && op.Rect[3] > 1 {
+			if op.Kind == Fill && op.BorderThickness == 0 && op.Rect[2] == 1 && op.Rect[3] > 1 {
 				n++
 			}
 		}
@@ -376,7 +376,7 @@ func TestTableVariantsPaintDistinctChrome(t *testing.T) {
 			if op.Kind != Fill {
 				continue
 			}
-			if op.BorderWidth > 0 {
+			if op.BorderThickness > 0 {
 				border = true
 			}
 			switch op.Color {

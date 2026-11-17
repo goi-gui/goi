@@ -158,7 +158,7 @@ func collapsed(tr *tree.Tree) []string {
 			// A leaf with something to draw but no room for it. An empty Text
 			// draws nothing: a label filled from data is empty until the app
 			// sets it.
-			draws := b.Background() != 0 || b.BorderWidth() > 0
+			draws := b.Background() != 0 || b.BorderThickness() > 0
 			if t, ok := n.(*tree.Text); ok {
 				draws = draws || t.Text.Get() != ""
 			} else if n.Kind() == "Text" {

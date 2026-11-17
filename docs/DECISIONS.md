@@ -2333,7 +2333,7 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
 - **A bar has a shape of its own.** The bar chart read the node's common `radius`
   for its corners, which meant a design could not round the bars without also
   rounding the chart's own box, and could not outline one bar at all. `barRadius`,
-  `barBorderWidth` and `barBorderColor` are bar properties now. `barRadius`
+  `barBorderThickness` and `barBorderColor` are bar properties now. `barRadius`
   defaults to `-1`, "follow the node's radius", the same fallback `radiusTop`
   uses: a design that set `radius` for the bars keeps the look it asked for, and
   a design that wants the box square and the bars round names both. `barGap`

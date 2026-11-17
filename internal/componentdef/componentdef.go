@@ -66,6 +66,7 @@ var Kinds = []Kind{
 	{"NavigationRail", true},
 	{"NavigationDrawer", true},
 	{"NavigationItem", false},
+	{"Breadcrumb", true},
 	{"Tabs", true},
 	{"Tab", false},
 	// Status and progress.
@@ -112,7 +113,7 @@ var props = map[string][]string{
 	"ButtonGroup":      {"variant", "disabled"},
 	"SplitButton":      {"label", "leadingIcon", "trailingIcon", "variant", "disabled", "expanded"},
 	"SegmentedButton":  {"label", "leadingIcon", "variant", "disabled", "selected"},
-	"Chip":             {"label", "leadingIcon", "trailingIcon", "variant", "disabled", "selected", "checked"},
+	"Chip":             {"label", "leadingIcon", "trailingIcon", "variant", "disabled", "selected", "checked", "labelColor", "leadingIconColor", "trailingIconColor"},
 	"Badge":            {"label", "variant"},
 	"Checkbox":         {"label", "variant", "disabled", "checked"},
 	"RadioButton":      {"label", "variant", "disabled", "checked"},
@@ -128,7 +129,7 @@ var props = map[string][]string{
 	"Divider":          {"variant"},
 	"List":             {"variant"},
 	"ListItem":         {"label", "supporting", "leadingIcon", "trailingIcon", "leadingIconColor", "trailingIconColor", "labelColor", "supportingColor", "variant", "disabled", "selected"},
-	"Table":            {"variant", "striped", "showHeader", "stickyHeader", "rowHeight", "headerHeight", "sortColumn", "sortAscending", "selectable", "selectedRow"},
+	"Table":            {"variant", "striped", "showHeader", "stickyHeader", "rowHeight", "headerHeight", "sortColumn", "sortAscending", "selectable", "selectedRow", "selectionColor"},
 	"TableColumn":      {"label", "icon", "key", "align", "sortable", "numeric"},
 	"TableRow":         {"selected", "disabled"},
 	"TableCell":        {"value", "icon", "align"},
@@ -140,7 +141,8 @@ var props = map[string][]string{
 	"NavigationBar":    {"variant"},
 	"NavigationRail":   {"variant"},
 	"NavigationDrawer": {"label", "variant"},
-	"NavigationItem":   {"label", "leadingIcon", "variant", "disabled", "selected"},
+	"NavigationItem":   {"label", "leadingIcon", "variant", "disabled", "selected", "labelColor", "selectedLabelColor", "iconColor", "selectedIconColor", "selectedContainerColor"},
+	"Breadcrumb":       {"separator", "separatorColor", "separatorSize"},
 	"Tabs":             {"variant"},
 	"Tab":              {"label", "leadingIcon", "variant", "disabled", "selected"},
 	"LinearProgress":   {"variant", "value", "min", "max", "thickness"},
@@ -161,7 +163,7 @@ var props = map[string][]string{
 	"Path":             {"coordinates", "lineColor"},
 	"LineChart":        {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "smooth", "points", "min", "max"},
 	"AreaChart":        {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "smooth", "points", "stacked", "min", "max"},
-	"BarChart":         {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "stacked", "horizontal", "barRadius", "barGap", "barBorderWidth", "barBorderColor", "min", "max"},
+	"BarChart":         {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "stacked", "horizontal", "barRadius", "barGap", "barBorderThickness", "barBorderColor", "min", "max"},
 	"PieChart":         {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "innerRadius", "startAngle", "min", "max"},
 	"ScatterChart":     {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "points", "min", "max"},
 	"RadarChart":       {"grid", "axis", "legend", "categories", "textColor", "gridColor", "values", "points", "min", "max"},
@@ -182,7 +184,7 @@ func Chart(kind string) bool {
 func Flow(kind string) bool {
 	switch kind {
 	case "ButtonGroup", "Toolbar", "Carousel", "FABMenu", "Tabs",
-		"NavigationBar", "NavigationRail", "NavigationDrawer", "List", "Menu",
+		"NavigationBar", "NavigationRail", "NavigationDrawer", "Breadcrumb", "List", "Menu",
 		"Card", "Dialog", "BottomSheet", "SideSheet", "DatePicker", "TimePicker",
 		"Tooltip", "Popover":
 		return true
@@ -248,17 +250,22 @@ var defaults = map[string]any{
 	"barRadius": -1.0,
 	// A map starts on the whole world, drawn from OpenStreetMap, and credits
 	// it until the design says otherwise.
-	"zoom":        2.0,
-	"tiles":       "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-	"attribution": "© OpenStreetMap contributors",
+	"zoom": 2.0,
+	// A breadcrumb's separator is the chevron every file manager uses, at the
+	// 18dp an icon beside a label takes.
+	"separator":     "chevron_right",
+	"separatorSize": 20.0,
+	"tiles":         "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+	"attribution":   "© OpenStreetMap contributors",
 }
 
 // kindDefaults are defaults that belong to one kind, for a property name that
 // means different things elsewhere: a Slider's `center` is a number, a Map's is
 // a position string, and neither can take the other's default.
 var kindDefaults = map[string]map[string]any{
-	"Slider":  {"center": math.NaN()},
-	"Popover": {"align": "start"},
+	"Slider":     {"center": math.NaN()},
+	"Popover":    {"align": "start"},
+	"Breadcrumb": {"spacing": 32.0},
 }
 
 // slots lists the child slots a built-in component declares, by bare name. A
@@ -328,15 +335,17 @@ func TypeOf(name string) PropType {
 		"grid", "axis", "legend", "values", "stacked", "horizontal", "smooth", "points",
 		"disablePan", "disableZoom", "reverseTileColors":
 		return Bool
-	case "value", "end", "center", "min", "max", "step", "spacing", "gap", "size", "hourFormat",
+	case "value", "end", "center", "min", "max", "step", "spacing", "gap", "size", "hourFormat", "separatorSize",
 		"rowHeight", "headerHeight", "sortColumn", "selectedRow",
 		"innerRadius", "startAngle", "thickness", "zoom",
-		"barRadius", "barGap", "barBorderWidth":
+		"barRadius", "barGap", "barBorderThickness":
 		return Number
 	case "variant", "crossAxisAlign", "mainAxisAlign", "align", "selectable":
 		return Enum
 	case "textColor", "gridColor", "color", "lineColor", "fillColor", "highlight", "barBorderColor",
-		"leadingIconColor", "trailingIconColor", "labelColor", "supportingColor":
+		"leadingIconColor", "trailingIconColor", "labelColor", "supportingColor",
+		"selectedLabelColor", "selectedIconColor", "selectedContainerColor", "selectionColor",
+		"separatorColor", "iconColor":
 		return Color
 	case "categories", "bbox", "data", "coordinate", "coordinates":
 		return List

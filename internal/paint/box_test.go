@@ -31,9 +31,9 @@ func TestUnevenBorderPaintsFourSides(t *testing.T) {
 		Rectangle {
 			width: 100 height: 50
 			background: #112233
-			borderWidth: 2
+			borderThickness: 2
 			borderColor: #ff0000
-			borderTopWidth: 6
+			borderTopThickness: 6
 			borderLeftColor: #00ff00
 		}
 	}`, 200, 100)
@@ -41,8 +41,8 @@ func TestUnevenBorderPaintsFourSides(t *testing.T) {
 		t.Fatalf("ops = %d, want a fill and four bands:\n%s", len(l.Ops), l.Dump())
 	}
 	fill := l.Ops[0]
-	if fill.BorderWidth != 0 {
-		t.Fatalf("the fill kept a border of %v; the bands draw it", fill.BorderWidth)
+	if fill.BorderThickness != 0 {
+		t.Fatalf("the fill kept a border of %v; the bands draw it", fill.BorderThickness)
 	}
 	top := l.Ops[1]
 	if top.Rect[3] != 6 || top.Color != 0xFF0000FF {
@@ -67,7 +67,7 @@ func TestUniformBorderStaysOneOp(t *testing.T) {
 		Rectangle {
 			width: 100 height: 50
 			background: #112233
-			borderWidth: 2
+			borderThickness: 2
 			borderColor: #ff0000
 			radius: 12
 		}
@@ -75,7 +75,7 @@ func TestUniformBorderStaysOneOp(t *testing.T) {
 	if len(l.Ops) != 1 {
 		t.Fatalf("ops = %d, want the one rounded box:\n%s", len(l.Ops), l.Dump())
 	}
-	if l.Ops[0].BorderWidth != 2 || l.Ops[0].Radius[0] != 12 {
+	if l.Ops[0].BorderThickness != 2 || l.Ops[0].Radius[0] != 12 {
 		t.Fatalf("op = %+v", l.Ops[0])
 	}
 }
