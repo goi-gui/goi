@@ -330,6 +330,11 @@ func (i *interactor) clickable(n tree.Node, x, y float64) bool {
 	if n.Base().Click.Len() > 0 {
 		return true
 	}
+	// `ripple: true` asks for press feedback, which means the element has to
+	// take the press even without a click handler.
+	if n.Base().RippleSet() && n.Base().WantsRipple() {
+		return true
+	}
 	_, ok := i.linkAt(n, x, y)
 	return ok
 }
@@ -926,8 +931,10 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 				i.markDirty()
 				return
 			}
-			i.startRipple(hit, x, y)
 		}
+		// Every element can carry the press feedback, not only a component; paint
+		// draws it when the element asks for one.
+		i.startRipple(hit, x, y)
 		i.markDirty()
 		return
 	}

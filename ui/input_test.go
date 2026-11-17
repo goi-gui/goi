@@ -1637,3 +1637,26 @@ func TestTimePickerDragDoesNotScrollAfterRelease(t *testing.T) {
 		t.Fatalf("the page scrolled to %v after a plain move (was %v)", got, before)
 	}
 }
+
+// TestRippleOnAPlainNode: `ripple: true` makes an element take the press even
+// with no click handler, and starts the press feedback paint reads. Without the
+// property a plain box is not a press target at all.
+func TestRippleOnAPlainNode(t *testing.T) {
+	press := func(src string) tree.Node {
+		t.Helper()
+		_, win, in := inputFixture(t, src, 200, 200)
+		n := MustByID[*Rectangle](win, "box")
+		b := absoluteRect(n)
+		in.MouseDown(b.X+10, b.Y+10, 0, false)
+		in.MouseUp(b.X+10, b.Y+10, 0)
+		return n
+	}
+	on := press(`Window { Stack { Rectangle { id: box width: 100 height: 100 ripple: true } } }`)
+	if !on.Base().RippleOn {
+		t.Fatal("ripple: true did not start the press feedback")
+	}
+	off := press(`Window { Stack { Rectangle { id: box width: 100 height: 100 } } }`)
+	if off.Base().RippleOn {
+		t.Fatal("a box without ripple started the press feedback")
+	}
+}
