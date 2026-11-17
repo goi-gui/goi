@@ -460,3 +460,43 @@ func TestRippleProperty(t *testing.T) {
 		t.Fatalf("ripple: false still drew %d discs", len(got))
 	}
 }
+
+// TestRippleDrawsOverAnImage: an image paints its bitmap after the box, so the
+// generic ripple has to come last or the picture covers it.
+func TestRippleDrawsOverAnImage(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window { Column {
+		Image { id: pic src: "https://example.com/a.png" width: 120 height: 80 radius: 8 ripple: true }
+	} }`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	n, _ := tr.ByID("pic")
+	im := n.(*tree.Image)
+	im.Data = &img.Data{W: 4, H: 4, Pix: make([]byte, 4*4*4)}
+	layout.New(nil).Layout(tr.Root, 400, 400)
+	nb := n.Base()
+	box := nb.Bounds()
+	nb.RippleOn, nb.Ripple = true, 0.2
+	nb.RippleX, nb.RippleY = box.X+box.W/2, box.Y+box.H/2
+	l := &List{}
+	l.Build(tr, 400, 400)
+
+	bitmap, disc := -1, -1
+	for i, op := range l.Ops {
+		if op.Kind == Bitmap {
+			bitmap = i
+		}
+		if op.Kind == Fill && op.Shape == Circle {
+			disc = i
+		}
+	}
+	if bitmap < 0 || disc < 0 {
+		t.Fatalf("bitmap=%d disc=%d\n%s", bitmap, disc, l.Dump())
+	}
+	if disc < bitmap {
+		t.Fatal("the ripple is under the image")
+	}
+	if got := l.Ops[disc]; float64(got.ClipRadius) != 8 {
+		t.Fatalf("ripple radius = %v, want the image's 8", got.ClipRadius)
+	}
+}

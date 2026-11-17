@@ -507,11 +507,6 @@ func (l *List) paintContent(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
 	} else {
 		l.paintBox(b, r, clip)
 	}
-	// `ripple: true` on an element whose painter has no ripple of its own: draw
-	// one clipped to the shape the element painted.
-	if b.RippleSet() && b.WantsRipple() && !l.rippleDrawn {
-		l.rippleNode(b, r, l.rippleRadius(b, r, from), l.Theme.Colors.OnSurface, clip)
-	}
 	if !isText {
 		// An inset shadow belongs on top of the fill and below the content, the
 		// way CSS paints it inside the padding box.
@@ -537,6 +532,12 @@ func (l *List) paintContent(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
 	}
 	if p, ok := b.Node().(*tree.Path); ok {
 		l.paintPath(p, r, clip)
+	}
+	// `ripple: true` on an element whose painter has no ripple of its own. It is
+	// drawn last, above the bitmap or glyphs the element paints, or an image
+	// would cover its own press feedback.
+	if b.RippleSet() && b.WantsRipple() && !l.rippleDrawn {
+		l.rippleNode(b, r, l.rippleRadius(b, r, from), l.Theme.Colors.OnSurface, clip)
 	}
 }
 
