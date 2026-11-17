@@ -323,6 +323,10 @@ func (a *App) frame() {
 	if a.hasMaps {
 		a.syncMaps()
 	}
+	if a.lazyWait {
+		a.lazyWait = false
+		a.needsFrame = true
+	}
 	// Half a second is long enough to smooth frame-time jitter and short enough
 	// that a stutter shows up while it is still happening.
 	now = time.Now()

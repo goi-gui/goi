@@ -34,7 +34,8 @@ func (a *App) lazyDeferred(n tree.Node) bool {
 	}
 	vw, vh := a.win.tree.Viewport()
 	if vw <= 0 || vh <= 0 {
-		return true // the first layout has not placed anything yet
+		a.lazyWait = true // ask for the frame after the first layout
+		return true
 	}
 	r := absoluteRect(n)
 	if r.W <= 0 || r.H <= 0 {

@@ -61,6 +61,9 @@ type App struct {
 	driver     driver
 	quitOnce   sync.Once
 	needsFrame bool
+	// lazyWait is set when a lazy element had no viewport to test yet, so the
+	// frame after layout looks again and loads the ones that turned out visible.
+	lazyWait bool
 	// showFPS is the debug overlay switch; off unless the app asks for it.
 	showFPS bool
 	// imageBudget is how many decoded image bytes the cache may hold, 0 for
