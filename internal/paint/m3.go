@@ -1715,32 +1715,38 @@ func (l *List) paintNavigationDrawer(c *tree.Component, r tree.Rect, clip tree.R
 }
 
 // enclosingNav is the nearest navigation container above a node, so an item
-// wrapped in a Column for layout still knows how its parent arranges it.
-func enclosingNav(b *tree.NodeBase) string {
+// wrapped in a Column for layout still knows how its parent arranges it. The
+// component is returned with the kind because a bar's variant decides how its
+// items are arranged.
+func enclosingNav(b *tree.NodeBase) (string, *tree.Component) {
 	for p := b.Parent(); p != nil; p = p.Base().Parent() {
 		switch p.Kind() {
 		case "NavigationBar", "NavigationRail", "NavigationDrawer":
-			return p.Kind()
+			return p.Kind(), m3Of(p.Base())
 		}
 	}
-	return ""
+	return "", nil
 }
 
 func (l *List) paintNavigationItem(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
-	nav := enclosingNav(c.Base())
+	nav, navComp := enclosingNav(c.Base())
 	selected := c.Selected.Get()
 	ni, _ := c.Node().(*tree.NavigationItem)
+	// A medium bar puts the icon and the label side by side in one pill; the
+	// compact one stacks them under the icon.
+	medium := nav == "NavigationBar" && navComp != nil && variant(navComp, "compact") == "medium"
+
+	container := col.SecondaryContainer
+	if ni != nil {
+		if v := ni.SelectedContainerColor.Get(); v != 0 {
+			container = v
+		}
+	}
 
 	// The indicator belongs to the item, so it follows the item wherever the
 	// design puts it, and the container only paints its own surface.
-	if selected {
-		container := col.SecondaryContainer
-		if ni != nil {
-			if v := ni.SelectedContainerColor.Get(); v != 0 {
-				container = v
-			}
-		}
+	if selected && !medium {
 		switch nav {
 		case "NavigationDrawer":
 			l.fillRect(r, container, 28, 0, 0, clip)
@@ -1783,6 +1789,31 @@ func (l *List) paintNavigationItem(c *tree.Component, r tree.Rect, clip tree.Rec
 	// A selected destination shows the filled glyph: the state is the signal, so
 	// the icon follows it even when the design left the filled properties off.
 	filled := selected || l.filledIcons || l.filledLeading
+
+	if medium {
+		// Icon, an 8dp gap and the label, all inside a 32dp pill with 16dp of
+		// padding at each end, centred in the destination's share of the bar.
+		st := l.style("labelMedium")
+		textW := textWidth(l, c.Label.Get(), st)
+		content := textW
+		if c.Icon.Get() != "" {
+			content += 24 + 8
+		}
+		pillW := content + 32
+		pillX := r.X + (r.W-pillW)/2
+		cy := r.Y + r.H/2
+		if selected {
+			l.fillRect(tree.Rect{X: pillX, Y: cy - 16, W: pillW, H: 32}, container, 16, 0, 0, clip)
+		}
+		x := pillX + 16
+		if name := c.Icon.Get(); name != "" {
+			l.iconInFilled(name, 24, disabledAlpha(c, icon), x+12, cy, clip, filled)
+			x += 24 + 8
+		}
+		l.textIn(c.Label.Get(), st, disabledAlpha(c, label),
+			tree.Rect{X: x, Y: r.Y, W: pillX + pillW - 16 - x, H: r.H}, AlignStart, clip)
+		return
+	}
 
 	if nav == "NavigationDrawer" {
 		l.iconInFilled(c.Icon.Get(), 24, disabledAlpha(c, icon), r.X+24, r.Y+r.H/2, clip, filled)

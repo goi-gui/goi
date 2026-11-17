@@ -406,3 +406,17 @@ func TestRemovedPropertiesAreRejected(t *testing.T) {
 		}
 	}
 }
+
+// TestNavigationBarNarrowsVariants keeps the bar to the two styles it paints.
+func TestNavigationBarNarrowsVariants(t *testing.T) {
+	for _, v := range []string{"compact", "medium"} {
+		src := fmt.Sprintf(`Window { NavigationBar { variant: %s NavigationItem { label: "a" } } }`, v)
+		if _, diag := validate(t, src); !diag.Empty() {
+			t.Errorf("variant %q: %v", v, diag)
+		}
+	}
+	src := `Window { NavigationBar { variant: filled NavigationItem { label: "a" } } }`
+	if _, diag := validate(t, src); diag.Empty() {
+		t.Fatal("the bar accepted a style it does not paint")
+	}
+}

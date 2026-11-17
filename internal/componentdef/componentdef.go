@@ -138,7 +138,7 @@ var props = map[string][]string{
 	"Popover":          {"align"},
 	"Snackbar":         {"label"},
 	"TopAppBar":        {"label", "leadingIcon", "trailingIcon", "filledIcon", "filledLeadingIcon", "filledTrailingIcon"},
-	"NavigationBar":    {},
+	"NavigationBar":    {"variant"},
 	"NavigationRail":   {},
 	"NavigationDrawer": {"label"},
 	"NavigationItem":   {"label", "leadingIcon", "filledIcon", "filledLeadingIcon", "disabled", "selected", "labelColor", "selectedLabelColor", "iconColor", "selectedIconColor", "selectedContainerColor"},
@@ -371,6 +371,7 @@ func ListElem(name string) PropType {
 // a few styles, so completion and the checker do not offer a word the painter
 // would ignore.
 var variantValues = map[string][]string{
+	"NavigationBar":    {"compact", "medium"},
 	"Table":            {"outlined", "filled", "plain"},
 	"TimePicker":       {"dial", "input"},
 	"Slider":           {"standard", "centered", "range"},

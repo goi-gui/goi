@@ -636,3 +636,51 @@ func TestBorderAxesDrawOnlyTheirSides(t *testing.T) {
 		t.Fatalf("%d horizontal bands, want the two horizontal sides:\n%s", horizontal, l.Dump())
 	}
 }
+
+// TestNavigationBarMediumPutsTheLabelBesideTheIcon: the medium bar draws one
+// pill around icon and label, the compact one keeps the icon above the label.
+func TestNavigationBarMediumPutsTheLabelBesideTheIcon(t *testing.T) {
+	measure := func(src string) (pillW, pillH float32, iconCx, iconCy float32, label Op) {
+		l := m3list(t, src)
+		for _, op := range l.Ops {
+			if op.Kind == Fill && op.Color == m3.Light().Colors.SecondaryContainer && op.Rect[3] == 32 {
+				pillW, pillH = op.Rect[2], op.Rect[3]
+			}
+			if op.Kind == Text && op.Icon && op.Text == "home" {
+				iconCx, iconCy = op.Rect[0]+op.Rect[2]/2, op.Rect[1]+op.Rect[3]/2
+			}
+			if op.Kind == Text && !op.Icon && op.Text == "Home" {
+				label = op
+			}
+		}
+		return
+	}
+
+	w, h, _, cy, label := measure(`Window { NavigationBar {
+		NavigationItem { label: "Home" leadingIcon: home selected: true }
+	} }`)
+	if w != 64 || h != 32 {
+		t.Fatalf("compact pill = %vx%v, want 64x32", w, h)
+	}
+	// Compact: the label sits under the icon, centred across the destination.
+	if label.Align != AlignCenter || label.Rect[1] <= cy {
+		t.Fatalf("compact label = %+v, icon centre y %v: want it below", label, cy)
+	}
+
+	w, h, cx, cy, label2 := measure(`Window { NavigationBar { variant: medium
+		NavigationItem { label: "Home" leadingIcon: home selected: true }
+	} }`)
+	if h != 32 {
+		t.Fatalf("medium pill height = %v, want 32", h)
+	}
+	if w <= 64 {
+		t.Fatalf("medium pill width = %v, want it to hug icon and label", w)
+	}
+	// Medium: the label starts to the right of the icon, on its centre line.
+	if label2.Align != AlignStart || label2.TextX <= cx {
+		t.Fatalf("medium label = %+v, icon centre x %v: want it beside", label2, cx)
+	}
+	if want := float32(cy) + float32(m3.RoleStyle("labelMedium").Size*0.342); label2.TextY < want-1 || label2.TextY > want+1 {
+		t.Fatalf("medium label baseline = %v, want %v", label2.TextY, want)
+	}
+}
