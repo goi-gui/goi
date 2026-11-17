@@ -380,7 +380,7 @@ func applyDefaults(b *NodeBase, def *schema.Element) {
 		if pd.Name == "id" || pd.Default == nil {
 			continue
 		}
-		b.SetPropLiteral(pd.Name, defaultValueLiteral(pd.Default))
+		b.SetPropDefault(pd.Name, defaultValueLiteral(pd.Default))
 	}
 	b.ClearDirty() // defaults are not a user-visible change
 }
@@ -446,6 +446,7 @@ func newNode(name string) Node {
 			autoHideScrollbar: newProp(nil, "autoHideScrollbar", DirtyPaint, true),
 			scrollbarWidth:    newProp(nil, "scrollbarWidth", DirtyPaint, ScrollbarThickness),
 			scrollbarColor:    newProp(nil, "scrollbarColor", DirtyPaint, uint32(0)),
+			ripple:            newProp(nil, "ripple", DirtyPaint, false),
 			scrollShadow:      newProp(nil, "scrollShadow", DirtyPaint, false),
 			scrollShadowColor: newProp(nil, "scrollShadowColor", DirtyPaint, uint32(0)),
 			scrollSnapType:    newProp(nil, "scrollSnapType", DirtyPaint, "none"),

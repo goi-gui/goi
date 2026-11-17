@@ -87,12 +87,6 @@ type Component struct {
 	// FocusRing is set only when the focus came from the keyboard. A pointer
 	// press moves focus too, but M3 only shows the ring for keyboard users.
 	FocusRing bool
-	// Ripple is the live press ripple: On marks it running, 0..1 is how far it
-	// has expanded, and X/Y are its origin in window coordinates.
-	RippleOn bool
-	Ripple   float64
-	RippleX  float64
-	RippleY  float64
 	// Caret for text fields.
 	Caret int
 	// Preedit is the IME composition that is not committed yet. It is drawn

@@ -201,6 +201,9 @@ type List struct {
 	// filledIcons is the `filledIcon` of the component being painted, so its
 	// glyphs, including the ones it draws itself, come from the filled face.
 	filledIcons bool
+	// rippleDrawn is set by rippleNode, so a component that painted its own
+	// ripple does not also get the generic one.
+	rippleDrawn bool
 	// filledLeading and filledTrailing are the per-slot properties: an icon in
 	// one slot can be filled while the other stays outlined.
 	filledLeading  bool
@@ -489,19 +492,25 @@ func (l *List) paintContent(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
 	if blur := b.BackdropBlur(); blur > 0 {
 		l.paintBackdrop(b, r, clip, blur)
 	}
+	l.rippleDrawn = false
+	from := len(l.Ops)
 	if c, ok := b.Node().(componentNode); ok {
 		l.suppressElev = b.ShadowSet()
 		outerFilled, outerLead, outerTrail := l.filledIcons, l.filledLeading, l.filledTrailing
 		l.filledIcons = c.M3().FilledIcon.Get()
 		l.filledLeading = c.M3().FilledLeadingIcon.Get()
 		l.filledTrailing = c.M3().FilledTrailingIcon.Get()
-		from := len(l.Ops)
 		l.paintComponent(c.M3(), r, clip)
 		l.filledIcons, l.filledLeading, l.filledTrailing = outerFilled, outerLead, outerTrail
 		l.suppressElev = false
 		l.paintComponentBox(b, r, clip, from)
 	} else {
 		l.paintBox(b, r, clip)
+	}
+	// `ripple: true` on an element whose painter has no ripple of its own: draw
+	// one clipped to the shape the element painted.
+	if b.RippleSet() && b.WantsRipple() && !l.rippleDrawn {
+		l.rippleNode(b, r, l.rippleRadius(b, r, from), l.Theme.Colors.OnSurface, clip)
 	}
 	if !isText {
 		// An inset shadow belongs on top of the fill and below the content, the

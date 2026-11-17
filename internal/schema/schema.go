@@ -260,6 +260,9 @@ var common = []Prop{
 	// box. It paints outside the layout box, so it never changes layout.
 	{Name: "shadow", Type: TypeShadow, Dirty: DirtyPaint, Common: true},
 	{Name: "visible", Type: TypeBool, Dirty: DirtyLayout, Default: true, Common: true},
+	// ripple asks for press feedback on any element. Unwritten keeps the host's
+	// default: a component that paints one keeps it, a plain element has none.
+	{Name: "ripple", Type: TypeBool, Dirty: DirtyPaint, Default: false, Common: true},
 	{Name: "flex", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0, Common: true},
 	{Name: "alignSelf", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "", Common: true},
 	{Name: "scroll", Type: TypeBool, Dirty: DirtyPaint, Default: false, Common: true},

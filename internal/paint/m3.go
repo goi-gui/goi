@@ -226,44 +226,68 @@ func (l *List) tint(c *tree.Component, r tree.Rect, radii [4]float32, color uint
 // ripple expands a circle from the press point over the component's shape. The
 // interactor owns the clock; paint only maps progress to geometry.
 func (l *List) ripple(c *tree.Component, r tree.Rect, radius float64, color uint32, clip tree.Rect) {
-	if !c.RippleOn || c.Ripple <= 0 {
+	l.rippleNode(c.Base(), r, radius, color, clip)
+}
+
+// rippleNode is ripple for any element, which is what `ripple: true` on a plain
+// box needs. A design that wrote `ripple: false` keeps a component from drawing
+// the press feedback it would otherwise show.
+func (l *List) rippleNode(b *tree.NodeBase, r tree.Rect, radius float64, color uint32, clip tree.Rect) {
+	if b.RippleSet() && !b.WantsRipple() {
+		return
+	}
+	if !b.RippleOn || b.Ripple <= 0 {
 		return
 	}
 	// Expand over the first 60% of the life, then fade out.
-	p := c.Ripple
+	p := b.Ripple
 	grow := p / 0.6
 	if grow > 1 {
 		grow = 1
 	}
 	grow = 1 - (1-grow)*(1-grow) // ease out
 	reach := math.Hypot(
-		maxf(c.RippleX-r.X, r.Right()-c.RippleX),
-		maxf(c.RippleY-r.Y, r.Bottom()-c.RippleY),
+		maxf(b.RippleX-r.X, r.Right()-b.RippleX),
+		maxf(b.RippleY-r.Y, r.Bottom()-b.RippleY),
 	)
 	size := 2 * reach * grow
 	fade := 1.0
 	if p > 0.6 {
 		fade = 1 - (p-0.6)/0.4
 	}
-	// The disc is only clipped to its ancestors, so cut it to the component's
-	// own box and round that with the shape radius: otherwise it spills past a
-	// pill or a chip.
+	// The disc is only clipped to its ancestors, so cut it to the element's own
+	// box and round that with the shape radius: otherwise it spills past a pill
+	// or a chip. ClipBox carries the whole box, so a scrolling ancestor that
+	// cuts the element leaves a straight edge instead of rounding the cut.
 	cr := intersect(clip, r)
-	rad := float32(radius)
-	// Only a real cut (an ancestor clipping the box) drops the rounding; a
-	// sub-pixel difference from intersecting with a wider clip must not, or
-	// the ripple spills past the pill on every press.
-	if cr.W < r.W-0.01 || cr.H < r.H-0.01 {
-		rad = 0
-	}
+	l.rippleDrawn = true
 	l.Ops = append(l.Ops, Op{
 		Kind:       Fill,
 		Shape:      Circle,
-		Rect:       [4]float32{float32(c.RippleX - size/2), float32(c.RippleY - size/2), float32(size), float32(size)},
+		Rect:       [4]float32{float32(b.RippleX - size/2), float32(b.RippleY - size/2), float32(size), float32(size)},
 		Color:      withAlpha(color, m3.StatePressed*fade),
-		ClipRadius: rad,
+		ClipRadius: float32(radius),
+		ClipBox:    rectArr(r),
 		Clip:       clipArr(cr),
 	})
+}
+
+// rippleRadius is the corner a generic ripple is clipped to: the radius of the
+// surface the element painted (a Card's M3 shape included), the design's own
+// radius when it covers the box, or square corners when the four differ.
+func (l *List) rippleRadius(b *tree.NodeBase, r tree.Rect, from int) float64 {
+	if i := surfaceOp(l.Ops, from, r); i >= 0 {
+		rad := l.Ops[i].Radius
+		if rad[0] == rad[1] && rad[1] == rad[2] && rad[2] == rad[3] {
+			return float64(rad[0])
+		}
+		return 0
+	}
+	radii := b.Radii()
+	if radii[0] == radii[1] && radii[1] == radii[2] && radii[2] == radii[3] {
+		return radii[0]
+	}
+	return 0
 }
 
 // textShift keeps the caret inside a text box: the value text is moved left by

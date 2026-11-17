@@ -15,15 +15,15 @@ type ripple struct {
 
 // startRipple begins the press feedback at a window position.
 func (i *interactor) startRipple(n tree.Node, x, y float64) {
-	c := comp(n)
-	if c == nil {
+	if n == nil {
 		return
 	}
-	c.RippleOn = true
-	c.Ripple = 0.001
-	c.RippleX, c.RippleY = x, y
+	b := n.Base()
+	b.RippleOn = true
+	b.Ripple = 0.001
+	b.RippleX, b.RippleY = x, y
 	i.ripples = append(i.ripples, ripple{n: n, x: x, y: y})
-	c.Base().MarkDirty(tree.DirtyPaint)
+	b.MarkDirty(tree.DirtyPaint)
 }
 
 // tick advances every live ripple by dt seconds and reports whether another
@@ -46,18 +46,18 @@ func (i *interactor) tick(dt float64) bool {
 	}
 	live := i.ripples[:0]
 	for _, r := range i.ripples {
-		c := comp(r.n)
+		b := r.n.Base()
 		r.age += dt
-		if c == nil || r.age >= rippleDur {
-			if c != nil {
-				c.RippleOn = false
-				c.Base().MarkDirty(tree.DirtyPaint)
+		if b == nil || r.age >= rippleDur {
+			if b != nil {
+				b.RippleOn = false
+				b.MarkDirty(tree.DirtyPaint)
 			}
 			continue
 		}
-		c.Ripple = r.age / rippleDur
-		c.RippleX, c.RippleY = r.x, r.y
-		c.Base().MarkDirty(tree.DirtyPaint)
+		b.Ripple = r.age / rippleDur
+		b.RippleX, b.RippleY = r.x, r.y
+		b.MarkDirty(tree.DirtyPaint)
 		live = append(live, r)
 	}
 	i.ripples = live

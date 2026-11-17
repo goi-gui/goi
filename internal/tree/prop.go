@@ -32,7 +32,15 @@ type Prop[T comparable] struct {
 	// goSet marks a value written by Go code, so hot reload knows it should not
 	// be reverted to the .goi literal.
 	goSet bool
+	// written marks an explicit write, from the design or from Go. A property
+	// whose default means "follow the host's own behaviour" (ripple) needs to
+	// tell an explicit false from the untouched default.
+	written bool
 }
+
+// Written reports whether the design or Go set this property, as opposed to it
+// holding the value it started with.
+func (p *Prop[T]) Written() bool { return p.written }
 
 func newProp[T comparable](owner *NodeBase, name string, dirty DirtyKind, def T) Prop[T] {
 	return Prop[T]{base: owner, name: name, dirty: dirty, val: def}
@@ -44,9 +52,18 @@ func (p *Prop[T]) Get() T { return p.val }
 // Set stores v and marks the owner dirty if it changed.
 func (p *Prop[T]) Set(v T) {
 	if p.val == v {
+		if p.written {
+			return
+		}
+		// Writing the default value still counts as a choice.
+		p.written = true
+		if p.base != nil {
+			p.base.mark(p.dirty)
+		}
 		return
 	}
 	p.val = v
+	p.written = true
 	p.goSet = true
 	if p.base != nil {
 		// A colour written by Go wins over the role the design named, otherwise
@@ -191,6 +208,38 @@ func (p *NamedProp) Same(v any) bool {
 // SetLiteral applies a parsed literal, reporting false when it is not valid for
 // the property type.
 func (p *NamedProp) SetLiteral(v syntax.Value) bool {
+	if !p.setLiteral(v) {
+		return false
+	}
+	p.markWritten()
+	return true
+}
+
+// SetDefault applies a schema default, which leaves the property unwritten: it
+// is the value a design has not spoken about yet.
+func (p *NamedProp) SetDefault(v syntax.Value) bool {
+	return p.setLiteral(v)
+}
+
+// markWritten flags the cell behind the property as explicitly set.
+func (p *NamedProp) markWritten() {
+	switch c := p.cell.(type) {
+	case *Prop[float64]:
+		c.written = true
+	case *Prop[string]:
+		c.written = true
+	case *Prop[bool]:
+		c.written = true
+	case *Prop[uint32]:
+		c.written = true
+	case *Prop[Rotation]:
+		c.written = true
+	case *Prop[Scale]:
+		c.written = true
+	}
+}
+
+func (p *NamedProp) setLiteral(v syntax.Value) bool {
 	switch p.kind {
 	case propNumber:
 		n, ok := v.(*syntax.Number)

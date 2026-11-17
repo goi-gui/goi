@@ -22,7 +22,7 @@ type Node interface {
 // commonPropCount is how many cells the shared table has. Naming it keeps the
 // per-node table one exact allocation instead of the three or four that append
 // growth used to make (the largest heap cost of a big design).
-const commonPropCount = 62
+const commonPropCount = 63
 
 // commonProps returns the property table shared by every element. extra is how
 // many cells the caller will append, so the slice is sized once. "id" is absent
@@ -73,6 +73,7 @@ func commonProps(b *NodeBase, extra int) []NamedProp {
 		StringProp(b, "fontFamily", &b.fontFamily),
 		NamedShadow(b, "shadow", &b.shadow),
 		BoolProp(b, "visible", DirtyLayout, &b.visible),
+		BoolProp(b, "ripple", DirtyPaint, &b.ripple),
 		BoolProp(b, "scroll", DirtyPaint, &b.scroll),
 		BoolProp(b, "hideScrollbar", DirtyPaint, &b.hideScrollbar),
 		BoolProp(b, "autoHideScrollbar", DirtyPaint, &b.autoHideScrollbar),

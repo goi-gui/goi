@@ -379,3 +379,84 @@ func TestSelectedNavigationItemFillsItsIcon(t *testing.T) {
 		t.Fatalf("filledLeadingIcon stopped working: %+v", op)
 	}
 }
+
+// TestRippleProperty: `ripple: true` gives a plain element the press feedback a
+// button has, `ripple: false` takes it away from a button, and the disc is cut
+// to the element's own shape so it cannot spill outside it.
+func TestRippleProperty(t *testing.T) {
+	press := func(tr *tree.Tree, id string) {
+		n, _ := tr.ByID(id)
+		b := n.Base()
+		b.RippleOn, b.Ripple = true, 0.5
+		b.RippleX, b.RippleY = b.Bounds().X+b.Bounds().W/2, b.Bounds().Y+b.Bounds().H/2
+	}
+	discs := func(l *List) []Op {
+		var out []Op
+		for _, op := range l.Ops {
+			if op.Kind == Fill && op.Shape == Circle {
+				out = append(out, op)
+			}
+		}
+		return out
+	}
+	build := func(src string, id string) (*List, tree.Rect) {
+		t.Helper()
+		tr, diag := tree.BuildSource([]byte(src), nil)
+		if !diag.Empty() {
+			t.Fatalf("%v", diag)
+		}
+		layout.New(nil).Layout(tr.Root, 400, 400)
+		press(tr, id)
+		l := &List{}
+		l.Build(tr, 400, 400)
+		n, _ := tr.ByID(id)
+		return l, n.Base().Bounds()
+	}
+
+	l, box := build(`Window { Column {
+		Rectangle { id: box width: 120 height: 40 radius: 12 ripple: true }
+	} }`, "box")
+	got := discs(l)
+	if len(got) != 1 {
+		t.Fatalf("%d ripple discs, want one:\n%s", len(got), l.Dump())
+	}
+	op := got[0]
+	if op.Clip != rectArr(box) {
+		t.Fatalf("ripple clip = %v, want the element's box %v", op.Clip, box)
+	}
+	if float64(op.ClipRadius) != 12 {
+		t.Fatalf("ripple radius = %v, want the box's 12", op.ClipRadius)
+	}
+	if op.ClipBox != rectArr(box) {
+		t.Fatalf("ripple clip box = %v, want the element's own box", op.ClipBox)
+	}
+
+	l, _ = build(`Window { Column {
+		Rectangle { id: box width: 120 height: 40 }
+	} }`, "box")
+	if got := discs(l); len(got) != 0 {
+		t.Fatalf("an element without ripple drew %d discs", len(got))
+	}
+
+	// A button ripples by default; false turns it off.
+	buildButton := func(props string) *List {
+		tr, diag := tree.BuildSource([]byte(`Window { Button { id: b label: "Go" `+props+` } }`), nil)
+		if !diag.Empty() {
+			t.Fatalf("%v", diag)
+		}
+		layout.New(nil).Layout(tr.Root, 400, 400)
+		n, _ := tr.ByID("b")
+		c := n.(*tree.Button).M3()
+		c.RippleOn, c.Ripple = true, 0.5
+		c.RippleX, c.RippleY = n.Base().Bounds().W/2, n.Base().Bounds().H/2
+		l := &List{}
+		l.Build(tr, 400, 400)
+		return l
+	}
+	if got := discs(buildButton("")); len(got) != 1 {
+		t.Fatalf("a pressed button drew %d discs", len(got))
+	}
+	if got := discs(buildButton("ripple: false")); len(got) != 0 {
+		t.Fatalf("ripple: false still drew %d discs", len(got))
+	}
+}

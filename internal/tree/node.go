@@ -118,14 +118,24 @@ type NodeBase struct {
 	// clock, not something a design declares.
 	scrollbarHover     bool
 	scrollbarShowUntil time.Time
-	width              Prop[float64]
-	height             Prop[float64]
-	minWidth           Prop[float64]
-	maxWidth           Prop[float64]
-	minHeight          Prop[float64]
-	maxHeight          Prop[float64]
-	background         Prop[uint32]
-	borderColor        Prop[uint32]
+	// ripple is the design's word on press feedback; unset follows the host: a
+	// component that paints a ripple keeps it, a plain element has none.
+	ripple Prop[bool]
+	// RippleOn, Ripple, RippleX and RippleY are the live press ripple: On marks
+	// it running, 0..1 is how far it has expanded, and X/Y are its origin in
+	// window coordinates. Input owns them; paint only reads them.
+	RippleOn    bool
+	Ripple      float64
+	RippleX     float64
+	RippleY     float64
+	width       Prop[float64]
+	height      Prop[float64]
+	minWidth    Prop[float64]
+	maxWidth    Prop[float64]
+	minHeight   Prop[float64]
+	maxHeight   Prop[float64]
+	background  Prop[uint32]
+	borderColor Prop[uint32]
 	// gradient holds a CSS gradient written for a colour property, keyed by the
 	// property name. Only `background` paints one today; the map keeps the
 	// parser honest for the names that may grow later.
@@ -604,6 +614,13 @@ func (b *NodeBase) SetBorderThickness(v float64) { b.borderT.Set(v) }
 // SetBorderType picks the stroke: solid, dashed or dotted.
 func (b *NodeBase) SetBorderType(v string) { b.borderType.Set(v) }
 
+// WantsRipple reports the design's word on press feedback.
+func (b *NodeBase) WantsRipple() bool { return b.ripple.Get() }
+
+// RippleSet reports whether the design or Go wrote `ripple`, which is what tells
+// an explicit false from the untouched default.
+func (b *NodeBase) RippleSet() bool { return b.ripple.Written() }
+
 // Background returns 0xRRGGBBAA.
 func (b *NodeBase) Background() uint32 { return b.background.Get() }
 
@@ -1036,4 +1053,16 @@ func (b *NodeBase) SetPropLiteral(name string, v syntax.Value) bool {
 		return false
 	}
 	return b.props[i].SetLiteral(v)
+}
+
+// SetPropDefault applies a schema default without counting as a write, so a
+// property that was never mentioned stays distinguishable from one set to its
+// default value.
+func (b *NodeBase) SetPropDefault(name string, v syntax.Value) bool {
+	b.properties()
+	i, ok := b.byName[name]
+	if !ok {
+		return false
+	}
+	return b.props[i].SetDefault(v)
 }
