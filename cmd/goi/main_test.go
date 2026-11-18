@@ -24,7 +24,7 @@ func TestInitProjectWritesTheScaffold(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"LoadWindowFromConfig()"} {
+	for _, want := range []string{`LoadWindow("Main.goi")`} {
 		if !strings.Contains(string(main), want) {
 			t.Errorf("main.go lacks %q:\n%s", want, main)
 		}
@@ -40,15 +40,18 @@ func TestInitProjectWritesTheScaffold(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cfg.BuildFlags) != 0 {
-		t.Fatalf("buildFlags = %v, want empty", cfg.BuildFlags)
+	if len(cfg.BuildFlags) != 1 || cfg.BuildFlags[0] != "all" {
+		t.Fatalf("buildFlags = %v, want [all]", cfg.BuildFlags)
 	}
 	raw, err := os.ReadFile(filepath.Join(dir, "goi.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), "ui: [ui]") || !strings.Contains(string(raw), "entry: Main.goi") {
+	if !strings.Contains(string(raw), "buildFlags: [all]") || !strings.Contains(string(raw), "ui: ui") {
 		t.Fatalf("goi.yaml lacks the design settings:\n%s", raw)
+	}
+	if strings.Contains(string(raw), "entry:") {
+		t.Fatalf("goi.yaml still names an entry:\n%s", raw)
 	}
 }
 
@@ -65,7 +68,7 @@ func TestInitProjectRefusesToOverwrite(t *testing.T) {
 	}
 }
 
-func TestRunProjectUsesExtensionsAndEnvironment(t *testing.T) {
+func TestRunProjectUsesBuildFlagsAndEnvironment(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "cmd"), 0o755); err != nil {
 		t.Fatal(err)
@@ -100,6 +103,20 @@ func TestRunProjectUsesExtensionsAndEnvironment(t *testing.T) {
 	}
 	if len(cgo) != 1 || cgo[0] != "CGO_ENABLED=0" {
 		t.Fatalf("CGO_ENABLED entries = %v, want exactly 0", cgo)
+	}
+}
+
+func TestLoadConfigDefaultsToAll(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "goi.yaml"), []byte("ui: ui\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := loadConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.BuildFlags) != 1 || cfg.BuildFlags[0] != "all" {
+		t.Fatalf("buildFlags = %v, want [all]", cfg.BuildFlags)
 	}
 }
 

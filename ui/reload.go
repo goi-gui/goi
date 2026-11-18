@@ -250,15 +250,11 @@ func carryScroll(old, fresh *tree.Tree) {
 
 // enableWatcher starts watching every directory the design lives in.
 func (a *App) enableWatcher() error {
-	roots, ok := designRoots(a.assets)
+	root, ok := watchRoot(a.assets)
 	if !ok {
-		return fmt.Errorf("goi: hot reload needs a directory container: use ui.DirFS instead of os.DirFS or an embed.FS")
+		return fmt.Errorf("goi: hot reload needs a design directory, not an embedded one")
 	}
-	var dirs []string
-	for _, root := range roots {
-		dirs = append(dirs, watchDirs(root)...)
-	}
-	r, err := hotreload.Watch(dirs, func(path string) { a.reload(path) })
+	r, err := hotreload.Watch(watchDirs(root), func(path string) { a.reload(path) })
 	if err != nil {
 		return err
 	}
@@ -269,10 +265,8 @@ func (a *App) enableWatcher() error {
 // rewatch adds directories that a reload brought into the design.
 func (a *App) rewatch(b *asset.Bundle) {
 	dirs := sourceDirs(b, a.assets)
-	if roots, ok := designRoots(a.assets); ok {
-		for _, root := range roots {
-			dirs = append(dirs, watchDirs(root)...)
-		}
+	if root, ok := watchRoot(a.assets); ok {
+		dirs = append(dirs, watchDirs(root)...)
 	}
 	if len(dirs) == 0 {
 		return

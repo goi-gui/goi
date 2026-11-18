@@ -54,7 +54,7 @@ func main() {
 	fail := false
 	for _, file := range flag.Args() {
 		// The file's own directory is the asset container, so imports resolve
-		// next to the entry file, exactly as LoadWindowFile does.
+		// next to the entry file, exactly as LoadWindow does.
 		dir := filepath.Dir(file)
 		name := filepath.Base(file)
 		b, diag := asset.Load(os.DirFS(dir), name)

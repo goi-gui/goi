@@ -1,66 +1,67 @@
 package ui
 
 import (
-	"errors"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
-// TestReadWindowConfigMergesGoiAndUI: goi.yaml supplies the directories and
-// entry; a ui.yaml overrides only the fields it writes.
-func TestReadWindowConfigMergesGoiAndUI(t *testing.T) {
+// TestDesignDirReadsUI: goi.yaml names the directory the entry is resolved in.
+func TestDesignDirReadsUI(t *testing.T) {
 	dir := t.TempDir()
-	write := func(name, body string) {
-		t.Helper()
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
+	if err := os.WriteFile(filepath.Join(dir, "goi.yaml"), []byte("buildFlags: [all]\nui: designs\n"), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	write("goi.yaml", "extensions: [emoji]\nui: [ui, shared]\nentry: Main.goi\n")
-	write("ui.yaml", "entry: Other.goi\n")
+	t.Chdir(dir)
 
-	cfg, err := readWindowConfig(dir)
+	got, err := designDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cfg.UI) != 2 || cfg.UI[0] != "ui" || cfg.UI[1] != "shared" {
-		t.Fatalf("ui = %v", cfg.UI)
-	}
-	if cfg.Entry != "Other.goi" {
-		t.Fatalf("entry = %q, want the ui.yaml override", cfg.Entry)
+	if got != "designs" {
+		t.Fatalf("designDir = %q, want designs", got)
 	}
 }
 
-func TestReadWindowConfigDefaults(t *testing.T) {
-	cfg, err := readWindowConfig(t.TempDir())
+// TestDesignDirWithoutConfig: a single-file program needs no goi.yaml, so its
+// entry is used as written.
+func TestDesignDirWithoutConfig(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	got, err := designDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cfg.UI) != 0 || cfg.Entry != "" {
-		t.Fatalf("defaults = %+v, want the loader's ui/Main.goi fallback", cfg)
+	if got != "." {
+		t.Fatalf("designDir = %q, want the working directory", got)
 	}
 }
 
-// TestDirsFSFindsFilesInEveryRoot: a design split over two directories is one
-// tree to the loader.
-func TestDirsFSFindsFilesInEveryRoot(t *testing.T) {
-	a, b := t.TempDir(), t.TempDir()
-	if err := os.WriteFile(filepath.Join(a, "Main.goi"), []byte("main"), 0o644); err != nil {
+// TestDesignDirDefaultsUI: a config without ui still has a design directory.
+func TestDesignDirDefaultsUI(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "goi.yaml"), []byte("buildFlags: [all]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(b, "Part.goi"), []byte("part"), 0o644); err != nil {
+	t.Chdir(dir)
+
+	got, err := designDir()
+	if err != nil {
 		t.Fatal(err)
 	}
-	fsys := dirsFS{a, b}
-	if got, err := fs.ReadFile(fsys, "Main.goi"); err != nil || string(got) != "main" {
-		t.Fatalf("Main.goi = %q, %v", got, err)
+	if got != "ui" {
+		t.Fatalf("designDir = %q, want ui", got)
 	}
-	if got, err := fs.ReadFile(fsys, "Part.goi"); err != nil || string(got) != "part" {
-		t.Fatalf("Part.goi = %q, %v", got, err)
+}
+
+func TestDesignDirReportsBadYAML(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "goi.yaml"), []byte("ui: [\n"), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := fs.ReadFile(fsys, "Missing.goi"); !errors.Is(err, fs.ErrNotExist) {
-		t.Fatalf("missing file error = %v", err)
+	t.Chdir(dir)
+
+	if _, err := designDir(); err == nil {
+		t.Fatal("expected a goi.yaml parse error")
 	}
 }

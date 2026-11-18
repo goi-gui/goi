@@ -1,9 +1,9 @@
 // Command goi starts and runs goi projects.
 //
 //	goi init example.com/hello
-//	goi run .
+//	goi run
 //
-// init writes a module, a main.go, a goi.yaml and a ui/Main.goi holding a
+// init writes a module, a cmd/main.go, a goi.yaml and a ui/Main.goi holding a
 // centred hello world. run reads the build flags from goi.yaml and passes them
 // as build tags, with nofakecgo always on and CGO_ENABLED=0 in the environment.
 package main
@@ -38,7 +38,7 @@ func main() {
 	}
 	defer app.Close()
 
-	if _, err := app.LoadWindowFromConfig(); err != nil {
+	if _, err := app.LoadWindow("Main.goi"); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -67,13 +67,13 @@ const designSource = `Window {
 }
 `
 
-const configSource = `# Feature tags passed to goi run. nofakecgo and CGO_ENABLED=0 are always used.
-# Add emoji, svg, mermaid, markdown, code, net, dialog, or all.
-buildFlags: []
+const configSource = `# Build tags passed to goi run. nofakecgo and CGO_ENABLED=0 are always used.
+# all turns on every optional feature: emoji, svg, mermaid, markdown, code,
+# net and dialog.
+buildFlags: [all]
 
-# Where LoadWindowFromConfig finds the design and which file is the entry.
-ui: [ui]
-entry: Main.goi
+# Where LoadWindow finds the design files.
+ui: ui
 `
 
 // config is goi.yaml. Only the buildFlags list is read today.
@@ -202,10 +202,15 @@ func loadConfig(dir string) (config, error) {
 	if err := yaml.Unmarshal(b, &c); err != nil {
 		return config{}, fmt.Errorf("goi.yaml: %w", err)
 	}
+	// all is the default: a project starts with every optional feature, and
+	// `buildFlags: []` is how it opts down to the core build.
+	if c.BuildFlags == nil {
+		c.BuildFlags = []string{"all"}
+	}
 	return c, nil
 }
 
-// buildTags always includes nofakecgo, then every extension, dropping empty
+// buildTags always includes nofakecgo, then every build flag, dropping empty
 // values and duplicates. Commas and spaces inside one entry are split, so
 // `buildFlags: ["emoji svg"]` works as well as a YAML list.
 func buildTags(flags []string) []string {

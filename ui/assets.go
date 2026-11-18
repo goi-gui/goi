@@ -13,11 +13,8 @@ import (
 	"github.com/goi-gui/goi/internal/syntax"
 )
 
-// DirFS wraps a directory as an fs.FS and remembers its path, so hot reload can
-// watch it. Use it instead of os.DirFS when you want live reloading.
-func DirFS(dir string) fs.FS { return dirFS(dir) }
-
-// dirFS is a directory that also reports where it came from.
+// dirFS is a directory that also reports where it came from, so hot reload can
+// watch it. LoadWindow builds one from the ui value in goi.yaml.
 type dirFS string
 
 // Open implements fs.FS.
@@ -54,20 +51,18 @@ func (e *loadError) Error() string {
 // sourceDirs lists the directories that hold the files of a bundle, so the
 // watcher can cover all of them.
 func sourceDirs(b *asset.Bundle, fsys fs.FS) []string {
-	roots, ok := designRoots(fsys)
+	root, ok := watchRoot(fsys)
 	if !ok {
 		return nil
 	}
+	base := filepath.FromSlash(root)
 	seen := map[string]bool{}
 	var out []string
-	for _, root := range roots {
-		base := filepath.FromSlash(root)
-		for _, name := range b.Files {
-			dir := filepath.Join(base, filepath.FromSlash(path.Dir(name)))
-			if !seen[dir] {
-				seen[dir] = true
-				out = append(out, dir)
-			}
+	for _, name := range b.Files {
+		dir := filepath.Join(base, filepath.FromSlash(path.Dir(name)))
+		if !seen[dir] {
+			seen[dir] = true
+			out = append(out, dir)
 		}
 	}
 	return out
@@ -80,16 +75,14 @@ func watchDirs(root string) []string {
 	return []string{root, filepath.Join(root, filepath.FromSlash(i18n.Dir))}
 }
 
-// designRoots reports every directory a design container lives in. os.DirFS
-// hides its path, which is why ui.DirFS exists.
-func designRoots(fsys fs.FS) ([]string, bool) {
-	if d, ok := fsys.(interface{ Dirs() []string }); ok {
-		return d.Dirs(), true
-	}
+// watchRoot reports the directory a design container lives in, or false when it
+// cannot be watched. os.DirFS hides its path, which is why LoadWindow wraps the
+// ui directory in dirFS.
+func watchRoot(fsys fs.FS) (string, bool) {
 	if d, ok := fsys.(interface{ Dir() string }); ok {
-		return []string{d.Dir()}, true
+		return d.Dir(), true
 	}
-	return nil, false
+	return "", false
 }
 
 // cleanName normalises a path for fs.FS: slash-separated, no leading slash.

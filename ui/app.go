@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"io/fs"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -18,6 +17,10 @@ import (
 
 // Options configure LoadWindow.
 type Options struct {
+	// Assets loads the design from fsys instead of the ui directory in
+	// goi.yaml. Use it for a design embedded in the binary, such as a wasm
+	// build; hot reload needs a directory and is skipped with it.
+	Assets    fs.FS
 	HotReload bool
 	Width     int // used only when the .goi file has no width
 	Height    int
@@ -31,15 +34,21 @@ type Options struct {
 // Option mutates Options.
 type Option func(*Options)
 
-// WithHotReload reloads the .goi file when it changes on disk.
+// WithHotReload reloads the .goi file when it changes on disk. It is on by
+// default; turn it off for a build that ships next to no design files.
 func WithHotReload(on bool) Option { return func(o *Options) { o.HotReload = on } }
+
+// WithAssets loads the design from fsys instead of the ui directory in
+// goi.yaml. It is for an embedded design, usually a wasm build where there is
+// no disk to read. Hot reload needs a directory, so it is skipped.
+func WithAssets(fsys fs.FS) Option { return func(o *Options) { o.Assets = fsys } }
 
 // WithSize sets the fallback client size for files that do not declare one.
 func WithSize(w, h int) Option { return func(o *Options) { o.Width, o.Height = w, h } }
 
 // WithCanvas names the element a browser build draws into, by id:
 //
-//	app.LoadWindow(fsys, "app.goi", ui.WithCanvas("hero"))
+//	app.LoadWindow("app.goi", ui.WithCanvas("hero"))
 //
 // A page can hold several canvases and run one app per canvas. Without it the
 // app takes the page's first canvas, which is what a single-canvas page wants.
@@ -207,20 +216,29 @@ func NewApp() (*App, error) {
 // newHeadlessApp creates an app without a window, for tests.
 func newHeadlessApp() *App { return &App{vsync: true, debugUI: debugUI()} }
 
-// LoadWindow loads a design from an asset container: fsys is where the .goi files
-// live (an embed.FS in production, ui.DirFS in development) and path is the
-// entry file inside it, slash-separated.
+// LoadWindow loads entry from the design directory: the ui value in goi.yaml,
+// or the working directory when there is no goi.yaml. The entry is a file
+// inside that directory, slash-separated; a design may import fragments next to
+// it, so it is usually a directory rather than one file.
 //
-// A file may import fragments, so the design is usually a directory rather than
-// one file. Call Bind afterwards.
-func (a *App) LoadWindow(fsys fs.FS, path string, opts ...Option) (*Window, error) {
+// Hot reload is on by default and watches every directory in the design. Call
+// Bind afterwards. WithAssets loads an embedded design instead.
+func (a *App) LoadWindow(entry string, opts ...Option) (*Window, error) {
 	start := time.Now()
-	o := Options{Width: 480, Height: 320}
+	o := Options{Width: 480, Height: 320, HotReload: true}
 	for _, fn := range opts {
 		fn(&o)
 	}
-	name := cleanName(path)
-	b, err := loadBundle(fsys, name)
+	assets := o.Assets
+	if assets == nil {
+		dir, err := designDir()
+		if err != nil {
+			return nil, err
+		}
+		assets = dirFS(dir)
+	}
+	name := cleanName(entry)
+	b, err := loadBundle(assets, name)
 	if err != nil {
 		logg().Error(logCtx, "ui: design failed to load", "file", name, "error", err)
 		return nil, err
@@ -231,7 +249,7 @@ func (a *App) LoadWindow(fsys fs.FS, path string, opts ...Option) (*Window, erro
 	}
 	// i18n is optional: no folder means every t(...) renders its own key. A
 	// broken catalog is reported but does not stop the window from loading.
-	catalog, cerr := i18n.Load(fsys, i18n.Dir)
+	catalog, cerr := i18n.Load(assets, i18n.Dir)
 	if cerr != nil {
 		a.reportError(cerr)
 	}
@@ -252,7 +270,7 @@ func (a *App) LoadWindow(fsys fs.FS, path string, opts ...Option) (*Window, erro
 			w.height = int(f)
 		}
 	}
-	a.win, a.assets, a.path, a.opts = w, fsys, name, o
+	a.win, a.assets, a.path, a.opts = w, assets, name, o
 	a.themes = map[string]*Theme{"light": m3.Light(), "dark": m3.Dark()}
 	// Images resolve against the container above, so this runs after it is set.
 	a.loadImages(tr)
@@ -261,21 +279,14 @@ func (a *App) LoadWindow(fsys fs.FS, path string, opts ...Option) (*Window, erro
 		return nil, err
 	}
 	logg().Info(logCtx, "ui: window loaded", "file", name, "took", time.Since(start).String())
-	if o.HotReload {
+	// An embedded design has no directory to watch; reload needs the disk.
+	if _, ok := watchRoot(assets); o.HotReload && ok {
 		if err := a.enableWatcher(); err != nil {
 			logg().Error(logCtx, "ui: hot reload unavailable", "error", err)
 			return nil, err
 		}
 	}
 	return w, nil
-}
-
-// LoadWindowFile is LoadWindow for a single file on disk. The file's directory
-// becomes the asset container, so imports resolve next to it. Hot reload watches
-// that directory.
-func (a *App) LoadWindowFile(file string, opts ...Option) (*Window, error) {
-	dir := filepath.Dir(file)
-	return a.LoadWindow(DirFS(dir), filepath.Base(file), opts...)
 }
 
 // Bind registers the handler-attachment function and runs it immediately.

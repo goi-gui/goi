@@ -78,7 +78,7 @@ var count int // outside Bind: Bind runs again after every hot reload
 
 func main() {
 	app, _ := ui.NewApp()
-	win, _ := app.LoadWindowFile("counter.goi", ui.WithHotReload(true))
+	win, _ := app.LoadWindow("counter.goi")
 
 	win.Bind(func(w *ui.Window) error {
 		ui.SetData(w, "Count", count)
@@ -219,15 +219,15 @@ Column {
 }
 ```
 
-The directory is the asset container, and hot reload watches every file the
-design reads:
+`LoadWindow` reads the entry from the `ui` directory in `goi.yaml` and hot
+reload watches every file the design reads:
 
 ```go
-win, _ := app.LoadWindow(ui.DirFS("ui"), "Main.goi", ui.WithHotReload(true))
+win, _ := app.LoadWindow("Main.goi")
 ```
 
 For a single binary, pass an embedded filesystem instead:
-`app.LoadWindow(assets, "ui/Main.goi")`.
+`app.LoadWindow("Main.goi", ui.WithAssets(assets))`.
 
 ## Features
 
@@ -236,7 +236,7 @@ For a single binary, pass an embedded filesystem instead:
 - **State and events in Go.** `bridge` declarations, `ui.SetData`,
   `ui.SetHandler`, typed `Prop[T]`, `Event[E]` and `ByID[T]`.
 - **Composition.** Imports, typed `props`, named slots and `$children`, scoped
-  ids, loading from any `io/fs.FS`.
+  ids, loading an embedded design.
 - **Material 3.** Buttons, text fields, cards, dialogs, sheets, menus, navigation,
   progress and more, with light and dark schemes, Roboto and Material Symbols.
 - **Layout.** Column, Row and Stack, Wrap, Grid, flex sizing, responsive
@@ -271,10 +271,11 @@ goi run
 
 `goi init` creates the module, a `cmd/main.go`, a `goi.yaml` and a
 `ui/Main.goi` with a centred hello world; the command loads it through
-`app.LoadWindowFromConfig()` and turns hot reload on. `goi run` reads the optional feature tags from
-`goi.yaml`; `nofakecgo` and `CGO_ENABLED=0` are always applied. See
+`app.LoadWindow("Main.goi")` and hot reload is on by default. `goi run` reads the
+build flags from `goi.yaml`, where `all` is the default; `nofakecgo` and
+`CGO_ENABLED=0` are always applied. See
 [the CLI guide](https://goi-gui.github.io/guide/cli) for the layout and the
-extension list.
+feature list.
 
 ## Building
 

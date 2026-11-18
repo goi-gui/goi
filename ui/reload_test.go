@@ -157,7 +157,7 @@ func TestWatcherTriggersReload(t *testing.T) {
 	if err := writeFile(dir+"/app.goi", `Window { Text { id: label text: "0" } }`); err != nil {
 		t.Fatal(err)
 	}
-	a.assets = DirFS(dir)
+	a.assets = dirFS(dir)
 	a.path = "app.goi"
 	if err := a.enableWatcher(); err != nil {
 		t.Fatal(err)
@@ -186,7 +186,7 @@ func TestReloadDiagnosticsAreFormatted(t *testing.T) {
 	if err := writeFile(dir+"/test.goi", "Window {\n  nope: 1\n}\n"); err != nil {
 		t.Fatal(err)
 	}
-	a.assets = DirFS(dir)
+	a.assets = dirFS(dir)
 	a.path = "test.goi"
 
 	err := a.reloadNow()

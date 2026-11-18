@@ -81,24 +81,24 @@ func TestLoadWindowRequiresAWindowRoot(t *testing.T) {
 	}
 }
 
-// TestHotReloadRequiresDirectoryContainer checks the failure users will hit:
-// os.DirFS hides its path, so it cannot be watched.
+// TestHotReloadRequiresDirectoryContainer checks the failure an embedded design
+// hits: there is no path to watch.
 func TestHotReloadRequiresDirectoryContainer(t *testing.T) {
 	a := newHeadlessApp()
 	a.assets = fstest.MapFS{}
 	if err := a.enableWatcher(); err == nil {
 		t.Fatal("expected a clear error for an unwatchable container")
-	} else if !strings.Contains(err.Error(), "ui.DirFS") {
-		t.Fatalf("err = %v, want it to name ui.DirFS", err)
+	} else if !strings.Contains(err.Error(), "embedded") {
+		t.Fatalf("err = %v, want it to name an embedded design", err)
 	}
 }
 
-// TestDirFSImplementsFSWithADir keeps DirFS honest: it is an fs.FS and it exposes
-// the directory the watcher needs.
+// TestDirFSImplementsFSWithADir keeps dirFS honest: it is an fs.FS and it
+// exposes the directory the watcher needs.
 func TestDirFSImplementsFSWithADir(t *testing.T) {
-	f := DirFS(t.TempDir())
+	f := dirFS(t.TempDir())
 	if _, ok := any(f).(interface{ Dir() string }); !ok {
-		t.Fatal("DirFS must expose its directory")
+		t.Fatal("dirFS must expose its directory")
 	}
 }
 

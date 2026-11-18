@@ -2500,3 +2500,16 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   tag to add. Platform and toolchain tags (`js`, `nofakecgo`, `nogpu`) are not
   feature switches and keep their meaning. Tests and examples use `all`, because
   a feature's test and its example should fail when the feature is off.
+
+- **LoadWindow takes the entry, not a filesystem.** The old pair
+  (`ui.DirFS` plus `LoadWindow(fsys, path)`, later `LoadWindowFile` and
+  `LoadWindowFromConfig`) made the app choose a container before the framework
+  could choose one. A project now names the design directory once in `goi.yaml`
+  (`ui: ui`) and the Go side names only the entry:
+  `LoadWindow("Main.goi")`. Hot reload is on by default because the window
+  always reads a directory, so `goi run` needs no extra wiring. `goi.yaml` stays
+  optional: without it the entry is resolved from the working directory, which
+  keeps single-file examples simple. An embedded design is the one case with no
+  directory to watch, so `WithAssets` takes the `fs.FS` and hot reload is
+  skipped. The CLI's `buildFlags` default to `all` in the same spirit: a new
+  project starts with every feature and opts down with `[]`.
