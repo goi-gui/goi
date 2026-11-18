@@ -10,6 +10,7 @@ import (
 	"image"
 	"math"
 	"regexp"
+	"strconv"
 	"time"
 
 	"github.com/srwiley/oksvg"
@@ -115,7 +116,10 @@ func (s *SVG) RenderAt(color uint32, elapsed time.Duration) (*img.Data, error) {
 // RenderAtLoop is RenderAt with a loop choice: false plays each animation once
 // and holds its last frame, whatever repeatCount the file declares.
 func (s *SVG) RenderAtLoop(color uint32, elapsed time.Duration, loop bool) (*img.Data, error) {
-	icon, err := oksvg.ReadReplacingCurrentColor(bytes.NewReader(defaultRectRy(s.renderAt(elapsed, loop))), hexRGB(color))
+	src := defaultRectRy(s.renderAt(elapsed, loop))
+	pixelW, _ := s.pixels()
+	src = scaleStrokeWidths(src, float64(pixelW)/s.w)
+	icon, err := oksvg.ReadReplacingCurrentColor(bytes.NewReader(src), hexRGB(color))
 	if err != nil {
 		return nil, fmt.Errorf("svg: render: %w", err)
 	}
@@ -145,9 +149,11 @@ func (s *SVG) pixels() (int, int) {
 }
 
 var (
-	rectTagRE = regexp.MustCompile(`(?is)<rect\b[^>]*>`)
-	rectRXRE  = regexp.MustCompile(`(?i)\brx\s*=\s*(?:"([^"]*)"|'([^']*)')`)
-	rectRYRE  = regexp.MustCompile(`(?i)\bry\s*=`)
+	rectTagRE    = regexp.MustCompile(`(?is)<rect\b[^>]*>`)
+	rectRXRE     = regexp.MustCompile(`(?i)\brx\s*=\s*(?:"([^"]*)"|'([^']*)')`)
+	rectRYRE     = regexp.MustCompile(`(?i)\bry\s*=`)
+	strokeAttrRE = regexp.MustCompile(`(?i)(\bstroke-width\s*=\s*)(["'])([0-9]*\.?[0-9]+)["']`)
+	strokeCSSRE  = regexp.MustCompile(`(?i)(\bstroke-width\s*:\s*)([0-9]*\.?[0-9]+)`)
 )
 
 // defaultRectRy fills in the SVG rule that ry defaults to rx. oksvg passes the
@@ -184,6 +190,34 @@ func defaultRectRy(b []byte) []byte {
 		out = append(out, tag[end:]...)
 		return out
 	})
+}
+
+// scaleStrokeWidths compensates for oksvg's target transform: it scales path
+// coordinates, but rasterx receives the SVG stroke width in raster pixels. A
+// 7px stroke at a 4x raster therefore drew 7px, not 28px, and looked hairline
+// after the bitmap was scaled back to the element's size.
+func scaleStrokeWidths(b []byte, scale float64) []byte {
+	if scale == 1 || scale <= 0 {
+		return b
+	}
+	b = strokeAttrRE.ReplaceAllFunc(b, func(m []byte) []byte {
+		sub := strokeAttrRE.FindSubmatch(m)
+		v, err := strconv.ParseFloat(string(sub[3]), 64)
+		if err != nil {
+			return m
+		}
+		return append(append(append([]byte{}, sub[1]...), sub[2]...),
+			append([]byte(strconv.FormatFloat(v*scale, 'f', -1, 64)), sub[2]...)...)
+	})
+	b = strokeCSSRE.ReplaceAllFunc(b, func(m []byte) []byte {
+		sub := strokeCSSRE.FindSubmatch(m)
+		v, err := strconv.ParseFloat(string(sub[2]), 64)
+		if err != nil {
+			return m
+		}
+		return append(append([]byte{}, sub[1]...), []byte(strconv.FormatFloat(v*scale, 'f', -1, 64))...)
+	})
+	return b
 }
 
 // hexRGB formats the RGB half of 0xRRGGBBAA the way oksvg expects.

@@ -92,6 +92,34 @@ func TestRoundedRectUsesRxForRy(t *testing.T) {
 	}
 }
 
+// TestStrokeWidthFollowsRasterScale: oksvg scales the path but not the stroke
+// width, so a 2px line in a 10px viewBox must scale with the raster instead of
+// staying a hairline.
+func TestStrokeWidthFollowsRasterScale(t *testing.T) {
+	const stroked = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
+		<line x1="5" y1="1" x2="5" y2="9" stroke="currentColor" stroke-width="2"/>
+	</svg>`
+	s, err := Parse([]byte(stroked))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := s.Render(0xFFFFFFFF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := d.H / 2
+	opaque := 0
+	for x := 0; x < d.W; x++ {
+		if _, _, _, a := pixelAt(d, x, row); a > 40 {
+			opaque++
+		}
+	}
+	want := int(2 * float64(d.W) / 10)
+	if opaque < want-2 || opaque > want+3 {
+		t.Fatalf("stroke row = %d pixels, want about %d", opaque, want)
+	}
+}
+
 // TestRenderPath covers the shape real icons use, not just a rect.
 func TestRenderPath(t *testing.T) {
 	const star = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
