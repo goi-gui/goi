@@ -84,6 +84,13 @@ func (a *App) initWindow(w *Window) error {
 				a.reportError(err)
 			}
 		}
+		for name, faces := range a.fontFaces {
+			for _, face := range faces {
+				if err := lib.RegisterFamilyFace(name, face.weight, face.italic, face.data); err != nil {
+					a.reportError(err)
+				}
+			}
+		}
 	}
 	meas := textMeasurer{lib: gpu.Text()}
 	d := &gpuDriver{

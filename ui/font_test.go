@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/goi-gui/goi/internal/text"
 )
 
 func TestLoadFontReadsAssetsPath(t *testing.T) {
@@ -81,4 +83,59 @@ func TestLoadFontManyKeepsGoing(t *testing.T) {
 	if len(a.fonts["One"]) == 0 || len(a.fonts["Two"]) == 0 {
 		t.Fatalf("valid fonts were not both loaded: %v", a.fonts)
 	}
+}
+
+func TestLoadFontFamilyReadsWeights(t *testing.T) {
+	font, err := os.ReadFile("../internal/text/fonts/noto-color-emoji.ttf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "assets", "fonts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"Test-Regular.ttf", "Test-Bold.ttf", "Test-BoldItalic.ttf", "Test-Italic.ttf"} {
+		if err := os.WriteFile(filepath.Join(dir, "assets", "fonts", name), font, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "goi.yaml"), []byte("assets: assets\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+
+	a := newHeadlessApp()
+	if err := a.LoadFontFamily("Test", "fonts/Test"); err != nil {
+		t.Fatal(err)
+	}
+	faces := a.fontFaces["Test"]
+	if len(faces) != 4 {
+		t.Fatalf("faces = %d, want regular, bold, bold italic and italic", len(faces))
+	}
+	seen := map[string]bool{}
+	for _, f := range faces {
+		seen[fontStyleName(f.weight, f.italic)] = true
+	}
+	for _, want := range []string{"regular", "bold", "bold italic", "regular italic"} {
+		if !seen[want] {
+			t.Fatalf("%q missing from %v", want, seen)
+		}
+	}
+}
+
+func fontStyleName(w text.Weight, italic bool) string {
+	name := ""
+	switch w {
+	case text.WeightRegular:
+		name = "regular"
+	case text.WeightBold:
+		name = "bold"
+	}
+	if italic {
+		if name != "" {
+			name += " "
+		}
+		name += "italic"
+	}
+	return name
 }

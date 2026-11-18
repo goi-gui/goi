@@ -247,3 +247,31 @@ func TestRegisterFamily(t *testing.T) {
 		t.Fatal("a registered face measured nothing")
 	}
 }
+
+// TestRegisterFamilyFaces gives one family several files; each weight and the
+// italic request must get its own face and atlas tag.
+func TestRegisterFamilyFaces(t *testing.T) {
+	l := NewLibrary()
+	for _, f := range []struct {
+		weight Weight
+		italic bool
+		data   []byte
+	}{
+		{WeightRegular, false, robotoRegular},
+		{WeightBold, false, robotoBold},
+		{WeightRegular, true, robotoMedium},
+	} {
+		if err := l.RegisterFamilyFace("Brand", f.weight, f.italic, f.data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	regular := l.FamilyFace(20, WeightRegular, "Brand")
+	bold := l.FamilyFace(20, WeightBold, "Brand")
+	italic := l.FamilyItalicFace(20, WeightRegular, "Brand")
+	if regular == nil || bold == nil || italic == nil {
+		t.Fatalf("faces = %v %v %v", regular, bold, italic)
+	}
+	if regular.Tag() == bold.Tag() || regular.Tag() == italic.Tag() || bold.Tag() == italic.Tag() {
+		t.Fatalf("tags are not distinct: %d %d %d", regular.Tag(), bold.Tag(), italic.Tag())
+	}
+}

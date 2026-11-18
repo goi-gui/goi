@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"path"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/goi-gui/goi/internal/render"
 	"github.com/goi-gui/goi/internal/text"
@@ -33,16 +35,9 @@ func (a *App) LoadFont(name, path string) error {
 	if path == "" {
 		return fmt.Errorf("ui: LoadFont(%q) needs a path", name)
 	}
-	assets := a.assets
-	if assets == nil {
-		assets = registeredAssets()
-	}
-	if assets == nil {
-		dir, err := designDir()
-		if err != nil {
-			return err
-		}
-		assets = dirFS(dir)
+	assets, err := a.fontAssets()
+	if err != nil {
+		return err
 	}
 	data, err := fs.ReadFile(assets, cleanName(filepath.ToSlash(path)))
 	if err != nil {
@@ -61,6 +56,130 @@ func (a *App) LoadFont(name, path string) error {
 		a.markDirty(tree.DirtyLayout)
 	}
 	return nil
+}
+
+// fontFaceFile is one weight/style file a family loaded.
+type fontFaceFile struct {
+	weight text.Weight
+	italic bool
+	data   []byte
+}
+
+// fontAssets is the container LoadFont resolves paths in: the live window's
+// assets, the embedded build assets, or the assets directory from goi.yaml.
+func (a *App) fontAssets() (fs.FS, error) {
+	if a.assets != nil {
+		return a.assets, nil
+	}
+	if fsys := registeredAssets(); fsys != nil {
+		return fsys, nil
+	}
+	dir, err := designDir()
+	if err != nil {
+		return nil, err
+	}
+	return dirFS(dir), nil
+}
+
+// LoadFontFamily registers every file named <prefix>-<style>.(ttf|otf) under
+// one family. The style suffix picks a weight and italic:
+//
+//	Nunito-Regular.ttf     400
+//	Nunito-Medium.ttf      500
+//	Nunito-SemiBold.ttf    600
+//	Nunito-Bold.ttf        700
+//	Nunito-BoldItalic.ttf  700 italic
+//
+// The design still writes only fontFamily: "Nunito"; fontWeight and fontStyle
+// select the file. A style suffix the parser does not know is skipped.
+func (a *App) LoadFontFamily(name, prefix string) error {
+	if name == "" {
+		return fmt.Errorf("ui: LoadFontFamily needs a family name")
+	}
+	prefix = cleanName(filepath.ToSlash(prefix))
+	if prefix == "" || prefix == "." {
+		return fmt.Errorf("ui: LoadFontFamily(%q) needs a file prefix", name)
+	}
+	assets, err := a.fontAssets()
+	if err != nil {
+		return err
+	}
+	dir, base := path.Dir(prefix), path.Base(prefix)
+	entries, err := fs.ReadDir(assets, dir)
+	if err != nil {
+		return fmt.Errorf("ui: LoadFontFamily(%q): %w", name, err)
+	}
+	var faces []fontFaceFile
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		ext := strings.ToLower(path.Ext(entry.Name()))
+		if ext != ".ttf" && ext != ".otf" {
+			continue
+		}
+		stem := strings.TrimSuffix(entry.Name(), path.Ext(entry.Name()))
+		if !strings.HasPrefix(stem, base+"-") {
+			continue
+		}
+		weight, italic, ok := fontStyle(strings.TrimPrefix(stem, base+"-"))
+		if !ok {
+			continue
+		}
+		data, err := fs.ReadFile(assets, path.Join(dir, entry.Name()))
+		if err != nil {
+			return fmt.Errorf("ui: LoadFontFamily(%q): %w", name, err)
+		}
+		faces = append(faces, fontFaceFile{weight: weight, italic: italic, data: data})
+	}
+	if len(faces) == 0 {
+		return fmt.Errorf("ui: LoadFontFamily(%q): no %s-<style> fonts in %s", name, base, dir)
+	}
+	if a.fontFaces == nil {
+		a.fontFaces = map[string][]fontFaceFile{}
+	}
+	a.fontFaces[name] = faces
+	if lib := a.textLibrary(); lib != nil {
+		for _, face := range faces {
+			if err := lib.RegisterFamilyFace(name, face.weight, face.italic, face.data); err != nil {
+				return fmt.Errorf("ui: %w", err)
+			}
+		}
+		a.markDirty(tree.DirtyLayout)
+	}
+	return nil
+}
+
+// fontStyle turns a Google Fonts style suffix into a weight and italic flag.
+func fontStyle(s string) (text.Weight, bool, bool) {
+	s = strings.TrimSpace(s)
+	italic := false
+	if strings.HasSuffix(strings.ToLower(s), "italic") {
+		italic = true
+		s = s[:len(s)-len("italic")]
+	}
+	s = strings.ToLower(strings.Trim(s, "-_ "))
+	switch s {
+	case "", "regular", "normal":
+		return text.WeightRegular, italic, true
+	case "thin", "hairline":
+		return text.Weight(100), italic, true
+	case "extralight", "ultralight":
+		return text.Weight(200), italic, true
+	case "light":
+		return text.WeightLight, italic, true
+	case "medium":
+		return text.WeightMedium, italic, true
+	case "semibold", "demibold":
+		return text.Weight(600), italic, true
+	case "bold":
+		return text.WeightBold, italic, true
+	case "extrabold", "ultrabold":
+		return text.Weight(800), italic, true
+	case "black", "heavy":
+		return text.WeightBlack, italic, true
+	}
+	return 0, false, false
 }
 
 // LoadFontMany registers every family in fonts, keyed by the name a design

@@ -74,6 +74,9 @@ func (w *Window) noteMissingFonts(tr *tree.Tree) {
 		if _, ok := w.app.fonts[family]; ok {
 			continue
 		}
+		if _, ok := w.app.fontFaces[family]; ok {
+			continue
+		}
 		if !w.noteMissingFont(family) {
 			continue
 		}

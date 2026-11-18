@@ -95,10 +95,76 @@ type faceKey struct {
 	family string
 }
 
-// familyFace is one registered family: the parsed file and its atlas tag.
+// familyFace is one registered family. face is the fallback for a family with
+// one file; variants holds the per-weight and per-style files that a
+// fontFamily plus fontWeight/fontStyle selects.
 type familyFace struct {
-	face *font.Face
-	tag  uint16
+	face     *font.Face
+	tag      uint16
+	variants map[familyVariant]familyVariantFace
+}
+
+type familyVariant struct {
+	weight Weight
+	italic bool
+}
+
+type familyVariantFace struct {
+	face   *font.Face
+	tag    uint16
+	italic bool // the file itself is italic, so it is not slanted again
+}
+
+// pick chooses the exact variant, then the nearest weight in the requested
+// style, then the nearest upright face. The caller adds the synthetic slant
+// when an upright file answers an italic request.
+func (f familyFace) pick(weight Weight, italic bool) (familyVariantFace, bool) {
+	if v, ok := f.variants[familyVariant{weight: weight, italic: italic}]; ok {
+		return v, true
+	}
+	best := familyVariantFace{}
+	bestDiff := Weight(1 << 30)
+	for v, face := range f.variants {
+		if v.italic != italic {
+			continue
+		}
+		diff := v.weight - weight
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff < bestDiff {
+			best, bestDiff = face, diff
+		}
+	}
+	if best.face != nil {
+		return best, true
+	}
+	if italic {
+		// No italic file: use the upright one at the nearest weight and let the
+		// rasterizer slant it.
+		if v, ok := f.variants[familyVariant{weight: weight}]; ok {
+			return v, true
+		}
+		for v, face := range f.variants {
+			if v.italic {
+				continue
+			}
+			diff := v.weight - weight
+			if diff < 0 {
+				diff = -diff
+			}
+			if diff < bestDiff {
+				best, bestDiff = face, diff
+			}
+		}
+		if best.face != nil {
+			return best, true
+		}
+	}
+	if f.face != nil {
+		return familyVariantFace{face: f.face, tag: f.tag}, true
+	}
+	return familyVariantFace{}, false
 }
 
 // faceSlot is one entry of the direct-mapped face cache.
@@ -182,22 +248,62 @@ func (l *Library) RegisterFamily(name string, data []byte) error {
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if _, ok := l.families[name]; !ok {
-		if l.familyTag >= 256 {
+	fam := l.families[name]
+	if fam.tag == 0 {
+		if l.familyTag >= 254 {
 			return fmt.Errorf("text: too many font families")
 		}
+		fam.tag = l.familyTag
 		l.familyTag += 2 // the odd tag is the slanted copy
 	}
-	l.families[name] = familyFace{face: f, tag: l.familyTag - 2}
-	// A face already built for this family holds the old file; drop it so the
-	// next frame reshapes with the new one.
+	fam.face = f
+	l.families[name] = fam
+	l.dropFamilyLocked(name)
+	return nil
+}
+
+// RegisterFamilyFace adds one weight/style file to a family. A family can hold
+// several files; a design still names only the family and picks the file with
+// fontWeight and fontStyle.
+func (l *Library) RegisterFamilyFace(name string, weight Weight, italic bool, data []byte) error {
+	if name == "" {
+		return fmt.Errorf("text: a family needs a name")
+	}
+	f, err := font.ParseTTF(bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("text: parse font %q: %w", name, err)
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	fam := l.families[name]
+	if fam.variants == nil {
+		fam.variants = map[familyVariant]familyVariantFace{}
+	}
+	key := familyVariant{weight: weight, italic: italic}
+	if vf, ok := fam.variants[key]; ok {
+		vf.face = f
+		fam.variants[key] = vf
+	} else {
+		if l.familyTag >= 254 {
+			return fmt.Errorf("text: too many font faces")
+		}
+		fam.variants[key] = familyVariantFace{face: f, tag: l.familyTag, italic: italic}
+		l.familyTag += 2
+	}
+	l.families[name] = fam
+	l.dropFamilyLocked(name)
+	return nil
+}
+
+// dropFamilyLocked clears built faces after a family file changes, so the next
+// frame reshapes instead of using stale outlines.
+func (l *Library) dropFamilyLocked(name string) {
 	for k := range l.faces {
 		if k.family == name {
 			delete(l.faces, k)
 		}
 	}
 	l.front = [4]faceSlot{}
-	return nil
 }
 
 // HasFamily reports whether name was registered.
@@ -267,16 +373,20 @@ func (l *Library) face(size float64, weight Weight, icon, filled, italic bool, f
 	if size <= 0 {
 		size = 16
 	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	if icon {
 		italic = false
 		family = ""
 	} else {
 		filled = false
-		weight = NearestWeight(weight)
+		if _, ok := l.families[family]; !ok {
+			// A custom family keeps the declared weight so 600 can choose a
+			// SemiBold file; Roboto snaps to the five faces it ships.
+			weight = NearestWeight(weight)
+		}
 	}
 	key := faceKey{weight: weight, size: int(size * 4), icon: icon, filled: filled, italic: italic, family: family}
-	l.mu.Lock()
-	defer l.mu.Unlock()
 	slot := &l.front[(key.size^int(weight)*7^boolInt(italic)*5^boolInt(filled)*11)&3]
 	if slot.f != nil && slot.key == key {
 		return slot.f
@@ -284,11 +394,17 @@ func (l *Library) face(size float64, weight Weight, icon, filled, italic bool, f
 
 	var src *font.Face
 	var tag uint16
+	syntheticItalic := italic
 	if fam, ok := l.families[family]; ok && !icon {
-		src, tag = fam.face, fam.tag
-		if italic {
-			// Keep slanted glyphs in their own atlas entries.
-			tag++
+		if vf, ok := fam.pick(weight, italic); ok {
+			src, tag = vf.face, vf.tag
+			if vf.italic {
+				// The file already has the italic outlines.
+				syntheticItalic = false
+			} else if italic {
+				// Keep slanted glyphs in their own atlas entries.
+				tag++
+			}
 		}
 	} else if icon && filled {
 		src = l.iconFilled
@@ -329,7 +445,7 @@ func (l *Library) face(size float64, weight Weight, icon, filled, italic bool, f
 		*slot = faceSlot{key: key, f: f}
 		return f
 	}
-	f := &Face{font: src, tag: tag, size: size, upem: float32(src.Upem()), italic: italic, lib: l}
+	f := &Face{font: src, tag: tag, size: size, upem: float32(src.Upem()), italic: syntheticItalic, lib: l}
 	l.faces[key] = f
 	*slot = faceSlot{key: key, f: f}
 	return f
