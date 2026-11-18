@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"image"
 	"math"
+	"regexp"
 	"time"
 
 	"github.com/srwiley/oksvg"
@@ -114,7 +115,7 @@ func (s *SVG) RenderAt(color uint32, elapsed time.Duration) (*img.Data, error) {
 // RenderAtLoop is RenderAt with a loop choice: false plays each animation once
 // and holds its last frame, whatever repeatCount the file declares.
 func (s *SVG) RenderAtLoop(color uint32, elapsed time.Duration, loop bool) (*img.Data, error) {
-	icon, err := oksvg.ReadReplacingCurrentColor(bytes.NewReader(s.renderAt(elapsed, loop)), hexRGB(color))
+	icon, err := oksvg.ReadReplacingCurrentColor(bytes.NewReader(defaultRectRy(s.renderAt(elapsed, loop))), hexRGB(color))
 	if err != nil {
 		return nil, fmt.Errorf("svg: render: %w", err)
 	}
@@ -141,6 +142,48 @@ func (s *SVG) pixels() (int, int) {
 		scale = maxRasterEdge / longest
 	}
 	return max(1, int(math.Round(s.w*scale))), max(1, int(math.Round(s.h*scale)))
+}
+
+var (
+	rectTagRE = regexp.MustCompile(`(?is)<rect\b[^>]*>`)
+	rectRXRE  = regexp.MustCompile(`(?i)\brx\s*=\s*(?:"([^"]*)"|'([^']*)')`)
+	rectRYRE  = regexp.MustCompile(`(?i)\bry\s*=`)
+)
+
+// defaultRectRy fills in the SVG rule that ry defaults to rx. oksvg passes the
+// missing ry as zero and draws a square corner, which is why a logo with only
+// rx="38" lost its rounded background.
+func defaultRectRy(b []byte) []byte {
+	return rectTagRE.ReplaceAllFunc(b, func(tag []byte) []byte {
+		if rectRYRE.Match(tag) {
+			return tag
+		}
+		m := rectRXRE.FindSubmatch(tag)
+		if m == nil {
+			return tag
+		}
+		value := m[1]
+		if len(value) == 0 {
+			value = m[2]
+		}
+		if len(value) == 0 {
+			return tag
+		}
+		insert := append([]byte(` ry="`), value...)
+		insert = append(insert, '"')
+		end := bytes.LastIndexByte(tag, '>')
+		if end < 0 {
+			return tag
+		}
+		if end > 0 && tag[end-1] == '/' {
+			end--
+		}
+		out := make([]byte, 0, len(tag)+len(insert))
+		out = append(out, tag[:end]...)
+		out = append(out, insert...)
+		out = append(out, tag[end:]...)
+		return out
+	})
 }
 
 // hexRGB formats the RGB half of 0xRRGGBBAA the way oksvg expects.

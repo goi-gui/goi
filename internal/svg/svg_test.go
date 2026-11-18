@@ -66,6 +66,32 @@ func TestRenderAppliesAlpha(t *testing.T) {
 	}
 }
 
+// TestRoundedRectUsesRxForRy covers the SVG default oksvg misses: a rect with
+// rx but no ry is rounded in both corners, so the logo background keeps its
+// radius.
+func TestRoundedRectUsesRxForRy(t *testing.T) {
+	const rounded = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+		<rect width="100" height="100" rx="20" fill="currentColor"/>
+	</svg>`
+	s, err := Parse([]byte(rounded))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := s.Render(0x0088FFFF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, a := pixelAt(d, 0, 0); a > 10 {
+		t.Fatalf("corner alpha = %d, want transparent", a)
+	}
+	if _, _, _, a := pixelAt(d, d.W/2, d.H/2); a < 250 {
+		t.Fatalf("centre alpha = %d, want opaque", a)
+	}
+	if _, _, _, a := pixelAt(d, d.W/2, 2); a < 250 {
+		t.Fatalf("top edge alpha = %d, want filled between the corners", a)
+	}
+}
+
 // TestRenderPath covers the shape real icons use, not just a rect.
 func TestRenderPath(t *testing.T) {
 	const star = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
