@@ -1,9 +1,11 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"path/filepath"
+	"sort"
 
 	"github.com/goi-gui/goi/internal/render"
 	"github.com/goi-gui/goi/internal/text"
@@ -59,6 +61,25 @@ func (a *App) LoadFont(name, path string) error {
 		a.markDirty(tree.DirtyLayout)
 	}
 	return nil
+}
+
+// LoadFontMany registers every family in fonts, keyed by the name a design
+// writes and holding a path inside the assets directory. All valid files are
+// loaded even when another path is missing; the returned error joins the
+// failures.
+func (a *App) LoadFontMany(fonts map[string]string) error {
+	names := make([]string, 0, len(fonts))
+	for name := range fonts {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var errs []error
+	for _, name := range names {
+		if err := a.LoadFont(name, fonts[name]); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // textLibrary is the running renderer's font library, or nil before a window is
