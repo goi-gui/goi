@@ -40,8 +40,8 @@ func TestInitProjectWritesTheScaffold(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cfg.Extensions) != 0 {
-		t.Fatalf("extensions = %v, want empty", cfg.Extensions)
+	if len(cfg.BuildFlags) != 0 {
+		t.Fatalf("buildFlags = %v, want empty", cfg.BuildFlags)
 	}
 	raw, err := os.ReadFile(filepath.Join(dir, "goi.yaml"))
 	if err != nil {
@@ -73,7 +73,7 @@ func TestRunProjectUsesExtensionsAndEnvironment(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "cmd", "main.go"), []byte("package main\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "goi.yaml"), []byte("extensions: [emoji, \"svg net\"]\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "goi.yaml"), []byte("buildFlags: [emoji, \"svg net\"]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	var gotDir string

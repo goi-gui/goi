@@ -4,7 +4,7 @@
 //	goi run .
 //
 // init writes a module, a main.go, a goi.yaml and a ui/Main.goi holding a
-// centred hello world. run reads the extensions from goi.yaml and passes them
+// centred hello world. run reads the build flags from goi.yaml and passes them
 // as build tags, with nofakecgo always on and CGO_ENABLED=0 in the environment.
 package main
 
@@ -69,16 +69,16 @@ const designSource = `Window {
 
 const configSource = `# Feature tags passed to goi run. nofakecgo and CGO_ENABLED=0 are always used.
 # Add emoji, svg, mermaid, markdown, code, net, dialog, or all.
-extensions: []
+buildFlags: []
 
 # Where LoadWindowFromConfig finds the design and which file is the entry.
 ui: [ui]
 entry: Main.goi
 `
 
-// config is goi.yaml. Only the extensions list is read today.
+// config is goi.yaml. Only the buildFlags list is read today.
 type config struct {
-	Extensions []string `yaml:"extensions"`
+	BuildFlags []string `yaml:"buildFlags"`
 }
 
 // commandRunner runs one go command in dir. It is a value so tests can record
@@ -134,7 +134,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 func usage(w io.Writer) {
 	fmt.Fprintln(w, "usage: goi <command>")
 	fmt.Fprintln(w, "  init <go-module-name>  create a project in the current directory")
-	fmt.Fprintln(w, "  run                    run cmd/main.go, using its goi.yaml extensions")
+	fmt.Fprintln(w, "  run                    run cmd/main.go, using its goi.yaml build flags")
 }
 
 // initProject writes the scaffold and initializes the Go module. It refuses to
@@ -183,7 +183,7 @@ func runProject(dir string, goRun runFunc, stdout, stderr io.Writer) error {
 		return err
 	}
 	args := []string{"run"}
-	if tags := buildTags(cfg.Extensions); len(tags) > 0 {
+	if tags := buildTags(cfg.BuildFlags); len(tags) > 0 {
 		args = append(args, "-tags", strings.Join(tags, ","))
 	}
 	args = append(args, "./cmd")
@@ -207,12 +207,12 @@ func loadConfig(dir string) (config, error) {
 
 // buildTags always includes nofakecgo, then every extension, dropping empty
 // values and duplicates. Commas and spaces inside one entry are split, so
-// `extensions: ["emoji svg"]` works as well as a YAML list.
-func buildTags(extensions []string) []string {
+// `buildFlags: ["emoji svg"]` works as well as a YAML list.
+func buildTags(flags []string) []string {
 	tags := []string{"nofakecgo"}
 	seen := map[string]bool{"nofakecgo": true}
-	for _, ext := range extensions {
-		for _, tag := range strings.FieldsFunc(ext, func(r rune) bool { return r == ',' || unicode.IsSpace(r) }) {
+	for _, flag := range flags {
+		for _, tag := range strings.FieldsFunc(flag, func(r rune) bool { return r == ',' || unicode.IsSpace(r) }) {
 			if tag == "" || seen[tag] {
 				continue
 			}
