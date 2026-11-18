@@ -6,12 +6,34 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/goi-gui/goi/internal/asset"
 	"github.com/goi-gui/goi/internal/i18n"
 	"github.com/goi-gui/goi/internal/schema"
 	"github.com/goi-gui/goi/internal/syntax"
 )
+
+var (
+	assetsMu     sync.RWMutex
+	staticAssets fs.FS
+)
+
+// RegisterAssets supplies a design container for a build that embeds the files.
+// goi build generates the call; an app does not need to make it. LoadWindow
+// prefers this over the ui directory, which is what makes a built app
+// self-contained and keeps it from watching files.
+func RegisterAssets(fsys fs.FS) {
+	assetsMu.Lock()
+	staticAssets = fsys
+	assetsMu.Unlock()
+}
+
+func registeredAssets() fs.FS {
+	assetsMu.RLock()
+	defer assetsMu.RUnlock()
+	return staticAssets
+}
 
 // dirFS is a directory that also reports where it came from, so hot reload can
 // watch it. LoadWindow builds one from the ui value in goi.yaml.

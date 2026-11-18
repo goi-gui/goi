@@ -3,15 +3,21 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -37,8 +43,13 @@ func newDoctorCmd() *cobra.Command {
 // printDoctor writes the environment report. Missing optional tools do not
 // change the exit status: a clean build only needs Go, SDL3 and a GPU backend.
 func printDoctor(w io.Writer) {
+	printDoctorWith(w, latestRelease)
+}
+
+func printDoctorWith(w io.Writer, latest func(context.Context) (string, error)) {
 	goPath, goRow := goCheck()
 	rows := []doctorCheck{
+		updateCheck(programVersion(), latest),
 		{Name: "OS", Status: "-", Detail: osDetail()},
 		goRow,
 		cgoCheck(goPath),
@@ -59,7 +70,91 @@ func printDoctor(w io.Writer) {
 	tw.Flush()
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "required: Go, SDL3 and a GPU backend (Vulkan on Linux/Windows, Metal on macOS)")
-	fmt.Fprintln(w, "missing a tool? goi update refreshes goi, goipls and goifmt")
+	fmt.Fprintln(w, "missing a tool? goi setup installs goi, goipls and goifmt")
+}
+
+const releasesURL = "https://api.github.com/repos/goi-gui/goi/releases/latest"
+
+func updateCheck(current string, latest func(context.Context) (string, error)) doctorCheck {
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	tag, err := latest(ctx)
+	if err != nil {
+		return doctorCheck{Name: "Update", Status: "?", Detail: "could not check GitHub releases"}
+	}
+	if _, ok := versionParts(current); !ok {
+		return doctorCheck{Name: "Update", Status: "devel", Detail: "latest is " + tag + "; this is a local build"}
+	}
+	if compareVersions(tag, current) > 0 {
+		return doctorCheck{Name: "Update", Status: "available", Detail: tag + " is newer; run goi update"}
+	}
+	return doctorCheck{Name: "Update", Status: "ok", Detail: "latest is " + tag}
+}
+
+// latestRelease reads the tag of the newest published GitHub release.
+func latestRelease(ctx context.Context) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, releasesURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "goi-doctor")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GitHub returned %s", resp.Status)
+	}
+	var release struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&release); err != nil {
+		return "", err
+	}
+	if release.TagName == "" {
+		return "", errors.New("release has no tag")
+	}
+	return release.TagName, nil
+}
+
+// versionParts accepts a release version such as v0.29.2. A pseudo-version or a
+// local +dirty build is not a release and does not compare.
+func versionParts(version string) ([3]int, bool) {
+	var out [3]int
+	version = strings.TrimPrefix(version, "v")
+	if version == "" || strings.ContainsAny(version, "-+") {
+		return out, false
+	}
+	parts := strings.Split(version, ".")
+	if len(parts) != 3 {
+		return out, false
+	}
+	for i, part := range parts {
+		n, err := strconv.Atoi(part)
+		if err != nil || n < 0 {
+			return out, false
+		}
+		out[i] = n
+	}
+	return out, true
+}
+
+func compareVersions(a, b string) int {
+	pa, oka := versionParts(a)
+	pb, okb := versionParts(b)
+	if !oka || !okb {
+		return 0
+	}
+	for i := range pa {
+		if pa[i] != pb[i] {
+			if pa[i] > pb[i] {
+				return 1
+			}
+			return -1
+		}
+	}
+	return 0
 }
 
 func goCheck() (string, doctorCheck) {

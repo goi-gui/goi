@@ -232,6 +232,9 @@ func (a *App) LoadWindow(entry string, opts ...Option) (*Window, error) {
 	}
 	assets := o.Assets
 	if assets == nil {
+		assets = registeredAssets()
+	}
+	if assets == nil {
 		dir, err := designDir()
 		if err != nil {
 			return nil, err

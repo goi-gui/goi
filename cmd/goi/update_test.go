@@ -3,6 +3,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"io"
 	"os"
 	"strings"
@@ -74,11 +76,50 @@ func assertCalls(t *testing.T, got, want [][]string) {
 
 func TestDoctorReportsEveryComponent(t *testing.T) {
 	var out strings.Builder
-	printDoctor(&out)
-	for _, want := range []string{"COMPONENT", "OS", "Go", "CGO", "goi", "goipls", "goifmt", "SDL3", "Vulkan", "ffmpeg", "git"} {
+	printDoctorWith(&out, func(context.Context) (string, error) { return "v0.0.0", nil })
+	for _, want := range []string{"COMPONENT", "Update", "OS", "Go", "CGO", "goi", "goipls", "goifmt", "SDL3", "Vulkan", "ffmpeg", "git"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("doctor output lacks %q:\n%s", want, out.String())
 		}
+	}
+}
+
+func TestUpdateCheck(t *testing.T) {
+	latest := func(tag string) func(context.Context) (string, error) {
+		return func(context.Context) (string, error) { return tag, nil }
+	}
+	cases := []struct {
+		name, current, tag, status string
+	}{
+		{"newer", "v0.29.2", "v0.29.10", "available"},
+		{"same", "v0.29.2", "v0.29.2", "ok"},
+		{"newer-current", "v0.30.0", "v0.29.2", "ok"},
+		{"dirty", "v0.29.2+dirty", "v0.30.0", "devel"},
+		{"devel", "devel", "v0.30.0", "devel"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := updateCheck(c.current, latest(c.tag)); got.Status != c.status {
+				t.Fatalf("status = %q, want %q (%+v)", got.Status, c.status, got)
+			}
+		})
+	}
+	if got := updateCheck("v0.29.2", func(context.Context) (string, error) {
+		return "", errors.New("offline")
+	}); got.Status != "?" {
+		t.Fatalf("offline status = %q, want ?", got.Status)
+	}
+}
+
+func TestCompareVersions(t *testing.T) {
+	if compareVersions("v0.29.10", "v0.29.9") <= 0 {
+		t.Fatal("v0.29.10 should compare after v0.29.9")
+	}
+	if compareVersions("v0.29.2", "v0.29.2") != 0 {
+		t.Fatal("equal versions should compare equal")
+	}
+	if compareVersions("devel", "v0.29.2") != 0 {
+		t.Fatal("a non-release version should not compare")
 	}
 }
 

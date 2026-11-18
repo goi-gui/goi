@@ -144,6 +144,17 @@ func TestBuildProject(t *testing.T) {
 	var gotArgs, gotEnv []string
 	out, err := buildProject(dir, "windows", "arm64", func(d string, args []string, _, _ io.Writer, env []string) error {
 		gotDir, gotArgs, gotEnv = d, args, env
+		pkg := args[len(args)-1]
+		staged := filepath.Join(d, strings.TrimPrefix(pkg, "./"))
+		if _, err := os.Stat(filepath.Join(staged, "assets", "Main.goi")); err != nil {
+			t.Errorf("design not staged: %v", err)
+		}
+		embed, err := os.ReadFile(filepath.Join(staged, "goi_embed.go"))
+		if err != nil {
+			t.Errorf("embed file missing: %v", err)
+		} else if !strings.Contains(string(embed), "ui.RegisterAssets") {
+			t.Errorf("embed file does not register the design:\n%s", embed)
+		}
 		return nil
 	}, io.Discard, io.Discard)
 	if err != nil {
@@ -156,10 +167,16 @@ func TestBuildProject(t *testing.T) {
 	if gotDir != dir {
 		t.Fatalf("dir = %q, want %q", gotDir, dir)
 	}
-	wantArgs := []string{"build", "-tags", "nofakecgo,emoji,nohotreload",
-		"-trimpath", "-ldflags", "-s -w -H windowsgui", "-o", wantOut, "./cmd"}
-	if strings.Join(gotArgs, " ") != strings.Join(wantArgs, " ") {
-		t.Fatalf("args = %v, want %v", gotArgs, wantArgs)
+	wantArgs := []string{"build", "-tags", "nofakecgo,emoji",
+		"-trimpath", "-ldflags", "-s -w -H windowsgui", "-o", wantOut}
+	if len(gotArgs) != len(wantArgs)+1 || strings.Join(gotArgs[:len(wantArgs)], " ") != strings.Join(wantArgs, " ") {
+		t.Fatalf("args = %v, want %v <staged package>", gotArgs, wantArgs)
+	}
+	if pkg := gotArgs[len(gotArgs)-1]; !strings.HasPrefix(pkg, "./goi-build-") {
+		t.Fatalf("package = %q, want a staged build package", pkg)
+	}
+	if matches, _ := filepath.Glob(filepath.Join(dir, "goi-build-*")); len(matches) != 0 {
+		t.Fatalf("staged build directories were not cleaned up: %v", matches)
 	}
 	if got := envValue(gotEnv, "CGO_ENABLED"); len(envValues(gotEnv, "CGO_ENABLED")) != 1 || got != "0" {
 		t.Fatalf("CGO_ENABLED = %q in %v, want exactly 0", got, gotEnv)
@@ -218,6 +235,7 @@ func TestBuildOutput(t *testing.T) {
 		{"linux", "amd64", "myapp", "myapp"},
 		{"windows", "amd64", "myapp", "myapp.exe"},
 		{"windows", "arm64", "myapp.exe", "myapp.exe"},
+		{"js", "wasm", "myapp", "myapp.wasm"},
 	}
 	for _, c := range cases {
 		got := buildOutput(dir, c.os, c.arch, c.name)
@@ -245,6 +263,12 @@ func buildProjectDir(t *testing.T, config string) string {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "cmd", "main.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "ui"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "ui", "Main.goi"), []byte("Window { }\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "goi.yaml"), []byte(config), 0o644); err != nil {
@@ -356,6 +380,9 @@ func TestLoadConfigDefaultsToAll(t *testing.T) {
 	if cfg.Entrypoint != "cmd" {
 		t.Fatalf("entrypoint = %q, want cmd", cfg.Entrypoint)
 	}
+	if cfg.UI != "ui" {
+		t.Fatalf("ui = %q, want ui", cfg.UI)
+	}
 }
 
 func TestCommandsUseEntrypoint(t *testing.T) {
@@ -366,6 +393,15 @@ func TestCommandsUseEntrypoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "app", "main.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "app", "only-app.txt"), []byte("app\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "ui"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "ui", "Main.goi"), []byte("Window { }\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg := "name: myapp\nentrypoint: app\nbuildFlags: [all]\n"
@@ -385,15 +421,19 @@ func TestCommandsUseEntrypoint(t *testing.T) {
 		t.Fatalf("run package = %q, want ./app", last)
 	}
 
-	build := func(_ string, args []string, _, _ io.Writer, _ []string) error {
+	stagedApp := false
+	build := func(d string, args []string, _, _ io.Writer, _ []string) error {
 		buildArgs = args
+		staged := filepath.Join(d, strings.TrimPrefix(args[len(args)-1], "./"))
+		_, err := os.Stat(filepath.Join(staged, "only-app.txt"))
+		stagedApp = err == nil
 		return nil
 	}
 	if _, err := buildProject(dir, runtime.GOOS, runtime.GOARCH, build, io.Discard, io.Discard); err != nil {
 		t.Fatal(err)
 	}
-	if last := buildArgs[len(buildArgs)-1]; last != "./app" {
-		t.Fatalf("build package = %q, want ./app", last)
+	if !stagedApp {
+		t.Fatalf("build did not stage the app entrypoint: %v", buildArgs)
 	}
 }
 

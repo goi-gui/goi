@@ -113,6 +113,7 @@ func yamlScalar(s string) string {
 type config struct {
 	Name       string   `yaml:"name"`
 	Entrypoint string   `yaml:"entrypoint"`
+	UI         string   `yaml:"ui"`
 	RunFlags   []string `yaml:"runFlags"`
 	BuildFlags []string `yaml:"buildFlags"`
 }
@@ -329,8 +330,8 @@ func runEnv() []string {
 }
 
 // buildProject builds the entrypoint package for targetOS/targetArch into
-// dist/<os>-<arch>/<name>, with the build flags from goi.yaml and nohotreload so
-// the binary does not watch its design files.
+// dist/<os>-<arch>/<name>. The design is copied into the package and embedded,
+// so the binary is self-contained and does not watch files.
 func buildProject(dir, targetOS, targetArch string, goRun runFunc, stdout, stderr io.Writer) (string, error) {
 	if targetOS == "" {
 		targetOS = runtime.GOOS
@@ -342,7 +343,6 @@ func buildProject(dir, targetOS, targetArch string, goRun runFunc, stdout, stder
 	if err != nil {
 		return "", err
 	}
-	pkg := "./" + filepath.ToSlash(cfg.Entrypoint)
 	if _, err := os.Stat(filepath.Join(dir, cfg.Entrypoint, "main.go")); err != nil {
 		return "", fmt.Errorf("no %s/main.go in %s; run goi init first", cfg.Entrypoint, dir)
 	}
@@ -352,12 +352,17 @@ func buildProject(dir, targetOS, targetArch string, goRun runFunc, stdout, stder
 	if cfg.Name == "." || cfg.Name == ".." || strings.ContainsAny(cfg.Name, `/\`) {
 		return "", fmt.Errorf("goi.yaml name %q is not a file name", cfg.Name)
 	}
+	staged, err := stageBuild(dir, cfg.Entrypoint, cfg.UI)
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(staged)
 	out := buildOutput(dir, targetOS, targetArch, cfg.Name)
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 		return "", err
 	}
-	flags := append(append([]string{}, cfg.BuildFlags...), "nohotreload")
-	args := []string{"build", "-tags", strings.Join(buildTags(flags), ","),
+	pkg := "./" + filepath.Base(staged)
+	args := []string{"build", "-tags", strings.Join(buildTags(cfg.BuildFlags), ","),
 		"-trimpath", "-ldflags", buildLDFlags(targetOS), "-o", out, pkg}
 	env := envWith(os.Environ(), "CGO_ENABLED", "0")
 	env = envWith(env, "GOOS", targetOS)
@@ -377,10 +382,14 @@ func buildLDFlags(targetOS string) string {
 	return "-s -w"
 }
 
-// buildOutput is dist/<os>-<arch>/<name>, with .exe only on Windows.
+// buildOutput is dist/<os>-<arch>/<name>, with .exe only on Windows and .wasm
+// for a browser target.
 func buildOutput(dir, targetOS, targetArch, name string) string {
-	if targetOS == "windows" && !strings.HasSuffix(name, ".exe") {
+	switch {
+	case targetOS == "windows" && !strings.HasSuffix(name, ".exe"):
 		name += ".exe"
+	case targetOS == "js" && targetArch == "wasm" && !strings.HasSuffix(name, ".wasm"):
+		name += ".wasm"
 	}
 	return filepath.Join(dir, "dist", targetOS+"-"+targetArch, name)
 }
@@ -407,6 +416,9 @@ func loadConfig(dir string) (config, error) {
 	}
 	if c.Entrypoint == "" {
 		c.Entrypoint = "cmd"
+	}
+	if c.UI == "" {
+		c.UI = "ui"
 	}
 	return c, nil
 }

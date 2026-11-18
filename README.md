@@ -4,12 +4,13 @@
 
 <h1 align="center">goi</h1>
 
-<p align="center">A declarative GUI framework for Go, rendered with WebGPU.</p>
+<p align="center">A declarative GUI framework for Go, rendered with WebGPU on Linux, Windows and macOS.</p>
 
 goi describes a window in `.goi` files: elements, properties, ids, `if`/`else`
-and `for` loops. Go finds elements by id, holds the
-state and attaches the behaviour. Edit a `.goi` file and the window updates
-without a restart: hot reload is built in.
+and `for` loops. Go finds elements by id, holds the state and attaches the
+behaviour. Hot reload is built in: edit a `.goi` file and the open window
+updates without a restart. The same project builds for Linux (Wayland and X11),
+Windows and macOS, drawing through Vulkan, Direct3D 12 or Metal.
 
 ## Shopping
 

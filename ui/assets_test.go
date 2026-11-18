@@ -93,6 +93,30 @@ func TestHotReloadRequiresDirectoryContainer(t *testing.T) {
 	}
 }
 
+// TestRegisteredAssetsFeedLoadWindow covers the build path: goi build registers
+// the embedded files, and LoadWindow uses them instead of the ui directory.
+func TestRegisteredAssetsFeedLoadWindow(t *testing.T) {
+	old := registeredAssets()
+	t.Cleanup(func() { RegisterAssets(old) })
+	RegisterAssets(fstest.MapFS{
+		"Main.goi": &fstest.MapFile{Data: []byte(`Window { title: "Embedded" }`)},
+	})
+	if registeredAssets() == nil {
+		t.Fatal("registered assets were not kept")
+	}
+	b, err := loadBundle(registeredAssets(), "Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := tree.Build(b.File, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tr.Root.Title.Get() != "Embedded" {
+		t.Fatalf("title = %q", tr.Root.Title.Get())
+	}
+}
+
 // TestDirFSImplementsFSWithADir keeps dirFS honest: it is an fs.FS and it
 // exposes the directory the watcher needs.
 func TestDirFSImplementsFSWithADir(t *testing.T) {
