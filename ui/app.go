@@ -35,7 +35,8 @@ type Options struct {
 type Option func(*Options)
 
 // WithHotReload reloads the .goi file when it changes on disk. It is on by
-// default; turn it off for a build that ships next to no design files.
+// default; goi build adds the nohotreload tag to turn it off in a shipped
+// binary, and this option overrides either default.
 func WithHotReload(on bool) Option { return func(o *Options) { o.HotReload = on } }
 
 // WithAssets loads the design from fsys instead of the ui directory in
@@ -225,7 +226,7 @@ func newHeadlessApp() *App { return &App{vsync: true, debugUI: debugUI()} }
 // Bind afterwards. WithAssets loads an embedded design instead.
 func (a *App) LoadWindow(entry string, opts ...Option) (*Window, error) {
 	start := time.Now()
-	o := Options{Width: 480, Height: 320, HotReload: true}
+	o := Options{Width: 480, Height: 320, HotReload: defaultHotReload}
 	for _, fn := range opts {
 		fn(&o)
 	}

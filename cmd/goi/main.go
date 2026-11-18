@@ -1,23 +1,29 @@
-// Command goi starts and runs goi projects.
+// Command goi starts, runs and builds goi projects.
 //
-//	goi init example.com/hello
+//	goi init --name myapp --id com.example.myapp --module example.com/myapp
 //	goi run
+//	goi build
 //
-// init writes a module, a cmd/main.go, a goi.yaml and a ui/Main.goi holding a
-// centred hello world. run reads the build flags from goi.yaml and passes them
-// as build tags, with nofakecgo always on and CGO_ENABLED=0 in the environment.
+// init prompts for the values a flag did not give, then writes a module, a
+// cmd/main.go, a goi.yaml and a ui/Main.goi holding a centred hello world. run
+// builds and runs cmd with hot reload on, reading the build flags from goi.yaml.
+// build writes dist/<os>-<arch>/<name> with hot reload off. Both always add
+// nofakecgo and set CGO_ENABLED=0.
 package main
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"unicode"
 
+	"github.com/charmbracelet/huh"
 	"gopkg.in/yaml.v3"
 )
 
@@ -67,17 +73,39 @@ const designSource = `Window {
 }
 `
 
-const configSource = `# Build tags passed to goi run. nofakecgo and CGO_ENABLED=0 are always used.
-# all turns on every optional feature: emoji, svg, mermaid, markdown, code,
-# net and dialog.
-buildFlags: [all]
+// initOptions are the values goi init needs. A flag fills one; whatever is
+// empty is asked for in the terminal.
+type initOptions struct {
+	Name   string
+	ID     string
+	Module string
+	UI     string
+}
 
-# Where LoadWindow finds the design files.
-ui: ui
-`
+// configSource writes goi.yaml. The name and id lead because they name the app;
+// buildFlags and ui follow the settings they belong to.
+func configSource(o initOptions) string {
+	return "# Application name and id, used by goi build and packaging.\n" +
+		"name: " + yamlScalar(o.Name) + "\n" +
+		"id: " + yamlScalar(o.ID) + "\n\n" +
+		"# Build tags passed to goi run and goi build. nofakecgo and\n" +
+		"# CGO_ENABLED=0 are always used; all turns on every optional feature.\n" +
+		"buildFlags: [all]\n\n" +
+		"# Where LoadWindow finds the design files.\n" +
+		"ui: " + yamlScalar(o.UI) + "\n"
+}
 
-// config is goi.yaml. Only the buildFlags list is read today.
+// yamlScalar is one value the way yaml.Marshal writes it, without the newline,
+// so a name with a colon or a quote cannot break the generated file.
+func yamlScalar(s string) string {
+	b, _ := yaml.Marshal(s)
+	return strings.TrimSuffix(string(b), "\n")
+}
+
+// config is goi.yaml. name and buildFlags are read by the commands; id and ui
+// are for the app and LoadWindow.
 type config struct {
+	Name       string   `yaml:"name"`
 	BuildFlags []string `yaml:"buildFlags"`
 }
 
@@ -99,21 +127,25 @@ func run(args []string, stdout, stderr io.Writer) error {
 	}
 	switch args[0] {
 	case "init":
-		if len(args) != 2 || args[1] == "" {
+		opts, err := parseInit(args[1:], stderr)
+		if err != nil {
 			usage(stderr)
-			return errors.New("usage: goi init <go-module-name>")
+			return err
+		}
+		if opts, err = promptInit(opts); err != nil {
+			return err
 		}
 		dir, err := os.Getwd()
 		if err != nil {
 			return err
 		}
-		if err := initProject(dir, args[1], execGo); err != nil {
+		if err := initProject(dir, opts, execGo); err != nil {
 			return err
 		}
 		if err := execGo(dir, []string{"mod", "tidy"}); err != nil {
 			fmt.Fprintln(stderr, "goi: project created, but go mod tidy failed; run it yourself:", err)
 		}
-		fmt.Fprintln(stdout, "goi: created cmd/main.go, goi.yaml and ui/Main.goi")
+		fmt.Fprintf(stdout, "goi: created cmd/main.go, goi.yaml and %s/Main.goi\n", opts.UI)
 		fmt.Fprintln(stdout, "next: goi run")
 		return nil
 	case "run":
@@ -122,6 +154,17 @@ func run(args []string, stdout, stderr io.Writer) error {
 			return errors.New("usage: goi run")
 		}
 		return runProject(".", execRun, stdout, stderr)
+	case "build":
+		if len(args) != 1 {
+			usage(stderr)
+			return errors.New("usage: goi build")
+		}
+		out, err := buildProject(".", execRun, stdout, stderr)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(stdout, "goi: built", out)
+		return nil
 	case "help", "-h", "--help":
 		usage(stdout)
 		return nil
@@ -133,33 +176,113 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 func usage(w io.Writer) {
 	fmt.Fprintln(w, "usage: goi <command>")
-	fmt.Fprintln(w, "  init <go-module-name>  create a project in the current directory")
-	fmt.Fprintln(w, "  run                    run cmd/main.go, using its goi.yaml build flags")
+	fmt.Fprintln(w, "  init [flags]           create a project; missing values are prompted")
+	fmt.Fprintln(w, "  run                    run cmd/main.go with hot reload")
+	fmt.Fprintln(w, "  build                  build dist/<os>-<arch>/<name> without hot reload")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "init flags: --name, --id, --module, --ui")
+}
+
+// parseInit reads the flags. A missing name, id or module is left empty for the
+// prompt; --ui has a default because a project almost always keeps the files in
+// ui/.
+func parseInit(args []string, stderr io.Writer) (initOptions, error) {
+	fs := flag.NewFlagSet("init", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	var opts initOptions
+	fs.StringVar(&opts.Name, "name", "", "application name, also the executable name")
+	fs.StringVar(&opts.ID, "id", "", "reverse-DNS application id")
+	fs.StringVar(&opts.Module, "module", "", "Go module path for go mod init")
+	fs.StringVar(&opts.UI, "ui", "ui", "directory holding the .goi files")
+	if err := fs.Parse(args); err != nil {
+		return opts, err
+	}
+	if fs.NArg() > 0 {
+		return opts, fmt.Errorf("usage: goi init [--name] [--id] [--module] [--ui]")
+	}
+	if opts.UI == "" {
+		opts.UI = "ui"
+	}
+	return opts, nil
+}
+
+// promptInit asks for the values the flags left empty. Nothing is asked when all
+// three are already set, which keeps goi init scriptable.
+func promptInit(opts initOptions) (initOptions, error) {
+	var fields []huh.Field
+	if opts.Name == "" {
+		fields = append(fields, huh.NewInput().
+			Title("Application name").
+			Description("Used as the executable name by goi build.").
+			Placeholder("myapp").
+			Validate(required).
+			Value(&opts.Name))
+	}
+	if opts.ID == "" {
+		fields = append(fields, huh.NewInput().
+			Title("Application id").
+			Description("Reverse-DNS id, e.g. com.example.myapp.").
+			Placeholder("com.example.myapp").
+			Validate(required).
+			Value(&opts.ID))
+	}
+	if opts.Module == "" {
+		fields = append(fields, huh.NewInput().
+			Title("Go module").
+			Description("The module path passed to go mod init.").
+			Placeholder("github.com/you/myapp").
+			Validate(required).
+			Value(&opts.Module))
+	}
+	if len(fields) == 0 {
+		return opts, nil
+	}
+	if err := huh.NewForm(huh.NewGroup(fields...)).Run(); err != nil {
+		return opts, err
+	}
+	return opts, nil
+}
+
+func required(s string) error {
+	if strings.TrimSpace(s) == "" {
+		return errors.New("required")
+	}
+	return nil
 }
 
 // initProject writes the scaffold and initializes the Go module. It refuses to
 // overwrite a file it would create, so a second init cannot eat an app.
-func initProject(dir, module string, goRun commandRunner) error {
-	for _, name := range []string{"go.mod", filepath.Join("cmd", "main.go"), "goi.yaml", filepath.Join("ui", "Main.goi")} {
+func initProject(dir string, opts initOptions, goRun commandRunner) error {
+	opts.Name = strings.TrimSpace(opts.Name)
+	opts.ID = strings.TrimSpace(opts.ID)
+	opts.Module = strings.TrimSpace(opts.Module)
+	opts.UI = strings.TrimSpace(opts.UI)
+	if opts.Name == "" || opts.ID == "" || opts.Module == "" {
+		return errors.New("init needs a name, id and module")
+	}
+	if opts.UI == "" {
+		opts.UI = "ui"
+	}
+	for _, name := range []string{"go.mod", filepath.Join("cmd", "main.go"), "goi.yaml", filepath.Join(opts.UI, "Main.goi")} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
 			return fmt.Errorf("%s already exists", name)
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 	}
-	if err := goRun(dir, []string{"mod", "init", module}); err != nil {
+	if err := goRun(dir, []string{"mod", "init", opts.Module}); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Join(dir, "cmd"), 0o755); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Join(dir, "ui"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, opts.UI), 0o755); err != nil {
 		return err
 	}
 	for name, body := range map[string]string{
-		filepath.Join("cmd", "main.go"): mainSource,
-		"goi.yaml":                      configSource,
-		filepath.Join("ui", "Main.goi"): designSource,
+		filepath.Join("cmd", "main.go"):    mainSource,
+		"goi.yaml":                         configSource(opts),
+		filepath.Join(opts.UI, "Main.goi"): designSource,
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
 			return err
@@ -188,6 +311,48 @@ func runProject(dir string, goRun runFunc, stdout, stderr io.Writer) error {
 	}
 	args = append(args, "./cmd")
 	return goRun(dir, args, stdout, stderr, envWith(os.Environ(), "CGO_ENABLED", "0"))
+}
+
+// buildProject builds cmd into dist/<os>-<arch>/<name>, with the build flags
+// from goi.yaml and nohotreload so the binary does not watch its design files.
+// GOOS and GOARCH choose the target; the host is the default when either is
+// unset.
+func buildProject(dir string, goRun runFunc, stdout, stderr io.Writer) (string, error) {
+	if _, err := os.Stat(filepath.Join(dir, "cmd", "main.go")); err != nil {
+		return "", fmt.Errorf("no cmd/main.go in %s; run goi init first", dir)
+	}
+	cfg, err := loadConfig(dir)
+	if err != nil {
+		return "", err
+	}
+	if cfg.Name == "" {
+		return "", errors.New("goi.yaml has no name; add name: myapp")
+	}
+	if cfg.Name == "." || cfg.Name == ".." || strings.ContainsAny(cfg.Name, `/\`) {
+		return "", fmt.Errorf("goi.yaml name %q is not a file name", cfg.Name)
+	}
+	targetOS := os.Getenv("GOOS")
+	if targetOS == "" {
+		targetOS = runtime.GOOS
+	}
+	targetArch := os.Getenv("GOARCH")
+	if targetArch == "" {
+		targetArch = runtime.GOARCH
+	}
+	name := cfg.Name
+	if targetOS == "windows" {
+		name += ".exe"
+	}
+	out := filepath.Join(dir, "dist", targetOS+"-"+targetArch, name)
+	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+		return "", err
+	}
+	flags := append(append([]string{}, cfg.BuildFlags...), "nohotreload")
+	args := []string{"build", "-tags", strings.Join(buildTags(flags), ","), "-o", out, "./cmd"}
+	if err := goRun(dir, args, stdout, stderr, envWith(os.Environ(), "CGO_ENABLED", "0")); err != nil {
+		return "", err
+	}
+	return out, nil
 }
 
 func loadConfig(dir string) (config, error) {
@@ -242,7 +407,7 @@ func envWith(env []string, key, value string) []string {
 	return append(out, key+"="+value)
 }
 
-// execRun is the real go invocation for runProject.
+// execRun is the real go invocation for runProject and buildProject.
 func execRun(dir string, args []string, stdout, stderr io.Writer, env []string) error {
 	cmd := exec.Command("go", args...)
 	cmd.Dir = dir

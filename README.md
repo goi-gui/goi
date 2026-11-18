@@ -265,15 +265,16 @@ every element.
 
 ```sh
 go install github.com/goi-gui/goi/cmd/goi@latest
-goi init example.com/hello
+goi init --name hello --id com.example.hello --module example.com/hello
 goi run
 ```
 
-`goi init` creates the module, a `cmd/main.go`, a `goi.yaml` and a
-`ui/Main.goi` with a centred hello world; the command loads it through
-`app.LoadWindow("Main.goi")` and hot reload is on by default. `goi run` reads the
-build flags from `goi.yaml`, where `all` is the default; `nofakecgo` and
-`CGO_ENABLED=0` are always applied. See
+`goi init` asks for any value a flag did not give, then creates the module, a
+`cmd/main.go`, a `goi.yaml` and a `ui/Main.goi` with a centred hello world; the
+command loads it through `app.LoadWindow("Main.goi")` and hot reload is on by
+default. `goi run` reads the build flags from `goi.yaml`, where `all` is the
+default; `nofakecgo` and `CGO_ENABLED=0` are always applied. `goi build` writes
+`dist/<os>-<arch>/<name>` with hot reload off. See
 [the CLI guide](https://goi-gui.github.io/guide/cli) for the layout and the
 feature list.
 

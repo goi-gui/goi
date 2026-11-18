@@ -2513,3 +2513,16 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   directory to watch, so `WithAssets` takes the `fs.FS` and hot reload is
   skipped. The CLI's `buildFlags` default to `all` in the same spirit: a new
   project starts with every feature and opts down with `[]`.
+
+- **A build is the same project with hot reload compiled out.** `goi build`
+  writes `dist/<GOOS>-<GOARCH>/<name>` and adds the `nohotreload` tag, which
+  flips `defaultHotReload` in `ui` to false; the source is otherwise the same
+  `cmd/main.go` that `goi run` launches. A runtime switch would have shipped the
+  watcher and its file descriptors anyway, and a separate release entry point
+  would have split development and production. `WithHotReload(true)` still
+  overrides the tag for someone who wants it. The executable name comes from
+  `name` in `goi.yaml` because that is the project's name, not a flag repeated on
+  every build; `GOOS` and `GOARCH` keep their Go meaning. `goi init` asks for the
+  name, id and module with huh only when a flag left them empty, so the bare
+  command is friendly and the flagged one is scriptable; `ui` defaults to `ui`
+  because a path has an obvious default and does not need a prompt.
