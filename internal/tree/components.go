@@ -3,6 +3,7 @@ package tree
 import (
 	"math"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/goi-gui/goi/internal/componentdef"
@@ -107,6 +108,15 @@ type Component struct {
 	SelAnchor int
 	// SelectedIndex for tab bars and navigation.
 	SelectedIndex int
+	// Animation chooses how a navigation indicator moves: slide, fade or none.
+	// Empty means slide.
+	Animation Prop[string]
+	// NavFrom, NavTo, NavStart and NavActive are the live indicator transition.
+	// Input writes them when a destination changes; paint draws it and clears
+	// NavActive at the end.
+	NavFrom, NavTo Node
+	NavStart       time.Duration
+	NavActive      bool
 	// PickerMonth is the month a DatePicker shows, as year*12 + month-1; 0
 	// means "the month of the picked date". PickerField is which half of a
 	// TimePicker is being set: 0 the hour, 1 the minutes.
@@ -766,22 +776,31 @@ func (c *TopAppBar) namedProps() []NamedProp { return c.props("TopAppBar") }
 type NavigationBar struct{ Component }
 
 // Kind implements Node.
-func (*NavigationBar) Kind() string              { return "NavigationBar" }
-func (c *NavigationBar) namedProps() []NamedProp { return c.props("NavigationBar") }
+func (*NavigationBar) Kind() string { return "NavigationBar" }
+func (c *NavigationBar) namedProps() []NamedProp {
+	return append(c.props("NavigationBar"),
+		EnumProp(&c.NodeBase, "animation", DirtyPaint, &c.Animation, componentdef.EnumValues("animation")))
+}
 
 // NavigationRail is the side navigation for medium windows.
 type NavigationRail struct{ Component }
 
 // Kind implements Node.
-func (*NavigationRail) Kind() string              { return "NavigationRail" }
-func (c *NavigationRail) namedProps() []NamedProp { return c.props("NavigationRail") }
+func (*NavigationRail) Kind() string { return "NavigationRail" }
+func (c *NavigationRail) namedProps() []NamedProp {
+	return append(c.props("NavigationRail"),
+		EnumProp(&c.NodeBase, "animation", DirtyPaint, &c.Animation, componentdef.EnumValues("animation")))
+}
 
 // NavigationDrawer is the side panel navigation for expanded windows.
 type NavigationDrawer struct{ Component }
 
 // Kind implements Node.
-func (*NavigationDrawer) Kind() string              { return "NavigationDrawer" }
-func (c *NavigationDrawer) namedProps() []NamedProp { return c.props("NavigationDrawer") }
+func (*NavigationDrawer) Kind() string { return "NavigationDrawer" }
+func (c *NavigationDrawer) namedProps() []NamedProp {
+	return append(c.props("NavigationDrawer"),
+		EnumProp(&c.NodeBase, "animation", DirtyPaint, &c.Animation, componentdef.EnumValues("animation")))
+}
 
 // NavigationItem is one destination in a bar, rail or drawer. Each part has a
 // colour of its own, in both states: the label and the icon read their plain

@@ -1251,3 +1251,92 @@ func TestTextFieldSlotMakesRoomForTheValue(t *testing.T) {
 	}
 	t.Fatalf("no value op:\n%s", l.Dump())
 }
+
+// TestNavigationIndicatorSlides checks the default transition: the band starts
+// on the old destination and reaches the new one, while the item indicators stay
+// out of the way until the animation ends.
+func TestNavigationIndicatorSlides(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window { NavigationRail {
+		id: rail
+		width: 80
+		height: 240
+		NavigationItem { id: a label: "A" leadingIcon: home selected: true }
+		NavigationItem { id: b label: "B" leadingIcon: star }
+	} }`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 400, 400)
+	rail, _ := tr.ByID("rail")
+	a, _ := tr.ByID("a")
+	b, _ := tr.ByID("b")
+	rc := &rail.(*tree.NavigationRail).Component
+	rc.NavFrom, rc.NavTo = a, b
+	rc.NavActive = true
+
+	bandY := func(clock time.Duration) (float32, int) {
+		l := &List{Clock: clock}
+		l.Build(tr, 400, 400)
+		var y float32
+		n := 0
+		for _, op := range l.Ops {
+			if op.Kind == Fill && op.Rect[2] == 56 && op.Rect[3] == 32 {
+				y = op.Rect[1]
+				n++
+			}
+		}
+		return y, n
+	}
+	start, startN := bandY(0)
+	mid, midN := bandY(navIndicatorDuration / 2)
+	if startN != 1 || midN != 1 {
+		t.Fatalf("indicator bands = %d then %d, want one moving band", startN, midN)
+	}
+	if mid <= start {
+		t.Fatalf("indicator did not move: start=%v mid=%v", start, mid)
+	}
+	if _, ok := tr.ByID("b"); !ok {
+		t.Fatal("target item disappeared")
+	}
+	// After the transition the target item paints the band itself.
+	l := &List{Clock: navIndicatorDuration}
+	l.Build(tr, 400, 400)
+	if rc.NavActive {
+		t.Fatal("indicator animation stayed active after its duration")
+	}
+}
+
+// TestNavigationIndicatorFades checks the fade mode: both the old and the new
+// band are painted while the change is in progress.
+func TestNavigationIndicatorFades(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window { NavigationRail {
+		id: rail
+		animation: fade
+		width: 80
+		height: 240
+		NavigationItem { id: a label: "A" leadingIcon: home selected: true }
+		NavigationItem { id: b label: "B" leadingIcon: star }
+	} }`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 400, 400)
+	rail, _ := tr.ByID("rail")
+	a, _ := tr.ByID("a")
+	b, _ := tr.ByID("b")
+	rc := &rail.(*tree.NavigationRail).Component
+	rc.NavFrom, rc.NavTo = a, b
+	rc.NavActive = true
+
+	l := &List{Clock: navIndicatorDuration / 2}
+	l.Build(tr, 400, 400)
+	n := 0
+	for _, op := range l.Ops {
+		if op.Kind == Fill && op.Rect[2] == 56 && op.Rect[3] == 32 {
+			n++
+		}
+	}
+	if n != 2 {
+		t.Fatalf("fade bands = %d, want the old and the new", n)
+	}
+}

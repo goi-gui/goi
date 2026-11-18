@@ -158,3 +158,52 @@ func TestMermaidReleasesAnOffscreenBitmap(t *testing.T) {
 		t.Fatal("the cached bitmap was not reused")
 	}
 }
+
+// TestMermaidThemeChangeReplacesTheBitmap: a theme switch may not keep the old
+// bitmap stretched into the new scheme. The stale pixels are dropped, and the
+// replacement is a fresh render rather than a blurry enlargement.
+func TestMermaidThemeChangeReplacesTheBitmap(t *testing.T) {
+	a, win := reloadApp(t, `Window {
+		Mermaid {
+			id:     chart
+			width:  400
+			height: 240
+			data:   "flowchart LR\n A[Start] --> B[End]"
+		}
+	}`)
+	defer a.closeMermaid()
+	win.tree.SetViewport(600, 400)
+	layout.New(textMeasurer{}).Layout(win.tree.Root, 600, 400)
+	m := MustByID[*Mermaid](win, "chart")
+	a.syncMermaid()
+	wait := func() {
+		deadline := time.Now().Add(60 * time.Second)
+		for m.Data == nil && m.LoadErr == nil && time.Now().Before(deadline) {
+			a.drainPosted()
+			time.Sleep(5 * time.Millisecond)
+		}
+		if m.LoadErr != nil {
+			t.Fatalf("render failed: %v", m.LoadErr)
+		}
+		if m.Data == nil {
+			t.Fatal("no bitmap arrived")
+		}
+	}
+	wait()
+	first := m.Data
+
+	win.tree.Root.Theme.Set("dark")
+	if !a.syncMermaid() {
+		t.Fatal("theme change did not start a replacement render")
+	}
+	if m.Data != nil {
+		t.Fatal("the light bitmap stayed on the node after the theme change")
+	}
+	wait()
+	if m.Data == first {
+		t.Fatal("the old bitmap was reused for the dark scheme")
+	}
+	if m.Attempts != 0 {
+		t.Fatalf("attempts = %d after a successful render, want 0", m.Attempts)
+	}
+}

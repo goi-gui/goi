@@ -343,3 +343,20 @@ func TestImageUVsAreInset(t *testing.T) {
 		t.Fatalf("uv = %v..%v, want %v..%v", inst.Params[2], inst.Misc[0], want0, want1)
 	}
 }
+
+// TestImageAtlasResetsByPixels covers large images: 128 small regions can fit
+// where a couple of full-page diagrams cannot, so the atlas must start over
+// when the pixel budget, not just the region count, is full.
+func TestImageAtlasResetsByPixels(t *testing.T) {
+	at := newTestImageRenderer(64)
+	at.packedPix = maxImageAtlasDim * maxImageAtlasDim * 4 * 3 / 4
+	d := &img.Data{W: 8, H: 8, Pix: make([]byte, 8*8*4)}
+	op := paint.Op{Kind: paint.Bitmap, Src: d, Rect: [4]float32{0, 0, 8, 8}}
+	at.prepare(&paint.List{Ops: []paint.Op{op}})
+	if _, ok := at.regions[at.keyFor(op)]; !ok {
+		t.Fatal("the current image was not repacked after the pixel reset")
+	}
+	if at.packedPix >= maxImageAtlasDim*maxImageAtlasDim*4*3/4 {
+		t.Fatalf("packedPix = %d, want the reset budget", at.packedPix)
+	}
+}

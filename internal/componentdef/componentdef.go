@@ -140,9 +140,9 @@ var props = map[string][]string{
 	"Popover":          {"align"},
 	"Snackbar":         {"label"},
 	"TopAppBar":        {"label", "leadingIcon", "trailingIcon", "filledIcon", "filledLeadingIcon", "filledTrailingIcon"},
-	"NavigationBar":    {"variant"},
-	"NavigationRail":   {},
-	"NavigationDrawer": {"label"},
+	"NavigationBar":    {"variant", "animation"},
+	"NavigationRail":   {"animation"},
+	"NavigationDrawer": {"label", "animation"},
 	"NavigationItem":   {"label", "leadingIcon", "filledIcon", "filledLeadingIcon", "disabled", "selected", "labelColor", "selectedLabelColor", "iconColor", "selectedIconColor", "selectedContainerColor"},
 	"Breadcrumb":       {"separator", "separatorColor", "separatorSize"},
 	"Tabs":             {"variant"},
@@ -350,7 +350,7 @@ func TypeOf(name string) PropType {
 		"innerRadius", "startAngle", "thickness", "zoom",
 		"barRadius", "barGap", "barBorderThickness":
 		return Number
-	case "variant", "crossAxisAlign", "mainAxisAlign", "align", "selectable":
+	case "variant", "animation", "crossAxisAlign", "mainAxisAlign", "align", "selectable":
 		return Enum
 	case "textColor", "gridColor", "color", "lineColor", "fillColor", "highlight", "barBorderColor",
 		"leadingIconColor", "trailingIconColor", "labelColor", "supportingColor",
@@ -413,6 +413,7 @@ var (
 	crossAxisValues       = []string{"start", "center", "end", "stretch"}
 	mainAxisValues        = []string{"start", "center", "end", "spaceBetween", "spaceAround", "spaceEvenly"}
 	tableSelectableValues = []string{"none", "single", "multiple"}
+	navAnimationValues    = []string{"slide", "fade", "none"}
 	variantUnion          = []string{
 		"filled", "tonal", "elevated", "outlined", "text", "plain", "standard",
 		"primary", "secondary", "tertiary", "small", "large", "extended",
@@ -429,6 +430,8 @@ func EnumValues(name string) []string {
 		return alignValues
 	case "mainAxisAlign":
 		return mainAxisValues
+	case "animation":
+		return navAnimationValues
 	}
 	return variantUnion
 }

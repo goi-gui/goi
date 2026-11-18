@@ -12,9 +12,10 @@ type Mermaid struct {
 	IntrinsicW, IntrinsicH float64
 	// RenderedKey and PendingKey are the source and palette a bitmap was made
 	// from and the one being rendered, so a frame can tell a stale result from
-	// the current design.
+	// the current design. Attempts bounds retries after a render fails.
 	RenderedKey string
 	PendingKey  string
+	Attempts    int
 	Loading     bool
 	// LoadErr is a parse or render failure. The node keeps its box, so a bad
 	// source is visible rather than a silent hole.

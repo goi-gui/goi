@@ -49,11 +49,14 @@ type imageRenderer struct {
 	scaled *img.Data
 	// resized is set when the atlas grew, so the texture must be rebuilt.
 	resized bool
-	// packed counts the regions created since the last reset. Regions are never
-	// freed from the texture, so once a map has visited several zooms the atlas
-	// fills with dead tiles and new images are downscaled (blurry) and bleed at
-	// their edges. A reset repacks only the current frame's images.
-	packed int
+	// packed counts the regions created since the last reset, and packedPix is
+	// their pixel area. Regions are never freed from the texture, so once a map
+	// has visited several zooms, or a page has re-rendered diagrams for several
+	// themes, the atlas fills with dead tiles and new images are downscaled
+	// (blurry) and bleed at their edges. A reset repacks only the current
+	// frame's images.
+	packed    int
+	packedPix int
 }
 
 // imageAtlasSoftCap is how many regions may accumulate before a frame with a
@@ -134,7 +137,7 @@ func (t *imageRenderer) prepare(list *paint.List) {
 	// tiles at full resolution; otherwise the shelf fills with tiles from old
 	// zoom levels and later ones are shrunk.
 	seen := make(map[imageKey]struct{}, len(list.Ops))
-	missing := 0
+	missing, missingPix := 0, 0
 	for _, op := range list.Ops {
 		if op.Kind != paint.Bitmap || op.Src == nil {
 			continue
@@ -146,9 +149,14 @@ func (t *imageRenderer) prepare(list *paint.List) {
 		seen[key] = struct{}{}
 		if _, ok := t.regions[key]; !ok {
 			missing++
+			missingPix += key.w * key.h * 4
 		}
 	}
-	if missing > 0 && t.packed+missing > imageAtlasSoftCap {
+	// Large images fill a 4096 atlas long before 128 regions do. Counting bytes
+	// as well is what keeps a page of re-rendered diagrams from pushing later
+	// ones into the downscale path.
+	const atlasPix = maxImageAtlasDim * maxImageAtlasDim * 4
+	if missing > 0 && (t.packed+missing > imageAtlasSoftCap || t.packedPix+missingPix > atlasPix*3/4) {
 		t.reset()
 	}
 	for _, op := range list.Ops {
@@ -177,6 +185,7 @@ func (t *imageRenderer) reset() {
 	t.regions = map[imageKey]imageSlot{}
 	t.shelf = img.Shelf{W: t.w, H: t.h}
 	t.packed = 0
+	t.packedPix = 0
 	clear(t.pix)
 	t.dirty = true
 	t.dirtyY0, t.dirtyY1 = 0, t.h
@@ -316,6 +325,7 @@ func (t *imageRenderer) pack(d *img.Data, key imageKey) (img.Region, bool) {
 	slot := imageSlot{r: r, gen: d.Gen}
 	t.regions[key] = slot
 	t.packed++
+	t.packedPix += r.W * r.H * 4
 	if key.w != w || key.h != h {
 		// The atlas was too full for the requested size: the same shrunken copy
 		// answers that key too, so nothing repacks it every frame.

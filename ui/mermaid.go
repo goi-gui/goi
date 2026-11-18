@@ -14,6 +14,10 @@ import (
 // are opened again. Diagrams are bitmaps, so the cap is in pixels, not entries.
 const mermaidCacheBytes = 64 << 20
 
+// maxMermaidAttempts stops a broken diagram from retrying forever. A timeout is
+// usually transient, so a theme switch or a scroll back can still recover it.
+const maxMermaidAttempts = 3
+
 type mermaidBitmap struct {
 	data *img.Data
 	w, h float64
@@ -71,10 +75,23 @@ func (a *App) syncMermaid() bool {
 			}
 			return
 		}
-		if m.RenderedKey == key && !m.Loading {
+		if m.PendingKey == key {
 			return
 		}
-		if m.PendingKey == key {
+		// A new palette or box makes the old bitmap stale. Drop it instead of
+		// stretching a low-resolution render into the new size; the loading
+		// placeholder keeps the box while the replacement is made.
+		if m.RenderedKey != key {
+			m.RenderedKey = ""
+			m.LoadErr = nil
+			m.Attempts = 0
+			if m.Data != nil {
+				m.Data = nil
+				m.Base().MarkDirty(tree.DirtyPaint)
+				changed = true
+			}
+		}
+		if m.RenderedKey == key && m.LoadErr == nil {
 			return
 		}
 		if bmp, ok := a.mermaidCache[key]; ok {
@@ -82,7 +99,11 @@ func (a *App) syncMermaid() bool {
 			changed = true
 			return
 		}
+		if m.Attempts >= maxMermaidAttempts {
+			return
+		}
 		m.PendingKey, m.Loading, m.LoadErr = key, true, nil
+		m.Attempts++
 		if a.mermaidPending == nil {
 			a.mermaidPending = map[string]bool{}
 		}
@@ -100,6 +121,7 @@ func applyMermaid(m *tree.Mermaid, key string, b mermaidBitmap) {
 	m.Data, m.IntrinsicW, m.IntrinsicH = b.data, b.w, b.h
 	m.RenderedKey, m.PendingKey = key, ""
 	m.Loading, m.LoadErr = false, nil
+	m.Attempts = 0
 	m.Base().MarkDirty(tree.DirtyLayout)
 }
 
@@ -162,6 +184,7 @@ func (a *App) finishMermaid(key string, data *img.Data, w, h float64, err error)
 		if err != nil || data == nil {
 			m.Data, m.IntrinsicW, m.IntrinsicH = nil, 0, 0
 		} else {
+			m.Attempts = 0
 			m.Data, m.IntrinsicW, m.IntrinsicH = data, w, h
 		}
 		m.Base().MarkDirty(tree.DirtyLayout)

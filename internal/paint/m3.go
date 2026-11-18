@@ -1792,6 +1792,7 @@ func (l *List) paintTopAppBar(c *tree.Component, r tree.Rect, clip tree.Rect) {
 // an item nested inside a Column still shows its state.
 func (l *List) paintNavigationBar(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	l.fillRect(r, l.Theme.Colors.SurfaceContainer, 0, 0, 0, clip)
+	l.paintNavIndicator(c, "NavigationBar", clip)
 }
 
 func (l *List) paintNavigationRail(c *tree.Component, r tree.Rect, clip tree.Rect) {
@@ -1799,6 +1800,7 @@ func (l *List) paintNavigationRail(c *tree.Component, r tree.Rect, clip tree.Rec
 	// Surface page, so it sits on SurfaceContainer, and a design that wants a
 	// divider asks for one with borderRightThickness or a Divider.
 	l.fillRect(r, l.Theme.Colors.SurfaceContainer, 0, 0, 0, clip)
+	l.paintNavIndicator(c, "NavigationRail", clip)
 }
 
 func (l *List) paintNavigationDrawer(c *tree.Component, r tree.Rect, clip tree.Rect) {
@@ -1815,6 +1817,7 @@ func (l *List) paintNavigationDrawer(c *tree.Component, r tree.Rect, clip tree.R
 		l.textIn(c.Label.Get(), l.style("titleSmall"), col.OnSurfaceVariant,
 			tree.Rect{X: r.X + 28, Y: r.Y + 16, W: r.W - 56, H: 20}, AlignStart, clip)
 	}
+	l.paintNavIndicator(c, "NavigationDrawer", clip)
 }
 
 // enclosingNav is the nearest navigation container above a node, so an item
@@ -1835,6 +1838,7 @@ func (l *List) paintNavigationItem(c *tree.Component, r tree.Rect, clip tree.Rec
 	col := l.Theme.Colors
 	nav, navComp := enclosingNav(c.Base())
 	selected := c.Selected.Get()
+	animating := navComp != nil && navComp.NavActive
 	ni, _ := c.Node().(*tree.NavigationItem)
 	// A medium bar puts the icon and the label side by side in one pill; the
 	// compact one stacks them under the icon.
@@ -1849,7 +1853,7 @@ func (l *List) paintNavigationItem(c *tree.Component, r tree.Rect, clip tree.Rec
 
 	// The indicator belongs to the item, so it follows the item wherever the
 	// design puts it, and the container only paints its own surface.
-	if selected && !medium {
+	if selected && !medium && !animating {
 		switch nav {
 		case "NavigationDrawer":
 			l.fillRect(r, container, 28, 0, 0, clip)
@@ -1905,7 +1909,7 @@ func (l *List) paintNavigationItem(c *tree.Component, r tree.Rect, clip tree.Rec
 		pillW := content + 32
 		pillX := r.X + (r.W-pillW)/2
 		cy := r.Y + r.H/2
-		if selected {
+		if selected && !animating {
 			l.fillRect(tree.Rect{X: pillX, Y: cy - 16, W: pillW, H: 32}, container, 16, 0, 0, clip)
 		}
 		x := pillX + 16
@@ -1933,6 +1937,116 @@ func (l *List) paintNavigationItem(c *tree.Component, r tree.Rect, clip tree.Rec
 	l.iconInFilled(c.Icon.Get(), 24, disabledAlpha(c, icon), r.X+r.W/2, iconY, clip, filled)
 	l.textIn(c.Label.Get(), l.style("labelMedium"), disabledAlpha(c, label),
 		tree.Rect{X: r.X, Y: labelY, W: r.W, H: 16}, AlignCenter, clip)
+}
+
+const navIndicatorDuration = 180 * time.Millisecond
+
+// paintNavIndicator draws the moving band behind a navigation destination.
+// Items skip their own indicator while NavActive is set, so there is only one
+// band on screen; at the end the target item draws it again.
+func (l *List) paintNavIndicator(c *tree.Component, nav string, clip tree.Rect) {
+	if !c.NavActive || c.NavFrom == nil || c.NavTo == nil {
+		return
+	}
+	mode := c.Animation.Get()
+	if mode == "" {
+		mode = "slide"
+	}
+	if mode == "none" {
+		c.NavActive = false
+		return
+	}
+	p := navProgress(l.Clock, c.NavStart)
+	if p >= 1 {
+		c.NavActive = false
+		return
+	}
+	l.Animating = true
+	from := l.navIndicatorRect(c, nav, c.NavFrom)
+	to := l.navIndicatorRect(c, nav, c.NavTo)
+	radius := navIndicatorRadius(nav)
+	if mode == "fade" {
+		l.fillRect(from, withAlpha(l.navIndicatorColor(c.NavFrom), 1-p), radius, 0, 0, clip)
+		l.fillRect(to, withAlpha(l.navIndicatorColor(c.NavTo), p), radius, 0, 0, clip)
+		return
+	}
+	l.fillRect(lerpRect(from, to, p), l.navIndicatorColor(c.NavTo), radius, 0, 0, clip)
+}
+
+func navProgress(clock, start time.Duration) float64 {
+	if clock <= start {
+		return 0
+	}
+	t := float64(clock-start) / float64(navIndicatorDuration)
+	if t > 1 {
+		t = 1
+	}
+	return 1 - (1-t)*(1-t)*(1-t)
+}
+
+func lerpRect(a, b tree.Rect, t float64) tree.Rect {
+	return tree.Rect{
+		X: a.X + (b.X-a.X)*t,
+		Y: a.Y + (b.Y-a.Y)*t,
+		W: a.W + (b.W-a.W)*t,
+		H: a.H + (b.H-a.H)*t,
+	}
+}
+
+func navIndicatorRadius(nav string) float64 {
+	if nav == "NavigationDrawer" {
+		return 28
+	}
+	return 16
+}
+
+func (l *List) navIndicatorColor(n tree.Node) uint32 {
+	if ni, ok := n.(*tree.NavigationItem); ok {
+		if v := ni.SelectedContainerColor.Get(); v != 0 {
+			return v
+		}
+	}
+	return l.Theme.Colors.SecondaryContainer
+}
+
+func (l *List) navIndicatorRect(c *tree.Component, nav string, n tree.Node) tree.Rect {
+	r := windowRect(n.Base())
+	switch nav {
+	case "NavigationDrawer":
+		return r
+	case "NavigationRail":
+		cx := r.X + r.W/2
+		return tree.Rect{X: cx - 28, Y: r.Y + 4, W: 56, H: 32}
+	default:
+		cx := r.X + r.W/2
+		if variant(c, "compact") == "medium" {
+			item, _ := n.(*tree.NavigationItem)
+			st := l.style("labelMedium")
+			textW := textWidth(l, item.Label.Get(), st)
+			content := textW
+			if item.Icon.Get() != "" {
+				content += 24 + 8
+			}
+			pillW := content + 32
+			return tree.Rect{X: r.X + (r.W-pillW)/2, Y: r.Y + r.H/2 - 16, W: pillW, H: 32}
+		}
+		return tree.Rect{X: cx - 32, Y: r.Y + 12, W: 64, H: 32}
+	}
+}
+
+// windowRect is a node's laid-out box in window coordinates, including the
+// scroll of every ancestor.
+func windowRect(b *tree.NodeBase) tree.Rect {
+	r := b.Bounds()
+	for p := b.Parent(); p != nil; p = p.Base().Parent() {
+		pb := p.Base()
+		r.X += pb.Bounds().X
+		r.Y += pb.Bounds().Y
+		sx, sy := pb.ScrollShift()
+		r.X += sx
+		r.Y += sy
+	}
+	return r
 }
 
 // paintBreadcrumb draws the separator in each gap. The crumbs are the children

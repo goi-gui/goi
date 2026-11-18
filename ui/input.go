@@ -1888,8 +1888,10 @@ func (i *interactor) activateDestination(n tree.Node, c *tree.Component) {
 		return
 	}
 	run := segmentRun(n, "NavigationItem")
+	var from tree.Node
 	for _, sib := range run {
 		if oc := comp(sib); oc != nil && oc != c && oc.Selected.Get() {
+			from = sib
 			oc.Selected.Set(false)
 			oc.Base().MarkDirty(tree.DirtyPaint)
 			oc.Toggle.Emit(false)
@@ -1897,6 +1899,7 @@ func (i *interactor) activateDestination(n tree.Node, c *tree.Component) {
 	}
 	c.Selected.Set(true)
 	c.Toggle.Emit(true)
+	i.startNavAnimation(n, from)
 
 	p := n.Base().Parent()
 	if p == nil || comp(p) == nil {
@@ -1920,6 +1923,43 @@ func (i *interactor) activateDestination(n tree.Node, c *tree.Component) {
 		pc.Base().MarkDirty(tree.DirtyPaint)
 	}
 	pc.Select.Emit(idx)
+}
+
+// startNavAnimation records the indicator transition on the nearest navigation
+// container. Paint reads it; a container with animation: none changes at once.
+func (i *interactor) startNavAnimation(n, from tree.Node) {
+	if from == nil {
+		return
+	}
+	var nav *tree.Component
+	for p := n.Base().Parent(); p != nil; p = p.Base().Parent() {
+		switch p.Kind() {
+		case "NavigationBar", "NavigationRail", "NavigationDrawer":
+			nav = comp(p)
+		}
+		if nav != nil {
+			break
+		}
+	}
+	if nav == nil {
+		return
+	}
+	mode := nav.Animation.Get()
+	if mode == "" {
+		mode = "slide"
+	}
+	if mode == "none" {
+		nav.NavActive = false
+		return
+	}
+	nav.NavFrom, nav.NavTo = from, n
+	nav.NavActive = true
+	if i.app != nil {
+		nav.NavStart = i.app.clock
+	} else {
+		nav.NavStart = 0
+	}
+	nav.Base().MarkDirty(tree.DirtyPaint)
 }
 
 // activateSegment applies the group's mode to the contiguous run of segments

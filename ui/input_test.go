@@ -1784,3 +1784,36 @@ func TestRippleFromAChildBelongsToTheSurface(t *testing.T) {
 		t.Fatal("the row also rippled under a control")
 	}
 }
+
+// TestNavigationAnimationProperty records the transition on the container and
+// honours animation: none.
+func TestNavigationAnimationProperty(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		Column {
+			NavigationRail {
+				id: rail
+				animation: fade
+				NavigationItem { id: one label: "One" leadingIcon: home selected: true }
+				NavigationItem { id: two label: "Two" leadingIcon: star }
+			}
+		}
+	}`, 480, 320)
+	rail := MustByID[*NavigationRail](win, "rail")
+	one, two := MustByID[*NavigationItem](win, "one"), MustByID[*NavigationItem](win, "two")
+
+	click := func(c *NavigationItem) {
+		b := absoluteRect(c)
+		in.MouseDown(b.X+b.W/2, b.Y+b.H/2, 0, false)
+		in.MouseUp(b.X+b.W/2, b.Y+b.H/2, 0)
+	}
+	click(two)
+	if !rail.NavActive || rail.NavFrom != one || rail.NavTo != two {
+		t.Fatalf("animation state = active:%v from:%v to:%v", rail.NavActive, rail.NavFrom, rail.NavTo)
+	}
+
+	rail.Animation.Set("none")
+	click(one)
+	if rail.NavActive {
+		t.Fatal("animation: none still started a transition")
+	}
+}
