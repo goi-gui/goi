@@ -275,6 +275,7 @@ func (a *App) LoadWindow(entry string, opts ...Option) (*Window, error) {
 		}
 	}
 	a.win, a.assets, a.path, a.opts = w, assets, name, o
+	w.noteMissingFonts(tr)
 	a.themes = map[string]*Theme{"light": m3.Light(), "dark": m3.Dark()}
 	// Images resolve against the container above, so this runs after it is set.
 	a.loadImages(tr)

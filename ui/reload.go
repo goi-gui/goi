@@ -83,6 +83,9 @@ func (a *App) applyReload(f *syntax.File) error {
 	}
 	a.loadImages(tr)
 	a.loadMedia(tr)
+	if a.win != nil {
+		a.win.noteMissingFonts(tr)
+	}
 	a.swapTree(tr)
 	logg().Info(logCtx, "ui: hot reload", "file", a.path, "took", time.Since(start).String())
 	return nil

@@ -31,6 +31,11 @@ type Window struct {
 	// the warning is logged once rather than every frame.
 	themeMu       sync.Mutex
 	missingThemes map[string]bool
+
+	// missingFonts is the same for an unknown fontFamily. The painter already
+	// falls back to Roboto; this only says why the design looks different.
+	fontMu       sync.Mutex
+	missingFonts map[string]bool
 }
 
 // DefineTheme registers a scheme under its Name, so a design can select it with
@@ -52,6 +57,43 @@ func (w *Window) DefineTheme(t *Theme) {
 	}
 	w.app.themes[t.Name] = t
 	w.app.markDirty(tree.DirtyPaint)
+}
+
+// noteMissingFonts checks the effective family of every node. A family the app
+// did not register (and not the built-in Roboto) draws with Roboto and gets one
+// warning, so a typo is visible instead of silent.
+func (w *Window) noteMissingFonts(tr *tree.Tree) {
+	if w == nil || w.app == nil || tr == nil {
+		return
+	}
+	for _, n := range tr.All() {
+		family := n.Base().FontFamily()
+		if family == "" || family == "Roboto" {
+			continue
+		}
+		if _, ok := w.app.fonts[family]; ok {
+			continue
+		}
+		if !w.noteMissingFont(family) {
+			continue
+		}
+		logg().Warn(logCtx, "ui: unknown font family, using Roboto",
+			"family", family, "file", w.app.path,
+			"hint", "register it with ui.LoadFont")
+	}
+}
+
+func (w *Window) noteMissingFont(name string) bool {
+	w.fontMu.Lock()
+	defer w.fontMu.Unlock()
+	if w.missingFonts[name] {
+		return false
+	}
+	if w.missingFonts == nil {
+		w.missingFonts = map[string]bool{}
+	}
+	w.missingFonts[name] = true
+	return true
 }
 
 // noteMissingTheme records a name no theme defines and reports whether this is

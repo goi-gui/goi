@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"io/fs"
+	"path/filepath"
 
 	"github.com/goi-gui/goi/internal/render"
 	"github.com/goi-gui/goi/internal/text"
@@ -9,29 +11,40 @@ import (
 )
 
 // LoadFont registers an app font under name, which is the family a design writes
-// as `fontFamily`. A .goi file cannot carry a font, so the Go side hands the
-// bytes over; the design only names them.
+// as `fontFamily`. path is resolved in the same assets directory LoadWindow
+// uses, so a file at assets/fonts/Nunito.ttf is "fonts/Nunito.ttf":
 //
-//	inter, err := os.ReadFile("Inter.ttf")
-//	if err != nil {
-//		return err
-//	}
-//	if err := app.LoadFont("Inter", inter); err != nil {
+//	if err := app.LoadFont("Nunito", "fonts/Nunito.ttf"); err != nil {
 //		return err
 //	}
 //
-//	// Window { fontFamily: "Inter" }            // every text in the window
-//	// Text { text: "Hi" fontFamily: "Inter" }  // one element only
+//	// Window { fontFamily: "Nunito" }            // every text in the window
+//	// Text { text: "Hi" fontFamily: "Nunito" }  // one element only
 //
 // One file serves every weight: a single face cannot vary, so a bold run draws
 // the same outlines as a regular one. A family registered after the window is
 // up takes effect on the next frame.
-func (a *App) LoadFont(name string, data []byte) error {
+func (a *App) LoadFont(name, path string) error {
 	if name == "" {
 		return fmt.Errorf("ui: LoadFont needs a family name")
 	}
-	if len(data) == 0 {
-		return fmt.Errorf("ui: LoadFont(%q): no font data", name)
+	if path == "" {
+		return fmt.Errorf("ui: LoadFont(%q) needs a path", name)
+	}
+	assets := a.assets
+	if assets == nil {
+		assets = registeredAssets()
+	}
+	if assets == nil {
+		dir, err := designDir()
+		if err != nil {
+			return err
+		}
+		assets = dirFS(dir)
+	}
+	data, err := fs.ReadFile(assets, cleanName(filepath.ToSlash(path)))
+	if err != nil {
+		return fmt.Errorf("ui: LoadFont(%q): %w", name, err)
 	}
 	if a.fonts == nil {
 		a.fonts = make(map[string][]byte, 1)
