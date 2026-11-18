@@ -358,7 +358,7 @@ func buildProject(dir, targetOS, targetArch string, goRun runFunc, stdout, stder
 	}
 	flags := append(append([]string{}, cfg.BuildFlags...), "nohotreload")
 	args := []string{"build", "-tags", strings.Join(buildTags(flags), ","),
-		"-trimpath", "-ldflags", "-s -w", "-o", out, pkg}
+		"-trimpath", "-ldflags", buildLdflags(targetOS), "-o", out, pkg}
 	env := envWith(os.Environ(), "CGO_ENABLED", "0")
 	env = envWith(env, "GOOS", targetOS)
 	env = envWith(env, "GOARCH", targetArch)
@@ -366,6 +366,15 @@ func buildProject(dir, targetOS, targetArch string, goRun runFunc, stdout, stder
 		return "", err
 	}
 	return out, nil
+}
+
+// buildLdflags strips the binary and keeps a Windows target out of the console
+// subsystem, so a double-click does not open a terminal.
+func buildLdflags(targetOS string) string {
+	if targetOS == "windows" {
+		return "-s -w -H windowsgui"
+	}
+	return "-s -w"
 }
 
 // buildOutput is dist/<os>-<arch>/<name>, with .exe only on Windows.

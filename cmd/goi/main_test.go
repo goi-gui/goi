@@ -157,7 +157,7 @@ func TestBuildProject(t *testing.T) {
 		t.Fatalf("dir = %q, want %q", gotDir, dir)
 	}
 	wantArgs := []string{"build", "-tags", "nofakecgo,emoji,nohotreload",
-		"-trimpath", "-ldflags", "-s -w", "-o", wantOut, "./cmd"}
+		"-trimpath", "-ldflags", "-s -w -H windowsgui", "-o", wantOut, "./cmd"}
 	if strings.Join(gotArgs, " ") != strings.Join(wantArgs, " ") {
 		t.Fatalf("args = %v, want %v", gotArgs, wantArgs)
 	}
@@ -194,6 +194,15 @@ func TestBuildCommandTargetFlags(t *testing.T) {
 	}
 	if got := envValue(gotEnv, "GOARCH"); got != "arm64" {
 		t.Fatalf("GOARCH = %q, want arm64", got)
+	}
+}
+
+func TestBuildLdflags(t *testing.T) {
+	if got := buildLdflags("linux"); got != "-s -w" {
+		t.Fatalf("linux ldflags = %q, want -s -w", got)
+	}
+	if got := buildLdflags("windows"); got != "-s -w -H windowsgui" {
+		t.Fatalf("windows ldflags = %q, want the GUI subsystem", got)
 	}
 }
 
