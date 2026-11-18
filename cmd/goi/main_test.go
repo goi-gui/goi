@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -134,8 +135,10 @@ func TestInitCommandFlags(t *testing.T) {
 }
 
 func TestBuildProject(t *testing.T) {
-	t.Setenv("GOOS", "linux")
-	t.Setenv("GOARCH", "amd64")
+	// A cross target in the caller env must not change the output: this command
+	// builds for the host.
+	t.Setenv("GOOS", "windows")
+	t.Setenv("GOARCH", "arm64")
 	dir := buildProjectDir(t, "name: myapp\nbuildFlags: [emoji]\n")
 
 	var gotDir string
@@ -147,49 +150,54 @@ func TestBuildProject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantOut := filepath.Join(dir, "dist", "linux-amd64", "myapp")
+	wantOut := filepath.Join(dir, "dist", runtime.GOOS+"-"+runtime.GOARCH, "myapp")
+	if runtime.GOOS == "windows" {
+		wantOut += ".exe"
+	}
 	if out != wantOut {
 		t.Fatalf("out = %q, want %q", out, wantOut)
 	}
 	if gotDir != dir {
 		t.Fatalf("dir = %q, want %q", gotDir, dir)
 	}
-	wantArgs := []string{"build", "-tags", "nofakecgo,emoji,nohotreload", "-o", wantOut, "./cmd"}
+	wantArgs := []string{"build", "-tags", "nofakecgo,emoji,nohotreload",
+		"-trimpath", "-ldflags", "-s -w", "-o", wantOut, "./cmd"}
 	if strings.Join(gotArgs, " ") != strings.Join(wantArgs, " ") {
 		t.Fatalf("args = %v, want %v", gotArgs, wantArgs)
 	}
-	var cgo []string
-	for _, e := range gotEnv {
-		if strings.HasPrefix(e, "CGO_ENABLED=") {
-			cgo = append(cgo, e)
-		}
+	if got := envValue(gotEnv, "CGO_ENABLED"); len(envValues(gotEnv, "CGO_ENABLED")) != 1 || got != "0" {
+		t.Fatalf("CGO_ENABLED = %q in %v, want exactly 0", got, gotEnv)
 	}
-	if len(cgo) != 1 || cgo[0] != "CGO_ENABLED=0" {
-		t.Fatalf("CGO_ENABLED entries = %v, want exactly 0", cgo)
+	if got := envValue(gotEnv, "GOOS"); got != runtime.GOOS {
+		t.Fatalf("GOOS = %q, want %q", got, runtime.GOOS)
+	}
+	if got := envValue(gotEnv, "GOARCH"); got != runtime.GOARCH {
+		t.Fatalf("GOARCH = %q, want %q", got, runtime.GOARCH)
 	}
 	if _, err := os.Stat(filepath.Dir(wantOut)); err != nil {
 		t.Fatalf("output directory was not created: %v", err)
 	}
 }
 
-func TestBuildProjectAddsExeForWindows(t *testing.T) {
-	t.Setenv("GOOS", "windows")
-	t.Setenv("GOARCH", "arm64")
-	dir := buildProjectDir(t, "name: myapp\nbuildFlags: [all]\n")
-
-	out, err := buildProject(dir, func(string, []string, io.Writer, io.Writer, []string) error { return nil }, io.Discard, io.Discard)
-	if err != nil {
-		t.Fatal(err)
+func TestBuildOutput(t *testing.T) {
+	dir := t.TempDir()
+	cases := []struct {
+		os, arch, name, want string
+	}{
+		{"linux", "amd64", "myapp", "myapp"},
+		{"windows", "amd64", "myapp", "myapp.exe"},
+		{"windows", "arm64", "myapp.exe", "myapp.exe"},
 	}
-	want := filepath.Join(dir, "dist", "windows-arm64", "myapp.exe")
-	if out != want {
-		t.Fatalf("out = %q, want %q", out, want)
+	for _, c := range cases {
+		got := buildOutput(dir, c.os, c.arch, c.name)
+		want := filepath.Join(dir, "dist", c.os+"-"+c.arch, c.want)
+		if got != want {
+			t.Errorf("buildOutput(%s/%s, %q) = %q, want %q", c.os, c.arch, c.name, got, want)
+		}
 	}
 }
 
 func TestBuildProjectNeedsAName(t *testing.T) {
-	t.Setenv("GOOS", "linux")
-	t.Setenv("GOARCH", "amd64")
 	dir := buildProjectDir(t, "buildFlags: [all]\n")
 
 	_, err := buildProject(dir, func(string, []string, io.Writer, io.Writer, []string) error { return nil }, io.Discard, io.Discard)
@@ -215,6 +223,7 @@ func buildProjectDir(t *testing.T, config string) string {
 }
 
 func TestRunProjectUsesBuildFlagsAndEnvironment(t *testing.T) {
+	t.Setenv("GOI_TEST_ENV", "kept")
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "cmd"), 0o755); err != nil {
 		t.Fatal(err)
@@ -250,6 +259,28 @@ func TestRunProjectUsesBuildFlagsAndEnvironment(t *testing.T) {
 	if len(cgo) != 1 || cgo[0] != "CGO_ENABLED=0" {
 		t.Fatalf("CGO_ENABLED entries = %v, want exactly 0", cgo)
 	}
+	if got := envValue(gotEnv, "GOI_TEST_ENV"); got != "kept" {
+		t.Fatalf("GOI_TEST_ENV = %q, want the caller's value", got)
+	}
+}
+
+// envValue is the last value of key in env, or "".
+func envValue(env []string, key string) string {
+	values := envValues(env, key)
+	if len(values) == 0 {
+		return ""
+	}
+	return values[len(values)-1]
+}
+
+func envValues(env []string, key string) []string {
+	var out []string
+	for _, e := range env {
+		if k, v, ok := strings.Cut(e, "="); ok && strings.EqualFold(k, key) {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func TestLoadConfigDefaultsToAll(t *testing.T) {

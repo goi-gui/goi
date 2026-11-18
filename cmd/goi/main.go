@@ -308,13 +308,14 @@ func runProject(dir string, goRun runFunc, stdout, stderr io.Writer) error {
 		args = append(args, "-tags", strings.Join(tags, ","))
 	}
 	args = append(args, pkg)
+	// Everything the caller exported reaches go; only CGO_ENABLED is replaced.
 	return goRun(dir, args, stdout, stderr, envWith(os.Environ(), "CGO_ENABLED", "0"))
 }
 
-// buildProject builds the entrypoint package into dist/<os>-<arch>/<name>, with
-// the build flags from goi.yaml and nohotreload so the binary does not watch its
-// design files. GOOS and GOARCH choose the target; the host is the default when
-// either is unset.
+// buildProject builds the entrypoint package for the running operating system
+// into dist/<os>-<arch>/<name>, with the build flags from goi.yaml and
+// nohotreload so the binary does not watch its design files. A GOOS or GOARCH
+// from the caller is ignored: this command targets the host.
 func buildProject(dir string, goRun runFunc, stdout, stderr io.Writer) (string, error) {
 	cfg, err := loadConfig(dir)
 	if err != nil {
@@ -330,28 +331,28 @@ func buildProject(dir string, goRun runFunc, stdout, stderr io.Writer) (string, 
 	if cfg.Name == "." || cfg.Name == ".." || strings.ContainsAny(cfg.Name, `/\`) {
 		return "", fmt.Errorf("goi.yaml name %q is not a file name", cfg.Name)
 	}
-	targetOS := os.Getenv("GOOS")
-	if targetOS == "" {
-		targetOS = runtime.GOOS
-	}
-	targetArch := os.Getenv("GOARCH")
-	if targetArch == "" {
-		targetArch = runtime.GOARCH
-	}
-	name := cfg.Name
-	if targetOS == "windows" && !strings.HasSuffix(name, ".exe") {
-		name += ".exe"
-	}
-	out := filepath.Join(dir, "dist", targetOS+"-"+targetArch, name)
+	out := buildOutput(dir, runtime.GOOS, runtime.GOARCH, cfg.Name)
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 		return "", err
 	}
 	flags := append(append([]string{}, cfg.BuildFlags...), "nohotreload")
-	args := []string{"build", "-tags", strings.Join(buildTags(flags), ","), "-o", out, pkg}
-	if err := goRun(dir, args, stdout, stderr, envWith(os.Environ(), "CGO_ENABLED", "0")); err != nil {
+	args := []string{"build", "-tags", strings.Join(buildTags(flags), ","),
+		"-trimpath", "-ldflags", "-s -w", "-o", out, pkg}
+	env := envWith(os.Environ(), "CGO_ENABLED", "0")
+	env = envWith(env, "GOOS", runtime.GOOS)
+	env = envWith(env, "GOARCH", runtime.GOARCH)
+	if err := goRun(dir, args, stdout, stderr, env); err != nil {
 		return "", err
 	}
 	return out, nil
+}
+
+// buildOutput is dist/<os>-<arch>/<name>, with .exe only on Windows.
+func buildOutput(dir, targetOS, targetArch, name string) string {
+	if targetOS == "windows" && !strings.HasSuffix(name, ".exe") {
+		name += ".exe"
+	}
+	return filepath.Join(dir, "dist", targetOS+"-"+targetArch, name)
 }
 
 func loadConfig(dir string) (config, error) {
