@@ -9,6 +9,27 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// newSetupCmd installs the Go-side CLI tools a goi project uses. The project's
+// dependency is not touched: that is goi update's job.
+func newSetupCmd(goRun runFunc) *cobra.Command {
+	return &cobra.Command{
+		Use:   "setup",
+		Short: "install goipls and goifmt",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			for _, name := range []string{"goipls", "goifmt"} {
+				fmt.Fprintln(cmd.OutOrStdout(), "goi: installing", name)
+				args := []string{"install", "github.com/goi-gui/goi/cmd/" + name + "@latest"}
+				if err := goRun(".", args, cmd.OutOrStdout(), cmd.ErrOrStderr(), os.Environ()); err != nil {
+					return fmt.Errorf("install %s: %w", name, err)
+				}
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "goi: installed goipls and goifmt")
+			return nil
+		},
+	}
+}
+
 // newUpdateCmd updates the project's goi dependency and the two tools that go
 // with it. goi itself is a separate install: `go install .../cmd/goi@latest`.
 func newUpdateCmd(goRun runFunc) *cobra.Command {

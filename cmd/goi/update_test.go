@@ -8,6 +8,32 @@ import (
 	"testing"
 )
 
+func TestSetupCommand(t *testing.T) {
+	var calls [][]string
+	cmd := newSetupCmd(func(_ string, args []string, _, _ io.Writer, _ []string) error {
+		calls = append(calls, args)
+		return nil
+	})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	want := [][]string{
+		{"install", "github.com/goi-gui/goi/cmd/goipls@latest"},
+		{"install", "github.com/goi-gui/goi/cmd/goifmt@latest"},
+	}
+	if len(calls) != len(want) {
+		t.Fatalf("calls = %v, want %v", calls, want)
+	}
+	for i := range want {
+		if strings.Join(calls[i], " ") != strings.Join(want[i], " ") {
+			t.Fatalf("call %d = %v, want %v", i, calls[i], want[i])
+		}
+	}
+}
+
 func TestUpdateCommand(t *testing.T) {
 	var calls [][]string
 	cmd := newUpdateCmd(func(_ string, args []string, _, _ io.Writer, _ []string) error {
