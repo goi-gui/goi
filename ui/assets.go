@@ -54,18 +54,20 @@ func (e *loadError) Error() string {
 // sourceDirs lists the directories that hold the files of a bundle, so the
 // watcher can cover all of them.
 func sourceDirs(b *asset.Bundle, fsys fs.FS) []string {
-	root, ok := fsys.(interface{ Dir() string })
+	roots, ok := designRoots(fsys)
 	if !ok {
 		return nil
 	}
-	base := filepath.FromSlash(root.Dir())
 	seen := map[string]bool{}
 	var out []string
-	for _, name := range b.Files {
-		dir := filepath.Join(base, filepath.FromSlash(path.Dir(name)))
-		if !seen[dir] {
-			seen[dir] = true
-			out = append(out, dir)
+	for _, root := range roots {
+		base := filepath.FromSlash(root)
+		for _, name := range b.Files {
+			dir := filepath.Join(base, filepath.FromSlash(path.Dir(name)))
+			if !seen[dir] {
+				seen[dir] = true
+				out = append(out, dir)
+			}
 		}
 	}
 	return out
@@ -78,13 +80,16 @@ func watchDirs(root string) []string {
 	return []string{root, filepath.Join(root, filepath.FromSlash(i18n.Dir))}
 }
 
-// watchRoot reports the directory a design lives in, or "" when the FS cannot be
-// watched. os.DirFS hides its path, which is why ui.DirFS exists.
-func watchRoot(fsys fs.FS) (string, bool) {
-	if d, ok := fsys.(interface{ Dir() string }); ok {
-		return d.Dir(), true
+// designRoots reports every directory a design container lives in. os.DirFS
+// hides its path, which is why ui.DirFS exists.
+func designRoots(fsys fs.FS) ([]string, bool) {
+	if d, ok := fsys.(interface{ Dirs() []string }); ok {
+		return d.Dirs(), true
 	}
-	return "", false
+	if d, ok := fsys.(interface{ Dir() string }); ok {
+		return []string{d.Dir()}, true
+	}
+	return nil, false
 }
 
 // cleanName normalises a path for fs.FS: slash-separated, no leading slash.

@@ -20,11 +20,11 @@ func TestInitProjectWritesTheScaffold(t *testing.T) {
 	if len(calls) != 1 || calls[0][1] != "mod" || calls[0][2] != "init" || calls[0][3] != "example.com/hello" {
 		t.Fatalf("go calls = %v", calls)
 	}
-	main, err := os.ReadFile(filepath.Join(dir, "main.go"))
+	main, err := os.ReadFile(filepath.Join(dir, "cmd", "main.go"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`ui.DirFS("ui")`, `"Main.goi"`, "WithHotReload(true)"} {
+	for _, want := range []string{"LoadWindowFromConfig()"} {
 		if !strings.Contains(string(main), want) {
 			t.Errorf("main.go lacks %q:\n%s", want, main)
 		}
@@ -43,20 +43,36 @@ func TestInitProjectWritesTheScaffold(t *testing.T) {
 	if len(cfg.Extensions) != 0 {
 		t.Fatalf("extensions = %v, want empty", cfg.Extensions)
 	}
+	raw, err := os.ReadFile(filepath.Join(dir, "goi.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "ui: [ui]") || !strings.Contains(string(raw), "entry: Main.goi") {
+		t.Fatalf("goi.yaml lacks the design settings:\n%s", raw)
+	}
 }
 
 func TestInitProjectRefusesToOverwrite(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("keep"), 0o644); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "cmd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "cmd", "main.go"), []byte("keep"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := initProject(dir, "example.com/hello", func(string, []string) error { return nil }); err == nil {
-		t.Fatal("init overwrote an existing main.go")
+		t.Fatal("init overwrote an existing cmd/main.go")
 	}
 }
 
 func TestRunProjectUsesExtensionsAndEnvironment(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "cmd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "cmd", "main.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(dir, "goi.yaml"), []byte("extensions: [emoji, \"svg net\"]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +88,7 @@ func TestRunProjectUsesExtensionsAndEnvironment(t *testing.T) {
 	if gotDir != dir {
 		t.Fatalf("dir = %q, want %q", gotDir, dir)
 	}
-	wantArgs := []string{"run", "-tags", "nofakecgo,emoji,svg,net", "."}
+	wantArgs := []string{"run", "-tags", "nofakecgo,emoji,svg,net", "./cmd"}
 	if strings.Join(gotArgs, " ") != strings.Join(wantArgs, " ") {
 		t.Fatalf("args = %v, want %v", gotArgs, wantArgs)
 	}
@@ -95,7 +111,14 @@ func TestBuildTagsDedupesAndSplits(t *testing.T) {
 }
 
 func TestRunProjectNeedsGoiYAML(t *testing.T) {
-	err := runProject(t.TempDir(), func(string, []string, io.Writer, io.Writer, []string) error { return nil }, io.Discard, io.Discard)
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "cmd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "cmd", "main.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := runProject(dir, func(string, []string, io.Writer, io.Writer, []string) error { return nil }, io.Discard, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "goi.yaml") {
 		t.Fatalf("err = %v, want a goi.yaml hint", err)
 	}

@@ -38,7 +38,7 @@ func main() {
 	}
 	defer app.Close()
 
-	if _, err := app.LoadWindow(ui.DirFS("ui"), "Main.goi", ui.WithHotReload(true)); err != nil {
+	if _, err := app.LoadWindowFromConfig(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -70,6 +70,10 @@ const designSource = `Window {
 const configSource = `# Feature tags passed to goi run. nofakecgo and CGO_ENABLED=0 are always used.
 # Add emoji, svg, mermaid, markdown, code, net, dialog, or all.
 extensions: []
+
+# Where LoadWindowFromConfig finds the design and which file is the entry.
+ui: [ui]
+entry: Main.goi
 `
 
 // config is goi.yaml. Only the extensions list is read today.
@@ -109,19 +113,15 @@ func run(args []string, stdout, stderr io.Writer) error {
 		if err := execGo(dir, []string{"mod", "tidy"}); err != nil {
 			fmt.Fprintln(stderr, "goi: project created, but go mod tidy failed; run it yourself:", err)
 		}
-		fmt.Fprintln(stdout, "goi: created main.go, goi.yaml and ui/Main.goi")
-		fmt.Fprintln(stdout, "next: goi run .")
+		fmt.Fprintln(stdout, "goi: created cmd/main.go, goi.yaml and ui/Main.goi")
+		fmt.Fprintln(stdout, "next: goi run")
 		return nil
 	case "run":
-		if len(args) > 2 {
+		if len(args) != 1 {
 			usage(stderr)
-			return errors.New("usage: goi run [path]")
+			return errors.New("usage: goi run")
 		}
-		path := "."
-		if len(args) == 2 {
-			path = args[1]
-		}
-		return runProject(path, execRun, stdout, stderr)
+		return runProject(".", execRun, stdout, stderr)
 	case "help", "-h", "--help":
 		usage(stdout)
 		return nil
@@ -134,13 +134,13 @@ func run(args []string, stdout, stderr io.Writer) error {
 func usage(w io.Writer) {
 	fmt.Fprintln(w, "usage: goi <command>")
 	fmt.Fprintln(w, "  init <go-module-name>  create a project in the current directory")
-	fmt.Fprintln(w, "  run [path]             run a project, using its goi.yaml extensions")
+	fmt.Fprintln(w, "  run                    run cmd/main.go, using its goi.yaml extensions")
 }
 
 // initProject writes the scaffold and initializes the Go module. It refuses to
 // overwrite a file it would create, so a second init cannot eat an app.
 func initProject(dir, module string, goRun commandRunner) error {
-	for _, name := range []string{"go.mod", "main.go", "goi.yaml", filepath.Join("ui", "Main.goi")} {
+	for _, name := range []string{"go.mod", filepath.Join("cmd", "main.go"), "goi.yaml", filepath.Join("ui", "Main.goi")} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
 			return fmt.Errorf("%s already exists", name)
 		} else if !errors.Is(err, os.ErrNotExist) {
@@ -150,11 +150,14 @@ func initProject(dir, module string, goRun commandRunner) error {
 	if err := goRun(dir, []string{"mod", "init", module}); err != nil {
 		return err
 	}
+	if err := os.MkdirAll(filepath.Join(dir, "cmd"), 0o755); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Join(dir, "ui"), 0o755); err != nil {
 		return err
 	}
 	for name, body := range map[string]string{
-		"main.go":                       mainSource,
+		filepath.Join("cmd", "main.go"): mainSource,
 		"goi.yaml":                      configSource,
 		filepath.Join("ui", "Main.goi"): designSource,
 	} {
@@ -169,12 +172,11 @@ func initProject(dir, module string, goRun commandRunner) error {
 // value so tests can inspect the invocation without spawning a compiler.
 type runFunc func(dir string, args []string, stdout, stderr io.Writer, env []string) error
 
-// runProject loads goi.yaml beside the project and runs the Go package (or the
-// file, when path names one) with the feature tags it lists.
-func runProject(path string, goRun runFunc, stdout, stderr io.Writer) error {
-	dir, target, err := projectPath(path)
-	if err != nil {
-		return err
+// runProject loads goi.yaml from the project and runs cmd with the feature tags
+// it lists.
+func runProject(dir string, goRun runFunc, stdout, stderr io.Writer) error {
+	if _, err := os.Stat(filepath.Join(dir, "cmd", "main.go")); err != nil {
+		return fmt.Errorf("no cmd/main.go in %s; run goi init first", dir)
 	}
 	cfg, err := loadConfig(dir)
 	if err != nil {
@@ -184,28 +186,8 @@ func runProject(path string, goRun runFunc, stdout, stderr io.Writer) error {
 	if tags := buildTags(cfg.Extensions); len(tags) > 0 {
 		args = append(args, "-tags", strings.Join(tags, ","))
 	}
-	if target != "" {
-		args = append(args, target)
-	} else {
-		args = append(args, ".")
-	}
+	args = append(args, "./cmd")
 	return goRun(dir, args, stdout, stderr, envWith(os.Environ(), "CGO_ENABLED", "0"))
-}
-
-// projectPath turns a project directory or a .go file into the directory a
-// config lives in and the target go run should receive.
-func projectPath(path string) (dir, target string, err error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return "", "", err
-	}
-	if info.IsDir() {
-		return path, "", nil
-	}
-	if filepath.Ext(path) != ".go" {
-		return "", "", fmt.Errorf("%s is not a directory or a .go file", path)
-	}
-	return filepath.Dir(path), filepath.Base(path), nil
 }
 
 func loadConfig(dir string) (config, error) {

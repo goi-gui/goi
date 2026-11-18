@@ -266,11 +266,12 @@ every element.
 ```sh
 go install github.com/goi-gui/goi/cmd/goi@latest
 goi init example.com/hello
-goi run .
+goi run
 ```
 
-`goi init` creates the module, a `main.go`, a `goi.yaml` and a `ui/Main.goi`
-with a centred hello world. `goi run` reads the optional feature tags from
+`goi init` creates the module, a `cmd/main.go`, a `goi.yaml` and a
+`ui/Main.goi` with a centred hello world; the command loads it through
+`app.LoadWindowFromConfig()` and turns hot reload on. `goi run` reads the optional feature tags from
 `goi.yaml`; `nofakecgo` and `CGO_ENABLED=0` are always applied. See
 [the CLI guide](https://goi-gui.github.io/guide/cli) for the layout and the
 extension list.
