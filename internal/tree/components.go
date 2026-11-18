@@ -117,6 +117,9 @@ type Component struct {
 	NavFrom, NavTo Node
 	NavStart       time.Duration
 	NavActive      bool
+	// NavPosed marks that paint has seen the first frame of the transition, so
+	// a click after an idle period starts at zero instead of part-way through.
+	NavPosed bool
 	// PickerMonth is the month a DatePicker shows, as year*12 + month-1; 0
 	// means "the month of the picked date". PickerField is which half of a
 	// TimePicker is being set: 0 the hour, 1 the minutes.

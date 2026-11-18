@@ -1939,7 +1939,7 @@ func (l *List) paintNavigationItem(c *tree.Component, r tree.Rect, clip tree.Rec
 		tree.Rect{X: r.X, Y: labelY, W: r.W, H: 16}, AlignCenter, clip)
 }
 
-const navIndicatorDuration = 180 * time.Millisecond
+const navIndicatorDuration = 250 * time.Millisecond
 
 // paintNavIndicator draws the moving band behind a navigation destination.
 // Items skip their own indicator while NavActive is set, so there is only one
@@ -1956,8 +1956,15 @@ func (l *List) paintNavIndicator(c *tree.Component, nav string, clip tree.Rect) 
 		c.NavActive = false
 		return
 	}
-	p := navProgress(l.Clock, c.NavStart)
-	if p >= 1 {
+	if !c.NavPosed {
+		// Start on the first painted frame. A click after an idle wake can move
+		// the frame clock by the idle time before the first paint, which would
+		// otherwise skip most of the transition.
+		c.NavStart = l.Clock
+		c.NavPosed = true
+	}
+	t := navProgress(l.Clock, c.NavStart)
+	if t >= 1 {
 		c.NavActive = false
 		return
 	}
@@ -1966,13 +1973,17 @@ func (l *List) paintNavIndicator(c *tree.Component, nav string, clip tree.Rect) 
 	to := l.navIndicatorRect(c, nav, c.NavTo)
 	radius := navIndicatorRadius(nav)
 	if mode == "fade" {
-		l.fillRect(from, withAlpha(l.navIndicatorColor(c.NavFrom), 1-p), radius, 0, 0, clip)
-		l.fillRect(to, withAlpha(l.navIndicatorColor(c.NavTo), p), radius, 0, 0, clip)
+		// A crossfade has to spend time at the middle. The slide's ease-out
+		// would already be at ~88% by the half-way frame and read as a cut.
+		l.fillRect(from, withAlpha(l.navIndicatorColor(c.NavFrom), 1-t), radius, 0, 0, clip)
+		l.fillRect(to, withAlpha(l.navIndicatorColor(c.NavTo), t), radius, 0, 0, clip)
 		return
 	}
-	l.fillRect(lerpRect(from, to, p), l.navIndicatorColor(c.NavTo), radius, 0, 0, clip)
+	l.fillRect(lerpRect(from, to, navEase(t)), l.navIndicatorColor(c.NavTo), radius, 0, 0, clip)
 }
 
+// navProgress is linear time through the indicator transition. Fade uses it
+// directly; slide shapes it with navEase.
 func navProgress(clock, start time.Duration) float64 {
 	if clock <= start {
 		return 0
@@ -1981,8 +1992,10 @@ func navProgress(clock, start time.Duration) float64 {
 	if t > 1 {
 		t = 1
 	}
-	return 1 - (1-t)*(1-t)*(1-t)
+	return t
 }
+
+func navEase(t float64) float64 { return 1 - (1-t)*(1-t)*(1-t) }
 
 func lerpRect(a, b tree.Rect, t float64) tree.Rect {
 	return tree.Rect{

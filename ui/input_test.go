@@ -1817,3 +1817,48 @@ func TestNavigationAnimationProperty(t *testing.T) {
 		t.Fatal("animation: none still started a transition")
 	}
 }
+
+// TestNavigationFadePaintsAfterClick is the whole path: input records the fade
+// and paint draws both bands, then the target item takes over.
+func TestNavigationFadePaintsAfterClick(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		NavigationRail {
+			id: rail
+			animation: fade
+			NavigationItem { id: one label: "One" leadingIcon: home selected: true }
+			NavigationItem { id: two label: "Two" leadingIcon: star }
+		}
+	}`, 480, 320)
+	rail := MustByID[*NavigationRail](win, "rail")
+	two := MustByID[*NavigationItem](win, "two")
+	b := absoluteRect(two)
+	in.MouseDown(b.X+b.W/2, b.Y+b.H/2, 0, false)
+	in.MouseUp(b.X+b.W/2, b.Y+b.H/2, 0)
+
+	bands := func(clock time.Duration) int {
+		l := &paint.List{Clock: clock}
+		l.Build(win.tree, 480, 320)
+		n := 0
+		for _, op := range l.Ops {
+			if op.Kind == paint.Fill && op.Rect[2] == 56 && op.Rect[3] == 32 {
+				n++
+			}
+		}
+		return n
+	}
+	if n := bands(0); n != 2 {
+		t.Fatalf("fade bands at the first frame = %d, want the old and the new", n)
+	}
+	if n := bands(90 * time.Millisecond); n != 2 {
+		t.Fatalf("fade bands mid-transition = %d, want two", n)
+	}
+	if !rail.NavActive {
+		t.Fatal("transition ended before its duration")
+	}
+	if n := bands(250 * time.Millisecond); n != 1 {
+		t.Fatalf("fade bands after the transition = %d, want the target only", n)
+	}
+	if rail.NavActive {
+		t.Fatal("transition stayed active after its duration")
+	}
+}

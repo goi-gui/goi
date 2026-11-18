@@ -1954,6 +1954,7 @@ func (i *interactor) startNavAnimation(n, from tree.Node) {
 	}
 	nav.NavFrom, nav.NavTo = from, n
 	nav.NavActive = true
+	nav.NavPosed = false
 	if i.app != nil {
 		nav.NavStart = i.app.clock
 	} else {

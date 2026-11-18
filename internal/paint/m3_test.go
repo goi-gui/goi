@@ -1273,6 +1273,7 @@ func TestNavigationIndicatorSlides(t *testing.T) {
 	rc := &rail.(*tree.NavigationRail).Component
 	rc.NavFrom, rc.NavTo = a, b
 	rc.NavActive = true
+	rc.NavPosed = true
 
 	bandY := func(clock time.Duration) (float32, int) {
 		l := &List{Clock: clock}
@@ -1327,6 +1328,7 @@ func TestNavigationIndicatorFades(t *testing.T) {
 	rc := &rail.(*tree.NavigationRail).Component
 	rc.NavFrom, rc.NavTo = a, b
 	rc.NavActive = true
+	rc.NavPosed = true
 
 	l := &List{Clock: navIndicatorDuration / 2}
 	l.Build(tr, 400, 400)
