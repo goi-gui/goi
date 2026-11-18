@@ -6,10 +6,10 @@ import (
 	"testing"
 )
 
-// TestDesignDirReadsUI: goi.yaml names the directory the entry is resolved in.
-func TestDesignDirReadsUI(t *testing.T) {
+// TestDesignDirReadsAssets: goi.yaml names the directory the entry is resolved in.
+func TestDesignDirReadsAssets(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "goi.yaml"), []byte("buildFlags: [all]\nui: designs\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "goi.yaml"), []byte("buildFlags: [all]\nassets: designs\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	t.Chdir(dir)
@@ -37,8 +37,8 @@ func TestDesignDirWithoutConfig(t *testing.T) {
 	}
 }
 
-// TestDesignDirDefaultsUI: a config without ui still has a design directory.
-func TestDesignDirDefaultsUI(t *testing.T) {
+// TestDesignDirDefaultsAssets: a config without assets still has a design directory.
+func TestDesignDirDefaultsAssets(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "goi.yaml"), []byte("buildFlags: [all]\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -49,14 +49,14 @@ func TestDesignDirDefaultsUI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "ui" {
-		t.Fatalf("designDir = %q, want ui", got)
+	if got != "assets" {
+		t.Fatalf("designDir = %q, want assets", got)
 	}
 }
 
 func TestDesignDirReportsBadYAML(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "goi.yaml"), []byte("ui: [\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "goi.yaml"), []byte("assets: [\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	t.Chdir(dir)

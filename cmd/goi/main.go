@@ -7,7 +7,8 @@
 //	goi build
 //
 // init prompts for the values a flag did not give, then writes a module, a
-// cmd/main.go, a goi.yaml and a ui/Main.goi holding a centred hello world. run
+// cmd/main.go, a goi.yaml and an assets/ui/Main.goi holding a centred hello
+// world. run
 // runs the entrypoint package with hot reload on, reading the build flags from
 // goi.yaml. build writes dist/<os>-<arch>/<name> from that package with hot
 // reload off. Both always add nofakecgo and set CGO_ENABLED=0.
@@ -46,7 +47,7 @@ func main() {
 	}
 	defer app.Close()
 
-	if _, err := app.LoadWindow("Main.goi"); err != nil {
+	if _, err := app.LoadWindow("ui/Main.goi"); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -81,11 +82,11 @@ type initOptions struct {
 	Name   string
 	ID     string
 	Module string
-	UI     string
+	Assets string
 }
 
 // configSource writes goi.yaml. The name and id lead because they name the app;
-// buildFlags, ui and entrypoint follow the settings they belong to.
+// buildFlags, assets and entrypoint follow the settings they belong to.
 func configSource(o initOptions) string {
 	return "# Application name and id, used by goi build and packaging.\n" +
 		"name: " + yamlScalar(o.Name) + "\n" +
@@ -95,8 +96,8 @@ func configSource(o initOptions) string {
 		"runFlags: [all]\n\n" +
 		"# Build tags passed to goi build.\n" +
 		"buildFlags: [all]\n\n" +
-		"# Where LoadWindow finds the design files.\n" +
-		"ui: " + yamlScalar(o.UI) + "\n\n" +
+		"# Where LoadWindow finds the design files and their assets.\n" +
+		"assets: " + yamlScalar(o.Assets) + "\n\n" +
 		"# Directory goi run and goi build execute.\n" +
 		"entrypoint: cmd\n"
 }
@@ -109,11 +110,11 @@ func yamlScalar(s string) string {
 }
 
 // config is goi.yaml. name, buildFlags and entrypoint are read by the commands;
-// id and ui are for the app and LoadWindow.
+// id and assets are for the app and LoadWindow.
 type config struct {
 	Name       string   `yaml:"name"`
 	Entrypoint string   `yaml:"entrypoint"`
-	UI         string   `yaml:"ui"`
+	Assets     string   `yaml:"assets"`
 	RunFlags   []string `yaml:"runFlags"`
 	BuildFlags []string `yaml:"buildFlags"`
 }
@@ -145,7 +146,7 @@ func newRootCmd(goCmd commandRunner, goRun runFunc) *cobra.Command {
 }
 
 func newInitCmd(goCmd commandRunner) *cobra.Command {
-	opts := initOptions{UI: "ui"}
+	opts := initOptions{Assets: "assets"}
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "create a project in the current directory",
@@ -167,7 +168,7 @@ func newInitCmd(goCmd commandRunner) *cobra.Command {
 				// The files are usable; a missing dependency can be fetched later.
 				fmt.Fprintln(cmd.ErrOrStderr(), "goi: project created, but go mod tidy failed; run it yourself:", err)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "goi: created cmd/main.go, goi.yaml and %s/Main.goi\n", resolved.UI)
+			fmt.Fprintf(cmd.OutOrStdout(), "goi: created cmd/main.go, goi.yaml and %s/ui/Main.goi\n", resolved.Assets)
 			fmt.Fprintln(cmd.OutOrStdout(), "next: goi run")
 			return nil
 		},
@@ -176,7 +177,7 @@ func newInitCmd(goCmd commandRunner) *cobra.Command {
 	f.StringVar(&opts.Name, "name", "", "application name, also the executable name")
 	f.StringVar(&opts.ID, "id", "", "reverse-DNS application id")
 	f.StringVar(&opts.Module, "module", "", "Go module path for go mod init")
-	f.StringVar(&opts.UI, "ui", "ui", "directory holding the .goi files")
+	f.StringVar(&opts.Assets, "assets", "assets", "directory holding the ui files and their assets")
 	return cmd
 }
 
@@ -261,14 +262,14 @@ func initProject(dir string, opts initOptions, goRun commandRunner) error {
 	opts.Name = strings.TrimSpace(opts.Name)
 	opts.ID = strings.TrimSpace(opts.ID)
 	opts.Module = strings.TrimSpace(opts.Module)
-	opts.UI = strings.TrimSpace(opts.UI)
+	opts.Assets = strings.TrimSpace(opts.Assets)
 	if opts.Name == "" || opts.ID == "" || opts.Module == "" {
 		return errors.New("init needs a name, id and module")
 	}
-	if opts.UI == "" {
-		opts.UI = "ui"
+	if opts.Assets == "" {
+		opts.Assets = "assets"
 	}
-	for _, name := range []string{"go.mod", filepath.Join("cmd", "main.go"), "goi.yaml", filepath.Join(opts.UI, "Main.goi")} {
+	for _, name := range []string{"go.mod", filepath.Join("cmd", "main.go"), "goi.yaml", filepath.Join(opts.Assets, "ui", "Main.goi")} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
 			return fmt.Errorf("%s already exists", name)
 		} else if !errors.Is(err, os.ErrNotExist) {
@@ -281,13 +282,13 @@ func initProject(dir string, opts initOptions, goRun commandRunner) error {
 	if err := os.MkdirAll(filepath.Join(dir, "cmd"), 0o755); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Join(dir, opts.UI), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, opts.Assets, "ui"), 0o755); err != nil {
 		return err
 	}
 	for name, body := range map[string]string{
-		filepath.Join("cmd", "main.go"):    mainSource,
-		"goi.yaml":                         configSource(opts),
-		filepath.Join(opts.UI, "Main.goi"): designSource,
+		filepath.Join("cmd", "main.go"): mainSource,
+		"goi.yaml":                      configSource(opts),
+		filepath.Join(opts.Assets, "ui", "Main.goi"): designSource,
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
 			return err
@@ -352,16 +353,16 @@ func buildProject(dir, targetOS, targetArch string, goRun runFunc, stdout, stder
 	if cfg.Name == "." || cfg.Name == ".." || strings.ContainsAny(cfg.Name, `/\`) {
 		return "", fmt.Errorf("goi.yaml name %q is not a file name", cfg.Name)
 	}
-	staged, err := stageBuild(dir, cfg.Entrypoint, cfg.UI)
+	cleanup, err := prepareEmbed(dir, cfg.Entrypoint, cfg.Assets)
 	if err != nil {
 		return "", err
 	}
-	defer os.RemoveAll(staged)
+	defer cleanup()
 	out := buildOutput(dir, targetOS, targetArch, cfg.Name)
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 		return "", err
 	}
-	pkg := "./" + filepath.Base(staged)
+	pkg := "./" + filepath.ToSlash(cfg.Entrypoint)
 	args := []string{"build", "-tags", strings.Join(buildTags(cfg.BuildFlags), ","),
 		"-trimpath", "-ldflags", buildLDFlags(targetOS), "-o", out, pkg}
 	env := envWith(os.Environ(), "CGO_ENABLED", "0")
@@ -417,8 +418,8 @@ func loadConfig(dir string) (config, error) {
 	if c.Entrypoint == "" {
 		c.Entrypoint = "cmd"
 	}
-	if c.UI == "" {
-		c.UI = "ui"
+	if c.Assets == "" {
+		c.Assets = "assets"
 	}
 	return c, nil
 }

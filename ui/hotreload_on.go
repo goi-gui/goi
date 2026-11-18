@@ -2,6 +2,6 @@
 
 package ui
 
-// defaultHotReload is on for development. goi build adds the nohotreload tag so
-// a shipped binary does not watch its design files.
+// defaultHotReload is on for a directory design. An embedded design has no
+// directory to watch, so a built app skips the watcher without a tag.
 const defaultHotReload = true

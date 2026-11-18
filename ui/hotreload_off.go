@@ -2,5 +2,5 @@
 
 package ui
 
-// defaultHotReload is off in a goi build.
+// defaultHotReload is off when the nohotreload tag is given.
 const defaultHotReload = false

@@ -35,8 +35,8 @@ type Options struct {
 type Option func(*Options)
 
 // WithHotReload reloads the .goi file when it changes on disk. It is on by
-// default; goi build adds the nohotreload tag to turn it off in a shipped
-// binary, and this option overrides either default.
+// default for a directory design; a build registered with RegisterAssets has no
+// directory to watch, so it is skipped. This option overrides either default.
 func WithHotReload(on bool) Option { return func(o *Options) { o.HotReload = on } }
 
 // WithAssets loads the design from fsys instead of the ui directory in

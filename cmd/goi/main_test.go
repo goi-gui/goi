@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -14,7 +15,7 @@ import (
 func TestInitProjectWritesTheScaffold(t *testing.T) {
 	dir := t.TempDir()
 	var calls [][]string
-	opts := initOptions{Name: "myapp", ID: "com.example.myapp", Module: "example.com/myapp", UI: "ui"}
+	opts := initOptions{Name: "myapp", ID: "com.example.myapp", Module: "example.com/myapp", Assets: "assets"}
 	if err := initProject(dir, opts, func(d string, args []string) error {
 		calls = append(calls, append([]string{d}, args...))
 		return nil
@@ -28,12 +29,12 @@ func TestInitProjectWritesTheScaffold(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`LoadWindow("Main.goi")`} {
+	for _, want := range []string{`LoadWindow("ui/Main.goi")`} {
 		if !strings.Contains(string(main), want) {
 			t.Errorf("main.go lacks %q:\n%s", want, main)
 		}
 	}
-	design, err := os.ReadFile(filepath.Join(dir, "ui", "Main.goi"))
+	design, err := os.ReadFile(filepath.Join(dir, "assets", "ui", "Main.goi"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +55,7 @@ func TestInitProjectWritesTheScaffold(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"name: myapp", "id: com.example.myapp", "runFlags: [all]", "buildFlags: [all]", "ui: ui", "entrypoint: cmd"} {
+	for _, want := range []string{"name: myapp", "id: com.example.myapp", "runFlags: [all]", "buildFlags: [all]", "assets: assets", "entrypoint: cmd"} {
 		if !strings.Contains(string(raw), want) {
 			t.Errorf("goi.yaml lacks %q:\n%s", want, raw)
 		}
@@ -64,21 +65,21 @@ func TestInitProjectWritesTheScaffold(t *testing.T) {
 	}
 }
 
-func TestInitProjectUsesTheUIDirectory(t *testing.T) {
+func TestInitProjectUsesTheAssetsDirectory(t *testing.T) {
 	dir := t.TempDir()
-	opts := initOptions{Name: "myapp", ID: "com.example.myapp", Module: "example.com/myapp", UI: "designs"}
+	opts := initOptions{Name: "myapp", ID: "com.example.myapp", Module: "example.com/myapp", Assets: "designs"}
 	if err := initProject(dir, opts, func(string, []string) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "designs", "Main.goi")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "designs", "ui", "Main.goi")); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := os.ReadFile(filepath.Join(dir, "goi.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), "ui: designs") {
-		t.Fatalf("goi.yaml lacks the ui flag:\n%s", raw)
+	if !strings.Contains(string(raw), "assets: designs") {
+		t.Fatalf("goi.yaml lacks the assets flag:\n%s", raw)
 	}
 }
 
@@ -97,7 +98,7 @@ func TestInitProjectRefusesToOverwrite(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "cmd", "main.go"), []byte("keep"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	opts := initOptions{Name: "myapp", ID: "com.example.myapp", Module: "example.com/myapp", UI: "ui"}
+	opts := initOptions{Name: "myapp", ID: "com.example.myapp", Module: "example.com/myapp", Assets: "assets"}
 	if err := initProject(dir, opts, func(string, []string) error { return nil }); err == nil {
 		t.Fatal("init overwrote an existing cmd/main.go")
 	}
@@ -118,7 +119,7 @@ func TestInitCommandFlags(t *testing.T) {
 		"--name", "myapp",
 		"--id", "com.example.myapp",
 		"--module", "github.com/me/myapp",
-		"--ui", "designs",
+		"--assets", "designs",
 	})
 	if err := root.Execute(); err != nil {
 		t.Fatal(err)
@@ -129,7 +130,7 @@ func TestInitCommandFlags(t *testing.T) {
 	if calls[1][1] != "mod" || calls[1][2] != "tidy" {
 		t.Fatalf("second go call = %v, want mod tidy", calls[1])
 	}
-	if _, err := os.Stat(filepath.Join(dir, "designs", "Main.goi")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "designs", "ui", "Main.goi")); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -144,16 +145,17 @@ func TestBuildProject(t *testing.T) {
 	var gotArgs, gotEnv []string
 	out, err := buildProject(dir, "windows", "arm64", func(d string, args []string, _, _ io.Writer, env []string) error {
 		gotDir, gotArgs, gotEnv = d, args, env
-		pkg := args[len(args)-1]
-		staged := filepath.Join(d, strings.TrimPrefix(pkg, "./"))
-		if _, err := os.Stat(filepath.Join(staged, "assets", "Main.goi")); err != nil {
-			t.Errorf("design not staged: %v", err)
-		}
-		embed, err := os.ReadFile(filepath.Join(staged, "goi_embed.go"))
+		assets, err := os.ReadFile(filepath.Join(d, "assets", "goi_embed_gen.go"))
 		if err != nil {
-			t.Errorf("embed file missing: %v", err)
+			t.Errorf("assets embed file missing: %v", err)
+		} else if !strings.Contains(string(assets), "//go:embed all:*") {
+			t.Errorf("assets embed file has no go:embed:\n%s", assets)
+		}
+		embed, err := os.ReadFile(filepath.Join(d, "cmd", "goi_embed_gen.go"))
+		if err != nil {
+			t.Errorf("command embed file missing: %v", err)
 		} else if !strings.Contains(string(embed), "ui.RegisterAssets") {
-			t.Errorf("embed file does not register the design:\n%s", embed)
+			t.Errorf("command embed file does not register the design:\n%s", embed)
 		}
 		return nil
 	}, io.Discard, io.Discard)
@@ -168,15 +170,14 @@ func TestBuildProject(t *testing.T) {
 		t.Fatalf("dir = %q, want %q", gotDir, dir)
 	}
 	wantArgs := []string{"build", "-tags", "nofakecgo,emoji",
-		"-trimpath", "-ldflags", "-s -w -H windowsgui", "-o", wantOut}
-	if len(gotArgs) != len(wantArgs)+1 || strings.Join(gotArgs[:len(wantArgs)], " ") != strings.Join(wantArgs, " ") {
-		t.Fatalf("args = %v, want %v <staged package>", gotArgs, wantArgs)
+		"-trimpath", "-ldflags", "-s -w -H windowsgui", "-o", wantOut, "./cmd"}
+	if strings.Join(gotArgs, " ") != strings.Join(wantArgs, " ") {
+		t.Fatalf("args = %v, want %v", gotArgs, wantArgs)
 	}
-	if pkg := gotArgs[len(gotArgs)-1]; !strings.HasPrefix(pkg, "./goi-build-") {
-		t.Fatalf("package = %q, want a staged build package", pkg)
-	}
-	if matches, _ := filepath.Glob(filepath.Join(dir, "goi-build-*")); len(matches) != 0 {
-		t.Fatalf("staged build directories were not cleaned up: %v", matches)
+	for _, file := range []string{"assets/goi_embed_gen.go", "cmd/goi_embed_gen.go"} {
+		if _, err := os.Stat(filepath.Join(dir, file)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("%s was not cleaned up", file)
+		}
 	}
 	if got := envValue(gotEnv, "CGO_ENABLED"); len(envValues(gotEnv, "CGO_ENABLED")) != 1 || got != "0" {
 		t.Fatalf("CGO_ENABLED = %q in %v, want exactly 0", got, gotEnv)
@@ -265,10 +266,16 @@ func buildProjectDir(t *testing.T, config string) string {
 	if err := os.WriteFile(filepath.Join(dir, "cmd", "main.go"), []byte("package main\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(dir, "ui"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "assets", "ui"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "ui", "Main.goi"), []byte("Window { }\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "assets", "ui", "Main.goi"), []byte("Window { }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "assets", "cover.png"), []byte("png"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/app\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "goi.yaml"), []byte(config), 0o644); err != nil {
@@ -364,7 +371,7 @@ func envValues(env []string, key string) []string {
 
 func TestLoadConfigDefaultsToAll(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "goi.yaml"), []byte("ui: ui\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "goi.yaml"), []byte("assets: assets\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := loadConfig(dir)
@@ -380,8 +387,8 @@ func TestLoadConfigDefaultsToAll(t *testing.T) {
 	if cfg.Entrypoint != "cmd" {
 		t.Fatalf("entrypoint = %q, want cmd", cfg.Entrypoint)
 	}
-	if cfg.UI != "ui" {
-		t.Fatalf("ui = %q, want ui", cfg.UI)
+	if cfg.Assets != "assets" {
+		t.Fatalf("assets = %q, want assets", cfg.Assets)
 	}
 }
 
@@ -398,10 +405,13 @@ func TestCommandsUseEntrypoint(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "app", "only-app.txt"), []byte("app\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(dir, "ui"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "assets", "ui"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "ui", "Main.goi"), []byte("Window { }\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "assets", "ui", "Main.goi"), []byte("Window { }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/app\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg := "name: myapp\nentrypoint: app\nbuildFlags: [all]\n"
@@ -424,9 +434,11 @@ func TestCommandsUseEntrypoint(t *testing.T) {
 	stagedApp := false
 	build := func(d string, args []string, _, _ io.Writer, _ []string) error {
 		buildArgs = args
-		staged := filepath.Join(d, strings.TrimPrefix(args[len(args)-1], "./"))
-		_, err := os.Stat(filepath.Join(staged, "only-app.txt"))
+		_, err := os.Stat(filepath.Join(d, "app", "only-app.txt"))
 		stagedApp = err == nil
+		if _, err := os.Stat(filepath.Join(d, "app", "goi_embed_gen.go")); err != nil {
+			t.Errorf("embed file missing from app: %v", err)
+		}
 		return nil
 	}
 	if _, err := buildProject(dir, runtime.GOOS, runtime.GOARCH, build, io.Discard, io.Discard); err != nil {

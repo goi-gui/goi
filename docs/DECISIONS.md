@@ -2554,3 +2554,13 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   commands rather than a package manager abstraction, because that is exactly
   what a goi project needs: the dependency, the language server and the
   formatter.
+
+- **`goi build` embeds the assets directory where it lives.** `go:embed` cannot
+  reach a sibling directory, so the command writes a temporary `goiassets`
+  package file inside `assets` with `//go:embed all:*`, plus a tiny init file in
+  the entrypoint package that registers that `embed.FS` with `ui`. Nothing is
+  copied: the design and its assets stay where they are, and both generated
+  files are removed after the build. `assets` points at the tree, with designs in
+  `assets/ui`, so the entry is `ui/Main.goi` and `goi://` resolves against the
+  assets root. `goi run` still reads the directory, which keeps hot reload
+  automatic; a registered embedded FS has no directory to watch.

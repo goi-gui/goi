@@ -158,7 +158,7 @@ A design can import fragments and pass them values, so a page does not have to b
 one long file.
 
 ```goi
-// ui/Main.goi
+// assets/ui/Main.goi
 
 import Sidebar "./Sidebar.goi"
 
@@ -185,7 +185,7 @@ Window {
 ```
 
 ```goi
-// ui/Sidebar.goi
+// assets/ui/Sidebar.goi
 
 props {
 	title string
@@ -220,15 +220,16 @@ Column {
 }
 ```
 
-`LoadWindow` reads the entry from the `ui` directory in `goi.yaml` and hot
-reload watches every file the design reads:
+`LoadWindow` reads the entry from the `assets` directory in `goi.yaml`; the
+designs live in its `ui/` subdirectory. Hot reload watches every file the design
+reads:
 
 ```go
-win, _ := app.LoadWindow("Main.goi")
+win, _ := app.LoadWindow("ui/Main.goi")
 ```
 
-For a single binary, pass an embedded filesystem instead:
-`app.LoadWindow("Main.goi", ui.WithAssets(assets))`.
+`goi build` embeds the assets directory automatically, so the same call works in
+a shipped binary.
 
 ## Features
 
@@ -272,8 +273,9 @@ goi run
 ```
 
 `goi init` asks for any value a flag did not give, then creates the module, a
-`cmd/main.go`, a `goi.yaml` and a `ui/Main.goi` with a centred hello world; the
-command loads it through `app.LoadWindow("Main.goi")` and hot reload is on by
+`cmd/main.go`, a `goi.yaml` and an `assets/ui/Main.goi` with a centred hello
+world; the command loads it through `app.LoadWindow("ui/Main.goi")` and hot
+reload is on by
 default. `goi run` reads `runFlags` and `goi build` reads `buildFlags` from
 `goi.yaml`, where both default to `all`; `nofakecgo` and `CGO_ENABLED=0` are
 always applied. `goi build` writes

@@ -9,16 +9,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// windowConfig is the part of goi.yaml that names the design directory.
+// windowConfig is the part of goi.yaml that names the assets directory.
 type windowConfig struct {
-	// UI is the directory holding .goi files, relative to goi.yaml.
-	UI string `yaml:"ui"`
+	// Assets is the directory holding the ui files and their assets,
+	// relative to goi.yaml.
+	Assets string `yaml:"assets"`
 }
 
-// designDir reads the ui directory from goi.yaml in the working directory.
+// designDir reads the assets directory from goi.yaml in the working directory.
 // Without a goi.yaml the entry is used as written, so a single-file program
-// needs no config; with one, ui defaults to "ui" and the entry is resolved
-// inside it.
+// needs no config; with one, assets defaults to "assets" and the entry is
+// resolved inside it.
 func designDir() (string, error) {
 	b, err := os.ReadFile("goi.yaml")
 	if errors.Is(err, fs.ErrNotExist) {
@@ -31,8 +32,8 @@ func designDir() (string, error) {
 	if err := yaml.Unmarshal(b, &cfg); err != nil {
 		return "", fmt.Errorf("goi.yaml: %w", err)
 	}
-	if cfg.UI == "" {
-		return "ui", nil
+	if cfg.Assets == "" {
+		return "assets", nil
 	}
-	return cfg.UI, nil
+	return cfg.Assets, nil
 }

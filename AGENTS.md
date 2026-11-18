@@ -19,7 +19,7 @@ CGO_ENABLED=0 go vet -tags "nofakecgo all" ./...
 gofmt -l .                                   # CI fails on any output
 CGO_ENABLED=0 go test -tags "nofakecgo all" ./ui ./internal/syntax ./internal/schema ./internal/layout ./internal/paint ./internal/text ./internal/hotreload ./internal/lsp ./internal/goifmt
 CGO_ENABLED=0 go test -tags "nofakecgo all" ./...  # the platform is purego too
-go run -tags all ./cmd/goicheck -layout -ops ../examples/*/ui/*.goi ../examples/web/*.goi  # headless render check
+go run -tags all ./cmd/goicheck -layout -ops ../examples/*/assets/ui/*.goi  # headless render check
 go run ./cmd/goifmt -l .                                # CI fails on any output
 ```
 
@@ -36,7 +36,7 @@ go run ./cmd/goifmt -l .                                # CI fails on any output
 - The purego platform cross-compiles for Linux, Windows and macOS. There is no
   build tag per platform: `SurfaceHandles` asks SDL which driver it got.
 - The examples are separate modules in `../examples`, next to this checkout.
-  Each is a goi project (`cmd/main.go`, `goi.yaml`, `ui/`), so
+  Each is a goi project (`cmd/main.go`, `goi.yaml`, `assets/ui/`), so
   `make -C ../examples gallery` is `cd gallery && goi run`. They build against
   this tree through a `replace` in their `go.mod`.
 - Golden AST snapshots: `go test ./internal/syntax -run TestGoldenAST -update`.
