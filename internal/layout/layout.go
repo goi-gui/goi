@@ -179,6 +179,8 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 			e.listItemSlots(b, kids, cw, ch, insetL, insetT)
 		case "TextField":
 			e.textFieldSlots(b, kids, cw, ch, insetL, insetT)
+		case "SearchBar":
+			e.searchBarSlots(b, kids, cw, ch, insetL, insetT)
 		case "ButtonGroup", "Row", "Toolbar", "Carousel", "Breadcrumb":
 			e.linear(b, kids, cw, ch, insetL, true, insetT)
 		default:
@@ -269,6 +271,36 @@ func (e *Engine) textFieldSlots(b *tree.NodeBase, kids []*tree.NodeBase, w, h, i
 	}
 	if tf.Trailing.Get() == "" {
 		place(tf.TrailingNode, w-48)
+	}
+}
+
+// searchBarSlots places the bar's $leading and $trailing bodies in the same
+// icon squares the built-in glyphs use. A $leading body replaces the search
+// glyph, and a trailingIcon wins over the trailing body.
+func (e *Engine) searchBarSlots(b *tree.NodeBase, kids []*tree.NodeBase, w, h, insetL, insetT float64) {
+	sb, ok := b.Node().(*tree.SearchBar)
+	if !ok {
+		e.linear(b, kids, w, h, insetL, false, insetT)
+		return
+	}
+	place := func(n tree.Node, x float64) {
+		if n == nil {
+			return
+		}
+		size := minf(40, h)
+		if size < 0 {
+			size = 0
+		}
+		x += insetL
+		if x < insetL {
+			x = insetL
+		}
+		n.Base().SetBounds(tree.Rect{X: x, Y: insetT + (h-size)/2, W: 40, H: size})
+		e.children(n.Base(), 40, size)
+	}
+	place(sb.LeadingNode, 8)
+	if sb.Trailing.Get() == "" {
+		place(sb.TrailingNode, w-48)
 	}
 }
 

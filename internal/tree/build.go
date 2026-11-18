@@ -349,7 +349,7 @@ func (t *Tree) buildSlot(el *syntax.Element, parent *NodeBase, hooks *Hooks) (No
 			a.floats = true
 		}
 		return n, nil
-	case *TextField, *ListItem:
+	case *TextField, *ListItem, *SearchBar:
 		// A row and a field centre whatever they are given in the icon square,
 		// the way the icon it replaces is centred.
 		wrap.Members = append([]syntax.Member{

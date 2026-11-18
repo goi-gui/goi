@@ -188,8 +188,8 @@ var eventDefs = []EventDef{
 	{Name: "onPause", Type: TypeNumber, HasValue: true, Component: true},
 	{Name: "onEnd", Type: TypeNumber, HasValue: true, Component: true},
 	// The pickers' actions; the value is the time or colour the picker holds.
-	{Name: "onCancel", Type: TypeString},
-	{Name: "onOK", Type: TypeString},
+	{Name: "onCancel", Type: TypeString, HasValue: true},
+	{Name: "onOK", Type: TypeString, HasValue: true},
 	// Gestures: a GestureDetector reports them, and they carry no scalar a
 	// design could use, so `event` is not available in their handlers.
 	{Name: "onDoubleTap"},

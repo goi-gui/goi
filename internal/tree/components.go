@@ -548,12 +548,22 @@ func FieldValueIndex(s string, i int, obscure bool) int {
 	return pos
 }
 
-// SearchBar is a rounded search input.
-type SearchBar struct{ Component }
+// SearchBar is a rounded search input. LeadingNode and TrailingNode hold the
+// bodies built from its $leading and $trailing slots; a $leading body replaces
+// the built-in search glyph, and an explicit trailingIcon wins over the slot,
+// the way a list row works.
+type SearchBar struct {
+	Component
+	LeadingNode  Node
+	TrailingNode Node
+}
 
 // Kind implements Node.
 func (*SearchBar) Kind() string              { return "SearchBar" }
 func (c *SearchBar) namedProps() []NamedProp { return c.props("SearchBar") }
+
+// slotNodes exposes the bar's icon-square bodies to the builder.
+func (c *SearchBar) slotNodes() (*Node, *Node) { return &c.LeadingNode, &c.TrailingNode }
 
 // Tooltip is a small label attached to a control.
 type Tooltip struct{ Component }

@@ -189,14 +189,21 @@ func (t *Tree) bindEvent(b *NodeBase, name string, v syntax.Value) error {
 			m.End.On(func(d time.Duration) { t.fire(b, name, call, secs(d)) })
 		}
 	case "onCancel", "onOK":
-		tp, ok := b.node.(*TimePicker)
-		if !ok {
+		switch p := b.node.(type) {
+		case *TimePicker:
+			if name == "onCancel" {
+				p.Cancel.On(func(v string) { t.fire(b, name, call, v) })
+			} else {
+				p.OK.On(func(v string) { t.fire(b, name, call, v) })
+			}
+		case *ColorPicker:
+			if name == "onCancel" {
+				p.Cancel.On(func(v string) { t.fire(b, name, call, v) })
+			} else {
+				p.OK.On(func(v string) { t.fire(b, name, call, v) })
+			}
+		default:
 			return fmt.Errorf("%s does not have %s", b.node.Kind(), name)
-		}
-		if name == "onCancel" {
-			tp.Cancel.On(func(v string) { t.fire(b, name, call, v) })
-		} else {
-			tp.OK.On(func(v string) { t.fire(b, name, call, v) })
 		}
 	case "onDoubleTap", "onLongPress", "onMouseEnter", "onMouseMove", "onMouseLeave",
 		"onPanStart", "onPanUpdate", "onPanEnd":

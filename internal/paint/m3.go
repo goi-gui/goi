@@ -1447,7 +1447,11 @@ func (l *List) paintSearchBar(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	l.fillRect(r, col.SurfaceContainerHigh, radius, 0, 0, clip)
 	fg := disabledAlpha(c, col.OnSurface)
 	hint := col.OnSurfaceVariant
-	l.iconIn("search", 24, hint, r.X+28, r.Y+r.H/2, clip)
+	// A leading body replaces the search glyph; the text still starts at the
+	// same 52dp so the query does not jump when the slot appears.
+	if sb, _ := c.Node().(*tree.SearchBar); sb == nil || sb.LeadingNode == nil {
+		l.iconIn("search", 24, hint, r.X+28, r.Y+r.H/2, clip)
+	}
 	start := r.X + 52
 	style := l.style("bodyLarge")
 	// Same caret-follow scroll as a text field, so a long query does not run

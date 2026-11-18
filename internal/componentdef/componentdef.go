@@ -279,6 +279,7 @@ var slots = map[string][]string{
 	"Popover":   {"popover"},
 	"ListItem":  {"leading", "trailing"},
 	"TextField": {"leading", "trailing"},
+	"SearchBar": {"leading", "trailing"},
 }
 
 // Slots returns the child slots a kind declares, without the `$`.

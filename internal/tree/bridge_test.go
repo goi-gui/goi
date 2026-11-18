@@ -225,3 +225,35 @@ func TestLoopIndexIsAValue(t *testing.T) {
 		t.Fatalf("picked = %v, want 0, 1, 2", picked)
 	}
 }
+
+// TestColorPickerBridgeOK: a design's onOK/onCancel reach the picker's own
+// events, which is how a dialog applies the picked colour.
+func TestColorPickerBridgeOK(t *testing.T) {
+	tr, diag := BuildSource([]byte(`bridge {
+		onColor func(value string)
+		onCancel func(value string)
+	}
+	Window {
+		ColorPicker {
+			id:       picker
+			onOK:     bridge.onColor(event)
+			onCancel: bridge.onCancel(event)
+		}
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	var ok, cancel string
+	if err := tr.SetHandler("onColor", func(v string) { ok = v }); err != nil {
+		t.Fatal(err)
+	}
+	if err := tr.SetHandler("onCancel", func(v string) { cancel = v }); err != nil {
+		t.Fatal(err)
+	}
+	cp := tr.ids["picker"].(*ColorPicker)
+	cp.OK.Emit("#123456")
+	cp.Cancel.Emit("#654321")
+	if ok != "#123456" || cancel != "#654321" {
+		t.Fatalf("ok=%q cancel=%q", ok, cancel)
+	}
+}
