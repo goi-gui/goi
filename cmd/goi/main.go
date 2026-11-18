@@ -1,6 +1,6 @@
 //go:build !js && !wasip1
 
-// Command goi starts, runs and builds goi projects.
+// Command goi starts, runs, builds and checks goi projects.
 //
 //	goi init --name myapp --id com.example.myapp --module example.com/myapp
 //	goi run
@@ -130,13 +130,13 @@ func main() {
 func newRootCmd(goCmd commandRunner, goRun runFunc) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "goi",
-		Short:         "start, run and build goi projects",
+		Short:         "start, run, build and check goi projects",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
 	root.SetOut(os.Stdout)
 	root.SetErr(os.Stderr)
-	root.AddCommand(newInitCmd(goCmd), newRunCmd(goRun), newBuildCmd(goRun))
+	root.AddCommand(newInitCmd(goCmd), newRunCmd(goRun), newBuildCmd(goRun), newUpdateCmd(goRun), newDoctorCmd())
 	return root
 }
 

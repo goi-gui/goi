@@ -2542,3 +2542,15 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   against the design root moved under `ui/`; plain paths stayed next to the app
   and only lost their `examples/` prefix. The browser example keeps its flat
   embed build because `goi run` is a desktop command.
+
+- **goi doctor reports, it does not fail.** A missing optional tool should not
+  make a health check red, and a missing required library is clearer as a row
+  than as a command error. The report names the OS and kernel, the Go toolchain
+  and CGO setting, the goi/goipls/goifmt versions from their build info, the
+  SDL3 runtime library, the Vulkan loader and ICDs, and the optional ffmpeg and
+  git. Library lookup walks the loader paths and the usual install directories,
+  then falls back to `ldconfig -p` on Linux; the framework never links SDL3, so
+  the shared library is what matters. `goi update` stays three explicit go
+  commands rather than a package manager abstraction, because that is exactly
+  what a goi project needs: the dependency, the language server and the
+  formatter.

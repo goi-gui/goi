@@ -274,9 +274,10 @@ goi run
 command loads it through `app.LoadWindow("Main.goi")` and hot reload is on by
 default. `goi run` reads the build flags from `goi.yaml`, where `all` is the
 default; `nofakecgo` and `CGO_ENABLED=0` are always applied. `goi build` writes
-`dist/<os>-<arch>/<name>` with hot reload off. See
-[the CLI guide](https://goi-gui.github.io/guide/cli) for the layout and the
-feature list.
+`dist/<os>-<arch>/<name>` with hot reload off, `goi update` refreshes goi and
+its tools, and `goi doctor` checks Go, SDL3, the GPU backend and the companion
+tools. See [the CLI guide](https://goi-gui.github.io/guide/cli) for the layout
+and the feature list.
 
 ## Building
 
