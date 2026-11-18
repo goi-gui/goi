@@ -105,7 +105,7 @@ func TestLoadFontFamilyReadsWeights(t *testing.T) {
 	t.Chdir(dir)
 
 	a := newHeadlessApp()
-	if err := a.LoadFontFamily("Test", "fonts/Test"); err != nil {
+	if err := a.LoadFontFamily("Test", "fonts/Test-*.ttf"); err != nil {
 		t.Fatal(err)
 	}
 	faces := a.fontFaces["Test"]
@@ -120,6 +120,39 @@ func TestLoadFontFamilyReadsWeights(t *testing.T) {
 		if !seen[want] {
 			t.Fatalf("%q missing from %v", want, seen)
 		}
+	}
+}
+
+func TestLoadFontFamilyMany(t *testing.T) {
+	font, err := os.ReadFile("../internal/text/fonts/noto-color-emoji.ttf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "assets", "fonts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"One-Regular.ttf", "Two-Bold.ttf"} {
+		if err := os.WriteFile(filepath.Join(dir, "assets", "fonts", name), font, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "goi.yaml"), []byte("assets: assets\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+
+	a := newHeadlessApp()
+	err = a.LoadFontFamilyMany(map[string]string{
+		"One":   "fonts/One-*.ttf",
+		"Two":   "fonts/Two-*.ttf",
+		"Three": "fonts/Three-*.ttf",
+	})
+	if err == nil {
+		t.Fatal("a missing family pattern was accepted")
+	}
+	if len(a.fontFaces["One"]) != 1 || len(a.fontFaces["Two"]) != 1 {
+		t.Fatalf("families = %v", a.fontFaces)
 	}
 }
 

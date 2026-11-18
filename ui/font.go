@@ -81,8 +81,12 @@ func (a *App) fontAssets() (fs.FS, error) {
 	return dirFS(dir), nil
 }
 
-// LoadFontFamily registers every file named <prefix>-<style>.(ttf|otf) under
-// one family. The style suffix picks a weight and italic:
+// LoadFontFamily registers every file matching pattern under one family. The
+// pattern is a glob inside the assets directory, usually:
+//
+//	app.LoadFontFamily("Nunito", "fonts/Nunito-*.ttf")
+//
+// The style suffix after the last hyphen picks a weight and italic:
 //
 //	Nunito-Regular.ttf     400
 //	Nunito-Medium.ttf      500
@@ -91,49 +95,43 @@ func (a *App) fontAssets() (fs.FS, error) {
 //	Nunito-BoldItalic.ttf  700 italic
 //
 // The design still writes only fontFamily: "Nunito"; fontWeight and fontStyle
-// select the file. A style suffix the parser does not know is skipped.
-func (a *App) LoadFontFamily(name, prefix string) error {
+// select the file. A suffix the parser does not know is skipped.
+func (a *App) LoadFontFamily(name, pattern string) error {
 	if name == "" {
 		return fmt.Errorf("ui: LoadFontFamily needs a family name")
 	}
-	prefix = cleanName(filepath.ToSlash(prefix))
-	if prefix == "" || prefix == "." {
-		return fmt.Errorf("ui: LoadFontFamily(%q) needs a file prefix", name)
+	pattern = cleanName(filepath.ToSlash(pattern))
+	if pattern == "" || pattern == "." {
+		return fmt.Errorf("ui: LoadFontFamily(%q) needs a glob pattern", name)
 	}
 	assets, err := a.fontAssets()
 	if err != nil {
 		return err
 	}
-	dir, base := path.Dir(prefix), path.Base(prefix)
-	entries, err := fs.ReadDir(assets, dir)
+	paths, err := fs.Glob(assets, pattern)
 	if err != nil {
 		return fmt.Errorf("ui: LoadFontFamily(%q): %w", name, err)
 	}
 	var faces []fontFaceFile
-	for _, entry := range entries {
-		if entry.IsDir() {
+	for _, file := range paths {
+		ext := path.Ext(file)
+		stem := strings.TrimSuffix(path.Base(file), ext)
+		i := strings.LastIndexByte(stem, '-')
+		if i < 0 || i == len(stem)-1 {
 			continue
 		}
-		ext := strings.ToLower(path.Ext(entry.Name()))
-		if ext != ".ttf" && ext != ".otf" {
-			continue
-		}
-		stem := strings.TrimSuffix(entry.Name(), path.Ext(entry.Name()))
-		if !strings.HasPrefix(stem, base+"-") {
-			continue
-		}
-		weight, italic, ok := fontStyle(strings.TrimPrefix(stem, base+"-"))
+		weight, italic, ok := fontStyle(stem[i+1:])
 		if !ok {
 			continue
 		}
-		data, err := fs.ReadFile(assets, path.Join(dir, entry.Name()))
+		data, err := fs.ReadFile(assets, file)
 		if err != nil {
 			return fmt.Errorf("ui: LoadFontFamily(%q): %w", name, err)
 		}
 		faces = append(faces, fontFaceFile{weight: weight, italic: italic, data: data})
 	}
 	if len(faces) == 0 {
-		return fmt.Errorf("ui: LoadFontFamily(%q): no %s-<style> fonts in %s", name, base, dir)
+		return fmt.Errorf("ui: LoadFontFamily(%q): no weight or style files match %s", name, pattern)
 	}
 	if a.fontFaces == nil {
 		a.fontFaces = map[string][]fontFaceFile{}
@@ -148,6 +146,24 @@ func (a *App) LoadFontFamily(name, prefix string) error {
 		a.markDirty(tree.DirtyLayout)
 	}
 	return nil
+}
+
+// LoadFontFamilyMany registers several families, keyed by the design's family
+// name and holding the glob pattern for its files. All valid families are
+// loaded even when another pattern fails; the returned error joins failures.
+func (a *App) LoadFontFamilyMany(families map[string]string) error {
+	names := make([]string, 0, len(families))
+	for name := range families {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var errs []error
+	for _, name := range names {
+		if err := a.LoadFontFamily(name, families[name]); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // fontStyle turns a Google Fonts style suffix into a weight and italic flag.
