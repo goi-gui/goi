@@ -261,6 +261,20 @@ For a single binary, pass an embedded filesystem instead:
 See the [documentation](https://goi-gui.github.io/docs/) for the language and
 every element.
 
+## Start a project
+
+```sh
+go install github.com/goi-gui/goi/cmd/goi@latest
+goi init example.com/hello
+goi run .
+```
+
+`goi init` creates the module, a `main.go`, a `goi.yaml` and a `ui/Main.goi`
+with a centred hello world. `goi run` reads the optional feature tags from
+`goi.yaml`; `nofakecgo` and `CGO_ENABLED=0` are always applied. See
+[the CLI guide](https://goi-gui.github.io/guide/cli) for the layout and the
+extension list.
+
 ## Building
 
 goi builds on Linux, Windows and macOS without a C toolchain. Everything,

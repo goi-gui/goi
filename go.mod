@@ -20,6 +20,7 @@ require (
 	github.com/yuin/goldmark v1.8.5
 	golang.org/x/image v0.47.0
 	golang.org/x/text v0.43.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -46,6 +47,7 @@ require (
 	github.com/gogpu/naga v0.19.0 // indirect
 	github.com/jackmordaunt/icns/v3 v3.0.1 // indirect
 	github.com/josephspurrier/goversioninfo v1.7.0 // indirect
+	github.com/kr/text v0.2.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
