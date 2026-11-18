@@ -340,7 +340,7 @@ func buildProject(dir string, goRun runFunc, stdout, stderr io.Writer) (string, 
 		targetArch = runtime.GOARCH
 	}
 	name := cfg.Name
-	if targetOS == "windows" {
+	if targetOS == "windows" && !strings.HasSuffix(name, ".exe") {
 		name += ".exe"
 	}
 	out := filepath.Join(dir, "dist", targetOS+"-"+targetArch, name)
