@@ -3,3 +3,4 @@ goicheck
 *.test
 goipls
 goifmt
+/goi

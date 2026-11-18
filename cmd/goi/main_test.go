@@ -53,7 +53,7 @@ func TestInitProjectWritesTheScaffold(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"name: myapp", "id: com.example.myapp", "buildFlags: [all]", "ui: ui"} {
+	for _, want := range []string{"name: myapp", "id: com.example.myapp", "buildFlags: [all]", "ui: ui", "entrypoint: cmd"} {
 		if !strings.Contains(string(raw), want) {
 			t.Errorf("goi.yaml lacks %q:\n%s", want, raw)
 		}
@@ -263,6 +263,48 @@ func TestLoadConfigDefaultsToAll(t *testing.T) {
 	}
 	if len(cfg.BuildFlags) != 1 || cfg.BuildFlags[0] != "all" {
 		t.Fatalf("buildFlags = %v, want [all]", cfg.BuildFlags)
+	}
+	if cfg.Entrypoint != "cmd" {
+		t.Fatalf("entrypoint = %q, want cmd", cfg.Entrypoint)
+	}
+}
+
+func TestCommandsUseEntrypoint(t *testing.T) {
+	t.Setenv("GOOS", "linux")
+	t.Setenv("GOARCH", "amd64")
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "app"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "app", "main.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := "name: myapp\nentrypoint: app\nbuildFlags: [all]\n"
+	if err := os.WriteFile(filepath.Join(dir, "goi.yaml"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var runArgs, buildArgs []string
+	run := func(_ string, args []string, _, _ io.Writer, _ []string) error {
+		runArgs = args
+		return nil
+	}
+	if err := runProject(dir, run, io.Discard, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if last := runArgs[len(runArgs)-1]; last != "./app" {
+		t.Fatalf("run package = %q, want ./app", last)
+	}
+
+	build := func(_ string, args []string, _, _ io.Writer, _ []string) error {
+		buildArgs = args
+		return nil
+	}
+	if _, err := buildProject(dir, build, io.Discard, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if last := buildArgs[len(buildArgs)-1]; last != "./app" {
+		t.Fatalf("build package = %q, want ./app", last)
 	}
 }
 

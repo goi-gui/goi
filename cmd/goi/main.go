@@ -8,9 +8,9 @@
 //
 // init prompts for the values a flag did not give, then writes a module, a
 // cmd/main.go, a goi.yaml and a ui/Main.goi holding a centred hello world. run
-// builds and runs cmd with hot reload on, reading the build flags from goi.yaml.
-// build writes dist/<os>-<arch>/<name> with hot reload off. Both always add
-// nofakecgo and set CGO_ENABLED=0.
+// runs the entrypoint package with hot reload on, reading the build flags from
+// goi.yaml. build writes dist/<os>-<arch>/<name> from that package with hot
+// reload off. Both always add nofakecgo and set CGO_ENABLED=0.
 package main
 
 import (
@@ -85,7 +85,7 @@ type initOptions struct {
 }
 
 // configSource writes goi.yaml. The name and id lead because they name the app;
-// buildFlags and ui follow the settings they belong to.
+// buildFlags, ui and entrypoint follow the settings they belong to.
 func configSource(o initOptions) string {
 	return "# Application name and id, used by goi build and packaging.\n" +
 		"name: " + yamlScalar(o.Name) + "\n" +
@@ -94,7 +94,9 @@ func configSource(o initOptions) string {
 		"# CGO_ENABLED=0 are always used; all turns on every optional feature.\n" +
 		"buildFlags: [all]\n\n" +
 		"# Where LoadWindow finds the design files.\n" +
-		"ui: " + yamlScalar(o.UI) + "\n"
+		"ui: " + yamlScalar(o.UI) + "\n\n" +
+		"# Directory goi run and goi build execute.\n" +
+		"entrypoint: cmd\n"
 }
 
 // yamlScalar is one value the way yaml.Marshal writes it, without the newline,
@@ -104,10 +106,11 @@ func yamlScalar(s string) string {
 	return strings.TrimSuffix(string(b), "\n")
 }
 
-// config is goi.yaml. name and buildFlags are read by the commands; id and ui
-// are for the app and LoadWindow.
+// config is goi.yaml. name, buildFlags and entrypoint are read by the commands;
+// id and ui are for the app and LoadWindow.
 type config struct {
 	Name       string   `yaml:"name"`
+	Entrypoint string   `yaml:"entrypoint"`
 	BuildFlags []string `yaml:"buildFlags"`
 }
 
@@ -176,7 +179,7 @@ func newInitCmd(goCmd commandRunner) *cobra.Command {
 func newRunCmd(goRun runFunc) *cobra.Command {
 	return &cobra.Command{
 		Use:   "run",
-		Short: "run cmd/main.go with hot reload",
+		Short: "run the entrypoint package with hot reload",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runProject(".", goRun, cmd.OutOrStdout(), cmd.ErrOrStderr())
@@ -292,32 +295,34 @@ type runFunc func(dir string, args []string, stdout, stderr io.Writer, env []str
 // runProject loads goi.yaml from the project and runs cmd with the feature tags
 // it lists.
 func runProject(dir string, goRun runFunc, stdout, stderr io.Writer) error {
-	if _, err := os.Stat(filepath.Join(dir, "cmd", "main.go")); err != nil {
-		return fmt.Errorf("no cmd/main.go in %s; run goi init first", dir)
-	}
 	cfg, err := loadConfig(dir)
 	if err != nil {
 		return err
+	}
+	pkg := "./" + filepath.ToSlash(cfg.Entrypoint)
+	if _, err := os.Stat(filepath.Join(dir, cfg.Entrypoint, "main.go")); err != nil {
+		return fmt.Errorf("no %s/main.go in %s; run goi init first", cfg.Entrypoint, dir)
 	}
 	args := []string{"run"}
 	if tags := buildTags(cfg.BuildFlags); len(tags) > 0 {
 		args = append(args, "-tags", strings.Join(tags, ","))
 	}
-	args = append(args, "./cmd")
+	args = append(args, pkg)
 	return goRun(dir, args, stdout, stderr, envWith(os.Environ(), "CGO_ENABLED", "0"))
 }
 
-// buildProject builds cmd into dist/<os>-<arch>/<name>, with the build flags
-// from goi.yaml and nohotreload so the binary does not watch its design files.
-// GOOS and GOARCH choose the target; the host is the default when either is
-// unset.
+// buildProject builds the entrypoint package into dist/<os>-<arch>/<name>, with
+// the build flags from goi.yaml and nohotreload so the binary does not watch its
+// design files. GOOS and GOARCH choose the target; the host is the default when
+// either is unset.
 func buildProject(dir string, goRun runFunc, stdout, stderr io.Writer) (string, error) {
-	if _, err := os.Stat(filepath.Join(dir, "cmd", "main.go")); err != nil {
-		return "", fmt.Errorf("no cmd/main.go in %s; run goi init first", dir)
-	}
 	cfg, err := loadConfig(dir)
 	if err != nil {
 		return "", err
+	}
+	pkg := "./" + filepath.ToSlash(cfg.Entrypoint)
+	if _, err := os.Stat(filepath.Join(dir, cfg.Entrypoint, "main.go")); err != nil {
+		return "", fmt.Errorf("no %s/main.go in %s; run goi init first", cfg.Entrypoint, dir)
 	}
 	if cfg.Name == "" {
 		return "", errors.New("goi.yaml has no name; add name: myapp")
@@ -342,7 +347,7 @@ func buildProject(dir string, goRun runFunc, stdout, stderr io.Writer) (string, 
 		return "", err
 	}
 	flags := append(append([]string{}, cfg.BuildFlags...), "nohotreload")
-	args := []string{"build", "-tags", strings.Join(buildTags(flags), ","), "-o", out, "./cmd"}
+	args := []string{"build", "-tags", strings.Join(buildTags(flags), ","), "-o", out, pkg}
 	if err := goRun(dir, args, stdout, stderr, envWith(os.Environ(), "CGO_ENABLED", "0")); err != nil {
 		return "", err
 	}
@@ -365,6 +370,9 @@ func loadConfig(dir string) (config, error) {
 	// `buildFlags: []` is how it opts down to the core build.
 	if c.BuildFlags == nil {
 		c.BuildFlags = []string{"all"}
+	}
+	if c.Entrypoint == "" {
+		c.Entrypoint = "cmd"
 	}
 	return c, nil
 }
