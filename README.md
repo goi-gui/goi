@@ -265,6 +265,7 @@ every element.
 
 ```sh
 go install github.com/goi-gui/goi/cmd/goi@latest
+goi setup
 goi init --name hello --id com.example.hello --module example.com/hello
 goi run
 ```
@@ -272,8 +273,9 @@ goi run
 `goi init` asks for any value a flag did not give, then creates the module, a
 `cmd/main.go`, a `goi.yaml` and a `ui/Main.goi` with a centred hello world; the
 command loads it through `app.LoadWindow("Main.goi")` and hot reload is on by
-default. `goi run` reads the build flags from `goi.yaml`, where `all` is the
-default; `nofakecgo` and `CGO_ENABLED=0` are always applied. `goi build` writes
+default. `goi run` reads `runFlags` and `goi build` reads `buildFlags` from
+`goi.yaml`, where both default to `all`; `nofakecgo` and `CGO_ENABLED=0` are
+always applied. `goi build` writes
 `dist/<os>-<arch>/<name>` with hot reload off, `goi setup` installs goipls and
 goifmt, `goi update` refreshes goi and its tools, and `goi doctor` checks Go,
 SDL3, the GPU backend and the companion tools. See

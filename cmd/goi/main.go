@@ -90,8 +90,10 @@ func configSource(o initOptions) string {
 	return "# Application name and id, used by goi build and packaging.\n" +
 		"name: " + yamlScalar(o.Name) + "\n" +
 		"id: " + yamlScalar(o.ID) + "\n\n" +
-		"# Build tags passed to goi run and goi build. nofakecgo and\n" +
-		"# CGO_ENABLED=0 are always used; all turns on every optional feature.\n" +
+		"# Build tags passed to goi run. nofakecgo and CGO_ENABLED=0 are always\n" +
+		"# used; all turns on every optional feature.\n" +
+		"runFlags: [all]\n\n" +
+		"# Build tags passed to goi build.\n" +
 		"buildFlags: [all]\n\n" +
 		"# Where LoadWindow finds the design files.\n" +
 		"ui: " + yamlScalar(o.UI) + "\n\n" +
@@ -111,6 +113,7 @@ func yamlScalar(s string) string {
 type config struct {
 	Name       string   `yaml:"name"`
 	Entrypoint string   `yaml:"entrypoint"`
+	RunFlags   []string `yaml:"runFlags"`
 	BuildFlags []string `yaml:"buildFlags"`
 }
 
@@ -188,12 +191,13 @@ func newRunCmd(goRun runFunc) *cobra.Command {
 }
 
 func newBuildCmd(goRun runFunc) *cobra.Command {
-	return &cobra.Command{
+	var targetOS, targetArch string
+	cmd := &cobra.Command{
 		Use:   "build",
 		Short: "build dist/<os>-<arch>/<name> without hot reload",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			out, err := buildProject(".", goRun, cmd.OutOrStdout(), cmd.ErrOrStderr())
+			out, err := buildProject(".", targetOS, targetArch, goRun, cmd.OutOrStdout(), cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}
@@ -201,6 +205,9 @@ func newBuildCmd(goRun runFunc) *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&targetOS, "os", runtime.GOOS, "target operating system (GOOS)")
+	cmd.Flags().StringVar(&targetArch, "arch", runtime.GOARCH, "target architecture (GOARCH)")
+	return cmd
 }
 
 // promptInit asks for the values the flags left empty. Nothing is asked when all
@@ -304,19 +311,33 @@ func runProject(dir string, goRun runFunc, stdout, stderr io.Writer) error {
 		return fmt.Errorf("no %s/main.go in %s; run goi init first", cfg.Entrypoint, dir)
 	}
 	args := []string{"run"}
-	if tags := buildTags(cfg.BuildFlags); len(tags) > 0 {
+	if tags := buildTags(cfg.RunFlags); len(tags) > 0 {
 		args = append(args, "-tags", strings.Join(tags, ","))
 	}
 	args = append(args, pkg)
-	// Everything the caller exported reaches go; only CGO_ENABLED is replaced.
-	return goRun(dir, args, stdout, stderr, envWith(os.Environ(), "CGO_ENABLED", "0"))
+	return goRun(dir, args, stdout, stderr, runEnv())
 }
 
-// buildProject builds the entrypoint package for the running operating system
-// into dist/<os>-<arch>/<name>, with the build flags from goi.yaml and
-// nohotreload so the binary does not watch its design files. A GOOS or GOARCH
-// from the caller is ignored: this command targets the host.
-func buildProject(dir string, goRun runFunc, stdout, stderr io.Writer) (string, error) {
+// runEnv is the environment for goi run: the caller's, with CGO_ENABLED=0 and
+// logfmt output, and GOI_DEBUG=TRUE unless the caller chose a value.
+func runEnv() []string {
+	env := envWith(os.Environ(), "CGO_ENABLED", "0")
+	if _, ok := os.LookupEnv("GOI_DEBUG"); !ok {
+		env = append(env, "GOI_DEBUG=TRUE")
+	}
+	return envWith(env, "LOGGER_OUTPUT_FORMAT", "logfmt")
+}
+
+// buildProject builds the entrypoint package for targetOS/targetArch into
+// dist/<os>-<arch>/<name>, with the build flags from goi.yaml and nohotreload so
+// the binary does not watch its design files.
+func buildProject(dir, targetOS, targetArch string, goRun runFunc, stdout, stderr io.Writer) (string, error) {
+	if targetOS == "" {
+		targetOS = runtime.GOOS
+	}
+	if targetArch == "" {
+		targetArch = runtime.GOARCH
+	}
 	cfg, err := loadConfig(dir)
 	if err != nil {
 		return "", err
@@ -331,7 +352,7 @@ func buildProject(dir string, goRun runFunc, stdout, stderr io.Writer) (string, 
 	if cfg.Name == "." || cfg.Name == ".." || strings.ContainsAny(cfg.Name, `/\`) {
 		return "", fmt.Errorf("goi.yaml name %q is not a file name", cfg.Name)
 	}
-	out := buildOutput(dir, runtime.GOOS, runtime.GOARCH, cfg.Name)
+	out := buildOutput(dir, targetOS, targetArch, cfg.Name)
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 		return "", err
 	}
@@ -339,8 +360,8 @@ func buildProject(dir string, goRun runFunc, stdout, stderr io.Writer) (string, 
 	args := []string{"build", "-tags", strings.Join(buildTags(flags), ","),
 		"-trimpath", "-ldflags", "-s -w", "-o", out, pkg}
 	env := envWith(os.Environ(), "CGO_ENABLED", "0")
-	env = envWith(env, "GOOS", runtime.GOOS)
-	env = envWith(env, "GOARCH", runtime.GOARCH)
+	env = envWith(env, "GOOS", targetOS)
+	env = envWith(env, "GOARCH", targetArch)
 	if err := goRun(dir, args, stdout, stderr, env); err != nil {
 		return "", err
 	}
@@ -369,6 +390,9 @@ func loadConfig(dir string) (config, error) {
 	}
 	// all is the default: a project starts with every optional feature, and
 	// `buildFlags: []` is how it opts down to the core build.
+	if c.RunFlags == nil {
+		c.RunFlags = []string{"all"}
+	}
 	if c.BuildFlags == nil {
 		c.BuildFlags = []string{"all"}
 	}

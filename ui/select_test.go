@@ -344,14 +344,14 @@ func TestCursorForMapsEveryCSSValue(t *testing.T) {
 // without scrolling. The examples live in the sibling goi-gui/examples
 // repository, so CI without that checkout skips the test.
 func TestCursorExampleTilesResolve(t *testing.T) {
-	dir := "../../examples/cursor"
+	dir := "../../examples/cursor/ui"
 	if _, err := os.Stat(dir); err != nil {
 		if os.IsNotExist(err) {
 			t.Skip("examples are not checked out next to the repo")
 		}
 		t.Fatal(err)
 	}
-	b, diag := asset.Load(os.DirFS(dir), "cursor.goi")
+	b, diag := asset.Load(os.DirFS(dir), "Main.goi")
 	if !diag.Empty() {
 		t.Fatalf("%v", diag)
 	}

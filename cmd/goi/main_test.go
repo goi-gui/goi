@@ -54,7 +54,7 @@ func TestInitProjectWritesTheScaffold(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"name: myapp", "id: com.example.myapp", "buildFlags: [all]", "ui: ui", "entrypoint: cmd"} {
+	for _, want := range []string{"name: myapp", "id: com.example.myapp", "runFlags: [all]", "buildFlags: [all]", "ui: ui", "entrypoint: cmd"} {
 		if !strings.Contains(string(raw), want) {
 			t.Errorf("goi.yaml lacks %q:\n%s", want, raw)
 		}
@@ -135,25 +135,21 @@ func TestInitCommandFlags(t *testing.T) {
 }
 
 func TestBuildProject(t *testing.T) {
-	// A cross target in the caller env must not change the output: this command
-	// builds for the host.
-	t.Setenv("GOOS", "windows")
-	t.Setenv("GOARCH", "arm64")
-	dir := buildProjectDir(t, "name: myapp\nbuildFlags: [emoji]\n")
+	// The caller env is only a default: the target flags win.
+	t.Setenv("GOOS", "linux")
+	t.Setenv("GOARCH", "amd64")
+	dir := buildProjectDir(t, "name: myapp\nrunFlags: [code]\nbuildFlags: [emoji]\n")
 
 	var gotDir string
 	var gotArgs, gotEnv []string
-	out, err := buildProject(dir, func(d string, args []string, _, _ io.Writer, env []string) error {
+	out, err := buildProject(dir, "windows", "arm64", func(d string, args []string, _, _ io.Writer, env []string) error {
 		gotDir, gotArgs, gotEnv = d, args, env
 		return nil
 	}, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantOut := filepath.Join(dir, "dist", runtime.GOOS+"-"+runtime.GOARCH, "myapp")
-	if runtime.GOOS == "windows" {
-		wantOut += ".exe"
-	}
+	wantOut := filepath.Join(dir, "dist", "windows-arm64", "myapp.exe")
 	if out != wantOut {
 		t.Fatalf("out = %q, want %q", out, wantOut)
 	}
@@ -168,14 +164,36 @@ func TestBuildProject(t *testing.T) {
 	if got := envValue(gotEnv, "CGO_ENABLED"); len(envValues(gotEnv, "CGO_ENABLED")) != 1 || got != "0" {
 		t.Fatalf("CGO_ENABLED = %q in %v, want exactly 0", got, gotEnv)
 	}
-	if got := envValue(gotEnv, "GOOS"); got != runtime.GOOS {
-		t.Fatalf("GOOS = %q, want %q", got, runtime.GOOS)
+	if got := envValue(gotEnv, "GOOS"); got != "windows" {
+		t.Fatalf("GOOS = %q, want windows", got)
 	}
-	if got := envValue(gotEnv, "GOARCH"); got != runtime.GOARCH {
-		t.Fatalf("GOARCH = %q, want %q", got, runtime.GOARCH)
+	if got := envValue(gotEnv, "GOARCH"); got != "arm64" {
+		t.Fatalf("GOARCH = %q, want arm64", got)
 	}
 	if _, err := os.Stat(filepath.Dir(wantOut)); err != nil {
 		t.Fatalf("output directory was not created: %v", err)
+	}
+}
+
+func TestBuildCommandTargetFlags(t *testing.T) {
+	dir := buildProjectDir(t, "name: myapp\n")
+	t.Chdir(dir)
+	var gotEnv []string
+	cmd := newBuildCmd(func(_ string, _ []string, _, _ io.Writer, env []string) error {
+		gotEnv = env
+		return nil
+	})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs([]string{"--os", "windows", "--arch", "arm64"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if got := envValue(gotEnv, "GOOS"); got != "windows" {
+		t.Fatalf("GOOS = %q, want windows", got)
+	}
+	if got := envValue(gotEnv, "GOARCH"); got != "arm64" {
+		t.Fatalf("GOARCH = %q, want arm64", got)
 	}
 }
 
@@ -200,7 +218,7 @@ func TestBuildOutput(t *testing.T) {
 func TestBuildProjectNeedsAName(t *testing.T) {
 	dir := buildProjectDir(t, "buildFlags: [all]\n")
 
-	_, err := buildProject(dir, func(string, []string, io.Writer, io.Writer, []string) error { return nil }, io.Discard, io.Discard)
+	_, err := buildProject(dir, runtime.GOOS, runtime.GOARCH, func(string, []string, io.Writer, io.Writer, []string) error { return nil }, io.Discard, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "name") {
 		t.Fatalf("err = %v, want a name hint", err)
 	}
@@ -222,8 +240,9 @@ func buildProjectDir(t *testing.T, config string) string {
 	return dir
 }
 
-func TestRunProjectUsesBuildFlagsAndEnvironment(t *testing.T) {
+func TestRunProjectUsesRunFlagsAndEnvironment(t *testing.T) {
 	t.Setenv("GOI_TEST_ENV", "kept")
+	t.Setenv("GOI_DEBUG", "FALSE")
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "cmd"), 0o755); err != nil {
 		t.Fatal(err)
@@ -231,7 +250,7 @@ func TestRunProjectUsesBuildFlagsAndEnvironment(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "cmd", "main.go"), []byte("package main\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "goi.yaml"), []byte("buildFlags: [emoji, \"svg net\"]\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "goi.yaml"), []byte("runFlags: [emoji, \"svg net\"]\nbuildFlags: [code]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	var gotDir string
@@ -262,6 +281,29 @@ func TestRunProjectUsesBuildFlagsAndEnvironment(t *testing.T) {
 	if got := envValue(gotEnv, "GOI_TEST_ENV"); got != "kept" {
 		t.Fatalf("GOI_TEST_ENV = %q, want the caller's value", got)
 	}
+	if got := envValue(gotEnv, "GOI_DEBUG"); got != "FALSE" {
+		t.Fatalf("GOI_DEBUG = %q, want the caller's FALSE", got)
+	}
+	if got := envValue(gotEnv, "LOGGER_OUTPUT_FORMAT"); got != "logfmt" {
+		t.Fatalf("LOGGER_OUTPUT_FORMAT = %q, want logfmt", got)
+	}
+}
+
+func TestRunEnvDefaultsDebugOn(t *testing.T) {
+	t.Setenv("GOI_DEBUG", "FALSE")
+	if err := os.Unsetenv("GOI_DEBUG"); err != nil {
+		t.Fatal(err)
+	}
+	env := runEnv()
+	if got := envValue(env, "GOI_DEBUG"); got != "TRUE" {
+		t.Fatalf("GOI_DEBUG = %q, want TRUE", got)
+	}
+	if got := envValue(env, "CGO_ENABLED"); got != "0" {
+		t.Fatalf("CGO_ENABLED = %q, want 0", got)
+	}
+	if got := envValue(env, "LOGGER_OUTPUT_FORMAT"); got != "logfmt" {
+		t.Fatalf("LOGGER_OUTPUT_FORMAT = %q, want logfmt", got)
+	}
 }
 
 // envValue is the last value of key in env, or "".
@@ -291,6 +333,9 @@ func TestLoadConfigDefaultsToAll(t *testing.T) {
 	cfg, err := loadConfig(dir)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(cfg.RunFlags) != 1 || cfg.RunFlags[0] != "all" {
+		t.Fatalf("runFlags = %v, want [all]", cfg.RunFlags)
 	}
 	if len(cfg.BuildFlags) != 1 || cfg.BuildFlags[0] != "all" {
 		t.Fatalf("buildFlags = %v, want [all]", cfg.BuildFlags)
@@ -331,7 +376,7 @@ func TestCommandsUseEntrypoint(t *testing.T) {
 		buildArgs = args
 		return nil
 	}
-	if _, err := buildProject(dir, build, io.Discard, io.Discard); err != nil {
+	if _, err := buildProject(dir, runtime.GOOS, runtime.GOARCH, build, io.Discard, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	if last := buildArgs[len(buildArgs)-1]; last != "./app" {
