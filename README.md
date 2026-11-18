@@ -276,9 +276,10 @@ command loads it through `app.LoadWindow("Main.goi")` and hot reload is on by
 default. `goi run` reads `runFlags` and `goi build` reads `buildFlags` from
 `goi.yaml`, where both default to `all`; `nofakecgo` and `CGO_ENABLED=0` are
 always applied. `goi build` writes
-`dist/<os>-<arch>/<name>` with hot reload off, `goi setup` installs goipls and
-goifmt, `goi update` refreshes goi and its tools, and `goi doctor` checks Go,
-SDL3, the GPU backend and the companion tools. See
+`dist/<os>-<arch>/<name>` with hot reload off. `goi setup` and `goi update` are
+the same command: they install goi, goipls and goifmt, and bump the project's
+goi dependency when the directory has a `go.mod`. `goi doctor` checks Go, SDL3,
+the GPU backend and the companion tools. See
 [the CLI guide](https://goi-gui.github.io/guide/cli) for the layout and the
 feature list.
 

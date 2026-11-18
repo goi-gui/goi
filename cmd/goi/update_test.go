@@ -4,37 +4,44 @@ package main
 
 import (
 	"io"
+	"os"
 	"strings"
 	"testing"
 )
 
-func TestSetupCommand(t *testing.T) {
-	var calls [][]string
-	cmd := newSetupCmd(func(_ string, args []string, _, _ io.Writer, _ []string) error {
-		calls = append(calls, args)
-		return nil
-	})
-	cmd.SetOut(io.Discard)
-	cmd.SetErr(io.Discard)
-	if err := cmd.Execute(); err != nil {
-		t.Fatal(err)
-	}
-
-	want := [][]string{
+func TestToolsCommands(t *testing.T) {
+	installs := [][]string{
+		{"install", "github.com/goi-gui/goi/cmd/goi@latest"},
 		{"install", "github.com/goi-gui/goi/cmd/goipls@latest"},
 		{"install", "github.com/goi-gui/goi/cmd/goifmt@latest"},
 	}
-	if len(calls) != len(want) {
-		t.Fatalf("calls = %v, want %v", calls, want)
-	}
-	for i := range want {
-		if strings.Join(calls[i], " ") != strings.Join(want[i], " ") {
-			t.Fatalf("call %d = %v, want %v", i, calls[i], want[i])
-		}
+	for _, name := range []string{"setup", "update"} {
+		t.Run(name, func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			var calls [][]string
+			run := func(_ string, args []string, _, _ io.Writer, _ []string) error {
+				calls = append(calls, args)
+				return nil
+			}
+			cmd := newSetupCmd(run)
+			if name == "update" {
+				cmd = newUpdateCmd(run)
+			}
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
+			if err := cmd.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			assertCalls(t, calls, installs)
+		})
 	}
 }
 
-func TestUpdateCommand(t *testing.T) {
+func TestToolsCommandsUpdateDependency(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := os.WriteFile("go.mod", []byte("module example.com/myapp\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	var calls [][]string
 	cmd := newUpdateCmd(func(_ string, args []string, _, _ io.Writer, _ []string) error {
 		calls = append(calls, args)
@@ -45,18 +52,22 @@ func TestUpdateCommand(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-
-	want := [][]string{
-		{"get", "github.com/goi-gui/goi@latest"},
+	assertCalls(t, calls, [][]string{
+		{"install", "github.com/goi-gui/goi/cmd/goi@latest"},
 		{"install", "github.com/goi-gui/goi/cmd/goipls@latest"},
 		{"install", "github.com/goi-gui/goi/cmd/goifmt@latest"},
-	}
-	if len(calls) != len(want) {
-		t.Fatalf("calls = %v, want %v", calls, want)
+		{"get", "-u", "github.com/goi-gui/goi@latest"},
+	})
+}
+
+func assertCalls(t *testing.T, got, want [][]string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("calls = %v, want %v", got, want)
 	}
 	for i := range want {
-		if strings.Join(calls[i], " ") != strings.Join(want[i], " ") {
-			t.Fatalf("call %d = %v, want %v", i, calls[i], want[i])
+		if strings.Join(got[i], " ") != strings.Join(want[i], " ") {
+			t.Fatalf("call %d = %v, want %v", i, got[i], want[i])
 		}
 	}
 }

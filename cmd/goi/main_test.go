@@ -197,12 +197,16 @@ func TestBuildCommandTargetFlags(t *testing.T) {
 	}
 }
 
-func TestBuildLdflags(t *testing.T) {
-	if got := buildLdflags("linux"); got != "-s -w" {
-		t.Fatalf("linux ldflags = %q, want -s -w", got)
+func TestBuildLDFlags(t *testing.T) {
+	cases := map[string]string{
+		"linux":   "-s -w",
+		"darwin":  "-s -w",
+		"windows": "-s -w -H windowsgui",
 	}
-	if got := buildLdflags("windows"); got != "-s -w -H windowsgui" {
-		t.Fatalf("windows ldflags = %q, want the GUI subsystem", got)
+	for target, want := range cases {
+		if got := buildLDFlags(target); got != want {
+			t.Errorf("buildLDFlags(%q) = %q, want %q", target, got, want)
+		}
 	}
 }
 
