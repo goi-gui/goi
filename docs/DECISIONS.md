@@ -2526,3 +2526,19 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   name, id and module with huh only when a flag left them empty, so the bare
   command is friendly and the flagged one is scriptable; `ui` defaults to `ui`
   because a path has an obvious default and does not need a prompt.
+
+- **The CLI is a cobra command tree.** `init`, `run` and `build` are separate
+  commands with their own flags, help text and shell completion, so the manual
+  `switch` on `os.Args` and its hand-written usage are gone. Commands take the
+  go runners as constructor parameters, which keeps the flag wiring testable
+  without spawning a compiler. `cmd/goi` stays out of `js` and `wasip1` builds
+  because huh and bubbletea are terminal-only.
+
+- **Every example is its own goi project.** The examples used to be one module
+  with a flat `main.go` beside the designs, which meant the working directory had
+  to be `examples/`. Each folder now has the `goi init` layout — `cmd/main.go`,
+  `goi.yaml`, `ui/` — and its own `go.mod` with the local `replace`, so
+  `make tv` is exactly `cd tv && goi run`. Assets a `goi://` source resolves
+  against the design root moved under `ui/`; plain paths stayed next to the app
+  and only lost their `examples/` prefix. The browser example keeps its flat
+  embed build because `goi run` is a desktop command.

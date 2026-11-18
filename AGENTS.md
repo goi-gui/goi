@@ -19,7 +19,7 @@ CGO_ENABLED=0 go vet -tags "nofakecgo all" ./...
 gofmt -l .                                   # CI fails on any output
 CGO_ENABLED=0 go test -tags "nofakecgo all" ./ui ./internal/syntax ./internal/schema ./internal/layout ./internal/paint ./internal/text ./internal/hotreload ./internal/lsp ./internal/goifmt
 CGO_ENABLED=0 go test -tags "nofakecgo all" ./...  # the platform is purego too
-go run -tags all ./cmd/goicheck -layout -ops ../examples/*/*.goi  # headless render check
+go run -tags all ./cmd/goicheck -layout -ops ../examples/*/ui/*.goi ../examples/web/*.goi  # headless render check
 go run ./cmd/goifmt -l .                                # CI fails on any output
 ```
 
@@ -35,11 +35,10 @@ go run ./cmd/goifmt -l .                                # CI fails on any output
   which is what the examples and the test commands use.
 - The purego platform cross-compiles for Linux, Windows and macOS. There is no
   build tag per platform: `SurfaceHandles` asks SDL which driver it got.
-- The examples are their own module in `../examples`, next to this checkout.
-  `make -C ../examples gallery` runs one, because each loads
-  `<name>/<name>.goi` by relative path; running the binary from elsewhere fails
-  with "file not found". They build against this tree through a `replace` in
-  their `go.mod`.
+- The examples are separate modules in `../examples`, next to this checkout.
+  Each is a goi project (`cmd/main.go`, `goi.yaml`, `ui/`), so
+  `make -C ../examples gallery` is `cd gallery && goi run`. They build against
+  this tree through a `replace` in their `go.mod`.
 - Golden AST snapshots: `go test ./internal/syntax -run TestGoldenAST -update`.
 - `staticcheck ./...` runs in CI.
 
@@ -97,7 +96,7 @@ Tests that enforce the above: `TestEveryComponentValidates`,
 ## Go-side conventions
 
 - `Bind` runs again after every hot reload: state declared inside it resets.
-  Keep app state outside `Bind` (see `../examples/counter/main.go`).
+  Keep app state outside `Bind` (see `../examples/counter/cmd/main.go`).
 - `Prop[T].Set` is a no-op when the value is unchanged; `Set` marks the tree
   dirty and schedules a frame, so no manual repaint call is needed.
 - `DirtyPaint` vs `DirtyLayout`: anything that changes size, text, padding,

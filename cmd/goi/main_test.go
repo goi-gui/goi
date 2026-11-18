@@ -102,28 +102,34 @@ func TestInitProjectRefusesToOverwrite(t *testing.T) {
 	}
 }
 
-func TestParseInitFlags(t *testing.T) {
-	opts, err := parseInit([]string{
+func TestInitCommandFlags(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	var calls [][]string
+	root := newRootCmd(func(d string, args []string) error {
+		calls = append(calls, append([]string{d}, args...))
+		return nil
+	}, func(string, []string, io.Writer, io.Writer, []string) error { return nil })
+	root.SetOut(io.Discard)
+	root.SetErr(io.Discard)
+	root.SetArgs([]string{
+		"init",
 		"--name", "myapp",
 		"--id", "com.example.myapp",
 		"--module", "github.com/me/myapp",
 		"--ui", "designs",
-	}, io.Discard)
-	if err != nil {
+	})
+	if err := root.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	want := initOptions{Name: "myapp", ID: "com.example.myapp", Module: "github.com/me/myapp", UI: "designs"}
-	if opts != want {
-		t.Fatalf("opts = %+v, want %+v", opts, want)
+	if len(calls) != 2 || calls[0][1] != "mod" || calls[0][2] != "init" || calls[0][3] != "github.com/me/myapp" {
+		t.Fatalf("go calls = %v", calls)
 	}
-
-	// A flag that is missing stays empty for the prompt; ui has a default.
-	opts, err = parseInit([]string{"--name", "myapp"}, io.Discard)
-	if err != nil {
+	if calls[1][1] != "mod" || calls[1][2] != "tidy" {
+		t.Fatalf("second go call = %v, want mod tidy", calls[1])
+	}
+	if _, err := os.Stat(filepath.Join(dir, "designs", "Main.goi")); err != nil {
 		t.Fatal(err)
-	}
-	if opts.Name != "myapp" || opts.ID != "" || opts.Module != "" || opts.UI != "ui" {
-		t.Fatalf("opts = %+v, want only name and the ui default", opts)
 	}
 }
 

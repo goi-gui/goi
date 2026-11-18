@@ -15,7 +15,6 @@ package main
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -26,6 +25,7 @@ import (
 	"unicode"
 
 	"github.com/charmbracelet/huh"
+	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
 
@@ -116,96 +116,88 @@ type config struct {
 type commandRunner func(dir string, args []string) error
 
 func main() {
-	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
+	if err := newRootCmd(execGo, execRun).Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "goi:", err)
 		os.Exit(1)
 	}
 }
 
-func run(args []string, stdout, stderr io.Writer) error {
-	if len(args) == 0 {
-		usage(stderr)
-		return errors.New("missing command")
+// newRootCmd builds the command tree. The go runners are parameters so tests
+// can record the invocations instead of spawning a compiler.
+func newRootCmd(goCmd commandRunner, goRun runFunc) *cobra.Command {
+	root := &cobra.Command{
+		Use:           "goi",
+		Short:         "start, run and build goi projects",
+		SilenceErrors: true,
+		SilenceUsage:  true,
 	}
-	switch args[0] {
-	case "init":
-		opts, err := parseInit(args[1:], stderr)
-		if err != nil {
-			usage(stderr)
-			return err
-		}
-		if opts, err = promptInit(opts); err != nil {
-			return err
-		}
-		dir, err := os.Getwd()
-		if err != nil {
-			return err
-		}
-		if err := initProject(dir, opts, execGo); err != nil {
-			return err
-		}
-		if err := execGo(dir, []string{"mod", "tidy"}); err != nil {
-			fmt.Fprintln(stderr, "goi: project created, but go mod tidy failed; run it yourself:", err)
-		}
-		fmt.Fprintf(stdout, "goi: created cmd/main.go, goi.yaml and %s/Main.goi\n", opts.UI)
-		fmt.Fprintln(stdout, "next: goi run")
-		return nil
-	case "run":
-		if len(args) != 1 {
-			usage(stderr)
-			return errors.New("usage: goi run")
-		}
-		return runProject(".", execRun, stdout, stderr)
-	case "build":
-		if len(args) != 1 {
-			usage(stderr)
-			return errors.New("usage: goi build")
-		}
-		out, err := buildProject(".", execRun, stdout, stderr)
-		if err != nil {
-			return err
-		}
-		fmt.Fprintln(stdout, "goi: built", out)
-		return nil
-	case "help", "-h", "--help":
-		usage(stdout)
-		return nil
-	default:
-		usage(stderr)
-		return fmt.Errorf("unknown command %q", args[0])
+	root.SetOut(os.Stdout)
+	root.SetErr(os.Stderr)
+	root.AddCommand(newInitCmd(goCmd), newRunCmd(goRun), newBuildCmd(goRun))
+	return root
+}
+
+func newInitCmd(goCmd commandRunner) *cobra.Command {
+	opts := initOptions{UI: "ui"}
+	cmd := &cobra.Command{
+		Use:   "init",
+		Short: "create a project in the current directory",
+		Long:  "Create a project in the current directory. A missing name, id or module is asked for in the terminal.",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			resolved, err := promptInit(opts)
+			if err != nil {
+				return err
+			}
+			dir, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+			if err := initProject(dir, resolved, goCmd); err != nil {
+				return err
+			}
+			if err := goCmd(dir, []string{"mod", "tidy"}); err != nil {
+				// The files are usable; a missing dependency can be fetched later.
+				fmt.Fprintln(cmd.ErrOrStderr(), "goi: project created, but go mod tidy failed; run it yourself:", err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "goi: created cmd/main.go, goi.yaml and %s/Main.goi\n", resolved.UI)
+			fmt.Fprintln(cmd.OutOrStdout(), "next: goi run")
+			return nil
+		},
+	}
+	f := cmd.Flags()
+	f.StringVar(&opts.Name, "name", "", "application name, also the executable name")
+	f.StringVar(&opts.ID, "id", "", "reverse-DNS application id")
+	f.StringVar(&opts.Module, "module", "", "Go module path for go mod init")
+	f.StringVar(&opts.UI, "ui", "ui", "directory holding the .goi files")
+	return cmd
+}
+
+func newRunCmd(goRun runFunc) *cobra.Command {
+	return &cobra.Command{
+		Use:   "run",
+		Short: "run cmd/main.go with hot reload",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runProject(".", goRun, cmd.OutOrStdout(), cmd.ErrOrStderr())
+		},
 	}
 }
 
-func usage(w io.Writer) {
-	fmt.Fprintln(w, "usage: goi <command>")
-	fmt.Fprintln(w, "  init [flags]           create a project; missing values are prompted")
-	fmt.Fprintln(w, "  run                    run cmd/main.go with hot reload")
-	fmt.Fprintln(w, "  build                  build dist/<os>-<arch>/<name> without hot reload")
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "init flags: --name, --id, --module, --ui")
-}
-
-// parseInit reads the flags. A missing name, id or module is left empty for the
-// prompt; --ui has a default because a project almost always keeps the files in
-// ui/.
-func parseInit(args []string, stderr io.Writer) (initOptions, error) {
-	fs := flag.NewFlagSet("init", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	var opts initOptions
-	fs.StringVar(&opts.Name, "name", "", "application name, also the executable name")
-	fs.StringVar(&opts.ID, "id", "", "reverse-DNS application id")
-	fs.StringVar(&opts.Module, "module", "", "Go module path for go mod init")
-	fs.StringVar(&opts.UI, "ui", "ui", "directory holding the .goi files")
-	if err := fs.Parse(args); err != nil {
-		return opts, err
+func newBuildCmd(goRun runFunc) *cobra.Command {
+	return &cobra.Command{
+		Use:   "build",
+		Short: "build dist/<os>-<arch>/<name> without hot reload",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			out, err := buildProject(".", goRun, cmd.OutOrStdout(), cmd.ErrOrStderr())
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "goi: built", out)
+			return nil
+		},
 	}
-	if fs.NArg() > 0 {
-		return opts, fmt.Errorf("usage: goi init [--name] [--id] [--module] [--ui]")
-	}
-	if opts.UI == "" {
-		opts.UI = "ui"
-	}
-	return opts, nil
 }
 
 // promptInit asks for the values the flags left empty. Nothing is asked when all
