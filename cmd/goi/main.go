@@ -139,7 +139,7 @@ func newRootCmd(goCmd commandRunner, goRun runFunc) *cobra.Command {
 	}
 	root.SetOut(os.Stdout)
 	root.SetErr(os.Stderr)
-	root.AddCommand(newInitCmd(goCmd), newRunCmd(goRun), newBuildCmd(goRun), newSetupCmd(goRun), newUpdateCmd(goRun), newDoctorCmd())
+	root.AddCommand(newInitCmd(goCmd), newRunCmd(goRun), newBuildCmd(goRun), newSetupCmd(goRun), newUpdateCmd(goRun), newDoctorCmd(), newVersionCmd())
 	return root
 }
 

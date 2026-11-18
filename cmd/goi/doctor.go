@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"runtime/debug"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -97,11 +96,7 @@ func programCheck() doctorCheck {
 	if err != nil {
 		path = "goi"
 	}
-	version := "devel"
-	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" {
-		version = info.Main.Version
-	}
-	return doctorCheck{Name: "goi", Status: "ok", Detail: version + " (" + path + ")"}
+	return doctorCheck{Name: "goi", Status: "ok", Detail: programVersion() + " (" + path + ")"}
 }
 
 func installedCheck(name, goPath string) doctorCheck {
