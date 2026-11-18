@@ -86,7 +86,7 @@ func TestLoadWindowRequiresAWindowRoot(t *testing.T) {
 func TestHotReloadRequiresDirectoryContainer(t *testing.T) {
 	a := newHeadlessApp()
 	a.assets = fstest.MapFS{}
-	if err := a.enableWatcher(); err == nil {
+	if err := a.enableWatcher(nil); err == nil {
 		t.Fatal("expected a clear error for an unwatchable container")
 	} else if !strings.Contains(err.Error(), "embedded") {
 		t.Fatalf("err = %v, want it to name an embedded design", err)

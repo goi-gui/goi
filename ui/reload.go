@@ -248,13 +248,14 @@ func carryScroll(old, fresh *tree.Tree) {
 	restore(fresh.Root, "")
 }
 
-// enableWatcher starts watching every directory the design lives in.
-func (a *App) enableWatcher() error {
-	root, ok := watchRoot(a.assets)
-	if !ok {
+// enableWatcher starts watching the assets root, its i18n folder and every
+// directory the loaded design actually reads.
+func (a *App) enableWatcher(b *asset.Bundle) error {
+	dirs := a.watcherDirs(b)
+	if len(dirs) == 0 {
 		return fmt.Errorf("goi: hot reload needs a design directory, not an embedded one")
 	}
-	r, err := hotreload.Watch(watchDirs(root), func(path string) { a.reload(path) })
+	r, err := hotreload.Watch(dirs, func(path string) { a.reload(path) })
 	if err != nil {
 		return err
 	}
@@ -262,12 +263,30 @@ func (a *App) enableWatcher() error {
 	return nil
 }
 
-// rewatch adds directories that a reload brought into the design.
-func (a *App) rewatch(b *asset.Bundle) {
-	dirs := sourceDirs(b, a.assets)
+// watcherDirs is one root plus the subdirectories that hold the design files.
+// A design in assets/ui would otherwise sit outside the watched root.
+func (a *App) watcherDirs(b *asset.Bundle) []string {
+	var dirs []string
+	if b != nil {
+		dirs = append(dirs, sourceDirs(b, a.assets)...)
+	}
 	if root, ok := watchRoot(a.assets); ok {
 		dirs = append(dirs, watchDirs(root)...)
 	}
+	seen := map[string]bool{}
+	out := dirs[:0]
+	for _, dir := range dirs {
+		if dir != "" && !seen[dir] {
+			seen[dir] = true
+			out = append(out, dir)
+		}
+	}
+	return out
+}
+
+// rewatch adds directories that a reload brought into the design.
+func (a *App) rewatch(b *asset.Bundle) {
+	dirs := a.watcherDirs(b)
 	if len(dirs) == 0 {
 		return
 	}

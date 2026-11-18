@@ -37,8 +37,11 @@ go run ./cmd/goifmt -l .                                # CI fails on any output
   build tag per platform: `SurfaceHandles` asks SDL which driver it got.
 - The examples are separate modules in `../examples`, next to this checkout.
   Each is a goi project (`cmd/main.go`, `goi.yaml`, `assets/ui/`), so
-  `make -C ../examples gallery` is `cd gallery && goi run`. They build against
-  this tree through a `replace` in their `go.mod`.
+  `make -C ../examples gallery` is `cd gallery && goi run`. They pin the
+  published release in their `go.mod`.
+- The `../testing` project is the local **dev version**: its `go.mod` replaces
+  `github.com/goi-gui/goi` with this checkout, so it runs unreleased changes.
+  The examples, in contrast, pin the published release.
 - Golden AST snapshots: `go test ./internal/syntax -run TestGoldenAST -update`.
 - `staticcheck ./...` runs in CI.
 

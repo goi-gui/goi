@@ -285,7 +285,7 @@ func (a *App) LoadWindow(entry string, opts ...Option) (*Window, error) {
 	logg().Info(logCtx, "ui: window loaded", "file", name, "took", time.Since(start).String())
 	// An embedded design has no directory to watch; reload needs the disk.
 	if _, ok := watchRoot(assets); o.HotReload && ok {
-		if err := a.enableWatcher(); err != nil {
+		if err := a.enableWatcher(b); err != nil {
 			logg().Error(logCtx, "ui: hot reload unavailable", "error", err)
 			return nil, err
 		}

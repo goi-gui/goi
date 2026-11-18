@@ -1,9 +1,11 @@
 package ui
 
 import (
+	"os"
 	"strings"
 	"testing"
 
+	"github.com/goi-gui/goi/internal/asset"
 	"github.com/goi-gui/goi/internal/layout"
 	"github.com/goi-gui/goi/internal/syntax"
 	"github.com/goi-gui/goi/internal/tree"
@@ -159,7 +161,7 @@ func TestWatcherTriggersReload(t *testing.T) {
 	}
 	a.assets = dirFS(dir)
 	a.path = "app.goi"
-	if err := a.enableWatcher(); err != nil {
+	if err := a.enableWatcher(&asset.Bundle{Files: []string{"app.goi"}}); err != nil {
 		t.Fatal(err)
 	}
 	defer a.watcher.Close()
@@ -178,6 +180,39 @@ func TestWatcherTriggersReload(t *testing.T) {
 		sleepMS(2)
 	}
 	t.Fatal("watcher did not reload the file")
+}
+
+// TestWatcherWatchesDesignSubdirectories is the assets layout: the .goi files
+// live below assets/ui, so watching only the assets root would never see an
+// edit. goi run hit exactly that after the ui directory moved.
+func TestWatcherWatchesDesignSubdirectories(t *testing.T) {
+	a, w := reloadApp(t, `Window { Text { id: label text: "0" } }`)
+	dir := t.TempDir()
+	if err := os.MkdirAll(dir+"/assets/ui", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFile(dir+"/assets/ui/app.goi", `Window { Text { id: label text: "0" } }`); err != nil {
+		t.Fatal(err)
+	}
+	a.assets = dirFS(dir + "/assets")
+	a.path = "ui/app.goi"
+	if err := a.enableWatcher(&asset.Bundle{Files: []string{"ui/app.goi"}}); err != nil {
+		t.Fatal(err)
+	}
+	defer a.watcher.Close()
+
+	if err := writeFile(dir+"/assets/ui/app.goi", `Window { Text { id: label text: "reloaded" } }`); err != nil {
+		t.Fatal(err)
+	}
+	deadline := 3000
+	for i := 0; i < deadline; i++ {
+		a.drainPosted()
+		if MustByID[*Text](w, "label").Text.Get() == "reloaded" {
+			return
+		}
+		sleepMS(2)
+	}
+	t.Fatal("watcher did not reload a design below the assets root")
 }
 
 func TestReloadDiagnosticsAreFormatted(t *testing.T) {
