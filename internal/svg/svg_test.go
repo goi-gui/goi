@@ -1,4 +1,4 @@
-//go:build !nosvg
+//go:build all || svg
 
 package svg
 

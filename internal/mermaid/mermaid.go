@@ -1,4 +1,4 @@
-//go:build !js && !nomermaid
+//go:build !js && (all || mermaid)
 
 // Package mermaid renders Mermaid source with Pele's layout and resvg, both
 // running in-process: no browser, no Node and no external process.

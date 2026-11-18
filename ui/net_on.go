@@ -1,4 +1,4 @@
-//go:build !nonet
+//go:build all || net
 
 package ui
 

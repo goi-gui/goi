@@ -1,4 +1,4 @@
-//go:build !nomarkdown
+//go:build all || markdown
 
 package tree
 

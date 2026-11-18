@@ -1,4 +1,4 @@
-//go:build nonet
+//go:build !all && !net
 
 package ui
 
@@ -9,7 +9,7 @@ import (
 )
 
 // errNoNetwork is what a remote src reports in a build without net/http.
-var errNoNetwork = errors.New("ui: this build has no network support (-tags nonet)")
+var errNoNetwork = errors.New("ui: this build has no network support; build with -tags net")
 
 func fetchRemote(src string) ([]byte, error) { return nil, errNoNetwork }
 

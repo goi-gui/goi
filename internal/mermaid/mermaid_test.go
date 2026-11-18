@@ -1,4 +1,4 @@
-//go:build !js && !nomermaid
+//go:build !js && (all || mermaid)
 
 package mermaid
 

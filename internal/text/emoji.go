@@ -15,7 +15,7 @@ import (
 // offline"; a build that does not want it can drop the file and the node falls
 // back to the text face's monochrome glyphs.
 //
-// notoEmoji is the embedded font, or nil in a noemoji build.
+// notoEmoji is the embedded font, or nil without the `emoji` feature.
 
 // HasEmoji reports whether the colour emoji font parsed. The first call parses
 // it, so a test that asks is also a test that loads.

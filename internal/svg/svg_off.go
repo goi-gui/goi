@@ -1,7 +1,7 @@
-//go:build nosvg
+//go:build !all && !svg
 
-// Package svg parses and rasterizes SVG files. A `nosvg` build drops the
-// rasterizer (and oksvg/rasterx with it): SVG elements report an error instead
+// Package svg parses and rasterizes SVG files. A build without the `svg`
+// feature drops the rasterizer (and oksvg/rasterx with it): SVG elements report an error instead
 // of drawing, which is what an app that only uses bitmaps wants.
 package svg
 
@@ -17,7 +17,7 @@ import (
 type SVG struct{}
 
 // ErrNoSVG is what a build without the rasterizer reports.
-var ErrNoSVG = errors.New("svg: this build has no SVG support (-tags nosvg)")
+var ErrNoSVG = errors.New("svg: this build has no SVG support; build with -tags svg")
 
 // Parse reports that this build cannot read an SVG.
 func Parse(b []byte) (*SVG, error) { return nil, ErrNoSVG }

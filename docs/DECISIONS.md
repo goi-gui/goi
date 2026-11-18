@@ -2489,3 +2489,14 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   rather than pulling the wasm runtime into every wasm page. Memory is capped by
   a pixel budget on the diagram cache; nodes keep their own bitmap if the cache
   evicts it.
+
+- **Optional features are opt-in.** The old tags removed work from the default
+  build (`noemoji`, `nosvg`, `nomarkdown`, `nocode`, `nonet`, `nodialog`,
+  `nomermaid`), so a minimal app paid for every feature it never used and a
+  release had to remember each `-no` flag. The tags now name what they add:
+  `emoji`, `svg`, `mermaid`, `markdown`, `code`, `net` and `dialog`, and `all`
+  turns on every one. The core build still has the window, renderer, layout and
+  text; a design that uses a missing feature parses but the element reports the
+  tag to add. Platform and toolchain tags (`js`, `nofakecgo`, `nogpu`) are not
+  feature switches and keep their meaning. Tests and examples use `all`, because
+  a feature's test and its example should fail when the feature is off.

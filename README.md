@@ -277,26 +277,30 @@ required, and there is no cgo build.
 ```sh
 # Linux — only the SDL3 runtime library (libsdl3-0 on recent Debian/Ubuntu,
 # sdl3 on Arch, or SDL3 built from source and installed)
-CGO_ENABLED=0 go build -tags nofakecgo ./...
+CGO_ENABLED=0 go build -tags "nofakecgo all" ./...
 
 # macOS — brew installs the runtime library
 brew install sdl3
-CGO_ENABLED=0 go build -tags nofakecgo ./...
+CGO_ENABLED=0 go build -tags "nofakecgo all" ./...
 
 # Windows — put SDL3.dll next to the executable (the SDL3 release or MSYS2's
 # mingw-w64-x86_64-sdl3); no MSYS2 shell is needed for the build itself
-CGO_ENABLED=0 go build -tags nofakecgo ./...
+CGO_ENABLED=0 go build -tags "nofakecgo all" ./...
 ```
 
 Add `-ldflags="-H windowsgui"` on Windows for a program without a console
 window.
 
-A release build usually wants `-s -w` and the tags for anything the app does
-not use. The colour emoji font alone is 10.7 MB, and each optional feature
-brings its dependency with it:
+Optional features are opt-in: the core build has no colour emoji, SVG,
+Markdown, code highlighting, network, desktop dialogs or Mermaid. Name the ones
+the app uses, or take them all with `all`:
 
 ```sh
-CGO_ENABLED=0 go build -tags "nofakecgo noemoji nonet nocode nosvg nomarkdown nodialog" \
+# everything
+CGO_ENABLED=0 go build -tags "nofakecgo all" -ldflags="-s -w" -o myapp ./cmd/myapp
+
+# only the features this app needs
+CGO_ENABLED=0 go build -tags "nofakecgo emoji svg net dialog" \
 	-ldflags="-s -w" -o myapp ./cmd/myapp
 ```
 

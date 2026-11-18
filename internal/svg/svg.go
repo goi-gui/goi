@@ -1,4 +1,4 @@
-//go:build !nosvg
+//go:build all || svg
 
 // Package svg parses SVG files and rasterizes them into the renderer's pixel
 // format with currentColor replaced by the colour the design chose.

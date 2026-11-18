@@ -1,9 +1,9 @@
-//go:build nomarkdown
+//go:build !all && !markdown
 
 package tree
 
-// Markdown renders a document as child elements. A `nomarkdown` build drops
-// goldmark: the element still exists, but it draws nothing and adds no children.
+// Markdown renders a document as child elements. Without the `markdown`
+// feature goldmark is dropped: the element still exists, but it draws nothing and adds no children.
 type Markdown struct {
 	Component
 	// rendered is the source the children were built from.

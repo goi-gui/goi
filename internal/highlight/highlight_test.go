@@ -1,4 +1,4 @@
-//go:build !nocode
+//go:build all || code
 
 package highlight
 

@@ -1,7 +1,8 @@
-//go:build js || nomermaid
+//go:build js || (!all && !mermaid)
 
 // Package mermaid renders Mermaid source with Pele's layout and resvg. A
-// browser build or a `nomermaid` build does not carry the wasm rasterizer, so
+// browser build, or one without the `mermaid` feature, does not carry the wasm
+// rasterizer, so
 // a diagram reports that support is not built instead of taking the page down.
 package mermaid
 
@@ -17,12 +18,12 @@ type Engine struct{}
 
 // NewEngine reports that Mermaid rendering is not available in this build.
 func NewEngine() (*Engine, error) {
-	return nil, errors.New("mermaid: this build has no renderer (browser or -tags nomermaid)")
+	return nil, errors.New("mermaid: this build has no renderer; build with -tags mermaid (the browser never has it)")
 }
 
 // Render always fails without the renderer.
 func (*Engine) Render(string, *m3.Theme, float64, float64) (*img.Data, float64, float64, error) {
-	return nil, 0, 0, errors.New("mermaid: this build has no renderer (browser or -tags nomermaid)")
+	return nil, 0, 0, errors.New("mermaid: this build has no renderer; build with -tags mermaid (the browser never has it)")
 }
 
 // Close is a no-op.

@@ -1,4 +1,4 @@
-//go:build !noemoji
+//go:build all || emoji
 
 package text
 

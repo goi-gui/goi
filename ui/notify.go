@@ -1,4 +1,4 @@
-//go:build !nodialog
+//go:build all || dialog
 
 package ui
 
