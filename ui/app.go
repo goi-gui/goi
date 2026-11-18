@@ -452,6 +452,8 @@ func (a *App) requestFrame() {
 }
 
 // Post runs fn on the UI goroutine, in FIFO order with other posted functions.
+// Use it from a background goroutine that has finished fetching or computing
+// something and now needs to touch a property, SetData or a window method.
 func (a *App) Post(fn func()) {
 	if fn == nil {
 		return

@@ -12,6 +12,10 @@ behaviour. Hot reload is built in: edit a `.goi` file and the open window
 updates without a restart. The same project builds for Linux (Wayland and X11),
 Windows and macOS, drawing through Vulkan, Direct3D 12 or Metal.
 
+The component set and design language follow
+[Material 3 Expressive](https://m3.material.io/blog/building-with-m3-expressive):
+expressive colour, type, shape and motion, with light and dark schemes.
+
 ## Shopping
 
 One `.goi` file and a small `main.go`: a rail of categories that becomes a
@@ -239,7 +243,7 @@ a shipped binary.
   `ui.SetHandler`, typed `Prop[T]`, `Event[E]` and `ByID[T]`.
 - **Composition.** Imports, typed `props`, named slots and `$children`, scoped
   ids, loading an embedded design.
-- **Material 3.** Buttons, text fields, cards, dialogs, sheets, menus, navigation,
+- **Material 3 Expressive.** Buttons, text fields, cards, dialogs, sheets, menus, navigation,
   progress and more, with light and dark schemes, Roboto and Material Symbols.
 - **Layout.** Column, Row and Stack, Wrap, Grid, flex sizing, responsive
   breakpoints, padding and margin, and scrolling containers.
