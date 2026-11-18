@@ -1,3 +1,5 @@
+//go:build !js && !wasip1
+
 // Command goi starts, runs and builds goi projects.
 //
 //	goi init --name myapp --id com.example.myapp --module example.com/myapp
