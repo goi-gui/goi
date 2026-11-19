@@ -194,3 +194,49 @@ Window {
 		t.Fatalf("mid heights = %v and %v, want both moving", texts[0].Height(), texts[1].Height())
 	}
 }
+
+// TestBoxTransitions covers the other numeric and colour properties: padding,
+// margin, border thickness and border colour use the same cells.
+func TestBoxTransitions(t *testing.T) {
+	tr, diag := BuildSource([]byte(`bridge { open bool }
+Window {
+	Rectangle {
+		id:              box
+		padding:         bridge.open ? 20 : 4
+		margin:          bridge.open ? 16 : 2
+		borderThickness: bridge.open ? 4 : 1
+		borderColor:     bridge.open ? #ff0000ff : #0000ffff
+		transition: padding 500ms, margin 500ms, borderThickness 500ms, borderColor 500ms
+	}
+}`), nil)
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	box := tr.ids["box"].Base()
+	tr.ApplyExpressions()
+	if box.Padding() != 4 || box.Margin() != 2 || box.BorderThickness() != 1 || box.BorderColor() != 0x0000FFFF {
+		t.Fatalf("initial box = %v %v %v %08x", box.Padding(), box.Margin(), box.BorderThickness(), box.BorderColor())
+	}
+	tr.SetData("open", true)
+	tr.ApplyExpressions()
+	if box.Padding() != 4 || box.Margin() != 2 {
+		t.Fatalf("box jumped before the first frame: %v %v", box.Padding(), box.Margin())
+	}
+	tr.AdvanceTransitions(0.25)
+	if p := box.Padding(); p <= 4 || p >= 20 {
+		t.Fatalf("padding mid = %v", p)
+	}
+	if m := box.Margin(); m <= 2 || m >= 16 {
+		t.Fatalf("margin mid = %v", m)
+	}
+	if b := box.BorderThickness(); b <= 1 || b >= 4 {
+		t.Fatalf("border mid = %v", b)
+	}
+	if c := box.BorderColor(); c == 0x0000FFFF || c == 0xFF0000FF {
+		t.Fatalf("border colour mid = %08x", c)
+	}
+	tr.AdvanceTransitions(0.25)
+	if box.Padding() != 20 || box.Margin() != 16 || box.BorderThickness() != 4 || box.BorderColor() != 0xFF0000FF {
+		t.Fatalf("final box = %v %v %v %08x", box.Padding(), box.Margin(), box.BorderThickness(), box.BorderColor())
+	}
+}
