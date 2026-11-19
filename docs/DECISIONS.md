@@ -2574,3 +2574,19 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   runs. A load that keeps failing gives up until the src changes, and a bitmap
   Go supplied with `SetImage` is marked so the file loader never undoes an
   explicit clear.
+
+- **The system theme is read from the portal on Linux.** SDL's system-theme
+  event is not delivered reliably while the window is unfocused, and a settings
+  app leaves it unfocused. A session-bus watcher follows
+  `org.freedesktop.appearance color-scheme` and wakes the frame loop; SDL
+  remains the fallback when no portal is running.
+- **The image atlas repacks instead of blurring.** A shelf can be full of old
+  diagram sizes while its byte budget is not; halving the new image made a
+  visible Mermaid blurry. Grow before downscaling, and when a frame still has to
+  downscale, reset the atlas and repack only that frame. Off-screen bitmap ops
+  are skipped so they never enter the atlas in the first place.
+- **A Mermaid render for a palette the page left is dropped.** Theme switches
+  queue many renders behind one mutex, so a stale theme would block the current
+  one. The worker checks the current palette key after acquiring the lock, and
+  an off-screen node clears its pending flag while the result is still welcome
+  in the cache.
