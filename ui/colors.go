@@ -94,7 +94,7 @@ func (a *App) resolveColors() bool {
 		return false
 	}
 	w := a.win
-	theme := themeFor(w)
+	theme := a.displayTheme(w)
 	// DefineTheme runs after LoadWindow — usually inside Bind — so a name is only
 	// a typo once the first frame is drawing. Warning at load would fire before
 	// the app had a chance to register its scheme.

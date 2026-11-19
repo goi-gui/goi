@@ -109,6 +109,9 @@ type Window struct {
 	Title Prop[string]
 	// Theme names a scheme: "light", "dark" or one the app registered.
 	Theme Prop[string]
+	// CrossfadeTheme is how long the colours take to move to a new scheme; zero
+	// switches at once.
+	CrossfadeTheme Prop[time.Duration]
 	// TitleBar is "system" (the platform's decorations) or "custom" (none, so
 	// the design draws a TitleBar of its own).
 	TitleBar Prop[string]
@@ -168,6 +171,7 @@ func (w *Window) namedProps() []NamedProp {
 		commonProps(&w.NodeBase, 10),
 		StringProp(&w.NodeBase, "title", &w.Title),
 		StringProp(&w.NodeBase, "theme", &w.Theme),
+		DurationProp(&w.NodeBase, "crossfadeTheme", DirtyPaint, &w.CrossfadeTheme),
 		EnumProp(&w.NodeBase, "titleBar", DirtyPaint, &w.TitleBar, TitleBarValues),
 		BoolProp(&w.NodeBase, "disableResize", DirtyPaint, &w.DisableResize),
 		BoolProp(&w.NodeBase, "resizable", DirtyPaint, &w.Resizable),

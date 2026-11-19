@@ -372,7 +372,7 @@ func (a *App) frame() {
 		// something to measure. Only a debug build pays this.
 		a.needsFrame = true
 	}
-	d.list.Theme = themeFor(a.win)
+	d.list.Theme = a.displayTheme(a.win)
 	d.list.Build(a.win.tree, float64(d.pendingW)/float64(maxScale(d.pendingScale)), float64(d.pendingH)/float64(maxScale(d.pendingScale)))
 	if err := d.gpu.Render(&d.list, d.pendingW, d.pendingH); err != nil {
 		a.reportError(err)

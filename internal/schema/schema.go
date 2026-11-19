@@ -336,6 +336,7 @@ var elements = func() []Element {
 			// Any scheme the app defined with Window.DefineTheme; `light` and
 			// `dark` are always available.
 			Prop{Name: "theme", Type: TypeString, Dirty: DirtyPaint, Default: "light"},
+			Prop{Name: "crossfadeTheme", Type: TypeDuration, Dirty: DirtyNone, Default: time.Duration(0)},
 			// system keeps the platform's title bar; custom hides it, so the
 			// design draws its own inside a TitleBar.
 			Prop{Name: "titleBar", Type: TypeEnum, Dirty: DirtyNone, Enum: []string{"system", "custom"}, Default: "system"},

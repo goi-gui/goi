@@ -881,7 +881,7 @@ func (p *parser) parseProperty() (*Property, bool) {
 		v, ok = p.parseScale()
 	case "transition":
 		v, ok = p.parseTransition()
-	case "crossfadeSrc":
+	case "crossfadeSrc", "crossfadeTheme":
 		v, ok = p.parseDurationValue()
 	default:
 		v, ok = p.parseValue()

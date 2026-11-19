@@ -72,6 +72,16 @@ type App struct {
 	driver     driver
 	quitOnce   sync.Once
 	needsFrame bool
+	// themeName is the scheme name the current colours belong to. A change
+	// starts a theme crossfade when `crossfadeTheme` is nonzero; from/to/display
+	// keep the blend, and the timestamps drive it.
+	themeName    string
+	themeFrom    *m3.Theme
+	themeTo      *m3.Theme
+	themeDisplay *m3.Theme
+	themeStart   time.Time
+	themeDur     time.Duration
+	themeFading  bool
 	// viewportWait is set when a lazy element or a diagram had no viewport to
 	// test yet, so the frame after layout looks again.
 	viewportWait bool

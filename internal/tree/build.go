@@ -530,17 +530,18 @@ func newNode(name string) Node {
 	switch name {
 	case "Window":
 		return &Window{
-			NodeBase:      b(),
-			Title:         newProp(nil, "title", DirtyPaint, ""),
-			Theme:         newProp(nil, "theme", DirtyPaint, "light"),
-			TitleBar:      newProp(nil, "titleBar", DirtyPaint, "system"),
-			DisableResize: newProp(nil, "disableResize", DirtyPaint, false),
-			Resizable:     newProp(nil, "resizable", DirtyPaint, true),
-			Minimizable:   newProp(nil, "minimizable", DirtyPaint, true),
-			Maximizable:   newProp(nil, "maximizable", DirtyPaint, true),
-			Minimized:     newProp(nil, "minimized", DirtyPaint, false),
-			Maximized:     newProp(nil, "maximized", DirtyPaint, false),
-			Fullscreen:    newProp(nil, "fullscreen", DirtyPaint, false),
+			NodeBase:       b(),
+			Title:          newProp(nil, "title", DirtyPaint, ""),
+			Theme:          newProp(nil, "theme", DirtyPaint, "light"),
+			CrossfadeTheme: newProp(nil, "crossfadeTheme", DirtyPaint, time.Duration(0)),
+			TitleBar:       newProp(nil, "titleBar", DirtyPaint, "system"),
+			DisableResize:  newProp(nil, "disableResize", DirtyPaint, false),
+			Resizable:      newProp(nil, "resizable", DirtyPaint, true),
+			Minimizable:    newProp(nil, "minimizable", DirtyPaint, true),
+			Maximizable:    newProp(nil, "maximizable", DirtyPaint, true),
+			Minimized:      newProp(nil, "minimized", DirtyPaint, false),
+			Maximized:      newProp(nil, "maximized", DirtyPaint, false),
+			Fullscreen:     newProp(nil, "fullscreen", DirtyPaint, false),
 		}
 	case "Column", "Row", "Flex", "Stack", "ClipRRect", "Wrap", "Grid", "TitleBar", "AspectRatio", "GestureDetector":
 		c := Container{

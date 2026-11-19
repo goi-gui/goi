@@ -2601,3 +2601,12 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   instead of blending two ready bitmaps. The bitmap shader multiplies the
   instance alpha, which is also what makes a node's `opacity` fade an image or a
   diagram correctly.
+
+- **A theme crossfade interpolates the colour roles, not two rendered frames.**
+  `crossfadeTheme` blends every `m3.Colors` field from the old scheme to the new
+  one and resolves role-based properties with that blend each frame; the painter
+  and M3 components also get the blended scheme. Rendering two full frames and
+  crossfading them would double the work and need an offscreen texture, while
+  interpolating the roles keeps text, borders, shadows and images on the same
+  palette throughout. The mood and type scale follow the target immediately, so
+  `app.dark` and layout do not wobble.
