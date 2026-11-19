@@ -935,6 +935,12 @@ func (l *List) applyOpacity(from int, a float64) {
 // requested fit. A missing or undecoded image keeps the node's background, so a
 // bad path shows as a coloured placeholder rather than a hole.
 func (l *List) paintImage(n *tree.Image, r tree.Rect, clip tree.Rect) {
+	if n.Data == nil && !n.Loading && n.LoadErr == nil && !n.NoFile && !n.NoRetry && n.Src.Get() != "" {
+		// The bitmap is gone without a load in flight: the image loader may
+		// have lost it to an eviction after its sync pass. Paint the frame and
+		// ask for another, where syncImages retries the load.
+		l.Animating = true
+	}
 	l.paintBitmap(n.Data, n.Fit.Get(), &n.NodeBase, n.Loading, n.Phase, r, clip)
 }
 

@@ -120,6 +120,8 @@ func (a *App) loadImages(tr *tree.Tree) {
 // background. It records the src it loaded, which is how syncImages notices a
 // later change.
 func (a *App) loadImage(im *tree.Image, src string) {
+	im.NoFile = false
+	im.NoRetry = false
 	im.RenderedSrc = src
 	if src == "" {
 		return
@@ -147,6 +149,9 @@ func (a *App) loadImage(im *tree.Image, src string) {
 	}
 	anim := a.anims[src]
 	animData(im, d, anim)
+	if a.imageTries != nil {
+		delete(a.imageTries, im)
+	}
 	if anim != nil {
 		a.hasAnim = true
 	}
@@ -179,7 +184,24 @@ func (a *App) syncImages() {
 		}
 		src := im.Src.Get()
 		if src == im.RenderedSrc {
-			return
+			if im.Data != nil || im.Loading || src == "" || im.NoFile {
+				return
+			}
+			// The bitmap went missing without a new src: an eviction that ran
+			// after this walk visited the node, or a decode that failed. Retry
+			// a few times; otherwise one bad read leaves a blank element until
+			// the design changes its src.
+			if a.imageTries == nil {
+				a.imageTries = map[*tree.Image]int{}
+			}
+			if a.imageTries[im] >= 3 {
+				im.NoRetry = true
+				return
+			}
+			a.imageTries[im]++
+			im.RenderedSrc = ""
+		} else {
+			delete(a.imageTries, im)
 		}
 		a.loadImage(im, src)
 		// A new bitmap may be a different size, and a design that declares no

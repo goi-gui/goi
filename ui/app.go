@@ -75,6 +75,9 @@ type App struct {
 	// viewportWait is set when a lazy element or a diagram had no viewport to
 	// test yet, so the frame after layout looks again.
 	viewportWait bool
+	// imageTries counts how many times a node's missing bitmap was retried, so
+	// a file that cannot be read is not retried forever.
+	imageTries map[*tree.Image]int
 	// showFPS is the debug overlay switch; off unless the app asks for it.
 	showFPS bool
 	// imageBudget is how many decoded image bytes the cache may hold, 0 for

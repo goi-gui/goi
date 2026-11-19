@@ -990,3 +990,38 @@ func TestIconButtonIconColor(t *testing.T) {
 		t.Fatal("the icon did not paint")
 	}
 }
+
+// TestMissingBitmapAsksForOneFrame: an Image that lost its bitmap should make
+// the list ask for another frame, where the loader retries. A Go-owned or
+// given-up image must not keep the frame loop spinning.
+func TestMissingBitmapAsksForOneFrame(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window { Image { id: pic src: "goi://pic.png" width: 10 height: 10 } }`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 20, 20)
+	n, _ := tr.ByID("pic")
+	im := n.(*tree.Image)
+	build := func() bool {
+		l := &List{}
+		l.Build(tr, 20, 20)
+		return l.Animating
+	}
+	if !build() {
+		t.Fatal("a lost bitmap did not ask for a retry frame")
+	}
+	im.NoRetry = true
+	if build() {
+		t.Fatal("a given-up image kept asking for frames")
+	}
+	im.NoRetry = false
+	im.SetImage(nil)
+	if build() {
+		t.Fatal("a Go-cleared image kept asking for frames")
+	}
+	im.NoFile = false
+	im.Src.Set("")
+	if build() {
+		t.Fatal("an image with no src kept asking for frames")
+	}
+}

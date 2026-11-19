@@ -817,10 +817,67 @@ Window { Column {
 		t.Fatalf("bitmap = %dx%d, want the 3x2 test image", im.Data.W, im.Data.H)
 	}
 
-	// A second pass with an unchanged src must not reload it.
+	// A second pass with the bitmap still present keeps it.
+	before := im.Data
+	a.syncImages()
+	if im.Data != before {
+		t.Fatal("an unchanged src decoded the bitmap again")
+	}
+}
+
+// TestLostBitmapReloads covers an image whose decoded data was cleared after
+// the sync pass that would have reloaded it: an eviction, or a frame where a
+// load failed. The node keeps its src, so the next frame must retry instead of
+// leaving a blank element until the design changes it.
+func TestLostBitmapReloads(t *testing.T) {
+	a, win := reloadApp(t, `Window { Image { id: pic src: "goi://pic.png" } }`)
+	a.assets = fstest.MapFS{"pic.png": {Data: testPNG(t)}}
+	im := MustByID[*Image](win, "pic")
+	a.loadImages(win.tree)
+	if im.Data == nil {
+		t.Fatal("the image did not load")
+	}
+	// The bitmap is gone but the src marker is still set.
 	im.Data = nil
+	a.hasImages = true
+	a.needsFrame = true
+	a.syncImages()
+	if im.Data == nil {
+		t.Fatal("a lost bitmap was not reloaded")
+	}
+}
+
+// TestSetImageNilStaysCleared keeps a Go-cleared bitmap from being reloaded
+// from src: the loader must respect the Go owner.
+func TestSetImageNilStaysCleared(t *testing.T) {
+	a, win := reloadApp(t, `Window { Image { id: pic src: "goi://pic.png" } }`)
+	a.assets = fstest.MapFS{"pic.png": {Data: testPNG(t)}}
+	im := MustByID[*Image](win, "pic")
+	a.loadImages(win.tree)
+	if im.Data == nil {
+		t.Fatal("the image did not load")
+	}
+	im.SetImage(nil)
+	a.hasImages = true
+	a.needsFrame = true
 	a.syncImages()
 	if im.Data != nil {
-		t.Fatal("an unchanged src loaded again")
+		t.Fatal("syncImages reloaded a bitmap Go had cleared")
+	}
+}
+
+// TestLostBitmapGivesUp stops the retry after a few failures, so a missing file
+// does not read the disk on every frame.
+func TestLostBitmapGivesUp(t *testing.T) {
+	a, win := reloadApp(t, `Window { Image { id: pic src: "goi://missing.png" } }`)
+	a.assets = fstest.MapFS{}
+	im := MustByID[*Image](win, "pic")
+	for i := 0; i < 8; i++ {
+		a.hasImages = true
+		a.needsFrame = true
+		a.syncImages()
+	}
+	if !im.NoRetry {
+		t.Fatalf("still retrying after %d tries", a.imageTries[im])
 	}
 }

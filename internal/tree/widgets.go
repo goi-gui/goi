@@ -465,6 +465,11 @@ type Image struct {
 	// RenderedSrc is the src the current Data came from, so the ui layer can
 	// tell a src an expression just changed from one it already loaded.
 	RenderedSrc string
+	// NoFile marks a bitmap Go supplied (SetImage, including a nil that clears
+	// it), so the loader does not replace it from src.
+	NoFile bool
+	// NoRetry marks a load the loader gave up on; a changed src clears it.
+	NoRetry bool
 	// Anim is the decoded animation behind src, nil for a still picture. Frame
 	// and AnimTime are the player's state: the ui layer advances them and swaps
 	// Data.Pix before repainting, so the design file never mentions them.
@@ -501,6 +506,7 @@ func (i *Image) SetImage(src image.Image) {
 	}
 	i.Anim = nil
 	i.Frame, i.AnimTime, i.AnimDone = 0, 0, false
+	i.NoFile = true
 	i.Paused.Set(false)
 	i.LoadErr = nil
 	i.Loading = false
