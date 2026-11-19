@@ -109,7 +109,7 @@ func Lookup(name string) (Kind, bool) {
 var props = map[string][]string{
 	"Button":           {"label", "leadingIcon", "filledIcon", "filledLeadingIcon", "variant", "color", "disabled"},
 	"Icon":             {"icon", "filledIcon", "color"},
-	"IconButton":       {"icon", "filledIcon", "variant", "disabled", "selected"},
+	"IconButton":       {"icon", "filledIcon", "variant", "disabled", "selected", "iconColor"},
 	"FAB":              {"label", "icon", "filledIcon", "variant", "disabled"},
 	"FABMenu":          {"icon", "filledIcon", "variant", "disabled", "expanded"},
 	"ButtonGroup":      {},

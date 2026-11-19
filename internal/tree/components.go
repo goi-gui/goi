@@ -318,11 +318,18 @@ func (c *Button) namedProps() []NamedProp {
 }
 
 // IconButton is a button that shows only an icon.
-type IconButton struct{ Component }
+type IconButton struct {
+	Component
+	// IconColor overrides the glyph colour; zero keeps the variant's role.
+	IconColor Prop[uint32]
+}
 
 // Kind implements Node.
-func (*IconButton) Kind() string              { return "IconButton" }
-func (c *IconButton) namedProps() []NamedProp { return c.props("IconButton") }
+func (*IconButton) Kind() string { return "IconButton" }
+func (c *IconButton) namedProps() []NamedProp {
+	return append(c.propsExcept("IconButton", "iconColor"),
+		ColorProp(&c.NodeBase, "iconColor", DirtyPaint, &c.IconColor))
+}
 
 // FAB is a floating action button.
 type FAB struct{ Component }

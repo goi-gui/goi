@@ -967,3 +967,26 @@ func TestIconSizedAndTinted(t *testing.T) {
 		t.Fatalf("glyph left = %v, want 20 (centred in an 80dp box)", op.Rect[0])
 	}
 }
+
+// TestIconButtonIconColor tints only the glyph and leaves the variant's
+// container and state layer to the theme.
+func TestIconButtonIconColor(t *testing.T) {
+	l := list(t, `Window {
+		Column {
+			IconButton { icon: favorite iconColor: #112233 }
+		}
+	}`, 120, 120)
+	found := false
+	for _, op := range l.Ops {
+		if op.Kind != Text || !op.Icon {
+			continue
+		}
+		found = true
+		if op.Color != 0x112233FF {
+			t.Fatalf("icon colour = %08x, want 112233ff", op.Color)
+		}
+	}
+	if !found {
+		t.Fatal("the icon did not paint")
+	}
+}

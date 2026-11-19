@@ -608,6 +608,11 @@ func (l *List) paintIconButton(c *tree.Component, r tree.Rect, clip tree.Rect) {
 			icon = disabledAlpha(c, col.OnSurfaceVariant)
 		}
 	}
+	if ib, ok := c.Node().(*tree.IconButton); ok {
+		if v := ib.IconColor.Get(); v != 0 {
+			icon = disabledAlpha(c, v)
+		}
+	}
 	l.stateLayer(c, r, radius, icon, clip)
 	l.iconIn(c.Icon.Get(), 24, icon, r.X+r.W/2, r.Y+r.H/2, clip)
 }

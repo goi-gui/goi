@@ -628,7 +628,10 @@ func newM3Component(name string) Node {
 			Color:     newProp(nil, "color", DirtyPaint, uint32(0)),
 		}
 	case "IconButton":
-		return &IconButton{Component: newComponent()}
+		return &IconButton{
+			Component: newComponent(),
+			IconColor: newProp(nil, "iconColor", DirtyPaint, uint32(0)),
+		}
 	case "FAB":
 		return &FAB{Component: newComponent()}
 	case "FABMenu":
