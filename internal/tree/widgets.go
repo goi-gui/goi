@@ -444,14 +444,59 @@ func (r *Rectangle) Kind() string { return "Rectangle" }
 
 func (r *Rectangle) namedProps() []NamedProp { return commonProps(&r.NodeBase, 0) }
 
+// SrcFade is the outgoing bitmap of an Image or SVG while it crossfades to a
+// new source. The ui layer starts it when the new bitmap is ready; paint reads
+// the progress and fades the two bitmaps over the same box.
+type SrcFade struct {
+	Prev   *img.Data
+	Start  time.Time
+	Dur    time.Duration
+	Active bool
+}
+
+// crossfadeDuration is one source-to-source blend. It is long enough to read as
+// a fade and short enough not to hold up a picture change.
+const crossfadeDuration = 300 * time.Millisecond
+
+// Begin starts a fade from prev. The caller replaces the node's Data with the
+// new bitmap after this call.
+func (f *SrcFade) Begin(prev *img.Data) {
+	if prev == nil {
+		return
+	}
+	f.Prev, f.Start, f.Dur, f.Active = prev, time.Now(), crossfadeDuration, true
+}
+
+// Progress is the current blend in 0..1 and clears the fade when it ends.
+func (f *SrcFade) Progress() float64 {
+	if !f.Active {
+		return 1
+	}
+	if f.Dur <= 0 {
+		f.Active, f.Prev = false, nil
+		return 1
+	}
+	p := float64(time.Since(f.Start)) / float64(f.Dur)
+	if p >= 1 {
+		f.Active, f.Prev = false, nil
+		return 1
+	}
+	if p < 0 {
+		return 0
+	}
+	return p
+}
+
 // Image draws a decoded bitmap. The ui layer fills Data from Src, because a node
 // has no way to read files; an empty Data draws the Background as a placeholder,
 // which keeps a missing file visible instead of blank.
 type Image struct {
 	NodeBase
-	Src  Prop[string]
-	Fit  Prop[string]
-	Data *img.Data
+	Src          Prop[string]
+	Fit          Prop[string]
+	CrossfadeSrc Prop[bool]
+	Fade         SrcFade
+	Data         *img.Data
 	// Loading is true while the ui layer is fetching a remote src; paint draws a
 	// breathing placeholder for it instead of leaving a hole.
 	Loading bool
@@ -502,6 +547,9 @@ func (i *Image) SetImage(src image.Image) {
 	if src == nil {
 		i.Data = nil
 	} else {
+		if i.CrossfadeSrc.Get() && i.Data != nil {
+			i.Fade.Begin(i.Data)
+		}
 		i.Data = img.FromImage(src)
 	}
 	i.Anim = nil
@@ -515,9 +563,10 @@ func (i *Image) SetImage(src image.Image) {
 
 func (i *Image) namedProps() []NamedProp {
 	return append(
-		commonProps(&i.NodeBase, 4),
+		commonProps(&i.NodeBase, 5),
 		StringProp(&i.NodeBase, "src", &i.Src),
 		EnumProp(&i.NodeBase, "fit", DirtyLayout, &i.Fit, FitValues),
+		BoolProp(&i.NodeBase, "crossfadeSrc", DirtyPaint, &i.CrossfadeSrc),
 		BoolProp(&i.NodeBase, "paused", DirtyPaint, &i.Paused),
 		BoolProp(&i.NodeBase, "loop", DirtyPaint, &i.Loop),
 		BoolProp(&i.NodeBase, "lazy", DirtyPaint, &i.Lazy),
@@ -564,10 +613,12 @@ func (i *Image) Stop() {
 // omitted.
 type SVG struct {
 	NodeBase
-	Src   Prop[string]
-	Fit   Prop[string]
-	Color Prop[uint32]
-	Data  *img.Data
+	Src          Prop[string]
+	Fit          Prop[string]
+	Color        Prop[uint32]
+	CrossfadeSrc Prop[bool]
+	Fade         SrcFade
+	Data         *img.Data
 	// IntrinsicW/H is the parsed viewBox size in logical pixels.
 	IntrinsicW, IntrinsicH float64
 	// RenderedSrc and RenderedColor are what Data was rasterized from. The ui
@@ -658,10 +709,11 @@ func (s *SVG) SetDataBytes(b []byte) {
 
 func (s *SVG) namedProps() []NamedProp {
 	return append(
-		commonProps(&s.NodeBase, 5),
+		commonProps(&s.NodeBase, 6),
 		BoolProp(&s.NodeBase, "paused", DirtyPaint, &s.Paused),
 		BoolProp(&s.NodeBase, "loop", DirtyPaint, &s.Loop),
 		BoolProp(&s.NodeBase, "lazy", DirtyPaint, &s.Lazy),
+		BoolProp(&s.NodeBase, "crossfadeSrc", DirtyPaint, &s.CrossfadeSrc),
 		StringProp(&s.NodeBase, "src", &s.Src),
 		EnumProp(&s.NodeBase, "fit", DirtyLayout, &s.Fit, FitValues),
 		ColorProp(&s.NodeBase, "color", DirtyPaint, &s.Color),

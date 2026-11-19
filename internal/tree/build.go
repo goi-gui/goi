@@ -583,22 +583,24 @@ func newNode(name string) Node {
 		}
 	case "Image":
 		return &Image{
-			NodeBase: b(),
-			Src:      newProp(nil, "src", DirtyLayout, ""),
-			Fit:      newProp(nil, "fit", DirtyLayout, "cover"),
-			Paused:   newProp(nil, "paused", DirtyPaint, false),
-			Loop:     newProp(nil, "loop", DirtyPaint, true),
-			Lazy:     newProp(nil, "lazy", DirtyPaint, false),
+			NodeBase:     b(),
+			Src:          newProp(nil, "src", DirtyLayout, ""),
+			Fit:          newProp(nil, "fit", DirtyLayout, "cover"),
+			CrossfadeSrc: newProp(nil, "crossfadeSrc", DirtyPaint, false),
+			Paused:       newProp(nil, "paused", DirtyPaint, false),
+			Loop:         newProp(nil, "loop", DirtyPaint, true),
+			Lazy:         newProp(nil, "lazy", DirtyPaint, false),
 		}
 	case "SVG":
 		return &SVG{
-			NodeBase: b(),
-			Src:      newProp(nil, "src", DirtyLayout, ""),
-			Fit:      newProp(nil, "fit", DirtyLayout, "contain"),
-			Color:    newProp(nil, "color", DirtyPaint, uint32(0)),
-			Paused:   newProp(nil, "paused", DirtyPaint, false),
-			Loop:     newProp(nil, "loop", DirtyPaint, true),
-			Lazy:     newProp(nil, "lazy", DirtyPaint, false),
+			NodeBase:     b(),
+			Src:          newProp(nil, "src", DirtyLayout, ""),
+			Fit:          newProp(nil, "fit", DirtyLayout, "contain"),
+			Color:        newProp(nil, "color", DirtyPaint, uint32(0)),
+			CrossfadeSrc: newProp(nil, "crossfadeSrc", DirtyPaint, false),
+			Paused:       newProp(nil, "paused", DirtyPaint, false),
+			Loop:         newProp(nil, "loop", DirtyPaint, true),
+			Lazy:         newProp(nil, "lazy", DirtyPaint, false),
 		}
 	case "Positioned":
 		return &Positioned{

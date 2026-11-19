@@ -2,6 +2,7 @@ package paint
 
 import (
 	"testing"
+	"time"
 
 	"github.com/goi-gui/goi/internal/img"
 	"github.com/goi-gui/goi/internal/layout"
@@ -110,5 +111,48 @@ func TestMermaidLoadingShimmers(t *testing.T) {
 	}
 	if bands == 0 {
 		t.Fatalf("no shimmer band:\n%s", l.Dump())
+	}
+}
+
+// TestImageCrossfadePaintsBothBitmaps: halfway through a fade the old and new
+// pictures are complementary alphas over the same box.
+func TestImageCrossfadePaintsBothBitmaps(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window { Image {
+		id:           pic
+		src:          "x"
+		crossfadeSrc: true
+		width:        40
+		height:       20
+	} }`), nil)
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	node, _ := tr.ByID("pic")
+	im := node.(*tree.Image)
+	prev := &img.Data{W: 2, H: 2, Pix: make([]byte, 16)}
+	im.Fade.Prev = prev
+	im.Fade.Dur = 300 * time.Millisecond
+	im.Fade.Start = time.Now().Add(-150 * time.Millisecond)
+	im.Fade.Active = true
+	im.Data = &img.Data{W: 2, H: 2, Pix: make([]byte, 16)}
+	layout.New(nil).Layout(tr.Root, 100, 100)
+	l := &List{}
+	l.Build(tr, 100, 100)
+	var alphas []uint32
+	for _, op := range l.Ops {
+		if op.Kind == Bitmap {
+			alphas = append(alphas, op.Color&0xFF)
+		}
+	}
+	if len(alphas) != 2 {
+		t.Fatalf("bitmap ops = %d, want the old and new pictures", len(alphas))
+	}
+	for _, a := range alphas {
+		if a < 100 || a > 155 {
+			t.Fatalf("crossfade alphas = %v, want about half", alphas)
+		}
+	}
+	if !l.Animating {
+		t.Fatal("a running fade did not ask for the next frame")
 	}
 }

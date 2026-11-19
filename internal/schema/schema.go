@@ -416,6 +416,7 @@ var elements = func() []Element {
 		{Name: "Image", Children: false, Attrs: withCommon(
 			Prop{Name: "src", Type: TypeString, Dirty: DirtyLayout, Default: ""},
 			Prop{Name: "fit", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"cover", "contain", "fill"}, Default: "cover"},
+			Prop{Name: "crossfadeSrc", Type: TypeBool, Dirty: DirtyPaint, Default: false},
 			Prop{Name: "paused", Type: TypeBool, Dirty: DirtyPaint, Default: false},
 			Prop{Name: "loop", Type: TypeBool, Dirty: DirtyPaint, Default: true},
 			Prop{Name: "lazy", Type: TypeBool, Dirty: DirtyPaint, Default: false},
@@ -424,6 +425,7 @@ var elements = func() []Element {
 			Prop{Name: "src", Type: TypeString, Dirty: DirtyLayout, Default: ""},
 			Prop{Name: "fit", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"cover", "contain", "fill"}, Default: "contain"},
 			Prop{Name: "color", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0)},
+			Prop{Name: "crossfadeSrc", Type: TypeBool, Dirty: DirtyPaint, Default: false},
 			Prop{Name: "paused", Type: TypeBool, Dirty: DirtyPaint, Default: false},
 			Prop{Name: "loop", Type: TypeBool, Dirty: DirtyPaint, Default: true},
 			Prop{Name: "lazy", Type: TypeBool, Dirty: DirtyPaint, Default: false},

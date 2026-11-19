@@ -275,9 +275,13 @@ func (t *imageRenderer) addOp(op paint.Op) {
 	cu0, cv0 := u0, v0
 	cu1, cv1 := u1, v1
 	uv := op.UV
+	alpha := float32(1)
+	if op.Color != 0 {
+		alpha = float32(op.Color&0xFF) / 255
+	}
 	t.gpu.instances = append(t.gpu.instances, gpuInstance{
 		Rect:    op.Rect,
-		Color:   [4]float32{1, 1, 1, 1},
+		Color:   [4]float32{alpha, alpha, alpha, alpha},
 		Clip:    clipVec(op.Clip),
 		ClipBox: clipVec(op.ClipBox),
 		// params.y rounds the bitmap's own crop, which is the op's radius, not

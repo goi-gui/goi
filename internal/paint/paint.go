@@ -923,10 +923,10 @@ func (l *List) applyOpacity(from int, a float64) {
 	}
 	for i := from; i < len(l.Ops); i++ {
 		op := &l.Ops[i]
-		op.Color = withAlpha(op.Color, a)
-		op.BorderColor = withAlpha(op.BorderColor, a)
+		op.Color = scaleAlpha(op.Color, a)
+		op.BorderColor = scaleAlpha(op.BorderColor, a)
 		for j := range op.TextShadows {
-			op.TextShadows[j].Color = withAlpha(op.TextShadows[j].Color, a)
+			op.TextShadows[j].Color = scaleAlpha(op.TextShadows[j].Color, a)
 		}
 	}
 }
@@ -935,6 +935,12 @@ func (l *List) applyOpacity(from int, a float64) {
 // requested fit. A missing or undecoded image keeps the node's background, so a
 // bad path shows as a coloured placeholder rather than a hole.
 func (l *List) paintImage(n *tree.Image, r tree.Rect, clip tree.Rect) {
+	if vis := intersect(clip, r); vis.W <= 0 || vis.H <= 0 {
+		return
+	}
+	if l.paintCrossfade(n.Data, n.Fit.Get(), &n.NodeBase, &n.Fade, r, clip) {
+		return
+	}
 	if n.Data == nil && !n.Loading && n.LoadErr == nil && !n.NoFile && !n.NoRetry && n.Src.Get() != "" {
 		// The bitmap is gone without a load in flight: the image loader may
 		// have lost it to an eviction after its sync pass. Paint the frame and
@@ -946,7 +952,31 @@ func (l *List) paintImage(n *tree.Image, r tree.Rect, clip tree.Rect) {
 
 // paintSVG draws a rasterized SVG through the same bitmap path as Image.
 func (l *List) paintSVG(n *tree.SVG, r tree.Rect, clip tree.Rect) {
+	if l.paintCrossfade(n.Data, n.Fit.Get(), &n.NodeBase, &n.Fade, r, clip) {
+		return
+	}
 	l.paintBitmap(n.Data, n.Fit.Get(), &n.NodeBase, n.Loading, n.Phase, r, clip)
+}
+
+// paintCrossfade draws the outgoing and incoming bitmaps at complementary
+// alphas while a src change fades. It reports whether it painted the frame; a
+// finished fade is cleared here, so the caller draws the new bitmap normally.
+func (l *List) paintCrossfade(cur *img.Data, fit string, base *tree.NodeBase, fade *tree.SrcFade, r, clip tree.Rect) bool {
+	if fade == nil || !fade.Active || fade.Prev == nil || cur == nil {
+		return false
+	}
+	p := fade.Progress()
+	if p >= 1 {
+		return false
+	}
+	from := len(l.Ops)
+	l.paintBitmap(fade.Prev, fit, base, false, 0, r, clip)
+	l.applyOpacity(from, 1-p)
+	from = len(l.Ops)
+	l.paintBitmap(cur, fit, base, false, 0, r, clip)
+	l.applyOpacity(from, p)
+	l.Animating = true
+	return true
 }
 
 func (l *List) paintBitmap(d *img.Data, fit string, base *tree.NodeBase, loading bool, phase float64, r tree.Rect, clip tree.Rect) {
@@ -999,6 +1029,7 @@ func (l *List) paintBitmap(d *img.Data, fit string, base *tree.NodeBase, loading
 	r0 := float32(base.Radius())
 	l.Ops = append(l.Ops, Op{
 		Kind: Bitmap, Rect: rectArr(quad), Clip: clipArr(vis),
+		Color:  0xFFFFFFFF,
 		Radius: [4]float32{r0, r0, r0, r0}, ClipRadius: r0,
 		// The rounded crop follows the image's own box. Rounding the visible
 		// rect instead would put a corner on the edge a scroll cut, so an image

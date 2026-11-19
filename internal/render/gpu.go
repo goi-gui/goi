@@ -421,7 +421,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 		// A dark scheme over a light raster service asks for the tile's colours
 		// reversed; the alpha is the tile's own, so the map keeps its shape.
 		if (in.misc.w > 0.5) { c = vec4f(vec3f(1.0) - c.rgb, c.a); }
-		return vec4f(c.rgb, c.a * cov);
+		return vec4f(c.rgb, c.a * cov * in.color.a);
 	}
 
 	if (kind > 3.5) {

@@ -28,7 +28,7 @@ func (l *List) paintMap(m *tree.Map, r tree.Rect, clip tree.Rect) {
 		// Half a pixel of overlap hides the seam a bilinear sampler leaves
 		// between two tiles at a fractional zoom.
 		l.Ops = append(l.Ops, Op{
-			Kind: Bitmap, Src: d, UV: [4]float32{0, 0, 1, 1},
+			Kind: Bitmap, Src: d, UV: [4]float32{0, 0, 1, 1}, Color: 0xFFFFFFFF,
 			Rect:       rectArr(tree.Rect{X: r.X + t.Left, Y: r.Y + t.Top, W: t.W + 0.5, H: t.H + 0.5}),
 			Clip:       clipArr(inner),
 			ClipBox:    box,
@@ -81,7 +81,7 @@ func (l *List) paintGeomFill(g *tree.Geom, m *tree.Map, r tree.Rect, clip tree.R
 	u1 := float32((vis.Right() - quad.X) / quad.W)
 	v1 := float32((vis.Bottom() - quad.Y) / quad.H)
 	l.Ops = append(l.Ops, Op{
-		Kind: Bitmap, Src: d, UV: [4]float32{u0, v0, u1, v1},
+		Kind: Bitmap, Src: d, UV: [4]float32{u0, v0, u1, v1}, Color: 0xFFFFFFFF,
 		Rect:       rectArr(vis),
 		Clip:       clipArr(clip),
 		ClipBox:    box,

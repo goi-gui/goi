@@ -22,6 +22,18 @@ func (l *List) style(role string) m3.TextStyle { return m3.RoleStyle(role) }
 func weightOf(w int) float32 { return float32(text.NearestWeight(text.Weight(w))) }
 
 // withAlpha returns c with its alpha multiplied by a.
+// scaleAlpha multiplies a colour's existing alpha, so a node's opacity fades a
+// bitmap that is already crossfading instead of overwriting the blend.
+func scaleAlpha(c uint32, a float64) uint32 {
+	if a <= 0 {
+		return c & 0xFFFFFF00
+	}
+	if a > 1 {
+		a = 1
+	}
+	return c&0xFFFFFF00 | uint32(float64(c&0xFF)*a+0.5)
+}
+
 func withAlpha(c uint32, a float64) uint32 {
 	if a <= 0 {
 		// Keep the colour and drop only the alpha: a gradient resamples its

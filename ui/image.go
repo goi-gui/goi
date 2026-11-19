@@ -115,6 +115,21 @@ func (a *App) loadImages(tr *tree.Tree) {
 	}
 }
 
+// beginImageFade keeps the outgoing bitmap when the new one replaces it, so
+// paint can crossfade the two. A first load has nothing to fade from.
+func beginImageFade(im *tree.Image) {
+	if im.CrossfadeSrc.Get() && im.Data != nil {
+		im.Fade.Begin(im.Data)
+	}
+}
+
+// beginSVGFade is beginImageFade for a rasterized SVG.
+func beginSVGFade(n *tree.SVG) {
+	if n.CrossfadeSrc.Get() && n.Data != nil {
+		n.Fade.Begin(n.Data)
+	}
+}
+
 // loadImage gives one node the bitmap behind src: from the cache when it has
 // been decoded before, from disk on the UI goroutine, or from the network in the
 // background. It records the src it loaded, which is how syncImages notices a
@@ -148,6 +163,7 @@ func (a *App) loadImage(im *tree.Image, src string) {
 		a.cacheImage(src, d, anim)
 	}
 	anim := a.anims[src]
+	beginImageFade(im)
 	animData(im, d, anim)
 	if a.imageTries != nil {
 		delete(a.imageTries, im)
@@ -394,6 +410,7 @@ func (a *App) renderSVGData(n *tree.SVG, b []byte, color uint32) {
 		n.LoadErr = err
 		return
 	}
+	beginSVGFade(n)
 	n.Data = d
 }
 
@@ -450,6 +467,7 @@ func (a *App) renderSVG(n *tree.SVG, src string, color uint32) {
 			n.LoadErr = fmt.Errorf("%s: %w", src, err)
 			return
 		}
+		beginSVGFade(n)
 		n.Data = d
 		return
 	}
@@ -471,6 +489,7 @@ func (a *App) renderSVG(n *tree.SVG, src string, color uint32) {
 		a.svgOrder = append(a.svgOrder, key)
 		a.evictSVGs()
 	}
+	beginSVGFade(n)
 	n.Data = d
 	// shortcut: a colour change rasterizes a new bitmap and the image atlas
 	// keeps the superseded region, so animating Color every frame grows GPU
@@ -540,7 +559,8 @@ func (a *App) svgSource(src string) (*svg.SVG, error) {
 // loadRemoteSVG marks the node as loading and starts one fetch per URL, which
 // the placeholder breathes over until the file lands.
 func (a *App) loadRemoteSVG(n *tree.SVG, src string) {
-	n.Data = nil
+	// Keep Data: the old drawing stays on screen until the new one lands, which
+	// is also what a crossfade starts from.
 	n.Loading = true
 	a.pulsing = true
 	if a.svgPending == nil {
@@ -648,6 +668,7 @@ func (a *App) syncSVGs() {
 func (a *App) loadRemoteImage(im *tree.Image, src string) {
 	if d, ok := a.images[src]; ok {
 		anim := a.anims[src]
+		beginImageFade(im)
 		animData(im, d, anim)
 		if anim != nil {
 			a.hasAnim = true
@@ -689,6 +710,7 @@ func (a *App) finishImageLoad(src string, d *img.Data, anim *img.Anim, err error
 		}
 		im.Loading = false
 		if d != nil {
+			beginImageFade(im)
 			animData(im, d, anim)
 			if anim != nil {
 				a.hasAnim = true

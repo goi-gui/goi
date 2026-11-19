@@ -2590,3 +2590,11 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   one. The worker checks the current palette key after acquiring the lock, and
   an off-screen node clears its pending flag while the result is still welcome
   in the cache.
+
+- **A source crossfade is paint-time state, not a transition entry.** `crossfadeSrc`
+  is a bool, so the loader keeps the outgoing bitmap on the node and paint draws
+  it and the incoming one at complementary alphas for a fixed 300ms. A
+  `transition: src` entry would have put the source through the property
+  transition machinery, which re-resolves and reloads it instead of blending two
+  ready bitmaps. The bitmap shader multiplies the instance alpha, which is also
+  what makes a node's `opacity` fade an image or a diagram correctly.

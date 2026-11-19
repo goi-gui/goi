@@ -881,3 +881,66 @@ func TestLostBitmapGivesUp(t *testing.T) {
 		t.Fatalf("still retrying after %d tries", a.imageTries[im])
 	}
 }
+
+// TestImageCrossfadeSrc keeps the outgoing bitmap when the new one replaces it
+// and starts the fade only when the new picture is ready.
+func TestImageCrossfadeSrc(t *testing.T) {
+	a, win := reloadApp(t, `Window { Image {
+		id:           pic
+		src:          "goi://a.png"
+		crossfadeSrc: true
+		width:        40
+		height:       20
+	} }`)
+	a.assets = fstest.MapFS{
+		"a.png": {Data: testPNG(t)},
+		"b.png": {Data: testPNG(t)},
+	}
+	im := MustByID[*Image](win, "pic")
+	a.loadImages(win.tree)
+	if im.Data == nil {
+		t.Fatal("the first image did not load")
+	}
+	if im.Fade.Active {
+		t.Fatal("the first load started a fade from nothing")
+	}
+	im.Src.Set("goi://b.png")
+	a.hasImages = true
+	a.needsFrame = true
+	a.syncImages()
+	if im.Data == nil || im.Fade.Prev == nil || !im.Fade.Active {
+		t.Fatalf("crossfade = %+v, data = %v", im.Fade, im.Data != nil)
+	}
+}
+
+// TestSVGCrossfadeSrc is the same path after rasterizing a new document.
+func TestSVGCrossfadeSrc(t *testing.T) {
+	const one = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" fill="#ff0000"/></svg>`
+	const two = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" fill="#0000ff"/></svg>`
+	a, win := reloadApp(t, `Window { SVG {
+		id:           icon
+		src:          "goi://a.svg"
+		crossfadeSrc: true
+		width:        24
+		height:       24
+	} }`)
+	a.assets = fstest.MapFS{
+		"a.svg": {Data: []byte(one)},
+		"b.svg": {Data: []byte(two)},
+	}
+	icon := MustByID[*SVG](win, "icon")
+	a.loadImages(win.tree)
+	if icon.Data == nil {
+		t.Fatal("the first SVG did not rasterize")
+	}
+	if icon.Fade.Active {
+		t.Fatal("the first SVG load started a fade from nothing")
+	}
+	icon.Src.Set("goi://b.svg")
+	a.hasSVG = true
+	a.needsFrame = true
+	a.syncSVGs()
+	if icon.Data == nil || icon.Fade.Prev == nil || !icon.Fade.Active {
+		t.Fatalf("crossfade = %+v, data = %v", icon.Fade, icon.Data != nil)
+	}
+}
