@@ -899,6 +899,11 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 			fail("a duration like `500ms`, `1s` or `0`")
 		}
 		return
+	case TypeThemeTransition:
+		if _, ok := val.(*syntax.ThemeTransition); !ok {
+			fail("a theme transition like `crossfade 500ms`, `wipe 500ms` or `none`")
+		}
+		return
 	case TypeRotate:
 		if _, ok := val.(*syntax.Rotate); !ok {
 			fail("a rotate value: none, 90deg, x 90deg or 1 1 1 90deg")

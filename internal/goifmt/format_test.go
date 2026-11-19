@@ -504,3 +504,15 @@ func TestFormatCrossfadeDuration(t *testing.T) {
 		t.Fatalf("not idempotent:\n%s\n--- second ---\n%s", got, again)
 	}
 }
+
+// TestFormatThemeTransition keeps the effect and duration unquoted.
+func TestFormatThemeTransition(t *testing.T) {
+	src := `Window { themeTransition: crossfade 500ms }`
+	got := string(Source([]byte(src)))
+	if !strings.Contains(got, "themeTransition: crossfade 500ms") {
+		t.Fatalf("format =\n%s", got)
+	}
+	if again := string(Source([]byte(got))); again != got {
+		t.Fatalf("not idempotent:\n%s\n--- second ---\n%s", got, again)
+	}
+}

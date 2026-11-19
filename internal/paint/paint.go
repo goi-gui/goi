@@ -234,12 +234,17 @@ func (l *List) Reset() {
 
 // Build fills l from tr. size is the client area in logical pixels.
 func (l *List) Build(tr *tree.Tree, w, h float64) {
+	l.BuildClip(tr, w, h, tree.Rect{W: w, H: h})
+}
+
+// BuildClip builds the display list with an initial clip, which is how a theme
+// wipe paints the old and new schemes into their halves of the window.
+func (l *List) BuildClip(tr *tree.Tree, w, h float64, clip tree.Rect) {
 	if l.Theme == nil {
 		l.Theme = m3.Light()
 	}
 	l.Reset()
-	clip := tree.Rect{W: w, H: h}
-	l.window = clip
+	l.window = tree.Rect{W: w, H: h}
 	l.scrollClip = clip
 	l.walk(tr.Root.Base(), 0, 0, clip)
 	// A fullscreen video covers the window, so it is painted last rather than

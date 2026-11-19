@@ -93,8 +93,16 @@ func (a *App) resolveColors() bool {
 	if a.win == nil || a.win.tree == nil {
 		return false
 	}
+	return a.resolveColorsFor(a.displayTheme(a.win))
+}
+
+// resolveColorsFor is resolveColors with an explicit scheme, used by a wipe:
+// the bottom half resolves the old theme and the top half the new one.
+func (a *App) resolveColorsFor(theme *m3.Theme) bool {
+	if a.win == nil || a.win.tree == nil {
+		return false
+	}
 	w := a.win
-	theme := a.displayTheme(w)
 	// DefineTheme runs after LoadWindow — usually inside Bind — so a name is only
 	// a typo once the first frame is drawing. Warning at load would fire before
 	// the app had a chance to register its scheme.

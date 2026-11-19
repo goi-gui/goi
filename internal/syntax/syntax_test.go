@@ -1342,3 +1342,30 @@ func TestParseCrossfadeDuration(t *testing.T) {
 		t.Fatal("a bare duration without a unit was accepted")
 	}
 }
+
+// TestParseThemeTransition reads the effect and its none spelling.
+func TestParseThemeTransition(t *testing.T) {
+	f, diag := Parse([]byte(`Window { themeTransition: crossfade 500ms }`))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	v := f.Root.Prop("themeTransition").Value
+	tt, ok := v.(*ThemeTransition)
+	if !ok || tt.Name != "crossfade" || tt.Duration != 500*time.Millisecond {
+		t.Fatalf("value = %#v", v)
+	}
+	f, diag = Parse([]byte(`Window { themeTransition: wipe 500ms }`))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	if tt, ok := f.Root.Prop("themeTransition").Value.(*ThemeTransition); !ok || tt.Name != "wipe" {
+		t.Fatalf("wipe value = %#v", f.Root.Prop("themeTransition").Value)
+	}
+	f, diag = Parse([]byte(`Window { themeTransition: none }`))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	if tt, ok := f.Root.Prop("themeTransition").Value.(*ThemeTransition); !ok || tt.Name != "" {
+		t.Fatalf("none value = %#v", f.Root.Prop("themeTransition").Value)
+	}
+}

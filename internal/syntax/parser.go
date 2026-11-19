@@ -881,8 +881,10 @@ func (p *parser) parseProperty() (*Property, bool) {
 		v, ok = p.parseScale()
 	case "transition":
 		v, ok = p.parseTransition()
-	case "crossfadeSrc", "crossfadeTheme":
+	case "crossfadeSrc":
 		v, ok = p.parseDurationValue()
+	case "themeTransition":
+		v, ok = p.parseThemeTransition()
 	default:
 		v, ok = p.parseValue()
 	}
@@ -987,6 +989,25 @@ func (p *parser) timingFunction() (string, bool) {
 	}
 	p.i = save
 	return "", false
+}
+
+// parseThemeTransition reads `none` or a transition name and its duration.
+func (p *parser) parseThemeTransition() (Value, bool) {
+	t := p.peek()
+	if t.kind == tokIdent && t.text == "none" {
+		p.next()
+		return &ThemeTransition{At: t.pos}, true
+	}
+	kind := p.next()
+	if kind.kind != tokIdent || (kind.text != "crossfade" && kind.text != "wipe") {
+		p.errorf(kind, "expected crossfade, wipe or none in themeTransition")
+		return nil, false
+	}
+	d, ok := p.parseDuration()
+	if !ok {
+		return nil, false
+	}
+	return &ThemeTransition{At: kind.pos, Name: kind.text, Duration: d}, true
 }
 
 // parseDurationValue reads a duration property. A bare zero is the "off"

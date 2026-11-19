@@ -72,14 +72,16 @@ type App struct {
 	driver     driver
 	quitOnce   sync.Once
 	needsFrame bool
-	// themeFrom/to/display keep a scheme change: a different target starts a
-	// crossfade when `crossfadeTheme` is nonzero, and the timestamps drive it.
+	// themeFrom/to/display keep a scheme change: a different target starts the
+	// effect named by `themeTransition`, and the timestamps drive it.
 	themeFrom    *m3.Theme
 	themeTo      *m3.Theme
 	themeDisplay *m3.Theme
 	themeStart   time.Time
 	themeDur     time.Duration
 	themeFading  bool
+	themeWipe    bool
+	themeWipeP   float64
 	// viewportWait is set when a lazy element or a diagram had no viewport to
 	// test yet, so the frame after layout looks again.
 	viewportWait bool

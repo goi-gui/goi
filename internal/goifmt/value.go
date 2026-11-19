@@ -250,6 +250,11 @@ func printInner(v syntax.Value) string {
 		return x.Op + printPrec(x.X, precUnary)
 	case *syntax.Ternary:
 		return printPrec(x.Cond, precOr) + " ? " + printPrec(x.Then, precTernary) + " : " + printPrec(x.Else, precTernary)
+	case *syntax.ThemeTransition:
+		if x.Name == "" || x.Name == "none" {
+			return "none"
+		}
+		return x.Name + " " + x.Duration.String()
 	case *syntax.Duration:
 		if x.Val == 0 {
 			return "0"

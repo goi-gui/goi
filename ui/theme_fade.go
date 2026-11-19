@@ -5,10 +5,11 @@ import (
 	"time"
 
 	"github.com/goi-gui/goi/internal/m3"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // displayTheme resolves the window's scheme and blends from the previous one
-// while `crossfadeTheme` runs. Role colours are resolved with the blend and the
+// while the crossfade transition runs. Role colours are resolved with the blend and the
 // painter gets it as its scheme, so the whole window moves together.
 func (a *App) displayTheme(w *Window) *m3.Theme {
 	target := themeFor(w)
@@ -20,23 +21,42 @@ func (a *App) displayTheme(w *Window) *m3.Theme {
 	// replace a seed under the same name, and built-in schemes may be fresh
 	// values on each call in a headless test.
 	if *target != *a.themeTo {
-		dur := time.Duration(0)
+		tt := tree.ThemeTransition{}
 		if w != nil && w.tree != nil && w.tree.Root != nil {
-			dur = w.tree.Root.CrossfadeTheme.Get()
+			tt = w.tree.Root.ThemeTransition.Get()
 		}
 		from := a.themeDisplay
 		if from == nil {
 			from = a.themeTo
 		}
 		a.themeFrom, a.themeTo = from, target
-		if dur > 0 {
-			a.themeStart, a.themeDur, a.themeFading = time.Now(), dur, true
+		switch {
+		case tt.Name == "crossfade" && tt.Dur > 0:
+			a.themeStart, a.themeDur, a.themeFading = time.Now(), tt.Dur, true
+			a.themeWipe = false
 			a.themeDisplay = blendTheme(from, target, 0)
 			a.needsFrame = true
 			return a.themeDisplay
+		case tt.Name == "wipe" && tt.Dur > 0:
+			a.themeStart, a.themeDur = time.Now(), tt.Dur
+			a.themeFading, a.themeWipe, a.themeWipeP = false, true, 0
+			a.themeDisplay = target
+			a.needsFrame = true
+			return target
 		}
-		a.themeFading, a.themeDisplay = false, target
+		a.themeFading, a.themeWipe, a.themeDisplay = false, false, target
 		return target
+	}
+	if a.themeWipe {
+		p := float64(time.Since(a.themeStart)) / float64(a.themeDur)
+		if p >= 1 {
+			a.themeWipe, a.themeDisplay = false, a.themeTo
+			a.needsFrame = true
+			return a.themeTo
+		}
+		a.themeWipeP = p
+		a.needsFrame = true
+		return a.themeDisplay
 	}
 	if !a.themeFading {
 		return a.themeDisplay

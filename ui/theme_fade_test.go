@@ -26,15 +26,15 @@ func TestBlendThemeMixesEveryRole(t *testing.T) {
 	}
 }
 
-// TestWindowCrossfadeTheme reads the duration property and its zero default.
-func TestWindowCrossfadeTheme(t *testing.T) {
-	_, win := reloadApp(t, `Window { crossfadeTheme: 500ms }`)
-	if got := win.Root().CrossfadeTheme.Get(); got != 500*time.Millisecond {
-		t.Fatalf("crossfadeTheme = %v", got)
+// TestWindowThemeTransition reads the effect and its none default.
+func TestWindowThemeTransition(t *testing.T) {
+	_, win := reloadApp(t, `Window { themeTransition: crossfade 500ms }`)
+	if got := win.Root().ThemeTransition.Get(); got.Name != "crossfade" || got.Dur != 500*time.Millisecond {
+		t.Fatalf("themeTransition = %+v", got)
 	}
 	_, plain := reloadApp(t, `Window { }`)
-	if got := plain.Root().CrossfadeTheme.Get(); got != 0 {
-		t.Fatalf("default crossfadeTheme = %v, want 0", got)
+	if got := plain.Root().ThemeTransition.Get(); got.Name != "" || got.Dur != 0 {
+		t.Fatalf("default themeTransition = %+v, want none", got)
 	}
 }
 
@@ -42,7 +42,7 @@ func TestWindowCrossfadeTheme(t *testing.T) {
 // same name (the shopping seed swatches do), so the target values, not the name,
 // decide that the theme changed.
 func TestSeedRedefinitionCrossfades(t *testing.T) {
-	a, win := reloadApp(t, `Window { theme: brand crossfadeTheme: 500ms }`)
+	a, win := reloadApp(t, `Window { theme: brand themeTransition: crossfade 500ms }`)
 	first := m3.Light()
 	first.Name = "brand"
 	first.Colors.Primary = 0x112233FF
@@ -65,5 +65,31 @@ func TestSeedRedefinitionCrossfades(t *testing.T) {
 	a.themeStart = time.Now().Add(-time.Second)
 	if got := a.displayTheme(win).Colors.Primary; got != 0xDDEEFFFF {
 		t.Fatalf("final seed primary = %08x", got)
+	}
+}
+
+// TestThemeWipeTransition: wipe reports its progress and keeps the target as
+// the scheme the rest of the frame resolves, while the paint pass splits the
+// old and new themes at the boundary.
+func TestThemeWipeTransition(t *testing.T) {
+	a, win := reloadApp(t, `Window { theme: brand themeTransition: wipe 500ms }`)
+	old := m3.Light()
+	old.Name, old.Colors.Primary = "brand", 0x112233FF
+	win.DefineTheme(old)
+	a.displayTheme(win)
+	next := m3.Light()
+	next.Name, next.Colors.Primary = "brand", 0xDDEEFFFF
+	win.DefineTheme(next)
+	if got := a.displayTheme(win); !a.themeWipe || got.Colors.Primary != next.Colors.Primary {
+		t.Fatalf("wipe did not start: wipe=%v primary=%08x", a.themeWipe, got.Colors.Primary)
+	}
+	a.themeStart = time.Now().Add(-250 * time.Millisecond)
+	if p := a.displayTheme(win); !a.themeWipe || a.themeWipeP < 0.4 || a.themeWipeP > 0.6 || p.Colors.Primary != next.Colors.Primary {
+		t.Fatalf("wipe progress = %v, primary=%08x", a.themeWipeP, p.Colors.Primary)
+	}
+	a.themeStart = time.Now().Add(-time.Second)
+	a.displayTheme(win)
+	if a.themeWipe {
+		t.Fatal("wipe did not finish")
 	}
 }

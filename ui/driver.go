@@ -372,8 +372,14 @@ func (a *App) frame() {
 		// something to measure. Only a debug build pays this.
 		a.needsFrame = true
 	}
-	d.list.Theme = a.displayTheme(a.win)
-	d.list.Build(a.win.tree, float64(d.pendingW)/float64(maxScale(d.pendingScale)), float64(d.pendingH)/float64(maxScale(d.pendingScale)))
+	lw, lh := float64(d.pendingW)/float64(maxScale(d.pendingScale)), float64(d.pendingH)/float64(maxScale(d.pendingScale))
+	theme := a.displayTheme(a.win)
+	if a.themeWipe {
+		a.buildWipeList(&d.list, a.win.tree, lw, lh)
+	} else {
+		d.list.Theme = theme
+		d.list.Build(a.win.tree, lw, lh)
+	}
 	if err := d.gpu.Render(&d.list, d.pendingW, d.pendingH); err != nil {
 		a.reportError(err)
 	} else {

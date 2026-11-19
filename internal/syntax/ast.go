@@ -415,6 +415,7 @@ const (
 	ListKind
 	SlotRefKind
 	DurationKind
+	ThemeTransitionKind
 )
 
 // Value is a property literal. The concrete type is one of *String,
@@ -488,6 +489,19 @@ func (*List) Kind() ValueKind { return ListKind }
 
 // Pos implements Value.
 func (l *List) Pos() Pos { return l.At }
+
+// ThemeTransition is `crossfade 500ms` or `none`: how a new scheme arrives.
+type ThemeTransition struct {
+	At       Pos
+	Name     string
+	Duration time.Duration
+}
+
+// Kind implements Value.
+func (*ThemeTransition) Kind() ValueKind { return ThemeTransitionKind }
+
+// Pos implements Value.
+func (t *ThemeTransition) Pos() Pos { return t.At }
 
 // Duration is `500ms` or `1s`, used by a property measured in time.
 type Duration struct {

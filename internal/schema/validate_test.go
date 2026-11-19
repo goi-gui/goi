@@ -283,6 +283,8 @@ func plainValue(pd Prop) syntax.Value {
 		return &syntax.Scale{X: 2, Y: 1, Z: 1}
 	case TypeDuration:
 		return &syntax.Duration{Val: 500 * time.Millisecond}
+	case TypeThemeTransition:
+		return &syntax.ThemeTransition{Name: "crossfade", Duration: 500 * time.Millisecond}
 	}
 	return &syntax.Ident{Val: "start"}
 }

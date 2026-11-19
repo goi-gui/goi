@@ -151,6 +151,8 @@ const (
 	propSize
 	// propDuration is a time cell, written as `500ms` or `1s`.
 	propDuration
+	// propThemeTransition is a theme transition: `crossfade 500ms` or `none`.
+	propThemeTransition
 )
 
 // Get returns the value as an interface, boxing it. The expression layer reads
@@ -161,6 +163,8 @@ func (p *NamedProp) Get() any {
 		return p.cell.(*Prop[float64]).val
 	case propDuration:
 		return p.cell.(*Prop[time.Duration]).val
+	case propThemeTransition:
+		return p.cell.(*Prop[ThemeTransition]).val
 	case propRotate:
 		return p.cell.(*Prop[Rotation]).val
 	case propScale:
@@ -194,6 +198,8 @@ func (p *NamedProp) Written() bool {
 		return p.cell.(*Prop[float64]).written
 	case propDuration:
 		return p.cell.(*Prop[time.Duration]).written
+	case propThemeTransition:
+		return p.cell.(*Prop[ThemeTransition]).written
 	case propString, propEnum, propScalar:
 		return p.cell.(*Prop[string]).written
 	case propBool:
@@ -218,6 +224,9 @@ func (p *NamedProp) Same(v any) bool {
 	case propDuration:
 		d, ok := v.(time.Duration)
 		return ok && p.cell.(*Prop[time.Duration]).val == d
+	case propThemeTransition:
+		t, ok := v.(ThemeTransition)
+		return ok && p.cell.(*Prop[ThemeTransition]).val == t
 	case propString, propEnum, propScalar:
 		s, ok := v.(string)
 		return ok && p.cell.(*Prop[string]).val == s
@@ -263,6 +272,8 @@ func (p *NamedProp) markWritten() {
 		c.written = true
 	case *Prop[time.Duration]:
 		c.written = true
+	case *Prop[ThemeTransition]:
+		c.written = true
 	case *Prop[string]:
 		c.written = true
 	case *Prop[bool]:
@@ -291,6 +302,13 @@ func (p *NamedProp) setLiteral(v syntax.Value) bool {
 			return false
 		}
 		p.cell.(*Prop[time.Duration]).val = d.Val
+		return true
+	case propThemeTransition:
+		t, ok := v.(*syntax.ThemeTransition)
+		if !ok {
+			return false
+		}
+		p.cell.(*Prop[ThemeTransition]).val = ThemeTransition{Name: t.Name, Dur: t.Duration}
 		return true
 	case propRotate:
 		r, ok := v.(*syntax.Rotate)
@@ -518,6 +536,12 @@ func (p *NamedProp) CopyFrom(src NamedProp) bool {
 			return false
 		}
 		p.cell.(*Prop[time.Duration]).val = v
+	case propThemeTransition:
+		v, ok := src.Get().(ThemeTransition)
+		if !ok {
+			return false
+		}
+		p.cell.(*Prop[ThemeTransition]).val = v
 	case propString, propEnum:
 		v, ok := src.Get().(string)
 		if !ok || (p.kind == propEnum && !p.allows(v)) {
@@ -571,6 +595,8 @@ func (p *NamedProp) GoSet() bool {
 		return p.cell.(*Prop[float64]).goSet
 	case propDuration:
 		return p.cell.(*Prop[time.Duration]).goSet
+	case propThemeTransition:
+		return p.cell.(*Prop[ThemeTransition]).goSet
 	case propString, propEnum:
 		return p.cell.(*Prop[string]).goSet
 	case propBool:
@@ -589,6 +615,8 @@ func (p *NamedProp) setGoSet(v bool) {
 		p.cell.(*Prop[float64]).goSet = v
 	case propDuration:
 		p.cell.(*Prop[time.Duration]).goSet = v
+	case propThemeTransition:
+		p.cell.(*Prop[ThemeTransition]).goSet = v
 	case propString, propEnum:
 		p.cell.(*Prop[string]).goSet = v
 	case propBool:
@@ -725,6 +753,13 @@ func NumberProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[float64]) Nam
 func DurationProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[time.Duration]) NamedProp {
 	wire(b, name, p)
 	return NamedProp{Name: name, Dirty: dirty, kind: propDuration, cell: p}
+}
+
+// ThemeTransitionProp builds a NamedProp for a `crossfade 500ms`, `wipe 500ms`
+// or `none` value.
+func ThemeTransitionProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[ThemeTransition]) NamedProp {
+	wire(b, name, p)
+	return NamedProp{Name: name, Dirty: dirty, kind: propThemeTransition, cell: p}
 }
 
 // SizeProp builds the `size` shorthand. It owns no cell of its own: writing it

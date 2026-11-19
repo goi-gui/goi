@@ -143,6 +143,11 @@ func dumpValue(v Value) string {
 			parts[i] = dumpShadowLayer(l)
 		}
 		return strings.Join(parts, ", ")
+	case *ThemeTransition:
+		if v.Name == "" || v.Name == "none" {
+			return "none"
+		}
+		return v.Name + " " + v.Duration.String()
 	case *Duration:
 		if v.Val == 0 {
 			return "0"

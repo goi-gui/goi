@@ -2603,7 +2603,7 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   diagram correctly.
 
 - **A theme crossfade interpolates the colour roles, not two rendered frames.**
-  `crossfadeTheme` blends every `m3.Colors` field from the old scheme to the new
+  `themeTransition: crossfade` blends every `m3.Colors` field from the old scheme to the new
   one and resolves role-based properties with that blend each frame; the painter
   and M3 components also get the blended scheme. Rendering two full frames and
   crossfading them would double the work and need an offscreen texture, while
@@ -2615,3 +2615,9 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   name comparison kept the old colours and stopped the window reacting. The
   target is compared by value, which also keeps a headless `themeFor` result
   from looking new on every call.
+
+- **A theme wipe is two themed paint passes split by a horizontal clip.** The
+  bottom half resolves and paints the old scheme, the top half the new one, and
+  the tree is left on the new roles. This uses the normal display list twice
+  instead of a shader mask, so it works with every component and text run; the
+  edge is hard for now, while the reference video uses a soft, blurred wipe.
