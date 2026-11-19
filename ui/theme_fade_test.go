@@ -4,7 +4,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/goi-gui/goi/internal/layout"
 	"github.com/goi-gui/goi/internal/m3"
+	"github.com/goi-gui/goi/internal/paint"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 // TestBlendThemeMixesEveryRole keeps a theme fade between its two schemes and
@@ -70,7 +73,7 @@ func TestSeedRedefinitionCrossfades(t *testing.T) {
 
 // TestThemeWipeTransition: wipe reports its progress and keeps the target as
 // the scheme the rest of the frame resolves, while the paint pass splits the
-// old and new themes at the boundary.
+// old and new themes around the moving edge.
 func TestThemeWipeTransition(t *testing.T) {
 	a, win := reloadApp(t, `Window { theme: brand themeTransition: wipe 500ms }`)
 	old := m3.Light()
@@ -91,5 +94,63 @@ func TestThemeWipeTransition(t *testing.T) {
 	a.displayTheme(win)
 	if a.themeWipe {
 		t.Fatal("wipe did not finish")
+	}
+}
+
+// TestThemeWipeSoftEdge: the boundary is a gradient, not a hard split. The
+// background carries a ramp between the surfaces and the content at the edge
+// paints with blended roles.
+func TestThemeWipeSoftEdge(t *testing.T) {
+	a, win := reloadApp(t, `Window {
+		theme: brand
+		themeTransition: wipe 500ms
+		Rectangle { width: 200 height: 200 background: theme.surface }
+	}`)
+	old := m3.Light()
+	old.Name, old.Colors.Surface, old.Colors.Primary = "brand", 0x000000FF, 0x000000FF
+	win.DefineTheme(old)
+	a.displayTheme(win)
+	next := m3.Light()
+	next.Name, next.Colors.Surface, next.Colors.Primary = "brand", 0xFFFFFFFF, 0xFFFFFFFF
+	win.DefineTheme(next)
+	a.displayTheme(win)
+	a.themeStart = time.Now().Add(-250 * time.Millisecond)
+	a.displayTheme(win)
+	layout.New(layout.FakeMeasurer{}).Layout(win.tree.Root, 400, 400)
+
+	var l paint.List
+	a.buildWipeList(&l, win.tree, 400, 400)
+
+	var ramp *tree.Gradient
+	blended := false
+	for _, op := range l.Ops {
+		if op.Shape == paint.CSSGradient {
+			ramp = op.Gradient
+		}
+		if op.Kind == paint.Fill && op.Shape != paint.CSSGradient &&
+			op.Color != old.Colors.Surface && op.Color != next.Colors.Surface {
+			blended = true
+		}
+	}
+	if ramp == nil || len(ramp.Stops) != 4 {
+		t.Fatalf("background ramp = %+v, want four stops", ramp)
+	}
+	if !blended {
+		t.Fatal("no content painted with a blended scheme")
+	}
+
+	// Before the edge enters, the whole window is still the old scheme.
+	a.themeWipeP = 0
+	l.Reset()
+	a.buildWipeList(&l, win.tree, 400, 400)
+	for _, op := range l.Ops {
+		if op.Shape != paint.CSSGradient {
+			continue
+		}
+		for _, stop := range op.Gradient.Stops {
+			if stop.Color != old.Colors.Surface {
+				t.Fatalf("background at start = %08x, want old surface %08x", stop.Color, old.Colors.Surface)
+			}
+		}
 	}
 }

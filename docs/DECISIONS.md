@@ -2616,8 +2616,14 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   target is compared by value, which also keeps a headless `themeFor` result
   from looking new on every call.
 
-- **A theme wipe is two themed paint passes split by a horizontal clip.** The
-  bottom half resolves and paints the old scheme, the top half the new one, and
-  the tree is left on the new roles. This uses the normal display list twice
-  instead of a shader mask, so it works with every component and text run; the
-  edge is hard for now, while the reference video uses a soft, blurred wipe.
+- **A theme wipe is a stack of themed paint passes behind a gradient.** The new
+  scheme paints above the moving edge and the old one below it; between them the
+  window height times `0.4` is split into 48 slices, each painted with its own
+  blend of the two schemes, and the page background is a single CSS gradient
+  with the same stops. Role colours live in cells, so a soft edge means
+  repainting the tree per slice instead of masking one frame; slices are culled
+  to the ops that can touch their strip, which keeps a transition near the cost
+  of one frame. A shader mask over two rendered frames would be cheaper still,
+  but it needs an offscreen path and a second themed display list in the
+  renderer. The content does not blur like the reference recording; only the
+  colours ramp.
