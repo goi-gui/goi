@@ -35,3 +35,18 @@ func TestPortalThemeMapping(t *testing.T) {
 		t.Error("portalUint accepted a string")
 	}
 }
+
+// TestGTKThemeFallback covers desktops that report no color-scheme preference
+// for light mode: the theme name still says which side it is on.
+func TestGTKThemeFallback(t *testing.T) {
+	old := portalThemeValue.Load()
+	t.Cleanup(func() { portalThemeValue.Store(old) })
+	setPortalGTKTheme("adw-gtk3")
+	if got := portalTheme(); got != ThemeLight {
+		t.Errorf("light GTK theme = %v, want light", got)
+	}
+	setPortalGTKTheme("Adwaita-dark")
+	if got := portalTheme(); got != ThemeDark {
+		t.Errorf("dark GTK theme = %v, want dark", got)
+	}
+}

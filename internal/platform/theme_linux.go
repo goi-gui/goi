@@ -3,7 +3,9 @@
 package platform
 
 import (
+	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/godbus/dbus/v5"
 )
@@ -34,9 +36,7 @@ func startThemeWatcher() {
 		return
 	}
 	obj := conn.Object("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop")
-	if v, ok := readPortalTheme(obj); ok {
-		setPortalTheme(v)
-	}
+	refreshPortalTheme(obj)
 	if err := conn.AddMatchSignal(
 		dbus.WithMatchObjectPath("/org/freedesktop/portal/desktop"),
 		dbus.WithMatchInterface("org.freedesktop.portal.Settings"),
@@ -49,10 +49,20 @@ func startThemeWatcher() {
 	conn.Signal(ch)
 	portalConn = conn
 	go func() {
+		// A theme manager may only change the GTK theme and not emit a
+		// color-scheme signal; poll as a backstop so the window still follows.
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
 		for {
 			select {
 			case <-portalStop:
 				return
+			case <-ticker.C:
+				before := portalThemeValue.Load()
+				refreshPortalTheme(obj)
+				if portalThemeValue.Load() != before {
+					PostEmptyEvent()
+				}
 			case sig, ok := <-ch:
 				if !ok {
 					return
@@ -62,11 +72,11 @@ func startThemeWatcher() {
 				}
 				ns, _ := sig.Body[0].(string)
 				key, _ := sig.Body[1].(string)
-				if ns != "org.freedesktop.appearance" || key != "color-scheme" {
-					continue
-				}
-				if v, ok := portalUint(sig.Body[2]); ok {
-					setPortalTheme(v)
+				if (ns == "org.freedesktop.appearance" && key == "color-scheme") ||
+					(ns == "org.gnome.desktop.interface" && key == "gtk-theme") {
+					// A desktop may express light mode as color-scheme 0 while
+					// its GTK theme still says which side it is on.
+					refreshPortalTheme(obj)
 					PostEmptyEvent()
 				}
 			}
@@ -93,6 +103,30 @@ func stopThemeWatcher() {
 	}
 }
 
+func refreshPortalTheme(obj dbus.BusObject) {
+	if v, ok := readPortalTheme(obj); ok && (v == 1 || v == 2) {
+		setPortalTheme(v)
+		return
+	}
+	// color-scheme 0 is "no preference", which some desktops use for light.
+	// The GTK theme name still carries the side, so use it as the tie-breaker.
+	if name, ok := readGTKTheme(obj); ok {
+		setPortalGTKTheme(name)
+		return
+	}
+	portalThemeValue.Store(0)
+}
+
+// setPortalGTKTheme is the fallback when color-scheme has no preference:
+// light unless the theme name says dark.
+func setPortalGTKTheme(name string) {
+	if strings.Contains(strings.ToLower(name), "dark") {
+		setPortalTheme(1)
+		return
+	}
+	setPortalTheme(2)
+}
+
 func readPortalTheme(obj dbus.BusObject) (uint32, bool) {
 	var v dbus.Variant
 	if err := obj.Call("org.freedesktop.portal.Settings.Read", 0,
@@ -100,6 +134,23 @@ func readPortalTheme(obj dbus.BusObject) (uint32, bool) {
 		return 0, false
 	}
 	return portalUint(v)
+}
+
+func readGTKTheme(obj dbus.BusObject) (string, bool) {
+	var v dbus.Variant
+	if err := obj.Call("org.freedesktop.portal.Settings.Read", 0,
+		"org.gnome.desktop.interface", "gtk-theme").Store(&v); err != nil {
+		return "", false
+	}
+	switch x := v.Value().(type) {
+	case string:
+		return x, x != ""
+	case dbus.Variant:
+		if s, ok := x.Value().(string); ok {
+			return s, s != ""
+		}
+	}
+	return "", false
 }
 
 func portalUint(v any) (uint32, bool) {

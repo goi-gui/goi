@@ -2578,8 +2578,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
 - **The system theme is read from the portal on Linux.** SDL's system-theme
   event is not delivered reliably while the window is unfocused, and a settings
   app leaves it unfocused. A session-bus watcher follows
-  `org.freedesktop.appearance color-scheme` and wakes the frame loop; SDL
-  remains the fallback when no portal is running.
+  `org.freedesktop.appearance color-scheme` and wakes the frame loop; a
+  no-preference value falls back to the GTK theme name, and a one-second poll
+  covers desktops whose theme manager only changes that name. SDL remains the
+  fallback when no portal is running.
 - **The image atlas repacks instead of blurring.** A shelf can be full of old
   diagram sizes while its byte budget is not; halving the new image made a
   visible Mermaid blurry. Grow before downscaling, and when a frame still has to
