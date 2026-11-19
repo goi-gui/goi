@@ -62,6 +62,9 @@ type eachBlock struct {
 	scope  *scope
 	hooks  *Hooks
 	nodes  []*NodeBase
+	// dead marks a nested loop whose parent row was removed. A SetData snapshot
+	// can still name it after an outer fill pruned it, so fillEach must skip it.
+	dead bool
 }
 
 // SetData stores a value for `data.name` and rebuilds the blocks that walk it.
@@ -248,8 +251,8 @@ func (t *Tree) setErr(err error) {
 // A loop is one node cheaper than Svelte's `{#each}`: there is no else arm, and
 // Go's rules decide what the names mean.
 func (t *Tree) fillEach(eb *eachBlock) {
-	if !t.live(eb.parent) {
-		return // its subtree is gone; prune drops the registration
+	if eb.dead || !t.live(eb.parent) {
+		return // its row is gone; prune marked the registration
 	}
 	for _, n := range eb.nodes {
 		t.Remove(n.node)
@@ -550,11 +553,25 @@ func (t *Tree) prune() {
 	t.shadowNodes = keepShadows
 
 	// An {#each} inside a rebuilt row is gone with the row: a new one was built
-	// while the rows were made.
+	// while the rows were made. Its parent can be the shared element above the
+	// outer loop, so checking only the parent would keep the stale inner loop and
+	// let the next SetData fill it into the same parent a second time.
 	keepEachs := t.eachs[:0]
 	for _, eb := range t.eachs {
-		if live(eb.parent) {
+		alive := live(eb.parent)
+		if alive && len(eb.nodes) > 0 {
+			alive = false
+			for _, n := range eb.nodes {
+				if live(n) {
+					alive = true
+					break
+				}
+			}
+		}
+		if alive {
 			keepEachs = append(keepEachs, eb)
+		} else {
+			eb.dead = true
 		}
 	}
 	t.eachs = keepEachs

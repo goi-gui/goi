@@ -220,3 +220,33 @@ Window {
 		t.Fatalf("selected 0 = %v, want [a b]", got)
 	}
 }
+
+// TestNestedLoopDoesNotDuplicate is the shopping gallery case: an inner loop
+// reads the selected index, so it joins the rebuild. Rebuilding the outer loop
+// removes the row that owned the old inner loop; the old registration must not
+// refill it and append a second set of images.
+func TestNestedLoopDoesNotDuplicate(t *testing.T) {
+	tr := buildModifier(t, `bridge { images [][]string selected int }
+Window {
+	Column {
+		for i, list := range bridge.images {
+			if i != bridge.selected { continue }
+			for j, path := range list {
+				Text { text: path height: bridge.selected == j ? 500 : 200 }
+			}
+		}
+	}
+}`)
+	tr.SetData("images", [][]string{{"a", "b", "c"}, {"d", "e", "f"}})
+	tr.SetData("selected", 0)
+	tr.ApplyExpressions()
+	if got := len(texts(tr)); got != 3 {
+		t.Fatalf("selected 0 has %d texts, want 3", got)
+	}
+	tr.SetData("selected", 1)
+	tr.ApplyExpressions()
+	got := texts(tr)
+	if len(got) != 3 || got[0] != "d" || got[1] != "e" || got[2] != "f" {
+		t.Fatalf("selected 1 = %v, want [d e f]", got)
+	}
+}
