@@ -1196,14 +1196,17 @@ func TestParseModulo(t *testing.T) {
 	src := `A {
 		even: 5 % 2 == 1
 		wide: 50%
+		spaced: 50 %
 		split: 50 % 2
 	}`
 	f, diag := Parse([]byte(src))
 	if !diag.Empty() {
 		t.Fatalf("%v", diag)
 	}
-	if got := f.Root.Prop("wide").Value.(*Percent).Val; got != 50 {
-		t.Fatalf("percentage = %v, want 50", got)
+	for _, name := range []string{"wide", "spaced"} {
+		if got := f.Root.Prop(name).Value.(*Percent).Val; got != 50 {
+			t.Fatalf("%s = %v, want 50", name, got)
+		}
 	}
 	for _, name := range []string{"even", "split"} {
 		top, ok := f.Root.Prop(name).Value.(*Binary)

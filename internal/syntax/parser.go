@@ -1479,6 +1479,31 @@ func (p *parser) parseUnary() (Value, bool) {
 	return p.parseTerm()
 }
 
+// numberTakesPercent reports whether the % after a number is a percentage
+// rather than the modulo operator. A % touching the number is always a
+// percentage, and a spaced one is a percentage when no value follows it on the
+// same line, which keeps the old `50 %` spelling working. `50 % 2` and `i % 2`
+// leave the % for parseMul.
+func (p *parser) numberTakesPercent(num token) bool {
+	percent := p.peek()
+	if percent.kind != tokPercent {
+		return false
+	}
+	if percent.pos == num.end {
+		return true
+	}
+	next := p.peek2()
+	return !p.sameLine(next.pos) || !startsValue(next)
+}
+
+func startsValue(t token) bool {
+	switch t.kind {
+	case tokNumber, tokString, tokBool, tokColor, tokIdent, tokDollar, tokLParen, tokLBracket, tokMinus, tokBang:
+		return true
+	}
+	return false
+}
+
 // parseTerm parses one literal, reference, percentage or a parenthesised
 // expression. A bare identifier is a reference when a '.' follows it and an
 // identifier value otherwise, so `app.theme == dark` needs no quotes.
@@ -1487,9 +1512,7 @@ func (p *parser) parseTerm() (Value, bool) {
 	switch t.kind {
 	case tokNumber:
 		p.next()
-		// Only a % touching the number makes a percentage. `i % 2` has a space
-		// before the %, so parseMul reads it as modulo.
-		if p.peek().kind == tokPercent && p.peek().pos == t.end {
+		if p.numberTakesPercent(t) {
 			p.next()
 			return &Percent{At: t.pos, Val: t.num}, true
 		}
