@@ -1247,9 +1247,12 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 			g.images.addOp(op)
 		}
 	}
+	// The blit instance copies the finished scene onto the surface, so a frame
+	// with a backdrop renders through the offscreen texture only. A wipe adds
+	// its blur passes after it, so they can follow the backdrop's own passes.
+	blit := -1
 	if len(panels) > 0 {
-		// The last instance copies the finished scene onto the surface, so a
-		// frame with a backdrop renders through the offscreen texture only.
+		blit = len(g.instances)
 		lw, lh := float32(width)/g.scale, float32(height)/g.scale
 		g.instances = append(g.instances, gpuInstance{
 			Rect:   [4]float32{0, 0, lw, lh},
@@ -1257,10 +1260,8 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 			Clip:   clipVec([4]float32{0, 0, lw, lh}),
 			Params: [4]float32{11, 0, 0, 0},
 		})
-	} else if wipe != nil {
-		// shortcut: a frame that also needs a backdrop skips the wipe blur,
-		// because the backdrop path owns the offscreen scene; upgrade by
-		// blurring that path's finished scene too.
+	}
+	if wipe != nil {
 		wipe.at = len(g.instances)
 		lw, lh := float32(width)/g.scale, float32(height)/g.scale
 		g.instances = append(g.instances, wipeInstances(wipe, lw, lh)...)
@@ -1308,7 +1309,7 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 	}
 
 	if len(panels) > 0 {
-		return g.renderBackdrop(list, width, height, panels)
+		return g.renderBackdrop(list, width, height, panels, blit, wipe)
 	}
 	if wipe != nil {
 		return g.renderWipe(list, width, height, wipe.at)

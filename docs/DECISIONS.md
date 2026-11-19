@@ -2629,5 +2629,8 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   renderer draws the frame into the backdrop scene texture, runs the two
   separable blur passes with a radius that follows a half sine across the band,
   and blits the result. That makes the content melt through the edge like the
-  reference recording while the rest of the frame stays sharp. A frame that
-  also has a backdrop filter keeps the backdrop path, which skips the wipe blur.
+  reference recording while the rest of the frame stays sharp. The scene keeps
+  the frame's multisampling and resolves before the blur, so only the sharp
+  parts pay for samples. A frame that also has a backdrop filter runs the
+  wipe's blur passes after the backdrop's, so a glass component does not take
+  the soft edge away.

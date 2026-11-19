@@ -206,7 +206,7 @@ func (g *GPU) shapePass(enc *wgpu.CommandEncoder, bd *backdropTarget, slot int, 
 // before the panel, the two blur passes over what they drew, the composite of
 // the blurred copy, and then the rest of the frame. The finished scene is blitted
 // onto the surface with its last instance.
-func (g *GPU) renderBackdrop(list *paint.List, width, height int, panels []backdropPanel) error {
+func (g *GPU) renderBackdrop(list *paint.List, width, height int, panels []backdropPanel, blit int, wipe *wipeRequest) error {
 	bd, err := g.ensureBackdrop(width, height)
 	if err != nil {
 		return err
@@ -258,16 +258,28 @@ func (g *GPU) renderBackdrop(list *paint.List, width, height int, panels []backd
 		slot++
 		start = p.at + 3
 	}
-	// The last instance copies the scene to the surface; everything before it is
-	// the scene itself.
-	blit := len(g.instances) - 1
+	// The scene ends where the blit instance begins.
 	if err := g.shapePass(enc, bd, slot, bd.sceneView, nil, load, clear, start, blit-start, nil); err != nil {
 		return err
 	}
 	slot++
-	// The composite is one textured quad, so it needs no samples of its own:
-	// the scene it samples was already resolved.
-	if err := g.shapePass(enc, bd, slot, view, nil, false, clear, blit, 1, bd.sceneView); err != nil {
+	if wipe != nil {
+		// The wipe's blur passes follow the backdrop's, so a glass component
+		// does not take the soft edge away.
+		if err := g.shapePass(enc, bd, slot, bd.tmpView, nil, false, clear, wipe.at, 1, bd.sceneView); err != nil {
+			return err
+		}
+		slot++
+		if err := g.shapePass(enc, bd, slot, bd.blurView, nil, false, clear, wipe.at+1, 1, bd.tmpView); err != nil {
+			return err
+		}
+		slot++
+		// The composite is one textured quad, so it needs no samples of its
+		// own: the scene it samples was already resolved.
+		if err := g.shapePass(enc, bd, slot, view, nil, false, clear, wipe.at+2, 1, bd.blurView); err != nil {
+			return err
+		}
+	} else if err := g.shapePass(enc, bd, slot, view, nil, false, clear, blit, 1, bd.sceneView); err != nil {
 		return err
 	}
 

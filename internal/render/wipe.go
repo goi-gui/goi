@@ -5,6 +5,7 @@ package render
 import (
 	"fmt"
 
+	"github.com/gogpu/wgpu"
 	"github.com/goi-gui/goi/internal/paint"
 )
 
@@ -74,7 +75,18 @@ func (g *GPU) renderWipe(list *paint.List, width, height int, start int) error {
 	}()
 
 	clear := clearColor(list)
-	if err := g.shapePass(enc, bd, 0, bd.sceneView, nil, false, clear, 0, start, nil); err != nil {
+	// The scene keeps the frame's multisampling and resolves into the texture
+	// the blur samples, so the sharp parts outside the band match a normal
+	// frame; the blur passes themselves stay single-sample.
+	msaa, err := g.ensureMSAA(width, height)
+	if err != nil {
+		return err
+	}
+	target, resolve := bd.sceneView, (*wgpu.TextureView)(nil)
+	if msaa != nil {
+		target, resolve = msaa, bd.sceneView
+	}
+	if err := g.shapePass(enc, bd, 0, target, resolve, false, clear, 0, start, nil); err != nil {
 		return err
 	}
 	// Horizontal then vertical: the same two 9-tap passes a backdrop uses, with
