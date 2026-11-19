@@ -240,3 +240,36 @@ Window {
 		t.Fatalf("final box = %v %v %v %08x", box.Padding(), box.Margin(), box.BorderThickness(), box.BorderColor())
 	}
 }
+
+// TestGoSetterTransition keeps design transitions working when Go writes a
+// property through its setter.
+func TestGoSetterTransition(t *testing.T) {
+	tr, diag := BuildSource([]byte(`Window {
+	Rectangle {
+		id:         box
+		width:      100
+		background: #0000ffff
+		transition: width 500ms, background 500ms
+	}
+}`), nil)
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	box := tr.ids["box"].(*Rectangle)
+	box.SetWidth(500)
+	box.SetBackground(0xff0000ff)
+	if box.Width() != 100 || box.Background() != 0x0000FFFF {
+		t.Fatalf("setters jumped to %v and %08x", box.Width(), box.Background())
+	}
+	tr.AdvanceTransitions(0.25)
+	if w := box.Width(); w <= 100 || w >= 500 {
+		t.Fatalf("width mid = %v", w)
+	}
+	if c := box.Background(); c == 0x0000FFFF || c == 0xff0000ff {
+		t.Fatalf("background mid = %08x", c)
+	}
+	tr.AdvanceTransitions(0.25)
+	if box.Width() != 500 || box.Background() != 0xff0000ff {
+		t.Fatalf("final = %v and %08x", box.Width(), box.Background())
+	}
+}

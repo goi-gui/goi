@@ -62,6 +62,11 @@ func (p *Prop[T]) Set(v T) {
 		}
 		return
 	}
+	if p.base != nil && p.base.startGoTransition(p.name, v) {
+		p.written = true
+		p.goSet = true
+		return
+	}
 	p.val = v
 	p.written = true
 	p.goSet = true

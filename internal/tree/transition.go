@@ -162,6 +162,26 @@ func (b *NodeBase) applyTransitionLiteral(name string, v syntax.Value) bool {
 	return false
 }
 
+// startGoTransition turns a direct Prop.Set into a transition target. The
+// first Go write starts from the value the cell holds now; a write before any
+// frame does not animate in from a default.
+func (b *NodeBase) startGoTransition(name string, v any) bool {
+	st, ok := b.transitionStateFor(name)
+	if !ok {
+		return false
+	}
+	b.initTransitionCurrent(name)
+	switch x := v.(type) {
+	case float64:
+		b.startNumber(name, st, x)
+		return true
+	case uint32:
+		b.startColor(name, st, x, true)
+		return true
+	}
+	return false
+}
+
 // writeTransitionExpr intercepts a resolved expression value.
 func (b *NodeBase) writeTransitionExpr(name string, v any) bool {
 	st, ok := b.transitionStateFor(name)
