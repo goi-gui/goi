@@ -2564,3 +2564,13 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   `assets/ui`, so the entry is `ui/Main.goi` and `goi://` resolves against the
   assets root. `goi run` still reads the directory, which keeps hot reload
   automatic; a registered embedded FS has no directory to watch.
+
+- **A lost image bitmap is retried, not treated as loaded.** `RenderedSrc`
+  records the src a node's `Data` came from, but the bitmap can go away after the
+  sync walk has visited the node (a cache eviction) or a decode can fail once.
+  Trusting the marker alone left the picture blank through later frames until
+  the design changed its src. The loader now retries a missing bitmap three
+  times, and paint asks for another frame while one is missing so the retry
+  runs. A load that keeps failing gives up until the src changes, and a bitmap
+  Go supplied with `SetImage` is marked so the file loader never undoes an
+  explicit clear.
