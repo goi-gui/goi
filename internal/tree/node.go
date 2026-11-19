@@ -978,6 +978,11 @@ func (b *NodeBase) ShadowSet() bool { return b.shadow.explicit }
 // Call it from Bind: a hot reload rebuilds the nodes, and the design's own value
 // wins again.
 func (b *NodeBase) SetShadow(layers ...ShadowLayer) {
+	if b.startGoShadow(layers) {
+		b.shadow.goSet = true
+		b.shadow.explicit = true
+		return
+	}
 	b.shadow.set(layers)
 	b.shadow.goSet = true
 	b.shadow.explicit = true

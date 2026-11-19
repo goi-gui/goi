@@ -273,3 +273,44 @@ func TestGoSetterTransition(t *testing.T) {
 		t.Fatalf("final = %v and %08x", box.Width(), box.Background())
 	}
 }
+
+// TestRotateScaleShadowTransitions covers the remaining animatable cell types,
+// including a Go SetShadow.
+func TestRotateScaleShadowTransitions(t *testing.T) {
+	tr, diag := BuildSource([]byte(`Window {
+	Rectangle {
+		id:         box
+		rotate:     0deg
+		scale:      1
+		shadow:     0 2 4 #0000ffff
+		transition: rotate 500ms, scale 500ms, shadow 500ms
+	}
+}`), nil)
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	box := tr.ids["box"].(*Rectangle)
+	box.SetRotation(90)
+	box.SetScale(2, 2)
+	box.SetShadow(ShadowLayer{X: 4, Y: 8, Blur: 12, Color: 0xff0000ff})
+	if box.Rotation().Angle != 0 || box.Scaling().X != 1 || box.Shadow()[0].X != 0 {
+		t.Fatalf("setters jumped: %+v %+v %+v", box.Rotation(), box.Scaling(), box.Shadow())
+	}
+	tr.AdvanceTransitions(0.25)
+	if a := box.Rotation().Angle; a <= 0 || a >= 1.57079632679 {
+		t.Fatalf("rotation mid = %v", a)
+	}
+	if sc := box.Scaling().X; sc <= 1 || sc >= 2 {
+		t.Fatalf("scale mid = %v", sc)
+	}
+	if sh := box.Shadow()[0]; sh.X <= 0 || sh.X >= 4 {
+		t.Fatalf("shadow mid = %+v", sh)
+	}
+	tr.AdvanceTransitions(0.25)
+	if box.Rotation().Angle != 1.5707963267948966 || box.Scaling().X != 2 {
+		t.Fatalf("final rotation/scale = %v %v", box.Rotation().Angle, box.Scaling().X)
+	}
+	if sh := box.Shadow()[0]; sh.X != 4 || sh.Y != 8 || sh.Blur != 12 || sh.Color != 0xff0000ff {
+		t.Fatalf("final shadow = %+v", sh)
+	}
+}

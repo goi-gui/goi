@@ -22,9 +22,18 @@ type transitionState struct {
 	from, to    float64
 	fromColor   uint32
 	toColor     uint32
+	fromRot     Rotation
+	toRot       Rotation
+	fromScale   Scale
+	toScale     Scale
+	fromShadow  []ShadowLayer
+	toShadow    []ShadowLayer
 	active      bool
 	initialized bool
 	color       bool
+	rot         bool
+	scale       bool
+	shadow      bool
 }
 
 // setTransitions reads a `transition:` value. Every named property must exist;
@@ -94,6 +103,21 @@ func (b *NodeBase) initTransitionCurrent(name string) {
 		st.fromColor, st.toColor = v, v
 		st.color = true
 		st.initialized = true
+	case propRotate:
+		v := b.props[i].Get().(Rotation)
+		st.fromRot, st.toRot = v, v
+		st.rot = true
+		st.initialized = true
+	case propScale:
+		v := b.props[i].Get().(Scale)
+		st.fromScale, st.toScale = v, v
+		st.scale = true
+		st.initialized = true
+	case propShadow:
+		v := append([]ShadowLayer(nil), b.shadow.layers...)
+		st.fromShadow, st.toShadow = v, append([]ShadowLayer(nil), v...)
+		st.shadow = true
+		st.initialized = true
 	}
 }
 
@@ -158,6 +182,27 @@ func (b *NodeBase) applyTransitionLiteral(name string, v syntax.Value) bool {
 		}
 		b.startColor(name, st, rgba, true)
 		return true
+	case propRotate:
+		r, ok := v.(*syntax.Rotate)
+		if !ok {
+			return false
+		}
+		b.startRotation(name, st, rotationOf(r))
+		return true
+	case propScale:
+		sc, ok := v.(*syntax.Scale)
+		if !ok {
+			return false
+		}
+		b.startScale(name, st, scaleOf(sc))
+		return true
+	case propShadow:
+		sh, ok := v.(*syntax.Shadow)
+		if !ok {
+			return false
+		}
+		b.startShadow(name, st, shadowLayers(sh))
+		return true
 	}
 	return false
 }
@@ -178,8 +223,27 @@ func (b *NodeBase) startGoTransition(name string, v any) bool {
 	case uint32:
 		b.startColor(name, st, x, true)
 		return true
+	case Rotation:
+		b.startRotation(name, st, x)
+		return true
+	case Scale:
+		b.startScale(name, st, x)
+		return true
+	case []ShadowLayer:
+		b.startShadow(name, st, x)
+		return true
 	}
 	return false
+}
+
+func (b *NodeBase) startGoShadow(layers []ShadowLayer) bool {
+	st, ok := b.transitionStateFor("shadow")
+	if !ok {
+		return false
+	}
+	b.initTransitionCurrent("shadow")
+	b.startShadow("shadow", st, layers)
+	return true
 }
 
 // writeTransitionExpr intercepts a resolved expression value.
@@ -194,6 +258,15 @@ func (b *NodeBase) writeTransitionExpr(name string, v any) bool {
 		return true
 	case uint32:
 		b.startColor(name, st, x, true)
+		return true
+	case Rotation:
+		b.startRotation(name, st, x)
+		return true
+	case Scale:
+		b.startScale(name, st, x)
+		return true
+	case []ShadowLayer:
+		b.startShadow(name, st, x)
 		return true
 	}
 	return false
@@ -255,6 +328,128 @@ func (b *NodeBase) startColor(name string, st *transitionState, to uint32, clear
 	st.active = true
 	b.listTransition()
 	b.mark(b.PropDirty(name))
+}
+
+func (b *NodeBase) startRotation(name string, st *transitionState, to Rotation) {
+	if !st.initialized {
+		if b.tree != nil && b.tree.building {
+			b.writeRawRotation(name, to)
+			return
+		}
+		st.initialized = true
+		st.rot = true
+		st.fromRot, st.toRot = to, to
+		b.writeRawRotation(name, to)
+		return
+	}
+	if st.rot && st.toRot == to {
+		return
+	}
+	cur, _ := b.PropValue(name)
+	st.rot = true
+	st.fromRot = cur.(Rotation)
+	st.toRot = to
+	st.elapsed = 0
+	st.active = true
+	b.listTransition()
+	b.mark(b.PropDirty(name))
+}
+
+func (b *NodeBase) startScale(name string, st *transitionState, to Scale) {
+	if !st.initialized {
+		if b.tree != nil && b.tree.building {
+			b.writeRawScale(name, to)
+			return
+		}
+		st.initialized = true
+		st.scale = true
+		st.fromScale, st.toScale = to, to
+		b.writeRawScale(name, to)
+		return
+	}
+	if st.scale && st.toScale == to {
+		return
+	}
+	cur, _ := b.PropValue(name)
+	st.scale = true
+	st.fromScale = cur.(Scale)
+	st.toScale = to
+	st.elapsed = 0
+	st.active = true
+	b.listTransition()
+	b.mark(b.PropDirty(name))
+}
+
+func (b *NodeBase) startShadow(name string, st *transitionState, to []ShadowLayer) {
+	for _, l := range to {
+		if l.Role != "" {
+			b.listShadow()
+			break
+		}
+	}
+	if !st.initialized {
+		if b.tree != nil && b.tree.building {
+			b.writeRawShadow(to)
+			return
+		}
+		st.initialized = true
+		st.shadow = true
+		st.fromShadow = append([]ShadowLayer(nil), to...)
+		st.toShadow = append([]ShadowLayer(nil), to...)
+		b.writeRawShadow(to)
+		return
+	}
+	if st.shadow && shadowEqual(st.toShadow, to) {
+		return
+	}
+	st.shadow = true
+	st.fromShadow = append([]ShadowLayer(nil), b.shadow.layers...)
+	st.toShadow = append([]ShadowLayer(nil), to...)
+	st.elapsed = 0
+	st.active = true
+	b.listTransition()
+	b.mark(b.PropDirty(name))
+}
+
+func (b *NodeBase) writeRawRotation(name string, r Rotation) {
+	b.properties()
+	if i, ok := b.byName[name]; ok {
+		b.props[i].SetDefault(&syntax.Rotate{Angle: r.Angle * 180 / 3.141592653589793, Axis: axisName(r.Axis), Vector: r.Axis})
+	}
+}
+
+func (b *NodeBase) writeRawScale(name string, sc Scale) {
+	b.properties()
+	if i, ok := b.byName[name]; ok {
+		b.props[i].SetDefault(&syntax.Scale{X: sc.X, Y: sc.Y, Z: sc.Z})
+	}
+}
+
+func (b *NodeBase) writeRawShadow(layers []ShadowLayer) {
+	b.shadow.set(layers)
+	b.shadow.explicit = true
+}
+
+func axisName(a [3]float64) string {
+	switch {
+	case a == [3]float64{1, 0, 0}:
+		return "x"
+	case a == [3]float64{0, 1, 0}:
+		return "y"
+	}
+	return ""
+}
+
+func shadowEqual(a, b []ShadowLayer) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func (b *NodeBase) writeRawNumber(name string, v float64) {
@@ -319,10 +514,27 @@ func (t *Tree) AdvanceTransitions(dt float64) bool {
 				p = 1
 			}
 			e := 1 - (1-p)*(1-p)*(1-p)
-			if st.color {
+			switch {
+			case st.color:
 				b.writeColorRaw(name, mixColor(st.fromColor, st.toColor, e))
-			} else {
+			case st.rot:
+				b.writeRawRotation(name, mixRotation(st.fromRot, st.toRot, e))
+			case st.scale:
+				b.writeRawScale(name, mixScale(st.fromScale, st.toScale, e))
+			case st.shadow:
+				b.writeRawShadow(mixShadow(st.fromShadow, st.toShadow, e))
+			default:
 				b.writeRawNumber(name, st.from+(st.to-st.from)*e)
+			}
+			if p >= 1 {
+				switch {
+				case st.rot:
+					b.writeRawRotation(name, st.toRot)
+				case st.scale:
+					b.writeRawScale(name, st.toScale)
+				case st.shadow:
+					b.writeRawShadow(st.toShadow)
+				}
 			}
 			b.mark(b.PropDirty(name))
 			changed = true
@@ -333,6 +545,53 @@ func (t *Tree) AdvanceTransitions(dt float64) bool {
 		}
 	}
 	return changed
+}
+
+func mixRotation(a, b Rotation, t float64) Rotation {
+	return Rotation{
+		Angle: a.Angle + (b.Angle-a.Angle)*t,
+		Axis: [3]float64{
+			a.Axis[0] + (b.Axis[0]-a.Axis[0])*t,
+			a.Axis[1] + (b.Axis[1]-a.Axis[1])*t,
+			a.Axis[2] + (b.Axis[2]-a.Axis[2])*t,
+		},
+	}
+}
+
+func mixScale(a, b Scale, t float64) Scale {
+	return Scale{
+		X:   a.X + (b.X-a.X)*t,
+		Y:   a.Y + (b.Y-a.Y)*t,
+		Z:   a.Z + (b.Z-a.Z)*t,
+		Set: true,
+	}
+}
+
+func mixShadow(a, b []ShadowLayer, t float64) []ShadowLayer {
+	n := len(a)
+	if len(b) > n {
+		n = len(b)
+	}
+	out := make([]ShadowLayer, n)
+	for i := range out {
+		var x, y ShadowLayer
+		if i < len(a) {
+			x = a[i]
+		}
+		if i < len(b) {
+			y = b[i]
+		}
+		out[i] = ShadowLayer{
+			X:      x.X + (y.X-x.X)*t,
+			Y:      x.Y + (y.Y-x.Y)*t,
+			Blur:   x.Blur + (y.Blur-x.Blur)*t,
+			Spread: x.Spread + (y.Spread-x.Spread)*t,
+			Color:  mixColor(x.Color, y.Color, t),
+			Inset:  y.Inset,
+			Role:   y.Role,
+		}
+	}
+	return out
 }
 
 func mixColor(a, b uint32, t float64) uint32 {
