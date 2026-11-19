@@ -1287,3 +1287,32 @@ func TestParseTransition(t *testing.T) {
 		t.Fatalf("third entry = %+v", tr.Entries[2])
 	}
 }
+
+// TestParseTransitionTiming reads the optional timing function and delay after
+// the duration, per entry.
+func TestParseTransitionTiming(t *testing.T) {
+	src := `Window {
+	Rectangle {
+		transition: width 500ms linear, height 500ms ease-in 100ms, opacity 1s ease-in-out -50ms, background 200ms
+	}
+}`
+	f, diag := Parse([]byte(src))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	tr := f.Root.Children()[0].Prop("transition").Value.(*Transition)
+	want := []TransitionEntry{
+		{Property: "width", Duration: 500 * time.Millisecond, Timing: "linear"},
+		{Property: "height", Duration: 500 * time.Millisecond, Timing: "ease-in", Delay: 100 * time.Millisecond},
+		{Property: "opacity", Duration: time.Second, Timing: "ease-in-out", Delay: -50 * time.Millisecond},
+		{Property: "background", Duration: 200 * time.Millisecond},
+	}
+	if len(tr.Entries) != len(want) {
+		t.Fatalf("entries = %#v", tr.Entries)
+	}
+	for i := range want {
+		if tr.Entries[i] != want[i] {
+			t.Fatalf("entry %d = %+v, want %+v", i, tr.Entries[i], want[i])
+		}
+	}
+}

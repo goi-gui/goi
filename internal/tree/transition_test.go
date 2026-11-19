@@ -314,3 +314,177 @@ func TestRotateScaleShadowTransitions(t *testing.T) {
 		t.Fatalf("final shadow = %+v", sh)
 	}
 }
+
+// TestOpacityTransition covers the cell the gallery's fade uses, through a
+// design expression and a Go setter.
+func TestOpacityTransition(t *testing.T) {
+	tr, diag := BuildSource([]byte(`bridge { hidden bool }
+Window {
+	Rectangle {
+		id:         box
+		opacity:    bridge.hidden ? 0 : 1
+		transition: opacity 1s linear
+	}
+}`), nil)
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	box := tr.ids["box"].Base()
+	tr.ApplyExpressions()
+	if box.Opacity() != 1 {
+		t.Fatalf("initial opacity = %v", box.Opacity())
+	}
+	tr.SetData("hidden", true)
+	tr.ApplyExpressions()
+	tr.AdvanceTransitions(0.5)
+	if o := box.Opacity(); o < 0.49 || o > 0.51 {
+		t.Fatalf("opacity mid = %v, want 0.5", o)
+	}
+	tr.AdvanceTransitions(0.5)
+	if box.Opacity() != 0 {
+		t.Fatalf("final opacity = %v", box.Opacity())
+	}
+
+	box.SetOpacity(1)
+	tr.AdvanceTransitions(0.5)
+	if o := box.Opacity(); o < 0.49 || o > 0.51 {
+		t.Fatalf("Go opacity mid = %v, want 0.5", o)
+	}
+	tr.AdvanceTransitions(0.5)
+	if box.Opacity() != 1 {
+		t.Fatalf("Go final opacity = %v", box.Opacity())
+	}
+}
+
+// TestTransitionTimingFunction checks that a linear entry moves halfway at half
+// time while an ease-in entry lags the clock.
+func TestTransitionTimingFunction(t *testing.T) {
+	tr, diag := BuildSource([]byte(`bridge { small bool }
+Window {
+	Rectangle {
+		id:     linear
+		width:  bridge.small ? 200 : 500
+		height: 10
+		transition: width 1s linear
+	}
+	Rectangle {
+		id:     eased
+		width:  bridge.small ? 200 : 500
+		height: 10
+		transition: width 1s ease-in
+	}
+}`), nil)
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	lin, eased := tr.ids["linear"].Base(), tr.ids["eased"].Base()
+	tr.ApplyExpressions()
+	tr.SetData("small", true)
+	tr.ApplyExpressions()
+	tr.AdvanceTransitions(0.5)
+	if w := lin.Width(); w < 349.9 || w > 350.1 {
+		t.Fatalf("linear width at half time = %v, want 350", w)
+	}
+	if w := eased.Width(); w <= 350 {
+		t.Fatalf("ease-in width at half time = %v, want below 350", w)
+	}
+	tr.AdvanceTransitions(0.5)
+	if lin.Width() != 200 || eased.Width() != 200 {
+		t.Fatalf("final widths = %v and %v", lin.Width(), eased.Width())
+	}
+}
+
+// TestTransitionDelay holds the old value until the delay ends, then runs the
+// entry for its own duration.
+func TestTransitionDelay(t *testing.T) {
+	tr, diag := BuildSource([]byte(`bridge { small bool }
+Window {
+	Rectangle {
+		id:         box
+		width:      bridge.small ? 200 : 500
+		height:     10
+		transition: width 500ms linear 200ms
+	}
+}`), nil)
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	box := tr.ids["box"].Base()
+	tr.ApplyExpressions()
+	tr.SetData("small", true)
+	tr.ApplyExpressions()
+	if !tr.AdvanceTransitions(0.1) {
+		t.Fatal("the delay should keep asking for frames")
+	}
+	if box.Width() != 500 {
+		t.Fatalf("width moved during the delay: %v", box.Width())
+	}
+	tr.AdvanceTransitions(0.1)
+	if box.Width() != 500 {
+		t.Fatalf("width moved at the end of the delay: %v", box.Width())
+	}
+	tr.AdvanceTransitions(0.25)
+	if w := box.Width(); w < 349.9 || w > 350.1 {
+		t.Fatalf("width mid-run = %v, want 350", w)
+	}
+	tr.AdvanceTransitions(0.25)
+	if box.Width() != 200 {
+		t.Fatalf("final width = %v", box.Width())
+	}
+}
+
+// TestSizeShorthandTransition writes `size` through the width and height
+// transitions, whether the shorthand names them or `size` itself is transitioned.
+func TestSizeShorthandTransition(t *testing.T) {
+	tr, diag := BuildSource([]byte(`bridge { big bool }
+Window {
+	Rectangle {
+		id:         box
+		size:       bridge.big ? 200 : 100
+		transition: size 1s linear
+	}
+}`), nil)
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	box := tr.ids["box"].Base()
+	tr.ApplyExpressions()
+	tr.SetData("big", true)
+	tr.ApplyExpressions()
+	tr.AdvanceTransitions(0.5)
+	if w, h := box.Width(), box.Height(); w < 149.9 || w > 150.1 || h < 149.9 || h > 150.1 {
+		t.Fatalf("size mid = %v x %v, want 150 x 150", w, h)
+	}
+	tr.AdvanceTransitions(0.5)
+	if box.Width() != 200 || box.Height() != 200 {
+		t.Fatalf("final size = %v x %v", box.Width(), box.Height())
+	}
+}
+
+// TestSpacingGapAliasTransition lets the transition name either spelling of the
+// shared spacing cell.
+func TestSpacingGapAliasTransition(t *testing.T) {
+	tr, diag := BuildSource([]byte(`bridge { wide bool }
+Window {
+	Column {
+		id:         box
+		spacing:    bridge.wide ? 20 : 0
+		transition: gap 1s linear
+	}
+}`), nil)
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	box := tr.ids["box"].(*Column)
+	tr.ApplyExpressions()
+	tr.SetData("wide", true)
+	tr.ApplyExpressions()
+	tr.AdvanceTransitions(0.5)
+	if s := box.Spacing.Get(); s < 9.9 || s > 10.1 {
+		t.Fatalf("spacing mid = %v, want 10", s)
+	}
+	tr.AdvanceTransitions(0.5)
+	if s := box.Spacing.Get(); s != 20 {
+		t.Fatalf("final spacing = %v", s)
+	}
+}

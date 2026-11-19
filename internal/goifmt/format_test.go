@@ -480,3 +480,15 @@ func TestFormatTransition(t *testing.T) {
 		t.Fatalf("not idempotent:\n%s\n--- second ---\n%s", got, again)
 	}
 }
+
+// TestFormatTransitionTiming keeps the timing function and delay in CSS order.
+func TestFormatTransitionTiming(t *testing.T) {
+	src := `Window { Rectangle { transition: width 500ms linear, height 500ms ease-in-out 100ms, opacity 1s ease-out -50ms } }`
+	got := string(Source([]byte(src)))
+	if !strings.Contains(got, "transition: width 500ms linear, height 500ms ease-in-out 100ms, opacity 1s ease-out -50ms") {
+		t.Fatalf("format =\n%s", got)
+	}
+	if again := string(Source([]byte(got))); again != got {
+		t.Fatalf("not idempotent:\n%s\n--- second ---\n%s", got, again)
+	}
+}

@@ -457,7 +457,7 @@ type List struct {
 	Items []Value
 }
 
-// Transition is `width 500ms, height 500ms, background 1s`: the properties a
+// Transition is `width 500ms ease-out 100ms, height 500ms`: the properties a
 // node animates when their value changes, with how long each takes. `all` is
 // the wildcard every property falls back to.
 type Transition struct {
@@ -465,10 +465,15 @@ type Transition struct {
 	Entries []TransitionEntry
 }
 
-// TransitionEntry is one property and its duration.
+// TransitionEntry is one property, its duration, and the optional timing
+// function and delay that follow it.
 type TransitionEntry struct {
 	Property string
 	Duration time.Duration
+	// Timing is a CSS timing function: linear, ease, ease-in, ease-out or
+	// ease-in-out. Empty keeps the default curve.
+	Timing string
+	Delay  time.Duration
 }
 
 // Kind implements Value.

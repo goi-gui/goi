@@ -7,9 +7,11 @@ import (
 	"github.com/goi-gui/goi/internal/syntax"
 )
 
-// transitionDef is one property's duration.
+// transitionDef is one property's duration and optional timing.
 type transitionDef struct {
-	dur time.Duration
+	dur    time.Duration
+	timing string
+	delay  time.Duration
 }
 
 // transitionState is the live interpolation for one property. from and to are
@@ -18,6 +20,8 @@ type transitionDef struct {
 // than animated from the property's default.
 type transitionState struct {
 	dur         time.Duration
+	timing      string
+	delay       time.Duration
 	elapsed     time.Duration
 	from, to    float64
 	fromColor   uint32
@@ -37,7 +41,8 @@ type transitionState struct {
 }
 
 // setTransitions reads a `transition:` value. Every named property must exist;
-// `all` is a wildcard for properties not named explicitly.
+// `all` is a wildcard for properties not named explicitly. `size` is the
+// width/height shorthand, so it names both cells.
 func (b *NodeBase) setTransitions(t *syntax.Transition) bool {
 	if t == nil || len(t.Entries) == 0 {
 		b.transitions = nil
@@ -47,12 +52,16 @@ func (b *NodeBase) setTransitions(t *syntax.Transition) bool {
 	b.properties()
 	b.transitions = make(map[string]transitionDef, len(t.Entries))
 	for _, e := range t.Entries {
-		if e.Property != "all" {
-			if _, ok := b.byName[e.Property]; !ok {
-				return false
-			}
+		def := transitionDef{dur: e.Duration, timing: e.Timing, delay: e.Delay}
+		if e.Property == "size" {
+			b.transitions["width"] = def
+			b.transitions["height"] = def
+			continue
 		}
-		b.transitions[e.Property] = transitionDef{dur: e.Duration}
+		if e.Property != "all" && !b.hasProperty(e.Property) {
+			return false
+		}
+		b.transitions[e.Property] = def
 	}
 	b.transitionStates = map[string]*transitionState{}
 	for name := range b.transitions {
@@ -63,10 +72,40 @@ func (b *NodeBase) setTransitions(t *syntax.Transition) bool {
 	return true
 }
 
-// transitionFor returns the specific transition, then the `all` fallback.
+// hasProperty reports whether the node has a cell under name. `spacing` and
+// `gap` share one cell, so a transition may name either spelling.
+func (b *NodeBase) hasProperty(name string) bool {
+	if _, ok := b.byName[name]; ok {
+		return true
+	}
+	alt := ""
+	switch name {
+	case "gap":
+		alt = "spacing"
+	case "spacing":
+		alt = "gap"
+	}
+	_, ok := b.byName[alt]
+	return alt != "" && ok
+}
+
+// transitionFor returns the specific transition, then the `all` fallback. The
+// spacing/gap alias resolves to whichever spelling the design transitioned.
 func (b *NodeBase) transitionFor(name string) (transitionDef, bool) {
 	if d, ok := b.transitions[name]; ok {
 		return d, true
+	}
+	alt := ""
+	switch name {
+	case "gap":
+		alt = "spacing"
+	case "spacing":
+		alt = "gap"
+	}
+	if alt != "" {
+		if d, ok := b.transitions[alt]; ok {
+			return d, true
+		}
 	}
 	d, ok := b.transitions["all"]
 	return d, ok
@@ -77,7 +116,7 @@ func (b *NodeBase) initTransition(name string) {
 	if !ok {
 		return
 	}
-	b.transitionStates[name] = &transitionState{dur: d.dur}
+	b.transitionStates[name] = &transitionState{dur: d.dur, timing: d.timing, delay: d.delay}
 }
 
 // initTransitionCurrent records the property's current value as the start of a
@@ -132,7 +171,7 @@ func (b *NodeBase) transitionStateFor(name string) (*transitionState, bool) {
 	if !ok {
 		return nil, false
 	}
-	st := &transitionState{dur: d.dur}
+	st := &transitionState{dur: d.dur, timing: d.timing, delay: d.delay}
 	b.transitionStates[name] = st
 	return st, true
 }
@@ -140,6 +179,9 @@ func (b *NodeBase) transitionStateFor(name string) (*transitionState, bool) {
 // applyTransitionLiteral intercepts a literal property write. It returns false
 // for a role, a gradient or a property the transition does not name.
 func (b *NodeBase) applyTransitionLiteral(name string, v syntax.Value) bool {
+	if name == "size" {
+		return b.applySizeTransition(v)
+	}
 	st, ok := b.transitionStateFor(name)
 	if !ok {
 		return false
@@ -248,6 +290,10 @@ func (b *NodeBase) startGoShadow(layers []ShadowLayer) bool {
 
 // writeTransitionExpr intercepts a resolved expression value.
 func (b *NodeBase) writeTransitionExpr(name string, v any) bool {
+	if name == "size" {
+		f, ok := v.(float64)
+		return ok && b.applySizeTransition(&syntax.Number{Val: f})
+	}
 	st, ok := b.transitionStateFor(name)
 	if !ok {
 		return false
@@ -270,6 +316,34 @@ func (b *NodeBase) writeTransitionExpr(name string, v any) bool {
 		return true
 	}
 	return false
+}
+
+// applySizeTransition writes the `size` shorthand through the width and height
+// transitions. It reports false when neither axis animates, so the shorthand
+// takes its usual direct path.
+func (b *NodeBase) applySizeTransition(v syntax.Value) bool {
+	n, ok := v.(*syntax.Number)
+	if !ok {
+		return false
+	}
+	ws, w := b.transitionStateFor("width")
+	hs, h := b.transitionStateFor("height")
+	if !w && !h {
+		return false
+	}
+	if w {
+		b.startNumber("width", ws, n.Val)
+	} else {
+		b.writeRawNumber("width", n.Val)
+		b.mark(b.PropDirty("width"))
+	}
+	if h {
+		b.startNumber("height", hs, n.Val)
+	} else {
+		b.writeRawNumber("height", n.Val)
+		b.mark(b.PropDirty("height"))
+	}
+	return true
 }
 
 func (b *NodeBase) startNumber(name string, st *transitionState, to float64) {
@@ -506,14 +580,20 @@ func (t *Tree) AdvanceTransitions(dt float64) bool {
 				continue
 			}
 			st.elapsed += elapsed
+			if st.elapsed < st.delay {
+				// The delay is part of the transition, so the driver must keep
+				// scheduling frames until it ends.
+				changed = true
+				continue
+			}
 			p := 1.0
 			if st.dur > 0 {
-				p = float64(st.elapsed) / float64(st.dur)
+				p = float64(st.elapsed-st.delay) / float64(st.dur)
 			}
 			if p > 1 {
 				p = 1
 			}
-			e := 1 - (1-p)*(1-p)*(1-p)
+			e := timingCurve(st.timing, p)
 			switch {
 			case st.color:
 				b.writeColorRaw(name, mixColor(st.fromColor, st.toColor, e))
@@ -545,6 +625,51 @@ func (t *Tree) AdvanceTransitions(dt float64) bool {
 		}
 	}
 	return changed
+}
+
+// timingCurve maps linear progress to the entry's timing function. The default
+// keeps goi's original cubic ease-out, so a transition written before timing
+// functions existed behaves the same.
+func timingCurve(timing string, p float64) float64 {
+	switch timing {
+	case "linear":
+		return p
+	case "ease":
+		return cubicBezier(0.25, 0.1, 0.25, 1, p)
+	case "ease-in":
+		return cubicBezier(0.42, 0, 1, 1, p)
+	case "ease-out":
+		return cubicBezier(0, 0, 0.58, 1, p)
+	case "ease-in-out":
+		return cubicBezier(0.42, 0, 0.58, 1, p)
+	}
+	return 1 - (1-p)*(1-p)*(1-p)
+}
+
+// cubicBezier evaluates a CSS cubic-bezier curve at x=p. The curve is defined
+// with endpoints (0,0) and (1,1); bisection finds the t whose x is p, which
+// avoids a Newton step failing on a flat segment.
+func cubicBezier(x1, y1, x2, y2, p float64) float64 {
+	if p <= 0 {
+		return 0
+	}
+	if p >= 1 {
+		return 1
+	}
+	bezier := func(t, a, b float64) float64 {
+		mt := 1 - t
+		return 3*mt*mt*t*a + 3*mt*t*t*b + t*t*t
+	}
+	lo, hi := 0.0, 1.0
+	for i := 0; i < 24; i++ {
+		t := (lo + hi) / 2
+		if bezier(t, x1, x2) < p {
+			lo = t
+		} else {
+			hi = t
+		}
+	}
+	return bezier((lo+hi)/2, y1, y2)
 }
 
 func mixRotation(a, b Rotation, t float64) Rotation {

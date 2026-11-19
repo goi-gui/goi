@@ -149,7 +149,14 @@ func dumpValue(v Value) string {
 		}
 		parts := make([]string, len(v.Entries))
 		for i, e := range v.Entries {
-			parts[i] = e.Property + " " + e.Duration.String()
+			s := e.Property + " " + e.Duration.String()
+			if e.Timing != "" {
+				s += " " + e.Timing
+			}
+			if e.Delay != 0 {
+				s += " " + e.Delay.String()
+			}
+			parts[i] = s
 		}
 		return strings.Join(parts, ", ")
 	case *String:

@@ -898,8 +898,18 @@ func (p *parser) parseProperty() (*Property, bool) {
 	return prop, true
 }
 
-// parseTransition reads `width 500ms, height 500ms, background 1s`. Durations
-// need a unit; `none` is an empty list.
+// timingFunctions are the CSS timing-function keywords a transition accepts.
+var timingFunctions = map[string]bool{
+	"linear":      true,
+	"ease":        true,
+	"ease-in":     true,
+	"ease-out":    true,
+	"ease-in-out": true,
+}
+
+// parseTransition reads `width 500ms ease-out 100ms, height 500ms`: a property,
+// its duration, and the optional timing function and delay. Durations need a
+// unit; `none` is an empty list.
 func (p *parser) parseTransition() (Value, bool) {
 	if t := p.peek(); t.kind == tokIdent && t.text == "none" {
 		p.next()
@@ -917,7 +927,29 @@ func (p *parser) parseTransition() (Value, bool) {
 		if !ok {
 			return nil, false
 		}
-		tr.Entries = append(tr.Entries, TransitionEntry{Property: name.text, Duration: d})
+		entry := TransitionEntry{Property: name.text, Duration: d}
+		// The optional parts stay on the entry's line, so a property without a
+		// comma is not mistaken for a timing function.
+		if timing, ok := p.timingFunction(); ok {
+			entry.Timing = timing
+		}
+		if t := p.peek(); t.kind == tokNumber && p.sameLine(t.pos) ||
+			t.kind == tokMinus && p.sameLine(t.pos) {
+			neg := false
+			if t.kind == tokMinus {
+				neg = true
+				p.next()
+			}
+			delay, ok := p.parseDuration()
+			if !ok {
+				return nil, false
+			}
+			if neg {
+				delay = -delay
+			}
+			entry.Delay = delay
+		}
+		tr.Entries = append(tr.Entries, entry)
 		if p.peek().kind != tokComma {
 			break
 		}
@@ -931,6 +963,28 @@ func (p *parser) parseTransition() (Value, bool) {
 		return nil, false
 	}
 	return tr, true
+}
+
+// timingFunction reads a timing-function keyword. The lexer splits ease-in-out
+// into pieces, so they are joined back like a cursor name. A keyword that is not
+// one of the five CSS names is left for the enclosing parser.
+func (p *parser) timingFunction() (string, bool) {
+	t := p.peek()
+	if t.kind != tokIdent || !p.sameLine(t.pos) {
+		return "", false
+	}
+	save := p.i
+	name := t.text
+	p.next()
+	for p.peek().kind == tokMinus && p.peek2().kind == tokIdent && p.sameLine(p.peek2().pos) {
+		p.next()
+		name += "-" + p.next().text
+	}
+	if timingFunctions[name] {
+		return name, true
+	}
+	p.i = save
+	return "", false
 }
 
 // parseDuration reads a number with its ms or s unit. The unit must touch the

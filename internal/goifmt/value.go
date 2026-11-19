@@ -256,7 +256,7 @@ func printInner(v syntax.Value) string {
 		}
 		parts := make([]string, len(x.Entries))
 		for i, e := range x.Entries {
-			parts[i] = e.Property + " " + e.Duration.String()
+			parts[i] = transitionEntryText(e)
 		}
 		return strings.Join(parts, ", ")
 	case *syntax.Scale:
@@ -345,4 +345,17 @@ func printShadowLayer(l syntax.ShadowLayer) string {
 		parts = append(parts, "inset")
 	}
 	return strings.Join(parts, " ")
+}
+
+// transitionEntryText writes one transition entry, omitting the optional
+// timing function and delay when the design left them out.
+func transitionEntryText(e syntax.TransitionEntry) string {
+	s := e.Property + " " + e.Duration.String()
+	if e.Timing != "" {
+		s += " " + e.Timing
+	}
+	if e.Delay != 0 {
+		s += " " + e.Delay.String()
+	}
+	return s
 }
