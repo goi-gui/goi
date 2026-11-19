@@ -2625,5 +2625,9 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   to the ops that can touch their strip, which keeps a transition near the cost
   of one frame. A shader mask over two rendered frames would be cheaper still,
   but it needs an offscreen path and a second themed display list in the
-  renderer. The content does not blur like the reference recording; only the
-  colours ramp.
+  renderer. The display list also carries a `Wipe` op naming the same band; the
+  renderer draws the frame into the backdrop scene texture, runs the two
+  separable blur passes with a radius that follows a half sine across the band,
+  and blits the result. That makes the content melt through the edge like the
+  reference recording while the rest of the frame stays sharp. A frame that
+  also has a backdrop filter keeps the backdrop path, which skips the wipe blur.

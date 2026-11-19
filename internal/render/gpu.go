@@ -302,8 +302,16 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 		// One separable blur pass of the backdrop. params.y is the radius in
 		// logical pixels and misc.x the axis: 1 horizontal, 2 vertical. The
 		// two passes run before the panel samples the result, so the blur is
-		// a quadratic kernel at the cost of two 9-tap draws.
-		let radius = max(in.params.y, 0.001);
+		// a quadratic kernel at the cost of two 9-tap draws. A wipe sets
+		// misc.y and carries the band in params.zw: the radius follows a half
+		// sine, so it peaks in the band and vanishes at its edges.
+		var radius = max(in.params.y, 0.001);
+		if (in.misc.y > 0.5) {
+			let top = in.params.z;
+			let span = max(in.params.w - top, 0.001);
+			let t = clamp((in.pos2.y - top) / span, 0.0, 1.0);
+			radius = radius * sin(t * 3.141592653589793);
+		}
 		let uv0 = in.pos2 / viewport.size.xy;
 		var sum = vec4f(0.0);
 		for (var i = -4; i <= 4; i = i + 1) {
@@ -1161,8 +1169,11 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 		g.images.prepare(list)
 	}
 	var panels []backdropPanel
+	var wipe *wipeRequest
 	for i, op := range list.Ops {
 		switch op.Kind {
+		case paint.Wipe:
+			wipe = &wipeRequest{band: op.Rect, blur: op.Blur}
 		case paint.Backdrop:
 			panel := backdropPanel{
 				at:         len(g.instances),
@@ -1246,6 +1257,13 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 			Clip:   clipVec([4]float32{0, 0, lw, lh}),
 			Params: [4]float32{11, 0, 0, 0},
 		})
+	} else if wipe != nil {
+		// shortcut: a frame that also needs a backdrop skips the wipe blur,
+		// because the backdrop path owns the offscreen scene; upgrade by
+		// blurring that path's finished scene too.
+		wipe.at = len(g.instances)
+		lw, lh := float32(width)/g.scale, float32(height)/g.scale
+		g.instances = append(g.instances, wipeInstances(wipe, lw, lh)...)
 	}
 	if len(g.instances) > g.capacity {
 		if err := g.grow(len(g.instances)); err != nil {
@@ -1291,6 +1309,9 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 
 	if len(panels) > 0 {
 		return g.renderBackdrop(list, width, height, panels)
+	}
+	if wipe != nil {
+		return g.renderWipe(list, width, height, wipe.at)
 	}
 
 	tex, _, err := g.surface.GetCurrentTexture()

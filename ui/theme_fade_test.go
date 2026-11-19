@@ -122,7 +122,7 @@ func TestThemeWipeSoftEdge(t *testing.T) {
 	a.buildWipeList(&l, win.tree, 400, 400)
 
 	var ramp *tree.Gradient
-	blended := false
+	blended, blurred := false, false
 	for _, op := range l.Ops {
 		if op.Shape == paint.CSSGradient {
 			ramp = op.Gradient
@@ -131,12 +131,18 @@ func TestThemeWipeSoftEdge(t *testing.T) {
 			op.Color != old.Colors.Surface && op.Color != next.Colors.Surface {
 			blended = true
 		}
+		if op.Kind == paint.Wipe && op.Blur > 0 {
+			blurred = true
+		}
 	}
 	if ramp == nil || len(ramp.Stops) != 4 {
 		t.Fatalf("background ramp = %+v, want four stops", ramp)
 	}
 	if !blended {
 		t.Fatal("no content painted with a blended scheme")
+	}
+	if !blurred {
+		t.Fatal("the wipe did not ask the renderer for a blur band")
 	}
 
 	// Before the edge enters, the whole window is still the old scheme.

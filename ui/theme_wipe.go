@@ -15,6 +15,8 @@ import (
 const (
 	wipeBand  = 0.4
 	wipeSteps = 48
+	// wipeBlur is the peak blur radius of the edge, as a fraction of its band.
+	wipeBlur = 0.05
 )
 
 // buildWipeList paints the new scheme above the moving edge, the old one below
@@ -87,6 +89,15 @@ func (a *App) buildWipeList(l *paint.List, tr *tree.Tree, w, h float64) {
 			paintWith(blendTheme(oldTheme, newTheme, t), tree.Rect{Y: y0, W: w, H: y1 - y0})
 		}
 	}
+
+	// The renderer blurs the finished frame across the same band, so the
+	// content melts through the edge instead of only changing colour.
+	ops = append(ops, paint.Op{
+		Kind: paint.Wipe,
+		Rect: wipeRect(tree.Rect{Y: softTop, W: w, H: band}),
+		Clip: wipeRect(tree.Rect{W: w, H: h}),
+		Blur: float32(band * wipeBlur),
+	})
 
 	l.Ops = ops
 	l.Animating = animating

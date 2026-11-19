@@ -35,6 +35,10 @@ const (
 	// rounded box: CSS backdrop-filter. The renderer reads it as a request, not
 	// as a draw, because it needs the frame in a texture first.
 	Backdrop
+	// Wipe is a theme transition's blur band. Rect is the moving band and Blur
+	// its peak radius; the renderer reads it as a request to blur the finished
+	// frame there, so the content melts instead of switching.
+	Wipe
 )
 
 // Shape is the geometry a Fill draws.
