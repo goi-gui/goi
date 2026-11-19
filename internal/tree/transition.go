@@ -68,19 +68,7 @@ func (b *NodeBase) initTransition(name string) {
 	if !ok {
 		return
 	}
-	st := &transitionState{dur: d.dur}
-	if i, ok := b.byName[name]; ok && b.props[i].Written() {
-		switch b.props[i].kind {
-		case propNumber:
-			st.from, st.to = b.props[i].Get().(float64), b.props[i].Get().(float64)
-			st.initialized = true
-		case propColor:
-			st.fromColor, st.toColor = b.props[i].Get().(uint32), b.props[i].Get().(uint32)
-			st.color = true
-			st.initialized = true
-		}
-	}
-	b.transitionStates[name] = st
+	b.transitionStates[name] = &transitionState{dur: d.dur}
 }
 
 // initTransitionCurrent records the property's current value as the start of a
@@ -193,6 +181,10 @@ func (b *NodeBase) writeTransitionExpr(name string, v any) bool {
 
 func (b *NodeBase) startNumber(name string, st *transitionState, to float64) {
 	if !st.initialized {
+		if b.tree != nil && b.tree.building {
+			b.writeRawNumber(name, to)
+			return
+		}
 		st.initialized = true
 		st.from, st.to = to, to
 		b.writeRawNumber(name, to)
@@ -219,6 +211,10 @@ func (b *NodeBase) startColor(name string, st *transitionState, to uint32, clear
 		b.setGradient(name, nil)
 	}
 	if !st.initialized {
+		if b.tree != nil && b.tree.building {
+			b.writeColorRaw(name, to)
+			return
+		}
 		st.initialized = true
 		st.color = true
 		st.fromColor, st.toColor = to, to

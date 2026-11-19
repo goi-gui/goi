@@ -108,44 +108,86 @@ func (eb *eachBlock) walks(name string) bool {
 	return eb.src == name || mentions(eb.rng, name)
 }
 
-// refers reports whether the loop reads name anywhere in its body, not only in
-// its range. A continue or break condition can decide which rows exist, so a
-// SetData of that variable has to rebuild the loop.
+// refers reports whether a SetData of name changes which rows this loop builds.
+// The range is the obvious case. A continue or break also depends on the
+// conditions around it, so only those conditions count: an ordinary expression
+// in the body can update in place and keep its transition running.
 func (eb *eachBlock) refers(name string) bool {
 	if eb.walks(name) {
 		return true
 	}
-	return membersMention(eb.arm, name)
+	return controlMentions(eb.arm, name)
 }
 
-// membersMention walks an arm for a bridge or data reference.
-func membersMention(members []syntax.Member, name string) bool {
+// controlMentions walks the loop body for a continue/break whose enclosing
+// condition reads name. Nested loops own their controls and are skipped.
+func controlMentions(members []syntax.Member, name string) bool {
 	for _, m := range members {
-		switch x := m.(type) {
-		case *syntax.Property:
-			if mentions(x.Value, name) {
-				return true
-			}
-		case *syntax.Element:
-			if membersMention(x.Members, name) {
-				return true
-			}
-		case *syntax.Block:
-			if mentions(x.Range, name) || mentions(x.Subject, name) {
-				return true
-			}
-			for _, br := range x.Branches {
-				if br.Cond != nil && mentions(br.Cond, name) {
-					return true
-				}
+		b, ok := m.(*syntax.Block)
+		if !ok {
+			continue
+		}
+		switch b.Kind {
+		case syntax.BlockContinue, syntax.BlockBreak, syntax.BlockFor:
+			continue
+		case syntax.BlockSwitch:
+			depends := mentions(b.Subject, name)
+			for _, br := range b.Branches {
 				for _, v := range br.Vals {
 					if mentions(v, name) {
-						return true
+						depends = true
 					}
 				}
-				if membersMention(br.Members, name) {
+			}
+			if depends && branchesHaveControl(b) {
+				return true
+			}
+			for _, br := range b.Branches {
+				if controlMentions(br.Members, name) {
 					return true
 				}
+			}
+		default:
+			for _, br := range b.Branches {
+				if br.Cond != nil && mentions(br.Cond, name) && hasControl(br.Members) {
+					return true
+				}
+				if controlMentions(br.Members, name) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// branchesHaveControl reports whether a switch arm contains a continue/break.
+func branchesHaveControl(b *syntax.Block) bool {
+	for _, br := range b.Branches {
+		if hasControl(br.Members) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasControl reports whether an arm contains a continue or break at this loop
+// level. A nested loop's statements belong to that loop.
+func hasControl(members []syntax.Member) bool {
+	for _, m := range members {
+		b, ok := m.(*syntax.Block)
+		if !ok {
+			continue
+		}
+		switch b.Kind {
+		case syntax.BlockContinue, syntax.BlockBreak:
+			return true
+		case syntax.BlockFor:
+			continue
+		}
+		for _, br := range b.Branches {
+			if hasControl(br.Members) {
+				return true
 			}
 		}
 	}
@@ -297,8 +339,11 @@ func (t *Tree) fillEach(eb *eachBlock) {
 		}
 		row := &loopRow{}
 		prevLoop := t.loop
+		prevBuilding := t.building
 		t.loop = &loopBuild{parent: eb.parent, row: row}
+		t.building = true
 		rows, err := t.buildInto(eb, eb.arm, sc, true)
+		t.building = prevBuilding
 		t.loop = prevLoop
 		if err != nil {
 			t.setErr(err)

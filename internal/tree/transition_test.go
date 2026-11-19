@@ -100,3 +100,97 @@ Window {
 		t.Fatalf("fallback background = %08x, want 0", box.Background())
 	}
 }
+
+// TestResponsiveTransitionDoesNotHopOnFirstValue is the shopping gallery: a
+// responsive breakpoint picks the first expression target. The first target is
+// written directly, and asking for the same target again does not restart it.
+func TestResponsiveTransitionDoesNotHopOnFirstValue(t *testing.T) {
+	tr, diag := BuildSource([]byte(`bridge { selected int }
+Window {
+	Rectangle {
+		id:     box
+		height: responsive {
+			base: 400
+			sm: bridge.selected == 0 ? 500 : 200
+		}
+		transition: height 500ms
+	}
+}`), nil)
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	box := tr.ids["box"].Base()
+	tr.SetViewport(1000, 800)
+	tr.ApplyBreakpoints(1000)
+	tr.ApplyExpressions()
+	if box.Height() != 500 {
+		t.Fatalf("first height = %v, want 500", box.Height())
+	}
+	tr.AdvanceTransitions(0.1)
+	if box.Height() != 500 {
+		t.Fatalf("height hopped to %v after the first value", box.Height())
+	}
+
+	tr.SetData("selected", 0)
+	tr.ApplyExpressions()
+	tr.AdvanceTransitions(0.1)
+	if box.Height() != 500 {
+		t.Fatalf("same selection hopped to %v", box.Height())
+	}
+
+	tr.SetData("selected", 1)
+	tr.ApplyExpressions()
+	tr.AdvanceTransitions(0.1)
+	if h := box.Height(); h <= 200 || h >= 500 {
+		t.Fatalf("mid height = %v, want a value between 200 and 500", h)
+	}
+	tr.AdvanceTransitions(0.5)
+	if box.Height() != 200 {
+		t.Fatalf("final height = %v, want 200", box.Height())
+	}
+}
+
+// TestTransitionSurvivesExpressionSetData is the gallery image: a selected
+// index used only in an expression updates the existing rows, so their
+// transition state survives and the heights animate instead of resetting.
+func TestTransitionSurvivesExpressionSetData(t *testing.T) {
+	tr, diag := BuildSource([]byte(`bridge { items []string selected int }
+Window {
+	Column {
+		for j, path := range bridge.items {
+			Text {
+				text:       path
+				height:     bridge.selected == j ? 500 : 200
+				transition: height 500ms
+			}
+		}
+	}
+}`), nil)
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	tr.SetData("items", []string{"a", "b"})
+	tr.SetData("selected", 0)
+	tr.ApplyExpressions()
+	before := tr.All()
+	tr.SetData("selected", 1)
+	tr.ApplyExpressions()
+	after := tr.All()
+	if len(before) != len(after) {
+		t.Fatalf("rows rebuilt: %d -> %d nodes", len(before), len(after))
+	}
+	texts := []*Text{}
+	for _, n := range after {
+		if tx, ok := n.(*Text); ok {
+			texts = append(texts, tx)
+		}
+	}
+	if len(texts) != 2 || texts[0].Height() != 500 || texts[1].Height() != 200 {
+		t.Fatalf("heights jumped to %v and %v", texts[0].Height(), texts[1].Height())
+	}
+	tr.AdvanceTransitions(0.1)
+	if texts[0].Height() <= 200 || texts[0].Height() >= 500 ||
+		texts[1].Height() <= 200 || texts[1].Height() >= 500 {
+		t.Fatalf("mid heights = %v and %v, want both moving", texts[0].Height(), texts[1].Height())
+	}
+}

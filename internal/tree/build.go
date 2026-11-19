@@ -78,6 +78,10 @@ type Tree struct {
 	// transitionNodes holds nodes with a live transition, so the frame loop
 	// advances only the nodes that need it.
 	transitionNodes []*NodeBase
+	// building is true while a tree or a loop row is being built. The first
+	// literal value of a transitioned property must not animate in from a
+	// default or a responsive base.
+	building bool
 	// dataErr is the first error a data fill hit, reported to the app.
 	dataErr error
 	// bridge holds the Go handlers a design's bridge block declares.
@@ -152,7 +156,7 @@ func Build(f *syntax.File, hooks *Hooks) (*Tree, error) {
 	if f == nil || f.Root == nil {
 		return nil, fmt.Errorf("tree: no root element")
 	}
-	t := &Tree{ids: map[string]Node{}, bridge: &Bridge{}}
+	t := &Tree{ids: map[string]Node{}, bridge: &Bridge{}, building: true}
 	if hooks != nil {
 		t.report = hooks.Error
 	}
@@ -165,6 +169,7 @@ func Build(f *syntax.File, hooks *Hooks) (*Tree, error) {
 		}
 	}
 	root, err := t.build(f.Root, nil, hooks)
+	t.building = false
 	if err != nil {
 		return nil, err
 	}
