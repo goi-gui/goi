@@ -91,9 +91,16 @@ func (a *App) initWindow(w *Window) error {
 				}
 			}
 		}
-		for name, variable := range a.fontVariables {
-			if err := lib.RegisterVariableFamily(name, variable.data, variable.axes); err != nil {
-				a.reportError(err)
+		for name, variables := range a.fontVariables {
+			loaded := false
+			for _, variable := range variables {
+				if err := lib.RegisterVariableFamily(name, variable.data, variable.axes); err != nil {
+					a.reportError(err)
+					continue
+				}
+				loaded = true
+			}
+			if !loaded {
 				delete(a.fontVariables, name)
 			}
 		}

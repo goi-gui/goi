@@ -156,10 +156,13 @@ func (a *App) LoadFontFamily(name, pattern string) error {
 }
 
 // LoadVariableFont registers a variable font under name. fontWeight drives its
-// wght axis; axes pins any other axes, such as wdth or opsz. fontStyle: italic
-// slants the upright face, because ital and slnt are not driven separately.
+// wght axis; axes pins any other axes, such as wdth or opsz. A file whose own
+// style is italic fills the family's italic slot, so calling this again with
+// the same name and the italic file gives real italics. Otherwise
+// fontStyle: italic slants the upright face.
 //
 //	app.LoadVariableFont("Nunito", "fonts/Nunito[wght].ttf", nil)
+//	app.LoadVariableFont("Nunito", "fonts/Nunito-Italic[wght].ttf", nil)
 //	app.LoadVariableFont("Text", "fonts/Text[wdth,wght].ttf", map[string]float64{"wdth": 90})
 func (a *App) LoadVariableFont(name, fontPath string, axes map[string]float64) error {
 	if name == "" {
@@ -196,9 +199,9 @@ func (a *App) LoadVariableFont(name, fontPath string, axes map[string]float64) e
 		return fmt.Errorf("ui: LoadVariableFont(%q): %w", name, err)
 	}
 	if a.fontVariables == nil {
-		a.fontVariables = map[string]fontVariable{}
+		a.fontVariables = map[string][]fontVariable{}
 	}
-	a.fontVariables[name] = fontVariable{data: data, axes: fixed}
+	a.fontVariables[name] = append(a.fontVariables[name], fontVariable{data: data, axes: fixed})
 	if lib != nil {
 		a.markDirty(tree.DirtyLayout)
 	}

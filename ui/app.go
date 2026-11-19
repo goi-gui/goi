@@ -178,11 +178,11 @@ type App struct {
 	fullscreenRestore *bool
 	// fonts holds the families LoadFont registered, so a window created after
 	// the call still finds them. fontFaces holds the weight/style files
-	// LoadFontFamily found for a family; fontVariables holds a variable font
-	// and the non-weight axes pinned for it.
+	// LoadFontFamily found for a family; fontVariables holds the variable files
+	// and the non-weight axes pinned for a family.
 	fonts         map[string][]byte
 	fontFaces     map[string][]fontFaceFile
-	fontVariables map[string]fontVariable
+	fontVariables map[string][]fontVariable
 	// catalog is the design's i18n folder, nil when it has none. language and
 	// fallbackLanguage are what SetLanguage chose; empty means "follow the
 	// desktop", which is why neither needs a startup write.

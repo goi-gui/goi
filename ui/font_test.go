@@ -178,6 +178,10 @@ func TestLoadVariableFontReadsPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	italicData, err := os.ReadFile("../internal/text/fonts/roboto-italic-variable.ttf")
+	if err != nil {
+		t.Fatal(err)
+	}
 	static, err := os.ReadFile("../internal/text/fonts/noto-color-emoji.ttf")
 	if err != nil {
 		t.Fatal(err)
@@ -189,6 +193,9 @@ func TestLoadVariableFontReadsPath(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "assets", "fonts", "Var.ttf"), fontData, 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(dir, "assets", "fonts", "VarItalic.ttf"), italicData, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(dir, "goi.yaml"), []byte("assets: assets\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -198,8 +205,11 @@ func TestLoadVariableFontReadsPath(t *testing.T) {
 	if err := a.LoadVariableFont("Var", "fonts/Var.ttf", map[string]float64{"wdth": 90}); err != nil {
 		t.Fatal(err)
 	}
-	if len(a.fontVariables["Var"].data) == 0 {
-		t.Fatal("the variable font was not read from assets")
+	if err := a.LoadVariableFont("Var", "fonts/VarItalic.ttf", nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.fontVariables["Var"]) != 2 {
+		t.Fatalf("variable files = %d, want upright and italic", len(a.fontVariables["Var"]))
 	}
 	if err := a.LoadVariableFont("Bad", "fonts/Var.ttf", map[string]float64{"w": 1}); err == nil {
 		t.Fatal("a short axis name was accepted")

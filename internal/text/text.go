@@ -308,6 +308,10 @@ func (l *Library) RegisterVariableFamily(name string, data []byte, axes map[stri
 	if err != nil {
 		return fmt.Errorf("text: variable font %q: %w", name, err)
 	}
+	// The file's own style decides which slot it fills: the italic file of a
+	// family registers the italic variants, so fontStyle: italic uses its
+	// outlines instead of slanting the upright file a second time.
+	italic := parsed.Describe().Aspect.Style == font.StyleItalic
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	fam := l.families[name]
@@ -317,7 +321,7 @@ func (l *Library) RegisterVariableFamily(name string, data []byte, axes map[stri
 	for weight := 100; weight <= 900; weight += 100 {
 		face := font.NewFace(parsed.Font)
 		face.SetVariations(append(vars, font.Variation{Tag: weightTag, Value: float32(weight)}))
-		key := familyVariant{weight: Weight(weight)}
+		key := familyVariant{weight: Weight(weight), italic: italic}
 		if vf, ok := fam.variants[key]; ok {
 			vf.face = face
 			fam.variants[key] = vf
@@ -326,7 +330,7 @@ func (l *Library) RegisterVariableFamily(name string, data []byte, axes map[stri
 		if l.familyTag >= 254 {
 			return fmt.Errorf("text: too many font faces")
 		}
-		fam.variants[key] = familyVariantFace{face: face, tag: l.familyTag}
+		fam.variants[key] = familyVariantFace{face: face, tag: l.familyTag, italic: italic}
 		l.familyTag += 2
 	}
 	l.families[name] = fam

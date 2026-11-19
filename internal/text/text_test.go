@@ -300,6 +300,24 @@ func TestRegisterVariableFamily(t *testing.T) {
 	if light.advance("A") >= black.advance("A") {
 		t.Fatalf("advances = %v %v, want heavier to be wider", light.advance("A"), black.advance("A"))
 	}
+	italicData, err := os.ReadFile("fonts/roboto-italic-variable.ttf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := l.RegisterVariableFamily("Var", italicData, nil); err != nil {
+		t.Fatal(err)
+	}
+	bold := l.FamilyFace(40, WeightBold, "Var")
+	italic := l.FamilyItalicFace(40, WeightBold, "Var")
+	if bold == nil || italic == nil {
+		t.Fatalf("bold faces = %v %v", bold, italic)
+	}
+	if italic.italic {
+		t.Fatal("an italic file was slanted again")
+	}
+	if italic.Tag() == bold.Tag() {
+		t.Fatalf("italic and upright share tag %d", italic.Tag())
+	}
 	if err := l.RegisterVariableFamily("Static", robotoRegular, nil); err == nil {
 		t.Fatal("a static font was accepted as variable")
 	}
