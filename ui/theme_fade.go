@@ -12,15 +12,14 @@ import (
 // painter gets it as its scheme, so the whole window moves together.
 func (a *App) displayTheme(w *Window) *m3.Theme {
 	target := themeFor(w)
-	name := ""
-	if w != nil && w.tree != nil && w.tree.Root != nil {
-		name = w.tree.Root.Theme.Get()
-	}
 	if a.themeTo == nil {
-		a.themeName, a.themeFrom, a.themeTo, a.themeDisplay = name, target, target, target
+		a.themeFrom, a.themeTo, a.themeDisplay = target, target, target
 		return target
 	}
-	if name != a.themeName {
+	// Compare the scheme values, not the name or pointer: DefineTheme may
+	// replace a seed under the same name, and built-in schemes may be fresh
+	// values on each call in a headless test.
+	if *target != *a.themeTo {
 		dur := time.Duration(0)
 		if w != nil && w.tree != nil && w.tree.Root != nil {
 			dur = w.tree.Root.CrossfadeTheme.Get()
@@ -29,7 +28,7 @@ func (a *App) displayTheme(w *Window) *m3.Theme {
 		if from == nil {
 			from = a.themeTo
 		}
-		a.themeName, a.themeFrom, a.themeTo = name, from, target
+		a.themeFrom, a.themeTo = from, target
 		if dur > 0 {
 			a.themeStart, a.themeDur, a.themeFading = time.Now(), dur, true
 			a.themeDisplay = blendTheme(from, target, 0)

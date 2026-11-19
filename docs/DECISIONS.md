@@ -2610,3 +2610,8 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   interpolating the roles keeps text, borders, shadows and images on the same
   palette throughout. The mood and type scale follow the target immediately, so
   `app.dark` and layout do not wobble.
+- **A theme fade compares the scheme values, not its name.** `DefineTheme` may
+  replace a seed under the same name (the shopping colour swatches do), so a
+  name comparison kept the old colours and stopped the window reacting. The
+  target is compared by value, which also keeps a headless `themeFor` result
+  from looking new on every call.

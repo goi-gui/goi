@@ -72,10 +72,8 @@ type App struct {
 	driver     driver
 	quitOnce   sync.Once
 	needsFrame bool
-	// themeName is the scheme name the current colours belong to. A change
-	// starts a theme crossfade when `crossfadeTheme` is nonzero; from/to/display
-	// keep the blend, and the timestamps drive it.
-	themeName    string
+	// themeFrom/to/display keep a scheme change: a different target starts a
+	// crossfade when `crossfadeTheme` is nonzero, and the timestamps drive it.
 	themeFrom    *m3.Theme
 	themeTo      *m3.Theme
 	themeDisplay *m3.Theme

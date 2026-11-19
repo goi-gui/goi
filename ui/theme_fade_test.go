@@ -37,3 +37,33 @@ func TestWindowCrossfadeTheme(t *testing.T) {
 		t.Fatalf("default crossfadeTheme = %v, want 0", got)
 	}
 }
+
+// TestSeedRedefinitionCrossfades: DefineTheme can replace a scheme under the
+// same name (the shopping seed swatches do), so the target values, not the name,
+// decide that the theme changed.
+func TestSeedRedefinitionCrossfades(t *testing.T) {
+	a, win := reloadApp(t, `Window { theme: brand crossfadeTheme: 500ms }`)
+	first := m3.Light()
+	first.Name = "brand"
+	first.Colors.Primary = 0x112233FF
+	win.DefineTheme(first)
+	if got := a.displayTheme(win); got.Colors.Primary != 0x112233FF {
+		t.Fatalf("first scheme = %08x", got.Colors.Primary)
+	}
+	second := m3.Light()
+	second.Name = "brand"
+	second.Colors.Primary = 0xDDEEFFFF
+	win.DefineTheme(second)
+	if got := a.displayTheme(win); !a.themeFading || got.Colors.Primary != 0x112233FF {
+		t.Fatalf("seed change did not start from the old scheme: fading=%v primary=%08x", a.themeFading, got.Colors.Primary)
+	}
+	a.themeStart = time.Now().Add(-250 * time.Millisecond)
+	mid := a.displayTheme(win).Colors.Primary
+	if mid == 0x112233FF || mid == 0xDDEEFFFF {
+		t.Fatalf("mid seed primary = %08x, want a blend", mid)
+	}
+	a.themeStart = time.Now().Add(-time.Second)
+	if got := a.displayTheme(win).Colors.Primary; got != 0xDDEEFFFF {
+		t.Fatalf("final seed primary = %08x", got)
+	}
+}
