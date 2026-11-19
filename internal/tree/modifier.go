@@ -16,6 +16,9 @@ type conditionalArm struct {
 type conditionalProp struct {
 	name string
 	arms []conditionalArm
+	// fallback is the property's value before the conditional, so a pass with
+	// no matching arm can put it back instead of leaving the last arm's value.
+	fallback syntax.Value
 }
 
 // setModifier registers a responsive or conditional modifier on a property. It
@@ -29,10 +32,11 @@ func (b *NodeBase) setModifier(name string, m *syntax.Modifier) bool {
 		return b.setResponsiveEntries(name, entries)
 	}
 	b.properties()
-	if _, ok := b.byName[name]; !ok {
+	i, ok := b.byName[name]
+	if !ok {
 		return false
 	}
-	cp := conditionalProp{name: name}
+	cp := conditionalProp{name: name, fallback: valueLiteral(b.props[i].Get())}
 	for _, e := range m.Entries {
 		cp.arms = append(cp.arms, conditionalArm{value: e.Value, cond: e.Cond})
 	}
@@ -50,15 +54,16 @@ func (b *NodeBase) setModifier(name string, m *syntax.Modifier) bool {
 }
 
 // applyConditionals writes every conditional property from the first arm whose
-// condition holds. No arm matching leaves the property as it is, the way a
-// switch without a matching case changes nothing.
+// condition holds. With no matching arm it restores the value the property had
+// before the modifier, so a colour set by a condition does not outlive it.
 func (b *NodeBase) applyConditionals() {
 	for _, cp := range b.conds {
 		if b.GoSet(cp.name) {
 			continue
 		}
+		c := evalCtx{tree: b.tree, sc: b.scope}
+		applied := false
 		for _, arm := range cp.arms {
-			c := evalCtx{tree: b.tree, sc: b.scope}
 			got, has := c.eval(arm.cond, 0)
 			truth, isBool := got.(bool)
 			if !has || !isBool || !truth {
@@ -66,8 +71,19 @@ func (b *NodeBase) applyConditionals() {
 			}
 			if v, ok := c.evalSpec(b, &exprSpec{name: cp.name, value: arm.value}, 0); ok {
 				b.writeExpr(cp.name, v)
+				applied = true
 			}
 			break
+		}
+		if applied || cp.fallback == nil {
+			continue
+		}
+		if cur, ok := b.PropValue(cp.name); ok && literalMatches(cur, cp.fallback) &&
+			b.colorRoleFor(cp.name) == "" && b.Gradient(cp.name) == nil {
+			continue
+		}
+		if b.applyValue(cp.name, cp.fallback) {
+			b.mark(b.PropDirty(cp.name))
 		}
 	}
 }

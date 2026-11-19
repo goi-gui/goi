@@ -79,7 +79,7 @@ func (b *NodeBase) applyBreakpoints(width float64) {
 		if rp.applied != nil && LiteralEqual(rp.applied, v) {
 			// An expression is re-resolved each layout, so only a plain value
 			// needs the Go-set check to stay file-owned.
-			if isExpression(v) || literalMatches(rp.prop.Get(), v) {
+			if b.isLoopVar(v) || isExpression(v) || literalMatches(rp.prop.Get(), v) {
 				continue
 			}
 		}

@@ -12,8 +12,8 @@ func buildModifier(t *testing.T, src string) *Tree {
 }
 
 // TestConditionalPicksFirstTrueArm pins the whole point of the modifier: the
-// first matching arm wins and the later ones are never consulted, and a pass
-// with no match leaves the property where it was.
+// first matching arm wins, later ones are never consulted, and a pass with no
+// match puts the property back to the value it had before the modifier.
 func TestConditionalPicksFirstTrueArm(t *testing.T) {
 	tr := buildModifier(t, `Window {
 		Column {
@@ -40,9 +40,9 @@ func TestConditionalPicksFirstTrueArm(t *testing.T) {
 	if got := read(400); got != "narrow" {
 		t.Fatalf("at 400 text = %q, want the second arm", got)
 	}
-	// Neither arm matches, so the value the last pass wrote stays.
-	if got := read(200); got != "narrow" {
-		t.Fatalf("at 200 text = %q, want the previous value", got)
+	// Neither arm matches, so the property returns to its own default.
+	if got := read(200); got != "" {
+		t.Fatalf("at 200 text = %q, want the empty default", got)
 	}
 }
 
@@ -97,4 +97,73 @@ func TestPaddingAxisShorthands(t *testing.T) {
 	if got := box.Base().PaddingEdges(); got != (Edges{Top: 6, Right: 20, Bottom: 6, Left: 20}) {
 		t.Fatalf("paddingX alone = %+v", got)
 	}
+}
+
+// TestConditionalColorsRevert is the shopping case: one selected chip and one
+// favourite button take a colour while their condition holds, and return to
+// their variant colours when it stops holding.
+func TestConditionalColorsRevert(t *testing.T) {
+	tr := buildModifier(t, `bridge { on bool }
+Window {
+	Column {
+		Chip {
+			id:         chip
+			background: conditional { theme.primaryContainer: bridge.on }
+		}
+		IconButton {
+			id:        star
+			icon:      favorite
+			iconColor: conditional { red: bridge.on }
+		}
+	}
+}`)
+	chip := tr.ids["chip"].Base()
+	star := tr.ids["star"].(*IconButton)
+	resolve := func(string) (uint32, bool) { return 0x224466FF, true }
+	tr.SetData("on", true)
+	tr.ApplyExpressions()
+	tr.ResolveColors(resolve)
+	if got := chip.colorRoleFor("background"); got != "theme:primaryContainer" {
+		t.Fatalf("selected chip role = %q", got)
+	}
+	if got := star.IconColor.Get(); got != 0xFF0000FF {
+		t.Fatalf("favourite icon colour = %08x", got)
+	}
+
+	tr.SetData("on", false)
+	tr.ApplyExpressions()
+	tr.ResolveColors(resolve)
+	if got := chip.colorRoleFor("background"); got != "" {
+		t.Fatalf("unselected chip kept role %q", got)
+	}
+	if got := chip.Background(); got != 0 {
+		t.Fatalf("unselected chip background = %08x, want the variant default", got)
+	}
+	if got := star.IconColor.Get(); got != 0 {
+		t.Fatalf("unfavourite icon colour = %08x, want the variant default", got)
+	}
+}
+
+// TestLoopVariableColor is the shopping swatch: a colour column from the bridge
+// is a value, not an enum word, so `background: c` has to become an expression.
+func TestLoopVariableColor(t *testing.T) {
+	tr := buildModifier(t, `bridge { colors []color }
+Window {
+	Column {
+		for _, c := range bridge.colors {
+			Rectangle { background: c width: 10 height: 10 }
+		}
+	}
+}`)
+	tr.SetData("colors", []uint32{0x112233FF})
+	tr.ApplyExpressions()
+	for _, n := range tr.All() {
+		if r, ok := n.(*Rectangle); ok {
+			if got := r.Base().Background(); got != 0x112233FF {
+				t.Fatalf("swatch = %08x, want 112233ff", got)
+			}
+			return
+		}
+	}
+	t.Fatal("the swatch did not build")
 }

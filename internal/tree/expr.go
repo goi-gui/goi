@@ -42,6 +42,22 @@ func isExpression(v syntax.Value) bool {
 	return false
 }
 
+// isLoopVar reports whether v is a bare name bound by an enclosing {#each}
+// block. Such a name looks like an enum literal, but at runtime it is the row's
+// value, so it has to be stored as an expression rather than written once.
+func (b *NodeBase) isLoopVar(v syntax.Value) bool {
+	id, ok := v.(*syntax.Ident)
+	if !ok {
+		return false
+	}
+	for s := b.scope; s != nil; s = s.parent {
+		if s.name == id.Val {
+			return true
+		}
+	}
+	return false
+}
+
 // isColorRef reports whether a value names a colour role, which a list item
 // keeps as a role rather than evaluating to a value.
 func isColorRef(v syntax.Value) bool {
@@ -62,7 +78,7 @@ func (b *NodeBase) applyValue(name string, v syntax.Value) bool {
 			return true
 		}
 	}
-	if isExpression(v) {
+	if isExpression(v) || b.isLoopVar(v) {
 		return b.setExpr(name, v)
 	}
 	b.clearExpr(name)
