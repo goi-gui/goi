@@ -5,6 +5,7 @@ package schema
 
 import (
 	"sort"
+	"time"
 
 	"github.com/goi-gui/goi/internal/componentdef"
 )
@@ -37,6 +38,8 @@ const (
 	TypeCoords
 	// TypeTransition is `width 500ms, height 500ms, background 1s`.
 	TypeTransition
+	// TypeDuration is one time value, `500ms` or `1s`.
+	TypeDuration
 )
 
 func (t ValueType) String() string {
@@ -65,6 +68,8 @@ func (t ValueType) String() string {
 		return "a [lon, lat] pair"
 	case TypeTransition:
 		return "a transition list"
+	case TypeDuration:
+		return "a duration"
 	}
 	return "unknown"
 }
@@ -87,7 +92,7 @@ type Prop struct {
 	Enum  []string // valid values for TypeEnum
 	// Elem is the type of one item of a TypeList property.
 	Elem    ValueType
-	Default any // string/float64/bool/uint32/enum string
+	Default any // string/float64/bool/uint32/time.Duration/enum string
 	// Common marks properties every element accepts.
 	Common bool
 }
@@ -416,7 +421,7 @@ var elements = func() []Element {
 		{Name: "Image", Children: false, Attrs: withCommon(
 			Prop{Name: "src", Type: TypeString, Dirty: DirtyLayout, Default: ""},
 			Prop{Name: "fit", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"cover", "contain", "fill"}, Default: "cover"},
-			Prop{Name: "crossfadeSrc", Type: TypeBool, Dirty: DirtyPaint, Default: false},
+			Prop{Name: "crossfadeSrc", Type: TypeDuration, Dirty: DirtyPaint, Default: time.Duration(0)},
 			Prop{Name: "paused", Type: TypeBool, Dirty: DirtyPaint, Default: false},
 			Prop{Name: "loop", Type: TypeBool, Dirty: DirtyPaint, Default: true},
 			Prop{Name: "lazy", Type: TypeBool, Dirty: DirtyPaint, Default: false},
@@ -425,7 +430,7 @@ var elements = func() []Element {
 			Prop{Name: "src", Type: TypeString, Dirty: DirtyLayout, Default: ""},
 			Prop{Name: "fit", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"cover", "contain", "fill"}, Default: "contain"},
 			Prop{Name: "color", Type: TypeColor, Dirty: DirtyPaint, Default: uint32(0)},
-			Prop{Name: "crossfadeSrc", Type: TypeBool, Dirty: DirtyPaint, Default: false},
+			Prop{Name: "crossfadeSrc", Type: TypeDuration, Dirty: DirtyPaint, Default: time.Duration(0)},
 			Prop{Name: "paused", Type: TypeBool, Dirty: DirtyPaint, Default: false},
 			Prop{Name: "loop", Type: TypeBool, Dirty: DirtyPaint, Default: true},
 			Prop{Name: "lazy", Type: TypeBool, Dirty: DirtyPaint, Default: false},

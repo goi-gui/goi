@@ -2,6 +2,7 @@ package tree
 
 import (
 	"sort"
+	"time"
 
 	"github.com/goi-gui/goi/internal/csscolor"
 	"github.com/goi-gui/goi/internal/schema"
@@ -110,6 +111,8 @@ func valueLiteral(v any) syntax.Value {
 		return &syntax.Bool{Val: x}
 	case uint32:
 		return &syntax.Color{RGBA: x}
+	case time.Duration:
+		return &syntax.Duration{Val: x}
 	}
 	return nil
 }
@@ -129,6 +132,9 @@ func literalMatches(cur any, v syntax.Value) bool {
 		return ok && c == x.RGBA
 	case *syntax.Ident:
 		c, ok := cur.(string)
+		return ok && c == x.Val
+	case *syntax.Duration:
+		c, ok := cur.(time.Duration)
 		return ok && c == x.Val
 	case *syntax.String:
 		if c, ok := cur.(string); ok {

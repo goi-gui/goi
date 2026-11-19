@@ -881,6 +881,8 @@ func (p *parser) parseProperty() (*Property, bool) {
 		v, ok = p.parseScale()
 	case "transition":
 		v, ok = p.parseTransition()
+	case "crossfadeSrc":
+		v, ok = p.parseDurationValue()
 	default:
 		v, ok = p.parseValue()
 	}
@@ -985,6 +987,21 @@ func (p *parser) timingFunction() (string, bool) {
 	}
 	p.i = save
 	return "", false
+}
+
+// parseDurationValue reads a duration property. A bare zero is the "off"
+// spelling; every other value needs its ms or s unit.
+func (p *parser) parseDurationValue() (Value, bool) {
+	t := p.peek()
+	if t.kind == tokNumber && t.num == 0 && (p.peek2().kind != tokIdent || p.peek2().pos != t.end) {
+		p.next()
+		return &Duration{At: t.pos}, true
+	}
+	d, ok := p.parseDuration()
+	if !ok {
+		return nil, false
+	}
+	return &Duration{At: t.pos, Val: d}, true
 }
 
 // parseDuration reads a number with its ms or s unit. The unit must touch the

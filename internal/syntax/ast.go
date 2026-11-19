@@ -414,11 +414,12 @@ const (
 	ModifierValueKind
 	ListKind
 	SlotRefKind
+	DurationKind
 )
 
 // Value is a property literal. The concrete type is one of *String,
 // *Number, *Bool, *Color, *Ident, *Map, *Percent, *Ref, *Binary, *Shadow,
-// *Transition or *List.
+// *Transition, *List or *Duration.
 type Value interface {
 	Kind() ValueKind
 	Pos() Pos
@@ -487,6 +488,18 @@ func (*List) Kind() ValueKind { return ListKind }
 
 // Pos implements Value.
 func (l *List) Pos() Pos { return l.At }
+
+// Duration is `500ms` or `1s`, used by a property measured in time.
+type Duration struct {
+	At  Pos
+	Val time.Duration
+}
+
+// Kind implements Value.
+func (*Duration) Kind() ValueKind { return DurationKind }
+
+// Pos implements Value.
+func (d *Duration) Pos() Pos { return d.At }
 
 // Ident is a bare identifier, used for enums and for the string-like `id`.
 type Ident struct {

@@ -120,7 +120,7 @@ func TestImageCrossfadePaintsBothBitmaps(t *testing.T) {
 	tr, diag := tree.BuildSource([]byte(`Window { Image {
 		id:           pic
 		src:          "x"
-		crossfadeSrc: true
+		crossfadeSrc: 500ms
 		width:        40
 		height:       20
 	} }`), nil)

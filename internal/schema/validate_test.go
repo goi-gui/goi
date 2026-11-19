@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/goi-gui/goi/internal/syntax"
 )
@@ -280,6 +281,8 @@ func plainValue(pd Prop) syntax.Value {
 		return &syntax.Rotate{Angle: 90}
 	case TypeScale:
 		return &syntax.Scale{X: 2, Y: 1, Z: 1}
+	case TypeDuration:
+		return &syntax.Duration{Val: 500 * time.Millisecond}
 	}
 	return &syntax.Ident{Val: "start"}
 }

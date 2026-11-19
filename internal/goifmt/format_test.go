@@ -492,3 +492,15 @@ func TestFormatTransitionTiming(t *testing.T) {
 		t.Fatalf("not idempotent:\n%s\n--- second ---\n%s", got, again)
 	}
 }
+
+// TestFormatCrossfadeDuration keeps the unquoted duration on the property.
+func TestFormatCrossfadeDuration(t *testing.T) {
+	src := `Window { Image { crossfadeSrc: 500ms } }`
+	got := string(Source([]byte(src)))
+	if !strings.Contains(got, "crossfadeSrc: 500ms") {
+		t.Fatalf("format =\n%s", got)
+	}
+	if again := string(Source([]byte(got))); again != got {
+		t.Fatalf("not idempotent:\n%s\n--- second ---\n%s", got, again)
+	}
+}

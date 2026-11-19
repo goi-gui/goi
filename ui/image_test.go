@@ -888,7 +888,7 @@ func TestImageCrossfadeSrc(t *testing.T) {
 	a, win := reloadApp(t, `Window { Image {
 		id:           pic
 		src:          "goi://a.png"
-		crossfadeSrc: true
+		crossfadeSrc: 500ms
 		width:        40
 		height:       20
 	} }`)
@@ -908,7 +908,7 @@ func TestImageCrossfadeSrc(t *testing.T) {
 	a.hasImages = true
 	a.needsFrame = true
 	a.syncImages()
-	if im.Data == nil || im.Fade.Prev == nil || !im.Fade.Active {
+	if im.Data == nil || im.Fade.Prev == nil || !im.Fade.Active || im.Fade.Dur != 500*time.Millisecond {
 		t.Fatalf("crossfade = %+v, data = %v", im.Fade, im.Data != nil)
 	}
 }
@@ -920,7 +920,7 @@ func TestSVGCrossfadeSrc(t *testing.T) {
 	a, win := reloadApp(t, `Window { SVG {
 		id:           icon
 		src:          "goi://a.svg"
-		crossfadeSrc: true
+		crossfadeSrc: 500ms
 		width:        24
 		height:       24
 	} }`)
@@ -940,7 +940,7 @@ func TestSVGCrossfadeSrc(t *testing.T) {
 	a.hasSVG = true
 	a.needsFrame = true
 	a.syncSVGs()
-	if icon.Data == nil || icon.Fade.Prev == nil || !icon.Fade.Active {
+	if icon.Data == nil || icon.Fade.Prev == nil || !icon.Fade.Active || icon.Fade.Dur != 500*time.Millisecond {
 		t.Fatalf("crossfade = %+v, data = %v", icon.Fade, icon.Data != nil)
 	}
 }

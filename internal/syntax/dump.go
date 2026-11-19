@@ -143,6 +143,11 @@ func dumpValue(v Value) string {
 			parts[i] = dumpShadowLayer(l)
 		}
 		return strings.Join(parts, ", ")
+	case *Duration:
+		if v.Val == 0 {
+			return "0"
+		}
+		return v.Val.String()
 	case *Transition:
 		if len(v.Entries) == 0 {
 			return "none"

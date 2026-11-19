@@ -5,6 +5,7 @@ import (
 	"math"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/goi-gui/goi/internal/csscolor"
 	"github.com/goi-gui/goi/internal/schema"
@@ -148,6 +149,8 @@ const (
 	// propSize is the `size` shorthand: one number that writes both width and
 	// height, so a square box is one property rather than two.
 	propSize
+	// propDuration is a time cell, written as `500ms` or `1s`.
+	propDuration
 )
 
 // Get returns the value as an interface, boxing it. The expression layer reads
@@ -156,6 +159,8 @@ func (p *NamedProp) Get() any {
 	switch p.kind {
 	case propNumber:
 		return p.cell.(*Prop[float64]).val
+	case propDuration:
+		return p.cell.(*Prop[time.Duration]).val
 	case propRotate:
 		return p.cell.(*Prop[Rotation]).val
 	case propScale:
@@ -187,6 +192,8 @@ func (p *NamedProp) Written() bool {
 	switch p.kind {
 	case propNumber:
 		return p.cell.(*Prop[float64]).written
+	case propDuration:
+		return p.cell.(*Prop[time.Duration]).written
 	case propString, propEnum, propScalar:
 		return p.cell.(*Prop[string]).written
 	case propBool:
@@ -208,6 +215,9 @@ func (p *NamedProp) Same(v any) bool {
 	case propNumber:
 		f, ok := v.(float64)
 		return ok && p.cell.(*Prop[float64]).val == f
+	case propDuration:
+		d, ok := v.(time.Duration)
+		return ok && p.cell.(*Prop[time.Duration]).val == d
 	case propString, propEnum, propScalar:
 		s, ok := v.(string)
 		return ok && p.cell.(*Prop[string]).val == s
@@ -251,6 +261,8 @@ func (p *NamedProp) markWritten() {
 	switch c := p.cell.(type) {
 	case *Prop[float64]:
 		c.written = true
+	case *Prop[time.Duration]:
+		c.written = true
 	case *Prop[string]:
 		c.written = true
 	case *Prop[bool]:
@@ -272,6 +284,13 @@ func (p *NamedProp) setLiteral(v syntax.Value) bool {
 			return false
 		}
 		p.cell.(*Prop[float64]).val = n.Val
+		return true
+	case propDuration:
+		d, ok := v.(*syntax.Duration)
+		if !ok {
+			return false
+		}
+		p.cell.(*Prop[time.Duration]).val = d.Val
 		return true
 	case propRotate:
 		r, ok := v.(*syntax.Rotate)
@@ -493,6 +512,12 @@ func (p *NamedProp) CopyFrom(src NamedProp) bool {
 			return false
 		}
 		p.cell.(*Prop[float64]).val = v
+	case propDuration:
+		v, ok := src.Get().(time.Duration)
+		if !ok {
+			return false
+		}
+		p.cell.(*Prop[time.Duration]).val = v
 	case propString, propEnum:
 		v, ok := src.Get().(string)
 		if !ok || (p.kind == propEnum && !p.allows(v)) {
@@ -544,6 +569,8 @@ func (p *NamedProp) GoSet() bool {
 	switch p.kind {
 	case propNumber:
 		return p.cell.(*Prop[float64]).goSet
+	case propDuration:
+		return p.cell.(*Prop[time.Duration]).goSet
 	case propString, propEnum:
 		return p.cell.(*Prop[string]).goSet
 	case propBool:
@@ -560,6 +587,8 @@ func (p *NamedProp) setGoSet(v bool) {
 	switch p.kind {
 	case propNumber:
 		p.cell.(*Prop[float64]).goSet = v
+	case propDuration:
+		p.cell.(*Prop[time.Duration]).goSet = v
 	case propString, propEnum:
 		p.cell.(*Prop[string]).goSet = v
 	case propBool:
@@ -690,6 +719,12 @@ func ScalarProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[string]) Name
 func NumberProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[float64]) NamedProp {
 	wire(b, name, p)
 	return NamedProp{Name: name, Dirty: dirty, kind: propNumber, cell: p}
+}
+
+// DurationProp builds a NamedProp for a time cell, written as `500ms` or `1s`.
+func DurationProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[time.Duration]) NamedProp {
+	wire(b, name, p)
+	return NamedProp{Name: name, Dirty: dirty, kind: propDuration, cell: p}
 }
 
 // SizeProp builds the `size` shorthand. It owns no cell of its own: writing it

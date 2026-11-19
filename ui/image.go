@@ -118,15 +118,15 @@ func (a *App) loadImages(tr *tree.Tree) {
 // beginImageFade keeps the outgoing bitmap when the new one replaces it, so
 // paint can crossfade the two. A first load has nothing to fade from.
 func beginImageFade(im *tree.Image) {
-	if im.CrossfadeSrc.Get() && im.Data != nil {
-		im.Fade.Begin(im.Data)
+	if d := im.CrossfadeSrc.Get(); d > 0 && im.Data != nil {
+		im.Fade.Begin(im.Data, d)
 	}
 }
 
 // beginSVGFade is beginImageFade for a rasterized SVG.
 func beginSVGFade(n *tree.SVG) {
-	if n.CrossfadeSrc.Get() && n.Data != nil {
-		n.Fade.Begin(n.Data)
+	if d := n.CrossfadeSrc.Get(); d > 0 && n.Data != nil {
+		n.Fade.Begin(n.Data, d)
 	}
 }
 

@@ -1316,3 +1316,29 @@ func TestParseTransitionTiming(t *testing.T) {
 		}
 	}
 }
+
+// TestParseCrossfadeDuration reads the duration property: a unit is required
+// except for the zero that turns the fade off.
+func TestParseCrossfadeDuration(t *testing.T) {
+	f, diag := Parse([]byte(`Window { Image { crossfadeSrc: 500ms } }`))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	v := f.Root.Children()[0].Prop("crossfadeSrc").Value
+	d, ok := v.(*Duration)
+	if !ok || d.Val != 500*time.Millisecond {
+		t.Fatalf("value = %#v, want 500ms", v)
+	}
+
+	f, diag = Parse([]byte(`Window { Image { crossfadeSrc: 0 } }`))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	if d, ok := f.Root.Children()[0].Prop("crossfadeSrc").Value.(*Duration); !ok || d.Val != 0 {
+		t.Fatalf("zero value = %#v", f.Root.Children()[0].Prop("crossfadeSrc").Value)
+	}
+
+	if _, diag := Parse([]byte(`Window { Image { crossfadeSrc: 500 } }`)); diag.Empty() {
+		t.Fatal("a bare duration without a unit was accepted")
+	}
+}

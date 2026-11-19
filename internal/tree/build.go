@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/goi-gui/goi/internal/componentdef"
 	"github.com/goi-gui/goi/internal/i18n"
@@ -449,6 +450,8 @@ func defaultValueLiteral(v any) syntax.Value {
 		return &syntax.Bool{Val: x}
 	case uint32:
 		return &syntax.Color{RGBA: x}
+	case time.Duration:
+		return &syntax.Duration{Val: x}
 	}
 	return &syntax.Ident{}
 }
@@ -586,7 +589,7 @@ func newNode(name string) Node {
 			NodeBase:     b(),
 			Src:          newProp(nil, "src", DirtyLayout, ""),
 			Fit:          newProp(nil, "fit", DirtyLayout, "cover"),
-			CrossfadeSrc: newProp(nil, "crossfadeSrc", DirtyPaint, false),
+			CrossfadeSrc: newProp(nil, "crossfadeSrc", DirtyPaint, time.Duration(0)),
 			Paused:       newProp(nil, "paused", DirtyPaint, false),
 			Loop:         newProp(nil, "loop", DirtyPaint, true),
 			Lazy:         newProp(nil, "lazy", DirtyPaint, false),
@@ -597,7 +600,7 @@ func newNode(name string) Node {
 			Src:          newProp(nil, "src", DirtyLayout, ""),
 			Fit:          newProp(nil, "fit", DirtyLayout, "contain"),
 			Color:        newProp(nil, "color", DirtyPaint, uint32(0)),
-			CrossfadeSrc: newProp(nil, "crossfadeSrc", DirtyPaint, false),
+			CrossfadeSrc: newProp(nil, "crossfadeSrc", DirtyPaint, time.Duration(0)),
 			Paused:       newProp(nil, "paused", DirtyPaint, false),
 			Loop:         newProp(nil, "loop", DirtyPaint, true),
 			Lazy:         newProp(nil, "lazy", DirtyPaint, false),
