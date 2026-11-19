@@ -38,8 +38,17 @@ func TestInitProjectWritesTheScaffold(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(design), `"Hello, world!"`) || !strings.Contains(string(design), "mainAxisAlign:  center") {
-		t.Fatalf("design does not centre hello world:\n%s", design)
+	for _, want := range []string{`"Hello, World!"`, `goi://images/goi.svg`, "mainAxisAlign:  center", "crossAxisAlign: center"} {
+		if !strings.Contains(string(design), want) {
+			t.Errorf("design lacks %q:\n%s", want, design)
+		}
+	}
+	logo, err := os.ReadFile(filepath.Join(dir, "assets", "images", "goi.svg"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(logo), "<svg") || !strings.Contains(string(logo), "GOI logo") {
+		t.Fatalf("logo is not the hello example mark:\n%s", logo)
 	}
 	cfg, err := loadConfig(dir)
 	if err != nil {
@@ -72,6 +81,9 @@ func TestInitProjectUsesTheAssetsDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "designs", "ui", "Main.goi")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "designs", "images", "goi.svg")); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := os.ReadFile(filepath.Join(dir, "goi.yaml"))
@@ -131,6 +143,9 @@ func TestInitCommandFlags(t *testing.T) {
 		t.Fatalf("second go call = %v, want mod tidy", calls[1])
 	}
 	if _, err := os.Stat(filepath.Join(dir, "designs", "ui", "Main.goi")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "designs", "images", "goi.svg")); err != nil {
 		t.Fatal(err)
 	}
 }

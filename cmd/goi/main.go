@@ -7,8 +7,8 @@
 //	goi build
 //
 // init prompts for the values a flag did not give, then writes a module, a
-// cmd/main.go, a goi.yaml and an assets/ui/Main.goi holding a centred hello
-// world. run
+// cmd/main.go, a goi.yaml and an assets/ui/Main.goi holding the hello example:
+// the goi logo above a greeting. run
 // runs the entrypoint package with hot reload on, reading the build flags from
 // goi.yaml. build writes dist/<os>-<arch>/<name> from that package with hot
 // reload off. Both always add nofakecgo and set CGO_ENABLED=0.
@@ -60,20 +60,50 @@ func main() {
 
 const designSource = `Window {
 	title:  "Hello"
-	width:  520
-	height: 360
-	theme:  light
+	width:  640
+	height: 400
+	theme:  app.systemMode
 
 	Column {
-		mainAxisAlign:  center
+		width:          100%
+		height:         100%
 		crossAxisAlign: center
+		mainAxisAlign:  center
+		gap:            20
+
+		SVG {
+			src:    "goi://images/goi.svg"
+			width:  100
+			height: 100
+		}
 
 		Text {
-			text: "Hello, world!"
-			role: headlineMedium
+			text: "Hello, World!"
 		}
 	}
 }
+`
+
+// logoSVG is the mark the generated hello window shows, the same one the hello
+// example uses.
+const logoSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="GOI logo">
+  <title>GOI</title>
+  <defs>
+    <linearGradient id="goi-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2DD4F0"/>
+      <stop offset="1" stop-color="#0284C7"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="20" y="20" width="160" height="160" rx="38" fill="url(#goi-bg)"/>
+
+  <!-- GOI -->
+  <g fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M81.32 87.14 A20 20 0 1 0 86 100 H73.2"/>
+    <circle cx="120" cy="100" r="20"/>
+    <line x1="154" y1="80" x2="154" y2="120"/>
+  </g>
+</svg>
 `
 
 // initOptions are the values goi init needs. A flag fills one; whatever is
@@ -168,7 +198,7 @@ func newInitCmd(goCmd commandRunner) *cobra.Command {
 				// The files are usable; a missing dependency can be fetched later.
 				fmt.Fprintln(cmd.ErrOrStderr(), "goi: project created, but go mod tidy failed; run it yourself:", err)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "goi: created cmd/main.go, goi.yaml and %s/ui/Main.goi\n", resolved.Assets)
+			fmt.Fprintf(cmd.OutOrStdout(), "goi: created cmd/main.go, goi.yaml, %s/ui/Main.goi and %s/images/goi.svg\n", resolved.Assets, resolved.Assets)
 			fmt.Fprintln(cmd.OutOrStdout(), "next: goi run")
 			return nil
 		},
@@ -269,7 +299,7 @@ func initProject(dir string, opts initOptions, goRun commandRunner) error {
 	if opts.Assets == "" {
 		opts.Assets = "assets"
 	}
-	for _, name := range []string{"go.mod", filepath.Join("cmd", "main.go"), "goi.yaml", filepath.Join(opts.Assets, "ui", "Main.goi")} {
+	for _, name := range []string{"go.mod", filepath.Join("cmd", "main.go"), "goi.yaml", filepath.Join(opts.Assets, "ui", "Main.goi"), filepath.Join(opts.Assets, "images", "goi.svg")} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
 			return fmt.Errorf("%s already exists", name)
 		} else if !errors.Is(err, os.ErrNotExist) {
@@ -285,10 +315,14 @@ func initProject(dir string, opts initOptions, goRun commandRunner) error {
 	if err := os.MkdirAll(filepath.Join(dir, opts.Assets, "ui"), 0o755); err != nil {
 		return err
 	}
+	if err := os.MkdirAll(filepath.Join(dir, opts.Assets, "images"), 0o755); err != nil {
+		return err
+	}
 	for name, body := range map[string]string{
 		filepath.Join("cmd", "main.go"): mainSource,
 		"goi.yaml":                      configSource(opts),
-		filepath.Join(opts.Assets, "ui", "Main.goi"): designSource,
+		filepath.Join(opts.Assets, "ui", "Main.goi"):    designSource,
+		filepath.Join(opts.Assets, "images", "goi.svg"): logoSVG,
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
 			return err
