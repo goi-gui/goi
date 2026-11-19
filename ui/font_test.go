@@ -9,7 +9,7 @@ import (
 )
 
 func TestLoadFontReadsAssetsPath(t *testing.T) {
-	font, err := os.ReadFile("../internal/text/fonts/noto-color-emoji.ttf")
+	font, err := os.ReadFile("../internal/text/fonts/roboto-variable.ttf")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestUnknownFontFamilyIsRecorded(t *testing.T) {
 }
 
 func TestLoadFontManyKeepsGoing(t *testing.T) {
-	font, err := os.ReadFile("../internal/text/fonts/noto-color-emoji.ttf")
+	font, err := os.ReadFile("../internal/text/fonts/roboto-variable.ttf")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestLoadFontManyKeepsGoing(t *testing.T) {
 }
 
 func TestLoadFontFamilyReadsWeights(t *testing.T) {
-	font, err := os.ReadFile("../internal/text/fonts/noto-color-emoji.ttf")
+	font, err := os.ReadFile("../internal/text/fonts/roboto-variable.ttf")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestLoadFontFamilyReadsWeights(t *testing.T) {
 }
 
 func TestLoadFontFamilyMany(t *testing.T) {
-	font, err := os.ReadFile("../internal/text/fonts/noto-color-emoji.ttf")
+	font, err := os.ReadFile("../internal/text/fonts/roboto-variable.ttf")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,4 +171,43 @@ func fontStyleName(w text.Weight, italic bool) string {
 		name += "italic"
 	}
 	return name
+}
+
+func TestLoadVariableFontReadsPath(t *testing.T) {
+	fontData, err := os.ReadFile("../internal/text/fonts/roboto-variable.ttf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	static, err := os.ReadFile("../internal/text/fonts/noto-color-emoji.ttf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "assets", "fonts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "assets", "fonts", "Var.ttf"), fontData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "goi.yaml"), []byte("assets: assets\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+
+	a := newHeadlessApp()
+	if err := a.LoadVariableFont("Var", "fonts/Var.ttf", map[string]float64{"wdth": 90}); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.fontVariables["Var"].data) == 0 {
+		t.Fatal("the variable font was not read from assets")
+	}
+	if err := a.LoadVariableFont("Bad", "fonts/Var.ttf", map[string]float64{"w": 1}); err == nil {
+		t.Fatal("a short axis name was accepted")
+	}
+	if err := os.WriteFile(filepath.Join("assets", "fonts", "Static.ttf"), static, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.LoadVariableFont("Static", "fonts/Static.ttf", nil); err == nil {
+		t.Fatal("a static font was accepted as variable")
+	}
 }

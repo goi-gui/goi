@@ -295,6 +295,112 @@ func (l *Library) RegisterFamilyFace(name string, weight Weight, italic bool, da
 	return nil
 }
 
+// RegisterVariableFamily registers one variable font under a family and builds a
+// face for every 100-step weight. The design still uses fontWeight to pick the
+// weight; wght is supplied here, while axes pins the other axes (for example
+// wdth or opsz). Italic requests slant the upright face, since the ital/slnt
+// axis is not driven separately.
+func (l *Library) RegisterVariableFamily(name string, data []byte, axes map[string]float64) error {
+	if name == "" {
+		return fmt.Errorf("text: a family needs a name")
+	}
+	parsed, vars, err := variableSetup(data, axes)
+	if err != nil {
+		return fmt.Errorf("text: variable font %q: %w", name, err)
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	fam := l.families[name]
+	if fam.variants == nil {
+		fam.variants = map[familyVariant]familyVariantFace{}
+	}
+	for weight := 100; weight <= 900; weight += 100 {
+		face := font.NewFace(parsed.Font)
+		face.SetVariations(append(vars, font.Variation{Tag: weightTag, Value: float32(weight)}))
+		key := familyVariant{weight: Weight(weight)}
+		if vf, ok := fam.variants[key]; ok {
+			vf.face = face
+			fam.variants[key] = vf
+			continue
+		}
+		if l.familyTag >= 254 {
+			return fmt.Errorf("text: too many font faces")
+		}
+		fam.variants[key] = familyVariantFace{face: face, tag: l.familyTag}
+		l.familyTag += 2
+	}
+	l.families[name] = fam
+	l.dropFamilyLocked(name)
+	return nil
+}
+
+// ValidateVariableFont parses data and checks that it is a variable font whose
+// outlines can be read. An app can call it before a window exists, so a bad
+// file is reported by LoadVariableFont rather than at the first frame.
+func ValidateVariableFont(data []byte, axes map[string]float64) error {
+	_, _, err := variableSetup(data, axes)
+	return err
+}
+
+// variableSetup parses a variable font, pins the extra axes and checks that at
+// least the default face has usable outlines.
+func variableSetup(data []byte, axes map[string]float64) (*font.Face, []font.Variation, error) {
+	parsed, err := font.ParseTTF(bytes.NewReader(data))
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse: %w", err)
+	}
+	vars := make([]font.Variation, 0, len(axes)+1)
+	for axis, value := range axes {
+		if axis == "wght" {
+			continue
+		}
+		tag, ok := variationTag(axis)
+		if !ok {
+			return nil, nil, fmt.Errorf("variation axis %q must be four characters", axis)
+		}
+		vars = append(vars, font.Variation{Tag: tag, Value: float32(value)})
+	}
+	probe := font.NewFace(parsed.Font)
+	probe.SetVariations(append(vars, font.Variation{Tag: weightTag, Value: float32(WeightRegular)}))
+	if len(probe.Coords()) == 0 {
+		return nil, nil, fmt.Errorf("not a variable font")
+	}
+	if !hasOutlines(probe) {
+		// Some CFF2 variable fonts parse but produce no outline; without this
+		// check the app would draw blank text and report nothing.
+		return nil, nil, fmt.Errorf("no readable outlines (some CFF2 variable fonts are unsupported)")
+	}
+	return parsed, vars, nil
+}
+
+var weightTag = font.Tag(uint32('w')<<24 | uint32('g')<<16 | uint32('h')<<8 | uint32('t'))
+
+// hasOutlines reports whether the Latin glyphs that the font maps have readable
+// outlines. A font with no Latin coverage passes, since another script may be
+// its only content.
+func hasOutlines(f *font.Face) bool {
+	mapped := false
+	for _, r := range "Aa0" {
+		gid, ok := f.NominalGlyph(r)
+		if !ok {
+			continue
+		}
+		mapped = true
+		if out, ok := f.GlyphData(gid).(font.GlyphOutline); ok && len(out.Segments) > 0 {
+			return true
+		}
+	}
+	return !mapped
+}
+
+// variationTag turns a four-character axis name into an OpenType tag.
+func variationTag(name string) (font.Tag, bool) {
+	if len(name) != 4 {
+		return 0, false
+	}
+	return font.Tag(uint32(name[0])<<24 | uint32(name[1])<<16 | uint32(name[2])<<8 | uint32(name[3])), true
+}
+
 // dropFamilyLocked clears built faces after a family file changes, so the next
 // frame reshapes instead of using stale outlines.
 func (l *Library) dropFamilyLocked(name string) {

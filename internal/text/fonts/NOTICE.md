@@ -3,6 +3,7 @@
 | File | Font | Licence |
 |---|---|---|
 | `roboto-*.woff` | Roboto | Apache License 2.0 |
+| `roboto-variable.ttf` | Roboto, subset of `Roboto[wdth,wght]` | Apache License 2.0 |
 | `material-symbols.woff` | Material Symbols Outlined | Apache License 2.0 |
 | `material-symbols-filled.woff` | Material Symbols Outlined, `FILL` axis at 1 | Apache License 2.0 |
 | `noto-color-emoji.ttf` | Noto Color Emoji | SIL Open Font License 1.1 |

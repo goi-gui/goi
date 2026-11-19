@@ -65,6 +65,13 @@ type fontFaceFile struct {
 	data   []byte
 }
 
+// fontVariable is a variable font plus the axes pinned for every weight. wght
+// comes from fontWeight; the other axes are fixed.
+type fontVariable struct {
+	data []byte
+	axes map[string]float64
+}
+
 // fontAssets is the container LoadFont resolves paths in: the live window's
 // assets, the embedded build assets, or the assets directory from goi.yaml.
 func (a *App) fontAssets() (fs.FS, error) {
@@ -143,6 +150,56 @@ func (a *App) LoadFontFamily(name, pattern string) error {
 				return fmt.Errorf("ui: %w", err)
 			}
 		}
+		a.markDirty(tree.DirtyLayout)
+	}
+	return nil
+}
+
+// LoadVariableFont registers a variable font under name. fontWeight drives its
+// wght axis; axes pins any other axes, such as wdth or opsz. fontStyle: italic
+// slants the upright face, because ital and slnt are not driven separately.
+//
+//	app.LoadVariableFont("Nunito", "fonts/Nunito[wght].ttf", nil)
+//	app.LoadVariableFont("Text", "fonts/Text[wdth,wght].ttf", map[string]float64{"wdth": 90})
+func (a *App) LoadVariableFont(name, fontPath string, axes map[string]float64) error {
+	if name == "" {
+		return fmt.Errorf("ui: LoadVariableFont needs a family name")
+	}
+	if fontPath == "" {
+		return fmt.Errorf("ui: LoadVariableFont(%q) needs a path", name)
+	}
+	for axis := range axes {
+		if len(axis) != 4 {
+			return fmt.Errorf("ui: LoadVariableFont(%q): axis %q must be four characters", name, axis)
+		}
+	}
+	assets, err := a.fontAssets()
+	if err != nil {
+		return err
+	}
+	data, err := fs.ReadFile(assets, cleanName(filepath.ToSlash(fontPath)))
+	if err != nil {
+		return fmt.Errorf("ui: LoadVariableFont(%q): %w", name, err)
+	}
+	fixed := make(map[string]float64, len(axes))
+	for axis, value := range axes {
+		fixed[axis] = value
+	}
+	lib := a.textLibrary()
+	if lib != nil {
+		if err := lib.RegisterVariableFamily(name, data, fixed); err != nil {
+			return fmt.Errorf("ui: %w", err)
+		}
+	} else if err := text.ValidateVariableFont(data, fixed); err != nil {
+		// A window may not exist yet; still reject a bad file here so the
+		// caller gets the error from LoadVariableFont.
+		return fmt.Errorf("ui: LoadVariableFont(%q): %w", name, err)
+	}
+	if a.fontVariables == nil {
+		a.fontVariables = map[string]fontVariable{}
+	}
+	a.fontVariables[name] = fontVariable{data: data, axes: fixed}
+	if lib != nil {
 		a.markDirty(tree.DirtyLayout)
 	}
 	return nil

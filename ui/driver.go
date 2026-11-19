@@ -91,6 +91,12 @@ func (a *App) initWindow(w *Window) error {
 				}
 			}
 		}
+		for name, variable := range a.fontVariables {
+			if err := lib.RegisterVariableFamily(name, variable.data, variable.axes); err != nil {
+				a.reportError(err)
+				delete(a.fontVariables, name)
+			}
+		}
 	}
 	meas := textMeasurer{lib: gpu.Text()}
 	d := &gpuDriver{

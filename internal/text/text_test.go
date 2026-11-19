@@ -1,6 +1,7 @@
 package text
 
 import (
+	"os"
 	"testing"
 
 	"github.com/go-text/typesetting/language"
@@ -273,5 +274,33 @@ func TestRegisterFamilyFaces(t *testing.T) {
 	}
 	if regular.Tag() == bold.Tag() || regular.Tag() == italic.Tag() || bold.Tag() == italic.Tag() {
 		t.Fatalf("tags are not distinct: %d %d %d", regular.Tag(), bold.Tag(), italic.Tag())
+	}
+}
+
+// TestRegisterVariableFamily drives the wght axis: two weights must get their
+// own atlas tags and different advances from one file. A static file is not a
+// variable font and must be rejected rather than registered as one.
+func TestRegisterVariableFamily(t *testing.T) {
+	data, err := os.ReadFile("fonts/roboto-variable.ttf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := NewLibrary()
+	if err := l.RegisterVariableFamily("Var", data, map[string]float64{"wdth": 75}); err != nil {
+		t.Fatal(err)
+	}
+	light := l.FamilyFace(40, Weight(100), "Var")
+	black := l.FamilyFace(40, Weight(900), "Var")
+	if light == nil || black == nil {
+		t.Fatalf("faces = %v %v", light, black)
+	}
+	if light.Tag() == black.Tag() {
+		t.Fatalf("weights share tag %d", light.Tag())
+	}
+	if light.advance("A") >= black.advance("A") {
+		t.Fatalf("advances = %v %v, want heavier to be wider", light.advance("A"), black.advance("A"))
+	}
+	if err := l.RegisterVariableFamily("Static", robotoRegular, nil); err == nil {
+		t.Fatal("a static font was accepted as variable")
 	}
 }
