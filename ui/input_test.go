@@ -1862,3 +1862,147 @@ func TestNavigationFadePaintsAfterClick(t *testing.T) {
 		t.Fatal("transition stayed active after its duration")
 	}
 }
+
+// TestClickBubblesToAncestorHandler: a child without a handler does not
+// swallow the click its parent asked for. The Icon has no onClick, so pressing
+// it activates the Row around it.
+func TestClickBubblesToAncestorHandler(t *testing.T) {
+	_, win, in := inputFixture(t, `bridge { onRow func() }
+Window {
+	Row {
+		id:      row
+		width:   200
+		height:  40
+		onClick: bridge.onRow()
+		Icon { id: icon icon: star size: 24 }
+	}
+}`, 300, 200)
+	row := 0
+	if err := SetHandler(win, "onRow", func() { row++ }); err != nil {
+		t.Fatal(err)
+	}
+	icon := MustByID[*Icon](win, "icon")
+	b := absoluteRect(icon)
+	cx, cy := b.X+b.W/2, b.Y+b.H/2
+	in.MouseDown(cx, cy, 0, false)
+	in.MouseUp(cx, cy, 0)
+	if row != 1 {
+		t.Fatalf("row clicks = %d, want 1", row)
+	}
+}
+
+// TestOwnClickDoesNotBubble: a child with its own handler keeps the click, so
+// the parent's onClick must not also run.
+func TestOwnClickDoesNotBubble(t *testing.T) {
+	_, win, in := inputFixture(t, `bridge {
+	onRow  func()
+	onIcon func()
+}
+Window {
+	Row {
+		id:      row
+		width:   200
+		height:  40
+		onClick: bridge.onRow()
+		Icon {
+			id:      icon
+			icon:    star
+			size:    24
+			onClick: bridge.onIcon()
+		}
+	}
+}`, 300, 200)
+	row, icon := 0, 0
+	if err := SetHandler(win, "onRow", func() { row++ }); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetHandler(win, "onIcon", func() { icon++ }); err != nil {
+		t.Fatal(err)
+	}
+	b := absoluteRect(MustByID[*Icon](win, "icon"))
+	cx, cy := b.X+b.W/2, b.Y+b.H/2
+	in.MouseDown(cx, cy, 0, false)
+	in.MouseUp(cx, cy, 0)
+	if row != 0 || icon != 1 {
+		t.Fatalf("row = %d, icon = %d; want 0, 1", row, icon)
+	}
+}
+
+// TestDisabledControlDoesNotBubble: a disabled child swallows the press rather
+// than handing it to the row around it.
+func TestDisabledControlDoesNotBubble(t *testing.T) {
+	_, win, in := inputFixture(t, `bridge { onRow func() }
+Window {
+	Row {
+		id:      row
+		width:   200
+		height:  50
+		onClick: bridge.onRow()
+		Button { id: off disabled: true label: "Off" }
+	}
+}`, 300, 200)
+	row := 0
+	if err := SetHandler(win, "onRow", func() { row++ }); err != nil {
+		t.Fatal(err)
+	}
+	b := absoluteRect(MustByID[*Button](win, "off"))
+	cx, cy := b.X+b.W/2, b.Y+b.H/2
+	in.MouseDown(cx, cy, 0, false)
+	in.MouseUp(cx, cy, 0)
+	if row != 0 {
+		t.Fatalf("a disabled button clicked its row %d times", row)
+	}
+}
+
+// TestRippleOnlyChildStillBubbles: ripple is press feedback, not an action, so
+// a ripple box without onClick does not stop the parent's handler.
+func TestRippleOnlyChildStillBubbles(t *testing.T) {
+	_, win, in := inputFixture(t, `bridge { onRow func() }
+Window {
+	Row {
+		id:      row
+		width:   200
+		height:  40
+		onClick: bridge.onRow()
+		Rectangle { id: hit width: 40 height: 20 ripple: true }
+	}
+}`, 300, 200)
+	row := 0
+	if err := SetHandler(win, "onRow", func() { row++ }); err != nil {
+		t.Fatal(err)
+	}
+	b := absoluteRect(MustByID[*Rectangle](win, "hit"))
+	cx, cy := b.X+b.W/2, b.Y+b.H/2
+	in.MouseDown(cx, cy, 0, false)
+	in.MouseUp(cx, cy, 0)
+	if row != 1 {
+		t.Fatalf("row clicks = %d, want 1", row)
+	}
+}
+
+// TestBubbledActionShowsPointer: the pointer over a child of an onClick row is
+// a pointing hand, because the click would reach that row.
+func TestBubbledActionShowsPointer(t *testing.T) {
+	_, win, in := inputFixture(t, `bridge { onRow func() }
+Window {
+	Row {
+		id:      row
+		width:   200
+		height:  40
+		onClick: bridge.onRow()
+		Icon { id: icon icon: star size: 24 }
+		Text { id: label text: "label" }
+	}
+}`, 300, 200)
+	var got platform.Cursor
+	in.setCursor = func(c platform.Cursor) { got = c }
+	for _, id := range []string{"icon", "label"} {
+		n, _ := win.tree.ByID(id)
+		r := absoluteRect(n)
+		got = -1
+		in.MouseMove(r.X+r.W/2, r.Y+r.H/2)
+		if got != platform.CursorPointer {
+			t.Errorf("hover on %s gave cursor %v, want pointer", id, got)
+		}
+	}
+}

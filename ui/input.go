@@ -431,6 +431,23 @@ func rippleHost(n tree.Node) tree.Node {
 	return nil
 }
 
+// actionAt is the node a click at x,y activates: the hit itself when it has a
+// handler or an interactive component, otherwise the nearest ancestor that
+// does. A ripple on a child is feedback, not an action, so a label or icon
+// inside an onClick row still presses the row. A disabled component stops the
+// walk: its own press is swallowed rather than handed to an ancestor.
+func (i *interactor) actionAt(n tree.Node, x, y float64) tree.Node {
+	for ; n != nil; n = n.Base().Parent() {
+		if c := comp(n); c != nil && c.Disabled.Get() {
+			return nil
+		}
+		if i.activatable(n, x, y) {
+			return n
+		}
+	}
+	return nil
+}
+
 // dragRegionAt reports whether n or an ancestor moves the window on a press.
 func dragRegionAt(n tree.Node) bool {
 	for ; n != nil; n = n.Base().Parent() {
@@ -759,7 +776,7 @@ func (i *interactor) pointerAt(hit tree.Node) {
 		i.pointer(platform.CursorMove)
 		return
 	}
-	if i.activatable(hit, i.cursorX, i.cursorY) {
+	if i.actionAt(hit, i.cursorX, i.cursorY) != nil {
 		i.pointer(platform.CursorPointer)
 		return
 	}
@@ -940,12 +957,19 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 			i.pressed = gn
 		}
 	}
-	// A press on a child of a card-like surface belongs to the surface when the
-	// child itself has nothing to activate: `ripple: true` on a Row should
-	// answer a press on its image or label, not only on its empty space.
-	if !i.clickable(hit, x, y) && selectableAt(hit) == nil {
-		if host := rippleHost(hit); host != nil {
-			hit = host
+	// A press on a child belongs to the nearest node that has an action when
+	// the child itself has none: `onClick` on a Row must answer a press on its
+	// label or icon. A ripple-only child is feedback, not an action, so the
+	// action still bubbles to its parent; only a child with its own handler
+	// stops it. With no action anywhere, a ripple surface takes the press so a
+	// card still answers on its empty space.
+	if !i.activatable(hit, x, y) && selectableAt(hit) == nil {
+		if action := i.actionAt(hit, x, y); action != nil {
+			hit = action
+		} else if !i.clickable(hit, x, y) {
+			if host := rippleHost(hit); host != nil {
+				hit = host
+			}
 		}
 	}
 	if i.clickable(hit, x, y) {
