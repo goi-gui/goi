@@ -114,13 +114,18 @@ func Init() error {
 	initOnce.Do(func() {
 		if err := sdlInit(); err != nil {
 			initErr = fmt.Errorf("platform: %w", err)
+			return
 		}
+		startThemeWatcher()
 	})
 	return initErr
 }
 
 // Terminate releases SDL. Call after every window is destroyed.
-func Terminate() { sdlQuit() }
+func Terminate() {
+	stopThemeWatcher()
+	sdlQuit()
+}
 
 // SetInput installs the input sink. SDL is poll based, so input arrives through
 // PollEvents and WaitEvents rather than callbacks.
@@ -356,6 +361,9 @@ func PostEmptyEvent() { sdlPushUserEvent() }
 // is the value SDL caches and updates on SDL_EVENT_SYSTEM_THEME_CHANGED, so it
 // is cheap to read on every frame.
 func SystemTheme() Theme {
+	if t := portalTheme(); t != ThemeUnknown {
+		return t
+	}
 	switch sdlSystemTheme() {
 	case 1:
 		return ThemeLight

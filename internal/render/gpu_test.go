@@ -360,3 +360,22 @@ func TestImageAtlasResetsByPixels(t *testing.T) {
 		t.Fatalf("packedPix = %d, want the reset budget", at.packedPix)
 	}
 }
+
+// TestLargeImageGrowsInsteadOfDownscaling: an image larger than the starting
+// atlas grows the texture, rather than being halved to fit. A downscale here is
+// the blurred first frame a large Mermaid diagram used to show.
+func TestLargeImageGrowsInsteadOfDownscaling(t *testing.T) {
+	at := newTestImageRenderer(512)
+	d := &img.Data{W: 1000, H: 200, Pix: make([]byte, 1000*200*4)}
+	op := paint.Op{Kind: paint.Bitmap, Src: d, Rect: [4]float32{0, 0, 500, 100}}
+	list := &paint.List{Ops: []paint.Op{op}}
+	at.prepare(list)
+	key := at.keyFor(op)
+	slot, ok := at.regions[key]
+	if !ok {
+		t.Fatalf("no region for %dx%d", key.w, key.h)
+	}
+	if slot.r.W != 1000 || slot.r.H != 200 {
+		t.Fatalf("packed at %dx%d, want the full 1000x200", slot.r.W, slot.r.H)
+	}
+}

@@ -3,6 +3,7 @@ package paint
 import (
 	"testing"
 
+	"github.com/goi-gui/goi/internal/img"
 	"github.com/goi-gui/goi/internal/layout"
 	"github.com/goi-gui/goi/internal/tree"
 )
@@ -58,5 +59,56 @@ func TestImageLoadingPlaceholder(t *testing.T) {
 	// The wash rides on the theme's onSurface, so it follows light and dark.
 	if _, _, _ = build(true, 0.5); bright&0xFF <= dim&0xFF {
 		t.Fatalf("the wash did not brighten with phase: %08x -> %08x", dim, bright)
+	}
+}
+
+// TestOffscreenBitmapIsOmitted keeps a picture outside the clip out of the
+// display list: packing every off-screen image filled the atlas and made the
+// visible ones blurry, especially while a Mermaid page scrolled.
+func TestOffscreenBitmapIsOmitted(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window { Stack { Positioned {
+		top: 500
+		Image { id: pic src: "x" width: 40 height: 20 }
+	} } }`), nil)
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	node, _ := tr.ByID("pic")
+	im := node.(*tree.Image)
+	im.Data = &img.Data{W: 1, H: 1, Pix: make([]byte, 4)}
+	layout.New(nil).Layout(tr.Root, 100, 100)
+	l := &List{}
+	l.Build(tr, 100, 100)
+	for _, op := range l.Ops {
+		if op.Kind == Bitmap {
+			t.Fatalf("an off-screen image emitted a bitmap: %+v", op.Rect)
+		}
+	}
+}
+
+// TestMermaidLoadingShimmers: a diagram waiting for its render draws a skeleton
+// block and keeps the frame loop awake for the sweep.
+func TestMermaidLoadingShimmers(t *testing.T) {
+	tr, diag := tree.BuildSource([]byte(`Window { Mermaid { id: chart width: 200 height: 120 } }`), nil)
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	node, _ := tr.ByID("chart")
+	m := node.(*tree.Mermaid)
+	m.Loading = true
+	layout.New(nil).Layout(tr.Root, 300, 200)
+	l := &List{}
+	l.Build(tr, 300, 200)
+	if !l.Animating {
+		t.Fatal("a loading diagram did not ask for the next frame")
+	}
+	var bands int
+	for _, op := range l.Ops {
+		if op.Kind == Fill && op.Shape == CSSGradient && op.Gradient != nil {
+			bands++
+		}
+	}
+	if bands == 0 {
+		t.Fatalf("no shimmer band:\n%s", l.Dump())
 	}
 }

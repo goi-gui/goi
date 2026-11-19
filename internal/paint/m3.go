@@ -2462,18 +2462,29 @@ func (l *List) paintSkeleton(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	l.Animating = true
 	hi := sk.Highlight.Get()
 	if hi == 0 {
-		// No role is lighter than the surface in both schemes, so the default
-		// highlight is the block lifted towards white: a shimmer reads as light
-		// in a light scheme and in a dark one. A light block has less room to
-		// lift, so it takes the larger step.
-		lift := 0.45
-		if !l.Theme.Dark {
-			lift = 0.8
-		}
-		hi = blend(base, 0xFFFFFFFF, lift)
+		hi = l.shimmerHighlight(base)
 	}
-	// The band is a third of the block, swept from just off one edge to just off
-	// the other, so the highlight enters and leaves instead of popping.
+	l.paintShimmerBand(r, hi, float32(rad), clip)
+}
+
+// shimmerHighlight is the band colour a skeleton uses when the design named
+// none: the block lifted towards white. No role is lighter than the surface in
+// both schemes, so this reads in light and dark; a light block has less room to
+// lift and takes the larger step.
+func (l *List) shimmerHighlight(base uint32) uint32 {
+	lift := 0.45
+	if !l.Theme.Dark {
+		lift = 0.8
+	}
+	return blend(base, 0xFFFFFFFF, lift)
+}
+
+// paintShimmerBand draws the moving highlight of a loading placeholder. The
+// band is a third of the block, swept from just off one edge to just off the
+// other, so the highlight enters and leaves instead of popping. It keeps the
+// frame loop awake while the content is on its way.
+func (l *List) paintShimmerBand(r tree.Rect, hi uint32, rad float32, clip tree.Rect) {
+	l.Animating = true
 	band := math.Max(48, r.W/3)
 	span := r.W + band
 	phase := math.Mod(float64(l.Clock)/float64(skeletonPeriod), 1)
@@ -2487,7 +2498,7 @@ func (l *List) paintSkeleton(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		Rect:       rectArr(tree.Rect{X: r.X - band + span*phase, Y: r.Y, W: band, H: r.H}),
 		Color:      hi,
 		Clip:       clipArr(intersect(clip, r)),
-		ClipRadius: float32(rad),
+		ClipRadius: rad,
 		ClipBox:    rectArr(r),
 	})
 }

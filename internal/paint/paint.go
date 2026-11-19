@@ -950,6 +950,10 @@ func (l *List) paintSVG(n *tree.SVG, r tree.Rect, clip tree.Rect) {
 }
 
 func (l *List) paintBitmap(d *img.Data, fit string, base *tree.NodeBase, loading bool, phase float64, r tree.Rect, clip tree.Rect) {
+	vis := intersect(clip, r)
+	if vis.W <= 0 || vis.H <= 0 {
+		return
+	}
 	if d == nil || d.W <= 0 || d.H <= 0 || r.W <= 0 || r.H <= 0 {
 		// A remote image still on the way gets a breathing wash, so the space
 		// reads as loading instead of broken. A failed or empty one stays the
@@ -957,8 +961,7 @@ func (l *List) paintBitmap(d *img.Data, fit string, base *tree.NodeBase, loading
 		if loading {
 			col := l.Theme.Colors
 			alpha := 0.06 + 0.10*phase
-			l.fillRect(r, withAlpha(col.OnSurface, alpha), base.Radius(), 0, 0,
-				intersect(clip, r))
+			l.fillRect(r, withAlpha(col.OnSurface, alpha), base.Radius(), 0, 0, vis)
 		}
 		l.imageBorder(base, r, clip)
 		return
@@ -995,7 +998,7 @@ func (l *List) paintBitmap(d *img.Data, fit string, base *tree.NodeBase, loading
 	// rounding of its own and must take the map's corner from the clip.
 	r0 := float32(base.Radius())
 	l.Ops = append(l.Ops, Op{
-		Kind: Bitmap, Rect: rectArr(quad), Clip: clipArr(intersect(clip, r)),
+		Kind: Bitmap, Rect: rectArr(quad), Clip: clipArr(vis),
 		Radius: [4]float32{r0, r0, r0, r0}, ClipRadius: r0,
 		// The rounded crop follows the image's own box. Rounding the visible
 		// rect instead would put a corner on the edge a scroll cut, so an image

@@ -57,6 +57,11 @@ type imageRenderer struct {
 	// frame's images.
 	packed    int
 	packedPix int
+	// downscaled is set when a pack could not place an image at its requested
+	// size. prepare then starts the atlas over and repacks the current frame,
+	// which is what keeps a fragmented atlas from permanently blurring a
+	// diagram.
+	downscaled bool
 }
 
 // imageAtlasSoftCap is how many regions may accumulate before a frame with a
@@ -159,22 +164,34 @@ func (t *imageRenderer) prepare(list *paint.List) {
 	if missing > 0 && (t.packed+missing > imageAtlasSoftCap || t.packedPix+missingPix > atlasPix*3/4) {
 		t.reset()
 	}
-	for _, op := range list.Ops {
-		if op.Kind != paint.Bitmap || op.Src == nil {
-			continue
-		}
-		key := t.keyFor(op)
-		if slot, ok := t.regions[key]; ok {
-			// An animation swaps Pix in place and bumps Gen; the region stays,
-			// only its pixels are refreshed.
-			if slot.gen != op.Src.Gen {
-				t.writeRegion(op.Src, slot.r)
-				slot.gen = op.Src.Gen
-				t.regions[key] = slot
+	// A fragmented shelf can be full long before its byte budget is: many
+	// diagrams at different sizes leave holes a new image cannot use. Packing
+	// it smaller is what a reader sees as a blurred diagram. Start over and
+	// repack this frame instead, where only the current images compete for
+	// space.
+	for pass := 0; pass < 2; pass++ {
+		t.downscaled = false
+		for _, op := range list.Ops {
+			if op.Kind != paint.Bitmap || op.Src == nil {
+				continue
 			}
-			continue
+			key := t.keyFor(op)
+			if slot, ok := t.regions[key]; ok {
+				// An animation swaps Pix in place and bumps Gen; the region stays,
+				// only its pixels are refreshed.
+				if slot.gen != op.Src.Gen {
+					t.writeRegion(op.Src, slot.r)
+					slot.gen = op.Src.Gen
+					t.regions[key] = slot
+				}
+				continue
+			}
+			t.pack(op.Src, key)
 		}
-		t.pack(op.Src, key)
+		if !t.downscaled || pass == 1 {
+			break
+		}
+		t.reset()
 	}
 }
 
@@ -288,15 +305,12 @@ func invertFlag(on bool) float32 {
 // looked up, and under the size it actually got when that differs.
 func (t *imageRenderer) pack(d *img.Data, key imageKey) (img.Region, bool) {
 	w, h := key.w, key.h
+	origW, origH := w, h
 	if w < 1 {
 		w = 1
 	}
 	if h < 1 {
 		h = 1
-	}
-	if w > t.w || h > t.h {
-		s := min(float64(t.w)/float64(w), float64(t.h)/float64(h))
-		w, h = max(1, int(float64(w)*s)), max(1, int(float64(h)*s))
 	}
 	x, y, ok := t.shelf.Place(w, h)
 	// Grow before downscaling: a sharper image is worth the texture memory.
@@ -313,8 +327,12 @@ func (t *imageRenderer) pack(d *img.Data, key imageKey) (img.Region, bool) {
 			x, y, ok = t.shelf.Place(w, h)
 		}
 		if !ok {
+			t.downscaled = true
 			return img.Region{}, false
 		}
+	}
+	if w < origW || h < origH {
+		t.downscaled = true
 	}
 	src := d
 	if w != d.W || h != d.H {

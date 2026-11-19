@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/goi-gui/goi/internal/img"
 	"github.com/goi-gui/goi/internal/m3"
@@ -38,6 +39,9 @@ func (a *App) syncMermaid() bool {
 	}
 	theme := themeFor(a.win)
 	themeKey := mermaid.ThemeKey(theme)
+	a.mermaidThemeMu.Lock()
+	a.mermaidTheme = themeKey
+	a.mermaidThemeMu.Unlock()
 	changed := false
 	a.win.tree.Walk(func(n tree.Node) {
 		m, ok := n.(*tree.Mermaid)
@@ -51,7 +55,16 @@ func (a *App) syncMermaid() bool {
 			if m.Data != nil {
 				m.Data = nil
 				m.RenderedKey = ""
+				m.PendingKey = ""
+				m.Loading = false
 				m.Base().MarkDirty(tree.DirtyPaint)
+				changed = true
+			} else if m.PendingKey != "" {
+				// The result is still welcome in the cache, but this node no
+				// longer waits for it; scrolling back reads the cache or asks
+				// again instead of holding a stale pending flag.
+				m.PendingKey = ""
+				m.Loading = false
 				changed = true
 			}
 			return
@@ -133,7 +146,13 @@ func (a *App) renderMermaidAsync(key, src string, theme *m3.Theme, targetW, targ
 	go func() {
 		a.mermaidMu.Lock()
 		defer a.mermaidMu.Unlock()
-		if a.mermaidClosed {
+		a.mermaidThemeMu.RLock()
+		themeNow := a.mermaidTheme
+		a.mermaidThemeMu.RUnlock()
+		if a.mermaidClosed || (themeNow != "" && !strings.HasPrefix(key, themeNow+"\x00")) {
+			// A newer palette owns the screen; finish the queue without drawing
+			// a diagram the page has already replaced.
+			a.Post(func() { delete(a.mermaidPending, key) })
 			return
 		}
 		engine, err := a.mermaidEngineLocked()

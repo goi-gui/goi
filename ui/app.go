@@ -78,6 +78,12 @@ type App struct {
 	// imageTries counts how many times a node's missing bitmap was retried, so
 	// a file that cannot be read is not retried forever.
 	imageTries map[*tree.Image]int
+	// mermaidTheme is the palette the current frame asked for. A queued render
+	// whose theme was superseded is dropped instead of blocking the ones the
+	// page now needs; a run of theme switches would otherwise leave a long tail
+	// of stale renders.
+	mermaidThemeMu sync.RWMutex
+	mermaidTheme   string
 	// showFPS is the debug overlay switch; off unless the app asks for it.
 	showFPS bool
 	// imageBudget is how many decoded image bytes the cache may hold, 0 for

@@ -8,6 +8,9 @@ import (
 // bitmap keeps its aspect inside the box, so a design that sets only a width
 // still gets the diagram's own height from layout.
 func (l *List) paintMermaid(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	if vis := intersect(clip, r); vis.W <= 0 || vis.H <= 0 {
+		return
+	}
 	l.paintBox(c.Base(), r, clip)
 	m, ok := c.Node().(*tree.Mermaid)
 	if !ok {
@@ -24,8 +27,11 @@ func (l *List) paintMermaid(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		return
 	}
 	if m.Loading {
-		// A faint wash marks the box while the worker compiles the renderer or
-		// lays the diagram out; the frame loop is free to keep painting.
-		l.paintBitmap(nil, "contain", &m.NodeBase, true, 0, r, clip)
+		// The skeleton shimmer says the diagram is being laid out and drawn,
+		// and keeps asking for frames until the bitmap lands.
+		base := l.Theme.Colors.SurfaceContainerHighest
+		rad := l.shapeRadius(c.Base(), r)
+		l.fillShape(r, base, nil, componentRadii(c.Base(), rad), 0, 0, clip)
+		l.paintShimmerBand(r, l.shimmerHighlight(base), float32(rad), clip)
 	}
 }

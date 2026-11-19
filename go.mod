@@ -11,6 +11,7 @@ require (
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/gen2brain/beeep v0.11.3
 	github.com/go-text/typesetting v0.3.4
+	github.com/godbus/dbus/v5 v5.1.0
 	github.com/gogpu/gputypes v0.8.0
 	github.com/gogpu/wgpu v0.34.5
 	github.com/kettek/apng v0.0.0-20250827064933-2bb5f5fcf253
@@ -57,7 +58,6 @@ require (
 	github.com/go-playground/validator/v10 v10.27.0 // indirect
 	github.com/go-webgpu/goffi v0.6.3 // indirect
 	github.com/go-webgpu/webgpu v0.5.5 // indirect
-	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/gogpu/gpucontext v0.31.3 // indirect
 	github.com/gogpu/naga v0.19.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
