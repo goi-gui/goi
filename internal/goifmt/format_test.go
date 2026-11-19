@@ -444,3 +444,12 @@ func TestFormatScale(t *testing.T) {
 		}
 	}
 }
+
+// TestFormatModulo keeps a modulo expression spaced like the other operators.
+func TestFormatModulo(t *testing.T) {
+	src := `Window { Column { for i := range 4 { if i%2 == 0 { Text {} } } } }`
+	got := string(Source([]byte(src)))
+	if !strings.Contains(got, "if i % 2 == 0 {") {
+		t.Fatalf("format =\n%s", got)
+	}
+}

@@ -1189,3 +1189,39 @@ func TestParseScale(t *testing.T) {
 		}
 	}
 }
+
+// TestParseModulo keeps the two meanings of % apart: a % touching the number
+// is a percentage, while % between two values is the modulo operator.
+func TestParseModulo(t *testing.T) {
+	src := `A {
+		even: 5 % 2 == 1
+		wide: 50%
+		split: 50 % 2
+	}`
+	f, diag := Parse([]byte(src))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	if got := f.Root.Prop("wide").Value.(*Percent).Val; got != 50 {
+		t.Fatalf("percentage = %v, want 50", got)
+	}
+	for _, name := range []string{"even", "split"} {
+		top, ok := f.Root.Prop(name).Value.(*Binary)
+		if !ok {
+			t.Fatalf("%s = %T, want a binary expression", name, f.Root.Prop(name).Value)
+		}
+		mod := top
+		if name == "even" {
+			if top.Op != "==" {
+				t.Fatalf("even op = %q, want ==", top.Op)
+			}
+			mod, ok = top.Left.(*Binary)
+			if !ok {
+				t.Fatalf("even left = %T, want a binary expression", top.Left)
+			}
+		}
+		if mod.Op != "%" {
+			t.Fatalf("%s op = %q, want %%", name, mod.Op)
+		}
+	}
+}

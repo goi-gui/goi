@@ -2,6 +2,7 @@ package tree
 
 import (
 	"fmt"
+	"math"
 	"runtime"
 	"strconv"
 	"strings"
@@ -613,7 +614,7 @@ func (c *evalCtx) evalBinary(x *syntax.Binary, percent float64) (any, bool) {
 			return nil, false
 		}
 		return a + b, true
-	case "-", "*", "/":
+	case "-", "*", "/", "%":
 		return arith(x.Op, left, right)
 	}
 	return nil, false
@@ -936,6 +937,11 @@ func arith(op string, a, b any) (any, bool) {
 			return nil, false
 		}
 		return x / y, true
+	case "%":
+		if y == 0 {
+			return nil, false
+		}
+		return math.Mod(x, y), true
 	}
 	return nil, false
 }

@@ -557,7 +557,7 @@ type Call struct {
 }
 
 // Binary is an expression: Left Op Right. Op is one of "+", "-", "*", "/",
-// "==", "!=", "<", "<=", ">", ">=", "&&", "||".
+// "%", "==", "!=", "<", "<=", ">", ">=", "&&", "||".
 type Binary struct {
 	At    Pos
 	Op    string

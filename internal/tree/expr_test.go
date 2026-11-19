@@ -296,3 +296,64 @@ func TestExpressionPassAllocationBudget(t *testing.T) {
 		t.Fatalf("expression pass allocates %.1f times, want at most 3", n)
 	}
 }
+
+// TestModuloExpression drives `i % 2 == 0` from a bridge value: the remainder
+// changes the condition without rebuilding the tree.
+func TestModuloExpression(t *testing.T) {
+	tr, diag := BuildSource([]byte(`bridge { n float64 }
+Window {
+		Column {
+			Rectangle { id: even visible: bridge.n % 2 == 0 width: 10 height: 10 }
+		}
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	tr.SetData("n", 4.0)
+	tr.ApplyExpressions()
+	if !tr.ids["even"].Base().Visible() {
+		t.Fatal("4 is even but the rectangle is hidden")
+	}
+	tr.SetData("n", 5.0)
+	tr.ApplyExpressions()
+	if tr.ids["even"].Base().Visible() {
+		t.Fatal("5 is odd but the rectangle is visible")
+	}
+	tr.SetData("n", 0.0)
+	tr.ApplyExpressions()
+	if !tr.ids["even"].Base().Visible() {
+		t.Fatal("0 is even but the rectangle is hidden")
+	}
+}
+
+// TestModuloLoopCondition is the exact design shape `if i % 2 == 0` inside a
+// loop: each row keeps its own scope and only the matching arm shows.
+func TestModuloLoopCondition(t *testing.T) {
+	tr, diag := BuildSource([]byte(`Window {
+		Column {
+			for i := range 4 {
+				if i % 2 == 0 {
+					Text { text: "even" }
+				} else {
+					Text { text: "odd" }
+				}
+			}
+		}
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	var shown []string
+	for _, n := range tr.All() {
+		tx, ok := n.(*Text)
+		if ok && tx.Visible() {
+			shown = append(shown, tx.Text.Get())
+		}
+	}
+	if got, want := len(shown), 4; got != want {
+		t.Fatalf("visible rows = %d (%v), want %d", got, shown, want)
+	}
+	if shown[0] != "even" || shown[1] != "odd" || shown[2] != "even" || shown[3] != "odd" {
+		t.Fatalf("rows = %v, want even odd even odd", shown)
+	}
+}

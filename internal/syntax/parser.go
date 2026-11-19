@@ -1445,6 +1445,8 @@ func (p *parser) parseMul() (Value, bool) {
 			op = "*"
 		case tokSlash:
 			op = "/"
+		case tokPercent:
+			op = "%"
 		default:
 			return left, true
 		}
@@ -1485,7 +1487,9 @@ func (p *parser) parseTerm() (Value, bool) {
 	switch t.kind {
 	case tokNumber:
 		p.next()
-		if p.peek().kind == tokPercent {
+		// Only a % touching the number makes a percentage. `i % 2` has a space
+		// before the %, so parseMul reads it as modulo.
+		if p.peek().kind == tokPercent && p.peek().pos == t.end {
 			p.next()
 			return &Percent{At: t.pos, Val: t.num}, true
 		}
