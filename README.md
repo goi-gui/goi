@@ -121,6 +121,10 @@ app.Run()
 runs. The label follows the value without a manual repaint, and `count`
 keeps its value when `Bind` runs again after a hot reload.
 
+<p align="center">
+  <img src="docs/images/counter.gif" alt="The counter: the buttons change the number and reset it to zero" width="480">
+</p>
+
 ## Conditionals and loops
 
 `if`/`else` and `for ... range` read like Go, and a list comes from the bridge:
@@ -259,7 +263,8 @@ a shipped binary.
 - **Composition.** Imports, typed `props`, named slots and `$children`, scoped
   ids, loading an embedded design.
 - **Material 3 Expressive.** Buttons, text fields, cards, dialogs, sheets, menus, navigation,
-  progress and more, with light and dark schemes, Roboto and Material Symbols.
+  progress and more, with light and dark schemes, Roboto, custom static or
+  variable font families, and Material Symbols.
 - **Layout.** Column, Row and Stack, Wrap, Grid, flex sizing, responsive
   breakpoints, padding and margin, and scrolling containers.
 - **Text and media.** M3 type scale, word wrapping, bidirectional shaping, PNG,
@@ -292,9 +297,9 @@ goi run
 ```
 
 `goi init` asks for any value a flag did not give, then creates the module, a
-`cmd/main.go`, a `goi.yaml` and an `assets/ui/Main.goi` with a centred hello
-world; the command loads it through `app.LoadWindow("ui/Main.goi")` and hot
-reload is on by
+`cmd/main.go`, a `goi.yaml` and the `hello` example under `assets/`: the goi
+logo as `assets/images/goi.svg` and a greeting in `assets/ui/Main.goi`. The
+command loads it through `app.LoadWindow("ui/Main.goi")` and hot reload is on by
 default. `goi run` reads `runFlags` and `goi build` reads `buildFlags` from
 `goi.yaml`, where both default to `all`; `nofakecgo` and `CGO_ENABLED=0` are
 always applied. `goi build` writes
