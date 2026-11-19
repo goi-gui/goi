@@ -96,6 +96,9 @@ type validator struct {
 	// row: a slice's index, a map's key, or a scalar element. It is what lets
 	// `bridge.onPick(i)` type-check the way Go does.
 	loopTypes []map[string]*syntax.Type
+	// loopDepth is non-zero inside a for body, where continue and break are
+	// legal.
+	loopDepth int
 }
 
 func (v *validator) add(at, end syntax.Pos, msg, hint string) {
@@ -433,6 +436,16 @@ func firstChild(e *syntax.Element) *childStart {
 // bound for the body.
 func (v *validator) walkBlock(blk *syntax.Block, parent string) {
 	v.src = blk.Src
+	if blk.Kind == syntax.BlockContinue || blk.Kind == syntax.BlockBreak {
+		if v.loopDepth == 0 {
+			name := "continue"
+			if blk.Kind == syntax.BlockBreak {
+				name = "break"
+			}
+			v.add(blk.At, blk.At+syntax.Pos(len(name)), name+" is only allowed inside a for loop", "")
+		}
+		return
+	}
 	if blk.Kind == syntax.BlockFor {
 		v.walkFor(blk, parent)
 		return
@@ -505,9 +518,11 @@ func (v *validator) walkFor(blk *syntax.Block, parent string) {
 			types[k] = valType
 		}
 	}
+	v.loopDepth++
 	for _, br := range blk.Branches {
 		v.walkArm(br.Members, parent)
 	}
+	v.loopDepth--
 }
 
 // intType is the type of a slice index, which is Go's int.
@@ -524,13 +539,13 @@ func keyTypeOf(t *syntax.Type) *syntax.Type {
 	return intType()
 }
 
-// valueTypeOf is the type of the second loop variable when it is a scalar: the
-// element of a slice, the value of a map. A row is a shape, not a type.
+// valueTypeOf is the type of the second loop variable: a scalar, a nested
+// slice, or the value of a map. A row is a shape, not a type.
 func valueTypeOf(t *syntax.Type, f *syntax.File) *syntax.Type {
-	if t == nil || t.Elem == nil || t.Elem.Kind != syntax.TypeScalar {
+	if t == nil || t.Elem == nil {
 		return nil
 	}
-	if f.Shape(t.Elem.Name) != nil {
+	if t.Elem.Kind == syntax.TypeScalar && f.Shape(t.Elem.Name) != nil {
 		return nil // a row: its fields are what a design reads
 	}
 	return t.Elem
@@ -547,6 +562,10 @@ func (v *validator) checkForRange(blk *syntax.Block) (keyShape, valShape *syntax
 	ref, ok := blk.Range.(*syntax.Ref)
 	if !ok {
 		switch x := blk.Range.(type) {
+		case *syntax.Ident:
+			if v.lookupLoopType(x.Val) != nil || v.lookupLoopVar(x.Val) != nil {
+				return nil, nil, intType(), nil // `range imageList`
+			}
 		case *syntax.Number, *syntax.Binary:
 			return nil, nil, intType(), nil // `for i := range 5`
 		case *syntax.Call:
@@ -1257,6 +1276,9 @@ var anyProp = &Prop{Name: "value", Type: TypeString}
 
 // walkBlockRefs checks the references inside block conditions and arms.
 func (v *validator) walkBlockRefs(blk *syntax.Block) {
+	if blk.Kind == syntax.BlockContinue || blk.Kind == syntax.BlockBreak {
+		return
+	}
 	if blk.Kind == syntax.BlockFor {
 		v.walkForRefs(blk)
 		return

@@ -72,6 +72,9 @@ type Tree struct {
 	eachHooks map[string][]func(Node, any)
 	// scope is the loop scope during a build, nil outside an {#each} arm.
 	scope *scope
+	// loop is the iteration being built, nil outside an {#each} row. It collects
+	// the direct nodes and continue/break markers of that iteration.
+	loop *loopBuild
 	// dataErr is the first error a data fill hit, reported to the app.
 	dataErr error
 	// bridge holds the Go handlers a design's bridge block declares.
@@ -287,6 +290,9 @@ func (t *Tree) buildMembers(members []syntax.Member, parent *NodeBase, hooks *Ho
 				if err != nil {
 					return err
 				}
+				if n != nil {
+					t.collect(n.Base(), parent)
+				}
 				if arm != nil && n != nil {
 					// A slot inside an arm follows the arm: the panel is built
 					// once, under the parent, and hidden with the branch.
@@ -299,14 +305,34 @@ func (t *Tree) buildMembers(members []syntax.Member, parent *NodeBase, hooks *Ho
 			if err != nil {
 				return err
 			}
+			t.collect(n.Base(), parent)
 			if arm != nil {
 				arm.nodes = append(arm.nodes, n.Base())
 				arm.own = append(arm.own, n.Base().Visible())
 			}
 		case *syntax.Block:
+			if x.Kind == syntax.BlockContinue || x.Kind == syntax.BlockBreak {
+				if t.loop == nil || parent != t.loop.parent {
+					name := "continue"
+					if x.Kind == syntax.BlockBreak {
+						name = "break"
+					}
+					return fmt.Errorf("%s is only allowed directly in a for body", name)
+				}
+				t.loop.row.controls = append(t.loop.row.controls, loopControl{
+					after: len(t.loop.row.nodes),
+					brk:   x.Kind == syntax.BlockBreak,
+					arm:   arm,
+				})
+				continue
+			}
 			if x.Kind == syntax.BlockFor {
+				before := len(parent.kids)
 				if err := t.buildFor(x, parent, hooks); err != nil {
 					return err
+				}
+				for _, k := range parent.kids[before:] {
+					t.collect(k, parent)
 				}
 				continue
 			}

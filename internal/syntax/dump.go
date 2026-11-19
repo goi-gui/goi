@@ -50,6 +50,14 @@ func dumpElement(b *strings.Builder, e *Element, depth int) {
 // dumpBlock writes a control block in the Go spelling it is written in.
 func dumpBlock(b *strings.Builder, blk *Block, depth int) {
 	indent := strings.Repeat("  ", depth)
+	if blk.Kind == BlockContinue {
+		fmt.Fprintf(b, "%scontinue\n", indent)
+		return
+	}
+	if blk.Kind == BlockBreak {
+		fmt.Fprintf(b, "%sbreak\n", indent)
+		return
+	}
 	if blk.Kind == BlockFor {
 		names := blk.KeyVar
 		if blk.ValVar != "" {

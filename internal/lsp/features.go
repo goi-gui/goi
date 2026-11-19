@@ -1753,6 +1753,10 @@ func symbolOf(idx lineIndex, e *syntax.Element, src []byte) symbol {
 func symbolOfBlock(idx lineIndex, blk *syntax.Block, src []byte) symbol {
 	name := "if"
 	switch {
+	case blk.Kind == syntax.BlockContinue:
+		name = "continue"
+	case blk.Kind == syntax.BlockBreak:
+		name = "break"
 	case blk.Kind == syntax.BlockFor:
 		name = "for"
 		if blk.Range != nil {
@@ -1766,11 +1770,15 @@ func symbolOfBlock(idx lineIndex, blk *syntax.Block, src []byte) symbol {
 	case len(blk.Branches) > 0 && blk.Branches[0].Cond != nil:
 		name = "if " + sourceSpan(src, int(blk.Branches[0].Cond.Pos()))
 	}
+	end := int(blk.Close) + 1
+	if blk.Kind == syntax.BlockContinue || blk.Kind == syntax.BlockBreak {
+		end = int(blk.At) + len(name)
+	}
 	sym := symbol{
 		Name:           name,
 		Kind:           19,
-		Range:          idx.at(int(blk.At), int(blk.Close)+1),
-		SelectionRange: idx.at(int(blk.At), int(blk.Close)+1),
+		Range:          idx.at(int(blk.At), end),
+		SelectionRange: idx.at(int(blk.At), end),
 	}
 	for _, br := range blk.Branches {
 		for _, m := range br.Members {

@@ -772,3 +772,25 @@ func TestChartListsAreLists(t *testing.T) {
 		}
 	}
 }
+
+// TestLoopControlsNeedALoop rejects a continue or break that is not inside a for
+// body, and accepts both in one.
+func TestLoopControlsNeedALoop(t *testing.T) {
+	for _, stmt := range []string{"continue", "break"} {
+		if _, diag := validate(t, "Window { Column { "+stmt+" } }"); diag.Empty() {
+			t.Fatalf("%s outside a loop was accepted", stmt)
+		}
+	}
+	src := `Window {
+	Column {
+		for i := range 3 {
+			if i == 1 { continue }
+			if i == 2 { break }
+			Text { text: "x" }
+		}
+	}
+}`
+	if _, diag := validate(t, src); !diag.Empty() {
+		t.Fatalf("loop controls rejected: %v", diag)
+	}
+}

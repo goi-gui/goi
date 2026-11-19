@@ -496,6 +496,14 @@ func (p *parser) parseMemberList() memberList {
 				continue
 			}
 			switch t.text {
+			case "continue":
+				p.next()
+				out.members = append(out.members, &Block{Kind: BlockContinue, At: t.pos})
+				continue
+			case "break":
+				p.next()
+				out.members = append(out.members, &Block{Kind: BlockBreak, At: t.pos})
+				continue
 			case "if":
 				if blk := p.parseIfBlock(); blk != nil {
 					out.members = append(out.members, blk)

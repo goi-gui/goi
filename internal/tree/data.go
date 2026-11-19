@@ -8,6 +8,28 @@ import (
 	"github.com/goi-gui/goi/internal/syntax"
 )
 
+// loopRow is one built iteration of a {#each} loop. nodes holds its direct
+// children in source order; controls holds the continue and break statements
+// with the number of nodes built before each one.
+type loopRow struct {
+	nodes    []*NodeBase
+	controls []loopControl
+}
+
+// loopControl is one continue or break in a loop row. arm is the enclosing if
+// arm, nil when the statement sits directly in the loop body.
+type loopControl struct {
+	after int
+	brk   bool
+	arm   *condBranch
+}
+
+// loopBuild is the current iteration while its members are built.
+type loopBuild struct {
+	parent *NodeBase
+	row    *loopRow
+}
+
 // scope binds a loop variable to one value. Scopes chain, so a nested loop sees
 // its own variables first and the outer ones through parent.
 type scope struct {
@@ -58,7 +80,7 @@ func (t *Tree) SetData(name string, v any) {
 	t.vars[name] = v
 	// A fill can register inner blocks and drop others, so walk a snapshot.
 	for _, eb := range append([]*eachBlock(nil), t.eachs...) {
-		if t.live(eb.parent) && eb.walks(name) {
+		if t.live(eb.parent) && eb.refers(name) {
 			t.fillEach(eb)
 		}
 	}
@@ -72,6 +94,50 @@ func (t *Tree) SetData(name string, v any) {
 // `range len(bridge.rows)` follows the list it counts.
 func (eb *eachBlock) walks(name string) bool {
 	return eb.src == name || mentions(eb.rng, name)
+}
+
+// refers reports whether the loop reads name anywhere in its body, not only in
+// its range. A continue or break condition can decide which rows exist, so a
+// SetData of that variable has to rebuild the loop.
+func (eb *eachBlock) refers(name string) bool {
+	if eb.walks(name) {
+		return true
+	}
+	return membersMention(eb.arm, name)
+}
+
+// membersMention walks an arm for a bridge or data reference.
+func membersMention(members []syntax.Member, name string) bool {
+	for _, m := range members {
+		switch x := m.(type) {
+		case *syntax.Property:
+			if mentions(x.Value, name) {
+				return true
+			}
+		case *syntax.Element:
+			if membersMention(x.Members, name) {
+				return true
+			}
+		case *syntax.Block:
+			if mentions(x.Range, name) || mentions(x.Subject, name) {
+				return true
+			}
+			for _, br := range x.Branches {
+				if br.Cond != nil && mentions(br.Cond, name) {
+					return true
+				}
+				for _, v := range br.Vals {
+					if mentions(v, name) {
+						return true
+					}
+				}
+				if membersMention(br.Members, name) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // mentions reports whether v reads the bridge or data variable name, however
@@ -92,6 +158,24 @@ func mentions(v syntax.Value, name string) bool {
 		return mentions(x.X, name)
 	case *syntax.Ternary:
 		return mentions(x.Cond, name) || mentions(x.Then, name) || mentions(x.Else, name)
+	case *syntax.List:
+		for _, it := range x.Items {
+			if mentions(it, name) {
+				return true
+			}
+		}
+	case *syntax.Map:
+		for _, e := range x.Entries {
+			if mentions(e.Value, name) {
+				return true
+			}
+		}
+	case *syntax.Modifier:
+		for _, e := range x.Entries {
+			if mentions(e.Value, name) || mentions(e.Cond, name) {
+				return true
+			}
+		}
 	}
 	return false
 }
@@ -187,16 +271,25 @@ func (t *Tree) fillEach(eb *eachBlock) {
 		if eb.key != "" {
 			sc = &scope{name: eb.key, value: p.key, parent: sc}
 		}
+		row := &loopRow{}
+		prevLoop := t.loop
+		t.loop = &loopBuild{parent: eb.parent, row: row}
 		rows, err := t.buildInto(eb, eb.arm, sc, true)
+		t.loop = prevLoop
 		if err != nil {
 			t.setErr(err)
 			break
 		}
-		eb.nodes = append(eb.nodes, rows...)
-		if len(rows) > 0 {
+		row.nodes = rows
+		stop := t.applyLoopControls(row)
+		eb.nodes = append(eb.nodes, row.nodes...)
+		if len(row.nodes) > 0 {
 			for _, fn := range t.eachHooks[eb.listName] {
-				fn(rows[0].node, p.value)
+				fn(row.nodes[0].node, p.value)
 			}
+		}
+		if stop {
+			break
 		}
 	}
 	// buildInto appends to the parent; move the new rows back to the slot the
@@ -220,6 +313,13 @@ func (t *Tree) fillEach(eb *eachBlock) {
 // engine (nothing may read it in a property), so the bridge namespace is read
 // here directly.
 func (t *Tree) rangeValue(eb *eachBlock) (any, bool) {
+	if id, ok := eb.rng.(*syntax.Ident); ok {
+		for s := eb.scope; s != nil; s = s.parent {
+			if s.name == id.Val {
+				return s.value, true
+			}
+		}
+	}
 	if ref, ok := eb.rng.(*syntax.Ref); ok {
 		switch ref.ID {
 		case "bridge", "data":
@@ -338,6 +438,37 @@ func (t *Tree) rangePairs(eb *eachBlock) ([]rangePair, bool) {
 		return out, true
 	}
 	return nil, false
+}
+
+// collect records a direct node of the current loop row, so a later continue
+// or break knows where the row's remaining nodes start.
+func (t *Tree) collect(n *NodeBase, parent *NodeBase) {
+	if t.loop == nil || parent != t.loop.parent || n == nil {
+		return
+	}
+	t.loop.row.nodes = append(t.loop.row.nodes, n)
+}
+
+// applyLoopControls applies the first reached continue or break in a row. It
+// removes the nodes that follow the statement from the tree and reports
+// whether the loop should stop building later iterations.
+func (t *Tree) applyLoopControls(row *loopRow) bool {
+	done := map[*condBranch]bool{}
+	for _, c := range row.controls {
+		if c.arm != nil && !t.branchOK(c.arm, done) {
+			continue
+		}
+		keep := c.after
+		if keep > len(row.nodes) {
+			keep = len(row.nodes)
+		}
+		for _, n := range row.nodes[keep:] {
+			t.Remove(n.node)
+		}
+		row.nodes = row.nodes[:keep]
+		return c.brk
+	}
+	return false
 }
 
 // buildInto builds one member list under the block's parent with sc in scope and

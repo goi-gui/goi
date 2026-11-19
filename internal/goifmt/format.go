@@ -248,6 +248,17 @@ func (p *printer) members(members []syntax.Member, close syntax.Pos) {
 }
 
 func (p *printer) block(b *syntax.Block, stop syntax.Pos) {
+	if b.Kind == syntax.BlockContinue || b.Kind == syntax.BlockBreak {
+		p.commentsBefore(b.At)
+		p.indent()
+		if b.Kind == syntax.BlockContinue {
+			p.b.WriteString("continue\n")
+		} else {
+			p.b.WriteString("break\n")
+		}
+		p.trailing(stop)
+		return
+	}
 	if b.Kind == syntax.BlockFor {
 		p.commentsBefore(b.At)
 		p.indent()

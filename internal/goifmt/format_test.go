@@ -453,3 +453,18 @@ func TestFormatModulo(t *testing.T) {
 		t.Fatalf("format =\n%s", got)
 	}
 }
+
+// TestFormatLoopControls keeps continue and break on their own lines, with no
+// braces, inside the arm that contains them.
+func TestFormatLoopControls(t *testing.T) {
+	src := `Window { Column { for i := range 5 { if i == 1 { continue } if i == 3 { break } Text {} } } }`
+	got := string(Source([]byte(src)))
+	for _, want := range []string{"\t\t\t\tcontinue\n", "\t\t\t\tbreak\n"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("format =\n%s\nwant %q", got, want)
+		}
+	}
+	if again := string(Source([]byte(got))); again != got {
+		t.Fatalf("not idempotent:\n%s\n--- second ---\n%s", got, again)
+	}
+}

@@ -1228,3 +1228,39 @@ func TestParseModulo(t *testing.T) {
 		}
 	}
 }
+
+// TestParseLoopControls keeps continue and break as control blocks with no
+// body: only for is a braced block here.
+func TestParseLoopControls(t *testing.T) {
+	src := `Window {
+	Column {
+		for i := range 5 {
+			if i == 1 {
+				continue
+			}
+			if i == 3 {
+				break
+			}
+			Text { text: "x" }
+		}
+	}
+}`
+	f, diag := Parse([]byte(src))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	loop := f.Root.Children()[0].Members[0].(*Block)
+	if loop.Kind != BlockFor {
+		t.Fatalf("loop kind = %v", loop.Kind)
+	}
+	first := loop.Branches[0].Members[0].(*Block)
+	cont := first.Branches[0].Members[0].(*Block)
+	if cont.Kind != BlockContinue {
+		t.Fatalf("first control = %v, want continue", cont.Kind)
+	}
+	second := loop.Branches[0].Members[1].(*Block)
+	brk := second.Branches[0].Members[0].(*Block)
+	if brk.Kind != BlockBreak {
+		t.Fatalf("second control = %v, want break", brk.Kind)
+	}
+}

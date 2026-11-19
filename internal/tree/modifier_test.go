@@ -167,3 +167,56 @@ Window {
 	}
 	t.Fatal("the swatch did not build")
 }
+
+// TestLoopContinueBreak checks that continue drops the rest of its iteration
+// and break stops later iterations before they build nodes.
+func TestLoopContinueBreak(t *testing.T) {
+	tr := buildModifier(t, `Window {
+	Column {
+		for i := range 5 {
+			if i == 1 { continue }
+			if i == 3 { break }
+			Text { text: formatf("%d", i) }
+		}
+	}
+}`)
+	tr.ApplyExpressions()
+	var texts []string
+	for _, n := range tr.All() {
+		if tx, ok := n.(*Text); ok {
+			texts = append(texts, tx.Text.Get())
+		}
+	}
+	if len(texts) != 2 || texts[0] != "0" || texts[1] != "2" {
+		t.Fatalf("texts = %v, want [0 2]", texts)
+	}
+}
+
+// TestNestedListLoop is the shopping gallery: an outer loop over a list of
+// lists, skipped by index with continue. Changing the selected index rebuilds
+// the outer loop because its body reads the variable.
+func TestNestedListLoop(t *testing.T) {
+	tr := buildModifier(t, `bridge { images [][]string selected int }
+Window {
+	Column {
+		for i, list := range bridge.images {
+			if i != bridge.selected { continue }
+			for _, path := range list {
+				Text { text: path }
+			}
+		}
+	}
+}`)
+	images := [][]string{{"a", "b"}, {"c", "d"}}
+	tr.SetData("images", images)
+	tr.SetData("selected", 1)
+	tr.ApplyExpressions()
+	if got := texts(tr); len(got) != 2 || got[0] != "c" || got[1] != "d" {
+		t.Fatalf("selected 1 = %v, want [c d]", got)
+	}
+	tr.SetData("selected", 0)
+	tr.ApplyExpressions()
+	if got := texts(tr); len(got) != 2 || got[0] != "a" || got[1] != "b" {
+		t.Fatalf("selected 0 = %v, want [a b]", got)
+	}
+}

@@ -220,6 +220,10 @@ const (
 	BlockFor
 	// BlockSwitch is `switch expr { case a, b: ... default: ... }`.
 	BlockSwitch
+	// BlockContinue and BlockBreak are the loop statements `continue` and
+	// `break`. They have no arms and no body.
+	BlockContinue
+	BlockBreak
 )
 
 // Block is a control block inside an element body. Its arms are built and
