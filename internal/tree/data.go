@@ -14,6 +14,9 @@ import (
 type loopRow struct {
 	nodes    []*NodeBase
 	controls []loopControl
+	// dead marks a row the next fill replaced. A nested loop built in it keeps a
+	// pointer to the row, so it can tell that its own empty result is stale.
+	dead bool
 }
 
 // loopControl is one continue or break in a loop row. arm is the enclosing if
@@ -62,6 +65,12 @@ type eachBlock struct {
 	scope  *scope
 	hooks  *Hooks
 	nodes  []*NodeBase
+	// owner is the enclosing loop row, nil for a top-level loop. It is how an
+	// empty nested loop knows its row has gone away even though parent is shared.
+	owner *loopRow
+	// rows are the rows the last fill produced, so the next fill can mark them
+	// dead for their nested loops.
+	rows []*loopRow
 	// dead marks a nested loop whose parent row was removed. A SetData snapshot
 	// can still name it after an outer fill pruned it, so fillEach must skip it.
 	dead bool
@@ -211,6 +220,10 @@ func (t *Tree) OnEach(data string, fn func(Node, any)) {
 
 // buildFor registers a range loop and fills it from the value it walks.
 func (t *Tree) buildFor(blk *syntax.Block, parent *NodeBase, hooks *Hooks) error {
+	var owner *loopRow
+	if t.loop != nil {
+		owner = t.loop.row
+	}
 	eb := &eachBlock{
 		key:    blk.LoopKey(),
 		val:    blk.LoopVal(),
@@ -219,6 +232,7 @@ func (t *Tree) buildFor(blk *syntax.Block, parent *NodeBase, hooks *Hooks) error
 		at:     len(parent.kids),
 		scope:  t.scope,
 		hooks:  hooks,
+		owner:  owner,
 	}
 	if len(blk.Branches) > 0 {
 		eb.arm = blk.Branches[0].Members
@@ -251,9 +265,16 @@ func (t *Tree) setErr(err error) {
 // A loop is one node cheaper than Svelte's `{#each}`: there is no else arm, and
 // Go's rules decide what the names mean.
 func (t *Tree) fillEach(eb *eachBlock) {
+	if eb.owner != nil && eb.owner.dead {
+		eb.dead = true
+	}
 	if eb.dead || !t.live(eb.parent) {
 		return // its row is gone; prune marked the registration
 	}
+	for _, row := range eb.rows {
+		row.dead = true
+	}
+	eb.rows = nil
 	for _, n := range eb.nodes {
 		t.Remove(n.node)
 	}
@@ -284,6 +305,7 @@ func (t *Tree) fillEach(eb *eachBlock) {
 			break
 		}
 		row.nodes = rows
+		eb.rows = append(eb.rows, row)
 		stop := t.applyLoopControls(row)
 		eb.nodes = append(eb.nodes, row.nodes...)
 		if len(row.nodes) > 0 {
@@ -558,7 +580,7 @@ func (t *Tree) prune() {
 	// let the next SetData fill it into the same parent a second time.
 	keepEachs := t.eachs[:0]
 	for _, eb := range t.eachs {
-		alive := live(eb.parent)
+		alive := live(eb.parent) && (eb.owner == nil || !eb.owner.dead)
 		if alive && len(eb.nodes) > 0 {
 			alive = false
 			for _, n := range eb.nodes {

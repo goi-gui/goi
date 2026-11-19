@@ -250,3 +250,34 @@ Window {
 		t.Fatalf("selected 1 = %v, want [d e f]", got)
 	}
 }
+
+// TestNestedEmptyLoopDoesNotFillLater is the edge the node check cannot see:
+// the old inner loop produced no nodes because its condition filtered them all.
+// Its row is still gone, so moving to the next outer iteration must not fill
+// that old loop alongside the new one.
+func TestNestedEmptyLoopDoesNotFillLater(t *testing.T) {
+	tr := buildModifier(t, `bridge { groups [][]string items []string selected int }
+Window {
+	Column {
+		for i, group := range bridge.groups {
+			if i != bridge.selected { continue }
+			for _, item := range bridge.items {
+				if bridge.selected == 0 { continue }
+				Text { text: item }
+			}
+		}
+	}
+}`)
+	tr.SetData("groups", [][]string{{"x"}, {"y"}})
+	tr.SetData("items", []string{"a", "b"})
+	tr.SetData("selected", 0)
+	tr.ApplyExpressions()
+	if got := len(texts(tr)); got != 0 {
+		t.Fatalf("selected 0 has %d texts, want 0", got)
+	}
+	tr.SetData("selected", 1)
+	tr.ApplyExpressions()
+	if got := texts(tr); len(got) != 2 || got[0] != "a" || got[1] != "b" {
+		t.Fatalf("selected 1 = %v, want [a b]", got)
+	}
+}
