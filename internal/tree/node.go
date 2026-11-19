@@ -192,6 +192,12 @@ type NodeBase struct {
 	// scope binds the {#each} loop variables an expression inside this subtree
 	// may read.
 	scope *scope
+	// transitions maps a property to its duration; transitionStates holds the
+	// live interpolation for a property that changed. transitionListed keeps the
+	// node in the tree-level advance list.
+	transitions      map[string]transitionDef
+	transitionStates map[string]*transitionState
+	transitionListed bool
 }
 
 // NodeBase returns the node's shared state.

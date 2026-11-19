@@ -3,6 +3,7 @@ package syntax
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 const validUI = `// a counter
@@ -1262,5 +1263,27 @@ func TestParseLoopControls(t *testing.T) {
 	brk := second.Branches[0].Members[0].(*Block)
 	if brk.Kind != BlockBreak {
 		t.Fatalf("second control = %v, want break", brk.Kind)
+	}
+}
+
+func TestParseTransition(t *testing.T) {
+	src := `Window {
+	Rectangle {
+		transition: width 500ms, height 500ms, background 1s
+	}
+}`
+	f, diag := Parse([]byte(src))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	tr, ok := f.Root.Children()[0].Prop("transition").Value.(*Transition)
+	if !ok || len(tr.Entries) != 3 {
+		t.Fatalf("transition = %#v", f.Root.Children()[0].Prop("transition").Value)
+	}
+	if tr.Entries[0].Property != "width" || tr.Entries[0].Duration != 500*time.Millisecond {
+		t.Fatalf("first entry = %+v", tr.Entries[0])
+	}
+	if tr.Entries[2].Property != "background" || tr.Entries[2].Duration != time.Second {
+		t.Fatalf("third entry = %+v", tr.Entries[2])
 	}
 }

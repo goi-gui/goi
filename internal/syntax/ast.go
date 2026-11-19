@@ -6,7 +6,10 @@
 // child element by looking at the token after the identifier.
 package syntax
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 // Pos is a byte offset into the source, converted to line/column for diagnostics.
 type Pos int
@@ -407,14 +410,15 @@ const (
 	ShadowKind
 	RotateKind
 	ScaleKind
+	TransitionKind
 	ModifierValueKind
 	ListKind
 	SlotRefKind
 )
 
 // Value is a property literal. The concrete type is one of *String,
-// *Number, *Bool, *Color, *Ident, *Map, *Percent, *Ref, *Binary, *Shadow or
-// *List.
+// *Number, *Bool, *Color, *Ident, *Map, *Percent, *Ref, *Binary, *Shadow,
+// *Transition or *List.
 type Value interface {
 	Kind() ValueKind
 	Pos() Pos
@@ -452,6 +456,26 @@ type List struct {
 	At    Pos
 	Items []Value
 }
+
+// Transition is `width 500ms, height 500ms, background 1s`: the properties a
+// node animates when their value changes, with how long each takes. `all` is
+// the wildcard every property falls back to.
+type Transition struct {
+	At      Pos
+	Entries []TransitionEntry
+}
+
+// TransitionEntry is one property and its duration.
+type TransitionEntry struct {
+	Property string
+	Duration time.Duration
+}
+
+// Kind implements Value.
+func (*Transition) Kind() ValueKind { return TransitionKind }
+
+// Pos implements Value.
+func (t *Transition) Pos() Pos { return t.At }
 
 // Kind implements Value.
 func (*List) Kind() ValueKind { return ListKind }

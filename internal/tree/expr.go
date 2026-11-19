@@ -78,6 +78,9 @@ func (b *NodeBase) applyValue(name string, v syntax.Value) bool {
 			return true
 		}
 	}
+	if !isExpression(v) && !b.isLoopVar(v) && b.applyTransitionLiteral(name, v) {
+		return true
+	}
 	if isExpression(v) || b.isLoopVar(v) {
 		return b.setExpr(name, v)
 	}
@@ -152,6 +155,9 @@ type colorRef struct {
 func (b *NodeBase) writeExpr(name string, v any) {
 	if r, ok := v.(colorRef); ok {
 		b.writeRole(name, r.ns+":"+r.role)
+		return
+	}
+	if b.writeTransitionExpr(name, v) {
 		return
 	}
 	// A number written into a string property is formatted, so `text: data.count`

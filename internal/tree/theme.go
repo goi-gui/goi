@@ -61,15 +61,13 @@ func (b *NodeBase) writeRole(name, role string) {
 	}
 }
 
-// writeColor stores a resolved color without marking the node dirty. The
-// resolver decides whether the change needs a repaint.
+// writeColor stores a resolved color. A transition on the property turns the
+// write into its target instead of changing the cell immediately.
 func (b *NodeBase) writeColor(name string, rgba uint32) bool {
-	b.properties()
-	if i, ok := b.byName[name]; ok {
-		b.props[i].SetColor(rgba)
+	if b.transitionColor(name, rgba) {
 		return true
 	}
-	return false
+	return b.writeColorRaw(name, rgba)
 }
 
 // ResolveColors rewrites every role-valued color from the current scheme. It

@@ -302,6 +302,9 @@ func (a *App) frame() {
 	if a.resolveColors() {
 		a.needsFrame = true
 	}
+	if a.win.tree.AdvanceTransitions(dt) {
+		a.needsFrame = true
+	}
 	// A role may just have given an SVG its colour, and Go may have changed it
 	// between frames. This runs before layout, so a changed src can still size.
 	a.syncSVGs()

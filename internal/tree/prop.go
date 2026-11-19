@@ -176,6 +176,26 @@ func (p *NamedProp) Get() any {
 	return nil
 }
 
+// Written reports whether the design or Go set this property, as opposed to it
+// holding the value it started with.
+func (p *NamedProp) Written() bool {
+	switch p.kind {
+	case propNumber:
+		return p.cell.(*Prop[float64]).written
+	case propString, propEnum, propScalar:
+		return p.cell.(*Prop[string]).written
+	case propBool:
+		return p.cell.(*Prop[bool]).written
+	case propColor:
+		return p.cell.(*Prop[uint32]).written
+	case propRotate:
+		return p.cell.(*Prop[Rotation]).written
+	case propScale:
+		return p.cell.(*Prop[Scale]).written
+	}
+	return false
+}
+
 // Same reports whether v already is this property's value, without boxing the
 // current one.
 func (p *NamedProp) Same(v any) bool {

@@ -201,9 +201,13 @@ func (l *lexer) run() ([]token, Diagnostics) {
 		case c == '"':
 			l.lexString(start)
 		case c == '#':
-			// A '# right after '{' opens a block directive ({#if ...}); a value
-			// can never follow '{', because a map starts with a key.
-			if n := len(l.toks); n > 0 && l.toks[n-1].kind == tokLBrace {
+			// A '# right after '{' may open the old {#if}/{#each} spelling. Only
+			// those words are directives: a colour literal such as
+			// `conditional { #411f89ff: ... }` starts with a hex digit and must
+			// still reach the colour lexer.
+			if n := len(l.toks); n > 0 && l.toks[n-1].kind == tokLBrace &&
+				(strings.HasPrefix(string(l.src[l.off+1:]), "if") ||
+					strings.HasPrefix(string(l.src[l.off+1:]), "each")) {
 				l.off++
 				l.emit(token{kind: tokHash, pos: Pos(start), end: Pos(l.off)})
 				continue

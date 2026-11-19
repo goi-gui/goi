@@ -75,6 +75,9 @@ type Tree struct {
 	// loop is the iteration being built, nil outside an {#each} row. It collects
 	// the direct nodes and continue/break markers of that iteration.
 	loop *loopBuild
+	// transitionNodes holds nodes with a live transition, so the frame loop
+	// advances only the nodes that need it.
+	transitionNodes []*NodeBase
 	// dataErr is the first error a data fill hit, reported to the app.
 	dataErr error
 	// bridge holds the Go handlers a design's bridge block declares.
@@ -238,6 +241,13 @@ func (t *Tree) build(el *syntax.Element, parent *NodeBase, hooks *Hooks) (Node, 
 		if _, ok := schema.Event(p.Name); ok {
 			if err := t.bindEvent(b, p.Name, p.Value); err != nil {
 				return nil, fmt.Errorf("%s: %w", el.Name, err)
+			}
+			continue
+		}
+		if p.Name == "transition" {
+			tr, ok := p.Value.(*syntax.Transition)
+			if !ok || !b.setTransitions(tr) {
+				return nil, fmt.Errorf("%s.transition: expected a property and duration list, or a property it does not have", el.Name)
 			}
 			continue
 		}

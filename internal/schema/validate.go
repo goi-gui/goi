@@ -889,6 +889,11 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 	}
 
 	switch pd.Type {
+	case TypeTransition:
+		if _, ok := val.(*syntax.Transition); !ok {
+			fail("a transition list like `width 500ms, background 1s`")
+		}
+		return
 	case TypeRotate:
 		if _, ok := val.(*syntax.Rotate); !ok {
 			fail("a rotate value: none, 90deg, x 90deg or 1 1 1 90deg")

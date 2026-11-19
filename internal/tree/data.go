@@ -566,6 +566,14 @@ func (t *Tree) prune() {
 	}
 	t.colorNodes = keepColors
 
+	keepTransitions := t.transitionNodes[:0]
+	for _, b := range t.transitionNodes {
+		if live(b) {
+			keepTransitions = append(keepTransitions, b)
+		}
+	}
+	t.transitionNodes = keepTransitions
+
 	keepShadows := t.shadowNodes[:0]
 	for _, b := range t.shadowNodes {
 		if live(b) {

@@ -80,6 +80,9 @@ func (b *NodeBase) applyConditionals() {
 		}
 		if cur, ok := b.PropValue(cp.name); ok && literalMatches(cur, cp.fallback) &&
 			b.colorRoleFor(cp.name) == "" && b.Gradient(cp.name) == nil {
+			// The cell already holds the fallback; seed the transition from it so
+			// the next matching arm has a start value instead of jumping.
+			b.initTransitionCurrent(cp.name)
 			continue
 		}
 		if b.applyValue(cp.name, cp.fallback) {

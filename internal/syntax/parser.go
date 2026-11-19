@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"bytes"
+	"time"
 
 	"github.com/goi-gui/goi/internal/csscolor"
 )
@@ -878,6 +879,8 @@ func (p *parser) parseProperty() (*Property, bool) {
 		v, ok = p.parseRotate()
 	case "scale":
 		v, ok = p.parseScale()
+	case "transition":
+		v, ok = p.parseTransition()
 	default:
 		v, ok = p.parseValue()
 	}
@@ -893,6 +896,66 @@ func (p *parser) parseProperty() (*Property, bool) {
 		p.next()
 	}
 	return prop, true
+}
+
+// parseTransition reads `width 500ms, height 500ms, background 1s`. Durations
+// need a unit; `none` is an empty list.
+func (p *parser) parseTransition() (Value, bool) {
+	if t := p.peek(); t.kind == tokIdent && t.text == "none" {
+		p.next()
+		return &Transition{At: t.pos}, true
+	}
+	tr := &Transition{At: p.peek().pos}
+	for {
+		name := p.peek()
+		if name.kind != tokIdent {
+			p.errorf(name, "expected a property name in transition")
+			return nil, false
+		}
+		p.next()
+		d, ok := p.parseDuration()
+		if !ok {
+			return nil, false
+		}
+		tr.Entries = append(tr.Entries, TransitionEntry{Property: name.text, Duration: d})
+		if p.peek().kind != tokComma {
+			break
+		}
+		p.next()
+		if p.peek().kind == tokEOF || p.peek().kind == tokRBrace {
+			break
+		}
+	}
+	if len(tr.Entries) == 0 {
+		p.errorf(p.peek(), "expected a property and duration in transition")
+		return nil, false
+	}
+	return tr, true
+}
+
+// parseDuration reads a number with its ms or s unit. The unit must touch the
+// number, so `1 s` does not silently mean one second.
+func (p *parser) parseDuration() (time.Duration, bool) {
+	t := p.peek()
+	if t.kind != tokNumber {
+		p.errorf(t, "expected a duration such as 500ms or 1s")
+		return 0, false
+	}
+	p.next()
+	unit := p.peek()
+	if unit.kind != tokIdent || unit.pos != t.end {
+		p.errorf(unit, "a duration needs ms or s directly after the number")
+		return 0, false
+	}
+	p.next()
+	switch unit.text {
+	case "ms":
+		return time.Duration(t.num * float64(time.Millisecond)), true
+	case "s":
+		return time.Duration(t.num * float64(time.Second)), true
+	}
+	p.errorf(unit, "a duration unit is ms or s, not "+unit.text)
+	return 0, false
 }
 
 // parseRotate reads a CSS rotate: `none`, `90deg`, `x 90deg` or `1 1 1 90deg`.

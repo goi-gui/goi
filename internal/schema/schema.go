@@ -35,6 +35,8 @@ const (
 	TypeList
 	// TypeCoords is one item of a coordinate list: `[lon, lat]`.
 	TypeCoords
+	// TypeTransition is `width 500ms, height 500ms, background 1s`.
+	TypeTransition
 )
 
 func (t ValueType) String() string {
@@ -61,6 +63,8 @@ func (t ValueType) String() string {
 		return "a scale value"
 	case TypeCoords:
 		return "a [lon, lat] pair"
+	case TypeTransition:
+		return "a transition list"
 	}
 	return "unknown"
 }
@@ -265,6 +269,8 @@ var common = []Prop{
 	// A CSS-style shadow: on Text it shadows the glyphs, everywhere else the
 	// box. It paints outside the layout box, so it never changes layout.
 	{Name: "shadow", Type: TypeShadow, Dirty: DirtyPaint, Common: true},
+	// transition names the properties that animate when their value changes.
+	{Name: "transition", Type: TypeTransition, Dirty: DirtyNone, Common: true},
 	{Name: "visible", Type: TypeBool, Dirty: DirtyLayout, Default: true, Common: true},
 	// ripple asks for press feedback on any element. Unwritten keeps the host's
 	// default: a component that paints one keeps it, a plain element has none.

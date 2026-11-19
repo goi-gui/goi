@@ -226,7 +226,7 @@ func TestEveryPropertyAcceptsPlainAndResponsive(t *testing.T) {
 	for _, name := range ElementNames() {
 		def, _ := Lookup(name)
 		for _, pd := range def.Attrs {
-			if pd.Type == TypeID {
+			if pd.Type == TypeID || pd.Type == TypeTransition {
 				continue
 			}
 			val := plainValue(pd)

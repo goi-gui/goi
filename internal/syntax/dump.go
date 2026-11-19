@@ -143,6 +143,15 @@ func dumpValue(v Value) string {
 			parts[i] = dumpShadowLayer(l)
 		}
 		return strings.Join(parts, ", ")
+	case *Transition:
+		if len(v.Entries) == 0 {
+			return "none"
+		}
+		parts := make([]string, len(v.Entries))
+		for i, e := range v.Entries {
+			parts[i] = e.Property + " " + e.Duration.String()
+		}
+		return strings.Join(parts, ", ")
 	case *String:
 		return strconv.Quote(v.Val)
 	case *Number:
