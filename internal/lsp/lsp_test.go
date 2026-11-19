@@ -2533,3 +2533,35 @@ func TestVersionIsReported(t *testing.T) {
 		t.Fatalf("version = %q, want dev or a module version", got)
 	}
 }
+
+// TestCompletionOffersLoopControls offers continue and break inside a for
+// body, and keeps them out of an ordinary element body.
+func TestCompletionOffersLoopControls(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tColumn {\n\t\tfor i := range 5 {\n\t\t\tif i == 1 {\n\t\t\t\tco\n\t\t\t}\n\t\t\tbr\n\t\t}\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	labels := func(marker string) map[string]bool {
+		out := map[string]bool{}
+		for _, it := range completionAt(t, c, uri, src, marker).Items {
+			out[it.Label] = true
+		}
+		return out
+	}
+	if got := labels("\t\t\t\tco"); !got["continue"] {
+		t.Fatalf("continue missing inside a for: %v", got)
+	}
+	if got := labels("\t\t\tbr"); !got["break"] {
+		t.Fatalf("break missing inside a for: %v", got)
+	}
+	outside := "Window {\n\tColumn {\n\t\tco\n\t}\n}\n"
+	outURI := writeDesign(t, dir, "outside.goi", outside)
+	c.openDoc(outURI, outside)
+	for _, it := range completionAt(t, c, outURI, outside, "\t\tco").Items {
+		if it.Label == "continue" || it.Label == "break" {
+			t.Fatalf("%s offered outside a loop", it.Label)
+		}
+	}
+}

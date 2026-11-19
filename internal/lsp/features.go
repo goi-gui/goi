@@ -274,6 +274,7 @@ func (s *Server) completion(raw json.RawMessage) any {
 		} else {
 			items = append(items, memberItems(file, d.text, off)...)
 			items = append(items, blockItems(file)...)
+			items = append(items, loopControlItems(file, off)...)
 		}
 	case prop == "" && !inMap:
 		items = append(items, elementItems(file)...)
@@ -471,6 +472,46 @@ func builtinItems() []completionResult {
 
 // blockItems offers the control statements a body can contain, written the way
 // Go writes them.
+// loopControlItems offers continue and break only where a for body can use
+// them. A nested element under the loop still counts as inside for completion;
+// the validator rejects the statement there, but the popup is not the place to
+// explain that.
+func loopControlItems(file *syntax.File, off int) []completionResult {
+	if !insideFor(file, off) {
+		return nil
+	}
+	return []completionResult{
+		{
+			Label: "continue", Kind: kindKeyword, Detail: "loop control",
+			Documentation: &doc{Kind: "markdown", Value: "**continue**\n\nSkips the rest of the current loop iteration. Write it directly in a `for` body or in an `if` arm there."},
+		},
+		{
+			Label: "break", Kind: kindKeyword, Detail: "loop control",
+			Documentation: &doc{Kind: "markdown", Value: "**break**\n\nStops the loop after the current iteration. Write it directly in a `for` body or in an `if` arm there."},
+		},
+	}
+}
+
+// insideFor reports whether off sits in the body of a range loop.
+func insideFor(file *syntax.File, off int) bool {
+	if file == nil || file.Root == nil {
+		return false
+	}
+	found := false
+	syntax.WalkElements(file.Root, func(e *syntax.Element) {
+		for _, m := range e.Members {
+			if b, ok := m.(*syntax.Block); ok {
+				walkBlocks(b, func(x *syntax.Block) {
+					if x.Kind == syntax.BlockFor && off > int(x.At) && off <= int(x.Close) {
+						found = true
+					}
+				})
+			}
+		}
+	})
+	return found
+}
+
 func blockItems(file *syntax.File) []completionResult {
 	list := "bridge.rows"
 	if lists := listVars(file); len(lists) > 0 {
