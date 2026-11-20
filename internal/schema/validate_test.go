@@ -819,3 +819,13 @@ func TestBackdropBlurGradient(t *testing.T) {
 		t.Fatal("a colour gradient passed as a blur gradient")
 	}
 }
+
+// TestHeroValidates checks the shared-element wrapper and its duration.
+func TestHeroValidates(t *testing.T) {
+	if _, diag := validate(t, `Window { Hero { tag: "pic" duration: 300ms Rectangle { width: 10 height: 10 } } }`); !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	if _, diag := validate(t, `Window { Hero { tag: "pic" Rectangle { width: 10 height: 10 } } }`); !diag.Empty() {
+		t.Fatalf("default duration: %v", diag)
+	}
+}

@@ -400,6 +400,10 @@ var elements = func() []Element {
 			Prop{Name: "crossAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
 			Prop{Name: "mainAxisAlign", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "start"},
 		)},
+		{Name: "Hero", Children: true, Attrs: withCommon(
+			Prop{Name: "tag", Type: TypeString, Dirty: DirtyPaint, Default: ""},
+			Prop{Name: "duration", Type: TypeDuration, Dirty: DirtyPaint, Default: 300 * time.Millisecond},
+		)},
 		{Name: "GestureDetector", Children: true, Attrs: withCommon()},
 		{Name: "Positioned", Children: true, Attrs: withCommon(
 			Prop{Name: "left", Type: TypeNumber, Dirty: DirtyLayout, Default: -1.0}, // -1 = auto

@@ -79,6 +79,11 @@ type Tree struct {
 	// transitionNodes holds nodes with a live transition, so the frame loop
 	// advances only the nodes that need it.
 	transitionNodes []*NodeBase
+	// heroPrev and heroNow record the visible Heroes of the previous and
+	// current painted frame; heroFlights keeps the tags currently flying.
+	heroPrev    map[string]heroSnapshot
+	heroNow     map[string]heroSnapshot
+	heroFlights map[string]*HeroFlight
 	// building is true while a tree or a loop row is being built. The first
 	// literal value of a transitioned property must not animate in from a
 	// default or a responsive base.
@@ -543,7 +548,7 @@ func newNode(name string) Node {
 			Maximized:       newProp(nil, "maximized", DirtyPaint, false),
 			Fullscreen:      newProp(nil, "fullscreen", DirtyPaint, false),
 		}
-	case "Column", "Row", "Flex", "Stack", "ClipRRect", "Wrap", "Grid", "TitleBar", "AspectRatio", "GestureDetector":
+	case "Column", "Row", "Flex", "Stack", "ClipRRect", "Wrap", "Grid", "TitleBar", "AspectRatio", "GestureDetector", "Hero":
 		c := Container{
 			NodeBase:   b(),
 			Spacing:    newProp(nil, "spacing", DirtyLayout, 0.0),
@@ -573,6 +578,12 @@ func newNode(name string) Node {
 			return &AspectRatio{Container: c, Ratio: newProp(nil, "aspectRatio", DirtyLayout, 1.0)}
 		case "GestureDetector":
 			return &GestureDetector{Container: c}
+		case "Hero":
+			return &Hero{
+				Container: c,
+				Tag:       newProp(nil, "tag", DirtyPaint, ""),
+				Duration:  newProp(nil, "duration", DirtyPaint, 300*time.Millisecond),
+			}
 		default:
 			return &Stack{Container: c}
 		}

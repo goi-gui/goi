@@ -2656,3 +2656,14 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   horizontally; a horizontal boundary then stayed sharp. The instance builder
   always writes 1 or 2, and the gradient mask rides on the composite instance
   instead.
+
+- **A Hero flies the last painted content of its tag, not a live route.** goi
+  has no route stack, so a page switch is any update that hides one Hero and
+  shows another with the same tag in the next painted frame. The painter caches
+  each visible Hero's ops; when the tag's node changes, the old ops are scaled
+  and translated from the old box to the new one over the Hero's duration, the
+  destination Hero is hidden, and the flight is painted above the page. This is
+  enough to animate a photo or a card between conditional pages without a
+  second render target. The flight is one-way: switching again ends it, and the
+  next page draws normally. A tag must be unique among the visible Heroes, and a
+  Hero that only moves within one page follows layout instead.

@@ -228,17 +228,34 @@ type List struct {
 	// Animating reports whether this list drew something that moves on its own,
 	// so the frame loop knows to draw the next one.
 	Animating bool
+	// heroOps are the flight copies of shared elements, collected during the
+	// walk and painted above the page.
+	heroOps []Op
+	// heroCache keeps the last painted ops of each Hero tag, so a flight can
+	// show the source page's content rather than the destination's.
+	heroCache map[string][]Op
 }
 
 // Reset empties the list but keeps its capacity.
 func (l *List) Reset() {
 	l.Ops = l.Ops[:0]
+	l.heroOps = l.heroOps[:0]
 	l.Animating = false
 }
 
 // Build fills l from tr. size is the client area in logical pixels.
 func (l *List) Build(tr *tree.Tree, w, h float64) {
+	if tr != nil {
+		tr.BeginHeroFrame()
+	}
 	l.BuildClip(tr, w, h, tree.Rect{W: w, H: h})
+	if len(l.heroOps) > 0 {
+		l.Ops = append(l.Ops, l.heroOps...)
+		l.heroOps = l.heroOps[:0]
+	}
+	if tr != nil {
+		tr.EndHeroFrame()
+	}
 }
 
 // BuildClip builds the display list with an initial clip, which is how a theme
@@ -485,6 +502,7 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 	l.applyScale(from, b, r)
 	l.applyOpacity(from, b.Opacity())
 	l.applyDisabled(from, b)
+	l.heroFinish(b, r, from)
 	l.family = outerFamily
 	l.scrollClip = outerScroll
 }

@@ -111,6 +111,7 @@ type (
 	TitleBar   = tree.TitleBar
 	Stack      = tree.Stack
 	Positioned = tree.Positioned
+	Hero       = tree.Hero
 	Wrap       = tree.Wrap
 	Grid       = tree.Grid
 	Rectangle  = tree.Rectangle

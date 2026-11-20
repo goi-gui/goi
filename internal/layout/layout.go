@@ -194,7 +194,7 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 		e.linear(b, kids, cw, ch, pe.Left+be.Left, true, pe.Top+be.Top)
 	case "Flex":
 		e.linear(b, kids, cw, ch, pe.Left+be.Left, flowHorizontal(b), pe.Top+be.Top)
-	case "Stack", "ClipRRect", "Positioned", "AspectRatio", "GestureDetector":
+	case "Stack", "ClipRRect", "Positioned", "AspectRatio", "GestureDetector", "Hero":
 		e.stackChildren(b, w, h, pe.Left+be.Left, pe.Top+be.Top, pe.Right+be.Right, pe.Bottom+be.Bottom)
 	case "Wrap":
 		e.wrap(b, kids, cw, ch, pe.Left+be.Left, pe.Top+be.Top)
@@ -1372,6 +1372,8 @@ func containerOf(b *tree.NodeBase) *tree.Container {
 		return &n.Container
 	case *tree.GestureDetector:
 		return &n.Container
+	case *tree.Hero:
+		return &n.Container
 	}
 	// A node that is not a container has no spacing or alignment of its own.
 	// Its zero value answers both questions; sharing one avoids an allocation
@@ -1403,6 +1405,8 @@ func containerKind(b *tree.NodeBase) (*tree.Container, bool) {
 	case *tree.AspectRatio:
 		return &n.Container, true
 	case *tree.GestureDetector:
+		return &n.Container, true
+	case *tree.Hero:
 		return &n.Container, true
 	}
 	return nil, false
@@ -1648,7 +1652,7 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 	}
 
 	horizontal := flowHorizontal(k)
-	stack := kind == "Stack" || kind == "GestureDetector" || kind == "Point"
+	stack := kind == "Stack" || kind == "Hero" || kind == "GestureDetector" || kind == "Point"
 	innerH := maxf(availH-insetH, 0)
 	var mainSum, maxW, maxH float64
 	for i, c := range kids {
