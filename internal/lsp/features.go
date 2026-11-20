@@ -39,7 +39,7 @@ func (s *Server) validate(d *document) {
 		return
 	}
 
-	fsys, name := s.dirOverlay(d)
+	fsys, name := s.designOverlay(d)
 	bundle, diag := asset.Load(fsys, name)
 	if !diag.Empty() {
 		// The bundle carries the sources it managed to read, so each diagnostic
@@ -56,15 +56,16 @@ func (s *Server) validate(d *document) {
 // publishDiagSet groups diagnostics by file and publishes each group, then
 // clears any file in this design that no longer has one.
 func (s *Server) publishDiagSet(d *document, idx lineIndex, diag syntax.Diagnostics, bundle *asset.Bundle) {
-	dir := filepath.Dir(d.path)
-	base := filepath.Base(d.path)
-
+	root, _ := s.designRootFor(d)
 	byURI := map[string]syntax.Diagnostics{}
 	for _, item := range diag {
 		// An empty Src means "the file being validated".
 		uri := d.uri
-		if item.Src != "" && item.Src != base {
-			uri = pathToURI(filepath.Join(dir, filepath.FromSlash(item.Src)))
+		if item.Src != "" {
+			target := filepath.Join(root, filepath.FromSlash(item.Src))
+			if filepath.Clean(target) != filepath.Clean(d.path) {
+				uri = pathToURI(target)
+			}
 		}
 		byURI[uri] = append(byURI[uri], item)
 	}
@@ -73,7 +74,7 @@ func (s *Server) publishDiagSet(d *document, idx lineIndex, diag syntax.Diagnost
 		useIdx := idx
 		if uri != d.uri {
 			// Each file has its own offsets, so the index follows the file.
-			if body, ok := bundle.Sources[baseOf(uri, dir)]; ok {
+			if body, ok := bundle.Sources[items[0].Src]; ok {
 				useIdx = newLineIndex(body)
 			}
 		}
@@ -84,7 +85,7 @@ func (s *Server) publishDiagSet(d *document, idx lineIndex, diag syntax.Diagnost
 		if _, ok := byURI[uri]; ok {
 			continue
 		}
-		if filepath.Dir(uriToPath(uri)) == dir {
+		if _, ok := relUnder(root, uriToPath(uri)); ok {
 			s.publish(uri, nil)
 		}
 	}
@@ -109,16 +110,6 @@ func convertDiags(idx lineIndex, diag syntax.Diagnostics) []diagnostic {
 		})
 	}
 	return out
-}
-
-// baseOf maps a file URI back to the bundle-relative name it was loaded under.
-func baseOf(uri, dir string) string {
-	p := uriToPath(uri)
-	rel, err := filepath.Rel(dir, p)
-	if err != nil {
-		return filepath.Base(p)
-	}
-	return filepath.ToSlash(rel)
 }
 
 // ---------------------------------------------------------------- completion
@@ -179,6 +170,8 @@ const (
 	kindClass      = 7
 	kindProperty   = 10
 	kindKeyword    = 14
+	kindFile       = 17
+	kindFolder     = 19
 	kindColor      = 16
 	kindValue      = 12
 	kindEnumMember = 20
@@ -214,6 +207,9 @@ func (s *Server) completion(raw json.RawMessage) any {
 	// a popup there would only interrupt the prose.
 	if insideBlockString(d.text, off) {
 		return completionList{}
+	}
+	if kind, start, end, prefix, ok := pathAt(d.text, off); ok {
+		return completionList{Items: s.pathItems(d, kind, prefix, start, end)}
 	}
 
 	items := []completionResult{}
@@ -1959,15 +1955,20 @@ func (s *Server) definition(raw json.RawMessage) any {
 		return nil
 	}
 	off := newLineIndex(d.text).offset(pos)
-	dir := filepath.Dir(d.path)
 	for _, imp := range file.Imports {
 		// The alias names the element that instantiates the fragment.
 		if off >= int(imp.AliasAt) && off <= int(imp.AliasAt)+len(imp.Alias) {
-			return []location{{URI: pathToURI(filepath.Join(dir, filepath.FromSlash(imp.Path)))}}
+			if target, ok := s.resolveImport(d, imp.Path); ok {
+				return []location{{URI: pathToURI(target)}}
+			}
+			return nil
 		}
 		// The path itself: find the quoted token that follows `import`.
 		if start, end, ok := importPathRange(d.text, int(imp.At)); ok && off >= start && off <= end {
-			return []location{{URI: pathToURI(filepath.Join(dir, filepath.FromSlash(imp.Path)))}}
+			if target, ok := s.resolveImport(d, imp.Path); ok {
+				return []location{{URI: pathToURI(target)}}
+			}
+			return nil
 		}
 	}
 	// A reference jumps to the element that declares the id.
@@ -1982,7 +1983,10 @@ func (s *Server) definition(raw json.RawMessage) any {
 	if _, _, el := elementNameAt(file, off); el != nil {
 		for _, imp := range file.Imports {
 			if imp.Alias == el.Name {
-				return []location{{URI: pathToURI(filepath.Join(dir, filepath.FromSlash(imp.Path)))}}
+				if target, ok := s.resolveImport(d, imp.Path); ok {
+					return []location{{URI: pathToURI(target)}}
+				}
+				return nil
 			}
 		}
 	}
@@ -2911,7 +2915,10 @@ func (s *Server) fragmentAt(d *document, file *syntax.File, src []byte, off int)
 // has one open, the file on disk otherwise. A broken or missing fragment gives
 // nil, and completion falls back to the schema only.
 func (s *Server) importFile(d *document, imp syntax.Import) *syntax.File {
-	target := filepath.Clean(filepath.Join(filepath.Dir(d.path), filepath.FromSlash(imp.Path)))
+	target, ok := s.resolveImport(d, imp.Path)
+	if !ok {
+		return nil
+	}
 	if open, ok := s.docs[pathToURI(target)]; ok {
 		f, diag := syntax.Parse(open.text)
 		if diag.Empty() {

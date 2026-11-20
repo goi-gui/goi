@@ -2998,7 +2998,7 @@ func TestCompletionAutoImportsAFragment(t *testing.T) {
 			t.Fatalf("import edits = %+v", it.AdditionalTextEdits)
 		}
 		edit := it.AdditionalTextEdits[0]
-		if edit.NewText != "import \"./Side.goi\"\n\n" {
+		if edit.NewText != "import \"goi://Side.goi\"\n\n" {
 			t.Fatalf("import text = %q", edit.NewText)
 		}
 		if edit.Range.Start.Line != 0 || edit.Range.Start.Character != 0 {
@@ -3054,17 +3054,138 @@ func TestCodeActionImportsTheUnknownFragment(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, a := range actions {
-		if a.Title != `Import "./Side.goi"` {
+		if a.Title != `Import "goi://Side.goi"` {
 			continue
 		}
 		if a.Kind != "quickfix" {
 			t.Fatalf("kind = %q", a.Kind)
 		}
 		got := a.Edit.DocumentChanges[0].Edits[0].NewText
-		if got != "import \"./Side.goi\"\n\n" {
+		if got != "import \"goi://Side.goi\"\n\n" {
 			t.Fatalf("import text = %q", got)
 		}
 		return
 	}
 	t.Fatalf("no import quick fix: %+v", actions)
+}
+
+// projectDesign writes one file under dir/assets and returns its URI.
+func projectDesign(t *testing.T, dir, name, src string) string {
+	t.Helper()
+	full := filepath.Join(dir, "assets", filepath.FromSlash(name))
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return writeDesign(t, filepath.Dir(full), filepath.Base(full), src)
+}
+
+// TestContainerImportAndAutoImport: goi:// imports resolve from the goi.yaml
+// assets root, and auto import offers files from anywhere under it with a
+// container path.
+func TestContainerImportAndAutoImport(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "goi.yaml"), []byte("assets: assets\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	otherURI := projectDesign(t, dir, "shared/Other.goi", "Column { Text { text: \"other\" } }\n")
+	projectDesign(t, dir, "ui/Side.goi", "Column { Text { text: \"side\" } }\n")
+	projectDesign(t, dir, "pages/Page.goi", "Column { Text { text: \"page\" } }\n")
+	if err := os.MkdirAll(filepath.Join(dir, "outside"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeDesign(t, filepath.Join(dir, "outside"), "Stray.goi", "Column {}\n")
+	src := "import \"goi://shared/Other.goi\"\n\nWindow {\n\tColumn {\n\t\tOther {}\n\t\t\n\t}\n}\n"
+	uri := projectDesign(t, dir, "ui/Main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/definition", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "\t\tOther {}", 2),
+	})
+	var locs []location
+	if err := json.Unmarshal(res, &locs); err != nil {
+		t.Fatal(err)
+	}
+	if len(locs) != 1 || locs[0].URI != otherURI {
+		t.Fatalf("goi:// definition = %+v, want %s", locs, otherURI)
+	}
+	list := completionAt(t, c, uri, src, "\t\t")
+	var side, page bool
+	for _, it := range list.Items {
+		if len(it.AdditionalTextEdits) == 0 {
+			continue
+		}
+		switch it.Label {
+		case "Side":
+			side = true
+			if got := it.AdditionalTextEdits[0].NewText; got != "import \"goi://ui/Side.goi\"\n" {
+				t.Fatalf("Side import = %q", got)
+			}
+		case "Page":
+			page = true
+			if got := it.AdditionalTextEdits[0].NewText; got != "import \"goi://pages/Page.goi\"\n" {
+				t.Fatalf("Page import = %q", got)
+			}
+		case "Other":
+			t.Fatalf("an imported fragment was offered again: %+v", it)
+		case "Stray":
+			t.Fatal("a .goi file outside the assets directory was offered")
+		}
+	}
+	if !side || !page {
+		t.Fatalf("auto imports missing: side=%v page=%v %+v", side, page, list.Items)
+	}
+}
+
+// TestPathCompletion: a quoted import or src completes container paths from the
+// assets root, and relative paths from the document's directory.
+func TestPathCompletion(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "goi.yaml"), []byte("assets: assets\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	projectDesign(t, dir, "shared/Other.goi", "Column {}\n")
+	projectDesign(t, dir, "ui/Side.goi", "Column {}\n")
+	projectDesign(t, dir, "ui/pic.png", "not really a png\n")
+	projectDesign(t, dir, "images/cover.png", "not really a png\n")
+	src := "import \"goi://\n\nWindow {\n\tColumn {\n\t\tImage { src: \"goi://images/\" }\n\t\tImage { src: \"./\" }\n\t}\n}\n"
+	uri := projectDesign(t, dir, "ui/Main.goi", src)
+	c.openDoc(uri, src)
+
+	// Container import: directories from the asset root.
+	list := completionAt(t, c, uri, src, "import \"goi://")
+	labels := pathLabels(list)
+	if !labels["goi://shared/"] || !labels["goi://ui/"] || !labels["goi://images/"] {
+		t.Fatalf("container import completion = %v", labels)
+	}
+
+	// Relative import: the file beside the document.
+	list = completionAt(t, c, uri, src, "import \"")
+	labels = pathLabels(list)
+	if !labels["./Side.goi"] || labels["./pic.png"] {
+		t.Fatalf("relative import completion = %v", labels)
+	}
+
+	// src lists files too, and goi:// continues into a directory.
+	list = completionAt(t, c, uri, src, "src: \"goi://images/")
+	labels = pathLabels(list)
+	if !labels["goi://images/cover.png"] {
+		t.Fatalf("container src completion = %v", labels)
+	}
+
+	list = completionAt(t, c, uri, src, "src: \"./")
+	labels = pathLabels(list)
+	if !labels["./pic.png"] || !labels["./Side.goi"] {
+		t.Fatalf("relative src completion = %v", labels)
+	}
+}
+
+func pathLabels(list completionList) map[string]bool {
+	out := map[string]bool{}
+	for _, it := range list.Items {
+		out[it.Label] = true
+	}
+	return out
 }

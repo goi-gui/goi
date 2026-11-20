@@ -732,3 +732,31 @@ Window {
 	}
 	t.Fatalf("the unnamed import did not expand:\n%s", dump(tr))
 }
+
+// TestContainerAndRelativeImports: a fragment can be named from the container
+// root with goi://, and a relative path can cross directories under it.
+func TestContainerAndRelativeImports(t *testing.T) {
+	dir := design(t, map[string]string{
+		"ui/Main.goi": `import "goi://shared/Other.goi"
+import "../parts/Card.goi"
+Window {
+	Other {}
+	Card {}
+}`,
+		"shared/Other.goi": `Column { Text { text: "other" } }`,
+		"parts/Card.goi":   `Row { Text { text: "card" } }`,
+	})
+	tr, err := load(t, dir, "ui/Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seen []string
+	for _, n := range tr.All() {
+		if t, ok := n.(*tree.Text); ok {
+			seen = append(seen, t.Text.Get())
+		}
+	}
+	if strings.Join(seen, ",") != "other,card" {
+		t.Fatalf("imports did not expand: %v", seen)
+	}
+}

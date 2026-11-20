@@ -160,8 +160,16 @@ func describe(name string, err error) string {
 }
 
 // resolve turns an import path into a slash path from the FS root, refusing
-// anything that escapes it.
+// anything that escapes it. `goi://ui/Sidebar.goi` is a path from the container
+// root; anything else is relative to the importing file.
 func resolve(from, target string) (string, bool) {
+	if strings.HasPrefix(target, "goi://") {
+		joined := path.Clean(strings.TrimPrefix(target, "goi://"))
+		if joined == "." || joined == ".." || strings.HasPrefix(joined, "../") || path.IsAbs(joined) {
+			return "", false
+		}
+		return joined, true
+	}
 	if strings.HasPrefix(target, "/") {
 		return "", false
 	}

@@ -46,76 +46,75 @@ func (s *Server) autoImportItems(d *document, file *syntax.File) []completionRes
 	return out
 }
 
-// fragmentCandidates lists the non-window .goi files in the document's own
-// directory that the file does not import yet, including open unsaved buffers.
+// fragmentCandidates lists the non-window .goi files under the project's asset
+// container that the document does not import yet, including open unsaved
+// buffers. The import path is the container form, `goi://dir/File.goi`.
 func (s *Server) fragmentCandidates(d *document, file *syntax.File) []fragmentCandidate {
 	if d == nil || file == nil {
 		return nil
 	}
-	dir := filepath.Dir(d.path)
+	root, from := s.designRootFor(d)
 	self := filepath.Clean(d.path)
 	aliases := map[string]bool{}
 	targets := map[string]bool{}
 	for _, imp := range file.Imports {
 		aliases[imp.Alias] = true
-		targets[filepath.Clean(filepath.Join(dir, filepath.FromSlash(imp.Path)))] = true
+		if target, ok := resolveDesignPath(root, from, imp.Path); ok {
+			targets[filepath.Clean(target)] = true
+		}
 	}
 
-	seen := map[string]bool{self: true}
-	var names []string
 	texts := map[string][]byte{}
 	for _, open := range s.docs {
-		if filepath.Dir(open.path) != dir {
-			continue
-		}
-		path := filepath.Clean(open.path)
-		if seen[path] {
-			continue
-		}
-		seen[path] = true
-		texts[path] = open.text
-		names = append(names, path)
-	}
-	if entries, err := os.ReadDir(dir); err == nil {
-		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".goi") {
-				continue
-			}
-			path := filepath.Join(dir, e.Name())
-			if seen[path] {
-				continue
-			}
-			seen[path] = true
-			names = append(names, path)
-		}
+		texts[filepath.Clean(open.path)] = open.text
 	}
 
-	out := make([]fragmentCandidate, 0, len(names))
-	for _, path := range names {
-		name := filepath.Base(path)
-		alias, ok := syntax.DeriveAlias(name)
-		if _, builtin := schema.Lookup(alias); !ok || aliases[alias] || targets[filepath.Clean(path)] || builtin {
-			continue
+	var out []fragmentCandidate
+	walkErr := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		if !strings.HasSuffix(entry.Name(), ".goi") {
+			return nil
+		}
+		path = filepath.Clean(path)
+		if path == self {
+			return nil
+		}
+		rel, ok := relUnder(root, path)
+		if !ok {
+			return nil
+		}
+		alias, ok := syntax.DeriveAlias(entry.Name())
+		if _, builtin := schema.Lookup(alias); !ok || aliases[alias] || targets[path] || builtin {
+			return nil
 		}
 		src, ok := texts[path]
 		if !ok {
-			var err error
-			src, err = os.ReadFile(path)
-			if err != nil {
-				continue
+			var readErr error
+			src, readErr = os.ReadFile(path)
+			if readErr != nil {
+				return nil
 			}
 		}
 		f, diag := syntax.Parse(src)
 		if !diag.Empty() || f == nil || f.Root == nil || f.Root.Name == "Window" {
-			continue
+			return nil
 		}
-		if importsPath(f, filepath.Dir(path), self) {
-			continue // importing it would close a cycle the loader rejects
+		if importsPath(f, root, rel, self) {
+			return nil // importing it would close a cycle the loader rejects
 		}
 		out = append(out, fragmentCandidate{
 			Alias:  alias,
-			Target: "./" + filepath.ToSlash(name),
+			Target: "goi://" + rel,
 		})
+		return nil
+	})
+	if walkErr != nil {
+		return nil
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Alias < out[j].Alias })
 	// Two files can derive the same name; the first by alias wins.
@@ -133,9 +132,9 @@ func (s *Server) fragmentCandidates(d *document, file *syntax.File) []fragmentCa
 
 // importsPath reports whether f imports target, so an auto-import does not
 // close the simplest cycle.
-func importsPath(f *syntax.File, dir, target string) bool {
+func importsPath(f *syntax.File, root, from, target string) bool {
 	for _, imp := range f.Imports {
-		if filepath.Clean(filepath.Join(dir, filepath.FromSlash(imp.Path))) == target {
+		if path, ok := resolveDesignPath(root, from, imp.Path); ok && filepath.Clean(path) == target {
 			return true
 		}
 	}

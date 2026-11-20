@@ -180,7 +180,7 @@ func (s *Server) initialize(raw json.RawMessage) any {
 				"change":    1, // full sync: a design file is small
 			},
 			"completionProvider": map[string]any{
-				"triggerCharacters": []string{":", " ", "$", "."},
+				"triggerCharacters": []string{":", " ", "$", ".", "\"", "/"},
 				"resolveProvider":   false,
 			},
 			"hoverProvider":              true,
@@ -376,12 +376,4 @@ func (o overlayFS) Open(name string) (fs.File, error) {
 		return &memFile{name: name, data: b}, nil
 	}
 	return os.Open(filepath.Join(o.dir, filepath.FromSlash(name)))
-}
-
-// dirOverlay builds an overlay for one document: the document's own base name
-// is served from memory, everything else from dir.
-func (s *Server) dirOverlay(d *document) (overlayFS, string) {
-	dir := filepath.Dir(d.path)
-	name := filepath.Base(d.path)
-	return overlayFS{dir: dir, overlay: map[string][]byte{name: d.text}}, name
 }
