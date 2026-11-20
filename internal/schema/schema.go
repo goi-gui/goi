@@ -640,6 +640,27 @@ var elements = func() []Element {
 			}
 		}
 	}
+	// A carousel is a snapping strip: its items take the full height and line
+	// up with the leading edge when a gesture ends. A design can still write
+	// scrollSnapType: none or its own crossAxisAlign.
+	for i := range out {
+		switch out[i].Name {
+		case "Carousel":
+			if p := out[i].Prop("scrollSnapType"); p != nil {
+				p.Default = "mandatory"
+			}
+			if p := out[i].Prop("crossAxisAlign"); p != nil {
+				p.Default = "stretch"
+			}
+		case "CarouselItem":
+			if p := out[i].Prop("scrollSnapAlign"); p != nil {
+				p.Default = "start"
+			}
+			if p := out[i].Prop("radius"); p != nil {
+				p.Default = 28.0
+			}
+		}
+	}
 	// Every element is a hit area; only components have the value-carrying
 	// events. The list stays in one place so the validator, the builder and the
 	// language server cannot drift apart.

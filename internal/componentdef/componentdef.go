@@ -60,6 +60,7 @@ var Kinds = []Kind{
 	{"TableRow", true},
 	{"TableCell", true},
 	{"Carousel", true},
+	{"CarouselItem", true},
 	// Navigation.
 	{"TopAppBar", false},
 	{"NavigationBar", true},
@@ -155,6 +156,7 @@ var props = map[string][]string{
 	"TimePicker":       {"label", "text", "variant", "hourFormat"},
 	"ColorPicker":      {"label", "text"},
 	"Carousel":         {},
+	"CarouselItem":     {"label", "supporting", "labelColor", "supportingColor"},
 	"Toolbar":          {},
 	"TextArea":         {"label", "text", "placeholder", "supporting", "variant", "disabled"},
 	"Code":             {"text", "language", "variant", "showCopy"},

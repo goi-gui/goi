@@ -846,6 +846,8 @@ func newM3Component(name string) Node {
 		return tp
 	case "Carousel":
 		return &Carousel{Component: newComponent()}
+	case "CarouselItem":
+		return &CarouselItem{Component: newComponent()}
 	case "Toolbar":
 		return &Toolbar{Component: newComponent()}
 	case "TextArea":

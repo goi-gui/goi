@@ -362,6 +362,7 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 	if _, ok := b.Node().(componentNode); ok {
 		l.paintComponentBorder(b, r, clip, from)
 	}
+	l.paintOverlay(b, r, clip)
 	l.roundClip(b, r, fromClip)
 	l.applyRotate(from, b, r)
 	l.applyScale(from, b, r)
@@ -497,6 +498,7 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 	if _, ok := b.Node().(componentNode); ok {
 		l.paintComponentBorder(b, r, clip, from)
 	}
+	l.paintOverlay(b, r, clip)
 	l.roundClip(b, r, fromClip)
 	l.applyRotate(from, b, r)
 	l.applyScale(from, b, r)
@@ -505,6 +507,14 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 	l.heroFinish(b, r, from)
 	l.family = outerFamily
 	l.scrollClip = outerScroll
+}
+
+// paintOverlay is the post-children paint hook a component uses for content
+// that must sit above its children, such as a carousel item's label.
+func (l *List) paintOverlay(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
+	if item, ok := b.Node().(*tree.CarouselItem); ok {
+		l.paintCarouselItemOverlay(&item.Component, r, clip)
+	}
 }
 
 // paintContent draws one node's own visuals: its shadow, its fill and its
@@ -837,7 +847,7 @@ func (l *List) paintSideBorders(b *tree.NodeBase, r tree.Rect, radii [4]float64,
 // corner radius has to travel down. Ops the subtree did not emit are untouched,
 // and a nested ClipRRect has already rounded its own range to a smaller radius.
 func (l *List) roundClip(b *tree.NodeBase, r tree.Rect, from int) {
-	if b.Node().Kind() != "ClipRRect" || from >= len(l.Ops) {
+	if b.Node().Kind() != "ClipRRect" && b.Node().Kind() != "CarouselItem" || from >= len(l.Ops) {
 		return
 	}
 	rad := float32(b.Radius())

@@ -488,6 +488,8 @@ func (l *List) paintComponent(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		l.paintMermaid(c, r, clip)
 	case "Carousel":
 		l.paintCarousel(c, r, clip)
+	case "CarouselItem":
+		l.paintCarouselItem(c, r, clip)
 	case "Toolbar":
 		l.paintToolbar(c, r, clip)
 	}
@@ -2559,6 +2561,56 @@ func (l *List) paintCarousel(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	_ = c
 	_ = r
 	_ = clip
+}
+
+// paintCarouselItem draws the card the child content sits on. The label and
+// scrim are an overlay, painted after the child so they stay readable.
+func (l *List) paintCarouselItem(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	radius := c.Radius()
+	l.fillRect(r, l.Theme.Colors.SurfaceContainerHigh, radius, 0, 0, clip)
+}
+
+// paintCarouselItemOverlay is paintComponentBorder's sibling for a carousel
+// item: after the image and before the rounded clip, the card gets its scrim,
+// press state and labels.
+func (l *List) paintCarouselItemOverlay(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	radius := c.Radius()
+	label, supporting := c.Label.Get(), c.Supporting.Get()
+	if label != "" || supporting != "" {
+		scrim := &tree.Gradient{
+			Kind:  tree.LinearKind,
+			Angle: 180,
+			Stops: []tree.GradientStop{
+				{At: 0.35, Color: 0x00000000},
+				{At: 1, Color: 0x00000099},
+			},
+		}
+		radii := [4]float64{radius, radius, radius, radius}
+		l.fillShape(r, 0, scrim, radii, 0, 0, clip)
+	}
+	l.stateLayer(c, r, radius, l.Theme.Colors.Primary, clip)
+	if label == "" && supporting == "" {
+		return
+	}
+	const pad = 14.0
+	labelColor := c.LabelColor.Get()
+	if labelColor == 0 {
+		labelColor = 0xFFFFFFFF
+	}
+	supportColor := c.SupportingColor.Get()
+	if supportColor == 0 {
+		supportColor = 0xFFFFFFCC
+	}
+	bottom := r.Bottom() - pad
+	if supporting != "" {
+		l.textIn(supporting, l.style("bodySmall"), supportColor,
+			tree.Rect{X: r.X + pad, Y: bottom - 18, W: r.W - 2*pad, H: 18}, AlignStart, clip)
+		bottom -= 18
+	}
+	if label != "" {
+		l.textIn(label, l.style("labelLarge"), labelColor,
+			tree.Rect{X: r.X + pad, Y: bottom - 22, W: r.W - 2*pad, H: 22}, AlignStart, clip)
+	}
 }
 
 func (l *List) paintToolbar(c *tree.Component, r tree.Rect, clip tree.Rect) {

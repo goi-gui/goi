@@ -183,6 +183,10 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 			e.searchBarSlots(b, kids, cw, ch, insetL, insetT)
 		case "ButtonGroup", "Row", "Toolbar", "Carousel", "Breadcrumb":
 			e.linear(b, kids, cw, ch, insetL, true, insetT)
+		case "CarouselItem":
+			// A card's image or overlay fills it; a Positioned child still
+			// anchors itself.
+			e.stackChildren(b, w, h, pe.Left+be.Left, pe.Top+be.Top, pe.Right+be.Right, pe.Bottom+be.Bottom)
 		default:
 			e.linear(b, kids, cw, ch, insetL, false, insetT)
 		}

@@ -286,6 +286,10 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 		return Metrics{W: 328, H: 392, Top: 56, Right: 24, Bottom: 24, Left: 24}
 	case "Carousel":
 		return Metrics{W: 0, H: 200, FillW: true}
+	case "CarouselItem":
+		// A carousel card is wider than tall; the carousel stretches its height
+		// to the strip.
+		return Metrics{W: 180, H: 200}
 	}
 	return Metrics{W: 0, H: 0}
 }

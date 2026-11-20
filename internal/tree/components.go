@@ -1139,6 +1139,14 @@ type Carousel struct{ Component }
 func (*Carousel) Kind() string              { return "Carousel" }
 func (c *Carousel) namedProps() []NamedProp { return c.props("Carousel") }
 
+// CarouselItem is one card in a Carousel. It clips its child to a rounded box,
+// paints a label over a bottom scrim and takes a press like a card.
+type CarouselItem struct{ Component }
+
+// Kind implements Node.
+func (*CarouselItem) Kind() string              { return "CarouselItem" }
+func (c *CarouselItem) namedProps() []NamedProp { return c.props("CarouselItem") }
+
 // Toolbar is a floating row of actions.
 type Toolbar struct{ Component }
 
