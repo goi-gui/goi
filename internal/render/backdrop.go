@@ -244,7 +244,7 @@ func (g *GPU) renderBackdrop(list *paint.List, width, height int, panels []backd
 		}
 		slot++
 		load = true
-		// Horizontal then vertical: a quadratic kernel from two 9-tap passes.
+		// Horizontal then vertical: a Gaussian-weighted 9-tap kernel from two passes.
 		// Each samples what the previous one wrote, so the blur is separable.
 		if err := g.shapePass(enc, bd, slot, bd.tmpView, nil, true, clear, p.at, 1, bd.sceneView); err != nil {
 			return err

@@ -302,7 +302,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 		// One separable blur pass of the backdrop. params.y is the radius in
 		// logical pixels and misc.x the axis: 1 horizontal, 2 vertical. The
 		// two passes run before the panel samples the result, so the blur is
-		// a quadratic kernel at the cost of two 9-tap draws. A wipe sets
+		// a Gaussian-weighted 9-tap kernel at the cost of two draws. A wipe sets
 		// misc.y and carries the band in params.zw: the radius follows a half
 		// sine, so it peaks in the band and vanishes at its edges.
 		var radius = max(in.params.y, 0.001);
@@ -314,14 +314,18 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 		}
 		let uv0 = in.pos2 / viewport.size.xy;
 		var sum = vec4f(0.0);
+		var weights = 0.0;
 		for (var i = -4; i <= 4; i = i + 1) {
-			let o = f32(i) * 0.25 * radius;
+			let f = f32(i);
+			let o = f * 0.25 * radius;
+			let w = exp(-0.5 * (f / 2.0) * (f / 2.0));
 			var uv = uv0;
 			if (in.misc.x < 1.5) { uv.x = uv.x + o / viewport.size.x; }
 			else { uv.y = uv.y + o / viewport.size.y; }
-			sum = sum + textureSampleLevel(images, imgSamp, uv, 0.0);
+			sum = sum + textureSampleLevel(images, imgSamp, uv, 0.0) * w;
+			weights = weights + w;
 		}
-		return sum * 0.1111111;
+		return sum / weights;
 	}
 
 	if (kind > 10.5) {
