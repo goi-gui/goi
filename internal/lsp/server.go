@@ -27,6 +27,9 @@ type Server struct {
 	// it a completion inserts a plain name, which is what an editor that only
 	// edits text can do.
 	snippets bool
+	// snippetEdits records whether a workspace edit may be a snippet. Without
+	// it the wrap action inserts a literal Column and cannot place the caret.
+	snippetEdits bool
 
 	shutdown bool
 }
@@ -116,6 +119,8 @@ func (s *Server) handle(m *message) error {
 		return s.reply(m, s.definition(m.Params))
 	case "textDocument/formatting":
 		return s.reply(m, s.formatting(m.Params))
+	case "textDocument/codeAction":
+		return s.reply(m, s.codeActions(m.Params))
 	}
 	return s.fail(m, codeMethodNotFound, "unknown method "+m.Method)
 }
@@ -150,10 +155,16 @@ func (s *Server) initialize(raw json.RawMessage) any {
 					} `json:"completionItem"`
 				} `json:"completion"`
 			} `json:"textDocument"`
+			Workspace struct {
+				WorkspaceEdit struct {
+					SnippetEditSupport bool `json:"snippetEditSupport"`
+				} `json:"workspaceEdit"`
+			} `json:"workspace"`
 		} `json:"capabilities"`
 	}
 	if json.Unmarshal(raw, &p) == nil {
 		s.snippets = p.Capabilities.TextDocument.Completion.CompletionItem.SnippetSupport
+		s.snippetEdits = p.Capabilities.Workspace.WorkspaceEdit.SnippetEditSupport
 	}
 	return map[string]any{
 		"capabilities": map[string]any{
@@ -170,6 +181,9 @@ func (s *Server) initialize(raw json.RawMessage) any {
 			"documentSymbolProvider":     true,
 			"documentFormattingProvider": true,
 			"foldingRangeProvider":       true,
+			"codeActionProvider": map[string]any{
+				"codeActionKinds": []string{"refactor.rewrite"},
+			},
 		},
 		"serverInfo": map[string]any{
 			"name":    "goipls",

@@ -2172,6 +2172,9 @@ func (c *client) initializeWithSnippets(support bool) {
 					"completionItem": map[string]any{"snippetSupport": support},
 				},
 			},
+			"workspace": map[string]any{
+				"workspaceEdit": map[string]any{"snippetEditSupport": support},
+			},
 		},
 	})
 }
@@ -2635,5 +2638,238 @@ func TestCompletionOffersScrollMethods(t *testing.T) {
 		if found != tc.want {
 			t.Fatalf("%s: scrollTo offered = %v, want %v", tc.name, found, tc.want)
 		}
+	}
+}
+
+// TestCodeActionWrapsTheElement: a caret inside an element offers one action
+// that wraps it and puts a placeholder on the new element's name.
+func TestCodeActionWrapsTheElement(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tColumn {\n\t\tText {\n\t\t\ttext: \"hi\"\n\t\t}\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.initializeWithSnippets(true)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/codeAction", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"range":        map[string]any{"start": at(t, src, `text: "hi"`, 0), "end": at(t, src, `text: "hi"`, 0)},
+		"context":      map[string]any{"diagnostics": []any{}},
+	})
+	var actions []struct {
+		Title string `json:"title"`
+		Kind  string `json:"kind"`
+		Edit  struct {
+			DocumentChanges []struct {
+				TextDocument struct {
+					URI     string `json:"uri"`
+					Version *int   `json:"version"`
+				} `json:"textDocument"`
+				Edits []struct {
+					Range            rng    `json:"range"`
+					NewText          string `json:"newText"`
+					InsertTextFormat int    `json:"insertTextFormat"`
+				} `json:"edits"`
+			} `json:"documentChanges"`
+		} `json:"edit"`
+	}
+	if err := json.Unmarshal(res, &actions); err != nil {
+		t.Fatal(err)
+	}
+	if len(actions) != 1 {
+		t.Fatalf("actions = %v, want one", actions)
+	}
+	a := actions[0]
+	if a.Title != "Wrap with element" || a.Kind != "refactor.rewrite" {
+		t.Fatalf("action = %+v", a)
+	}
+	if len(a.Edit.DocumentChanges) != 1 || len(a.Edit.DocumentChanges[0].Edits) != 1 {
+		t.Fatalf("edit = %+v", a.Edit)
+	}
+	edit := a.Edit.DocumentChanges[0].Edits[0]
+	if edit.InsertTextFormat != 2 {
+		t.Fatalf("insertTextFormat = %d, want snippet", edit.InsertTextFormat)
+	}
+	want := "\t\t${1:Column} {\n\t\t\tText {\n\t\t\t\ttext: \"hi\"\n\t\t\t}\n\t\t}"
+	if edit.NewText != want {
+		t.Fatalf("newText = %q\nwant %q", edit.NewText, want)
+	}
+	if edit.Range.Start.Line != 2 || edit.Range.Start.Character != 0 {
+		t.Fatalf("range start = %+v, want the Text line's start", edit.Range.Start)
+	}
+	if edit.Range.End.Line != 4 || edit.Range.End.Character != 3 {
+		t.Fatalf("range end = %+v, want after Text's closing brace", edit.Range.End)
+	}
+}
+
+// TestCodeActionSkipsTheRootAndOtherKinds: the window is not a child to wrap,
+// and a quick-fix request does not get a refactor.
+func TestCodeActionSkipsTheRootAndOtherKinds(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tColumn {\n\t\tText {}\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/codeAction", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"range":        map[string]any{"start": at(t, src, "Window", 0), "end": at(t, src, "Window", 0)},
+		"context":      map[string]any{"diagnostics": []any{}},
+	})
+	if strings.TrimSpace(string(res)) != "[]" {
+		t.Fatalf("root action = %s, want none", res)
+	}
+
+	res = c.request("textDocument/codeAction", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"range":        map[string]any{"start": at(t, src, "Text", 0), "end": at(t, src, "Text", 0)},
+		"context":      map[string]any{"only": []string{"quickfix"}},
+	})
+	if strings.TrimSpace(string(res)) != "[]" {
+		t.Fatalf("quickfix request = %s, want none", res)
+	}
+}
+
+// TestCodeActionWrapsAnInlineElement: a one-line design keeps the wrapper on
+// one line instead of guessing indentation.
+func TestCodeActionWrapsAnInlineElement(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window { Column { Text {} } }\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.initializeWithSnippets(true)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/codeAction", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"range":        map[string]any{"start": at(t, src, "Text", 0), "end": at(t, src, "Text", 0)},
+		"context":      map[string]any{"diagnostics": []any{}},
+	})
+	var actions []struct {
+		Edit struct {
+			DocumentChanges []struct {
+				Edits []struct {
+					NewText string `json:"newText"`
+				} `json:"edits"`
+			} `json:"documentChanges"`
+		} `json:"edit"`
+	}
+	if err := json.Unmarshal(res, &actions); err != nil {
+		t.Fatal(err)
+	}
+	if len(actions) != 1 || len(actions[0].Edit.DocumentChanges) != 1 {
+		t.Fatalf("actions = %+v", actions)
+	}
+	got := actions[0].Edit.DocumentChanges[0].Edits[0].NewText
+	if got != "${1:Column} { Text {} }" {
+		t.Fatalf("inline newText = %q", got)
+	}
+}
+
+// TestCodeActionWithoutSnippetSupport: a client that cannot take a snippet
+// still gets the wrap, with a literal Column and no caret placeholder.
+func TestCodeActionWithoutSnippetSupport(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tText { text: \"$5\" }\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.initializeWithSnippets(false)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/codeAction", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"range":        map[string]any{"start": at(t, src, "Text", 0), "end": at(t, src, "Text", 0)},
+		"context":      map[string]any{"diagnostics": []any{}},
+	})
+	var actions []struct {
+		Edit struct {
+			DocumentChanges []struct {
+				Edits []struct {
+					NewText          string `json:"newText"`
+					InsertTextFormat int    `json:"insertTextFormat"`
+				} `json:"edits"`
+			} `json:"documentChanges"`
+		} `json:"edit"`
+	}
+	if err := json.Unmarshal(res, &actions); err != nil {
+		t.Fatal(err)
+	}
+	if len(actions) != 1 {
+		t.Fatalf("actions = %+v", actions)
+	}
+	edit := actions[0].Edit.DocumentChanges[0].Edits[0]
+	if edit.InsertTextFormat != 1 || edit.NewText != "\tColumn {\n\t\tText { text: \"$5\" }\n\t}" {
+		t.Fatalf("plain wrap = %d %q", edit.InsertTextFormat, edit.NewText)
+	}
+}
+
+// TestCodeActionKeepsAFullLineSelectionInsideItsElement: selecting the line,
+// indentation and trailing newline included, still wraps that element instead of
+// its parent.
+func TestCodeActionKeepsAFullLineSelectionInsideItsElement(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tColumn {\n\t\tText {\n\t\t\ttext: \"hi\"\n\t\t}\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.initializeWithSnippets(true)
+	c.openDoc(uri, src)
+
+	lineStart := strings.Index(src, "\t\tText")
+	closeEnd := strings.Index(src, "\t\t}") + len("\t\t}")
+	res := c.request("textDocument/codeAction", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"range":        map[string]any{"start": pos(src, lineStart), "end": pos(src, closeEnd+1)},
+		"context":      map[string]any{"diagnostics": []any{}},
+	})
+	var actions []struct {
+		Edit struct {
+			DocumentChanges []struct {
+				Edits []struct {
+					NewText string `json:"newText"`
+				} `json:"edits"`
+			} `json:"documentChanges"`
+		} `json:"edit"`
+	}
+	if err := json.Unmarshal(res, &actions); err != nil {
+		t.Fatal(err)
+	}
+	if len(actions) != 1 {
+		t.Fatalf("actions = %+v", actions)
+	}
+	if got := actions[0].Edit.DocumentChanges[0].Edits[0].NewText; !strings.Contains(got, "${1:Column} {\n\t\t\tText {") {
+		t.Fatalf("selected line wrapped something else: %q", got)
+	}
+}
+
+// TestCodeActionEscapesSnippetSyntax keeps a design's own $ literal when the
+// wrapper is a snippet, or the client would read it as a tabstop.
+func TestCodeActionEscapesSnippetSyntax(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tColumn {\n\t\tText {\n\t\t\ttext: \"$5\"\n\t\t}\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.initializeWithSnippets(true)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/codeAction", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"range":        map[string]any{"start": at(t, src, `text: "$5"`, 0), "end": at(t, src, `text: "$5"`, 0)},
+		"context":      map[string]any{"diagnostics": []any{}},
+	})
+	var actions []struct {
+		Edit struct {
+			DocumentChanges []struct {
+				Edits []struct {
+					NewText string `json:"newText"`
+				} `json:"edits"`
+			} `json:"documentChanges"`
+		} `json:"edit"`
+	}
+	if err := json.Unmarshal(res, &actions); err != nil {
+		t.Fatal(err)
+	}
+	got := actions[0].Edit.DocumentChanges[0].Edits[0].NewText
+	if !strings.Contains(got, `text: "\$5"`) {
+		t.Fatalf("dollar was not escaped: %q", got)
 	}
 }
