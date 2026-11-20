@@ -20,13 +20,13 @@ expressive colour, type, shape and motion, with light and dark schemes.
 
 One `.goi` file and a small `main.go`: a rail of categories that becomes a
 bottom bar on a phone, a picture column that turns from a row into a column,
-size and colour pickers, and a review card. Both schemes are built from one rose
-seed with `ui.NewThemeFromSeed`.
+size and colour pickers, and a review card. Three colour swatches rebuild both
+schemes from their seed with `ui.NewThemeFromSeed`, and `themeTransition: wipe`
+carries each change in. The clips show the same session in both schemes.
 
-| | Light | Dark |
-| --- | --- | --- |
-| **Desktop**<br>1000 × 800 | <img src="https://raw.githubusercontent.com/goi-gui/examples/main/images/shopping-light.png" alt="shopping on a desktop, light scheme" width="430"> | <img src="https://raw.githubusercontent.com/goi-gui/examples/main/images/shopping-dark.png" alt="shopping on a desktop, dark scheme" width="430"> |
-| **Phone**<br>500 × 1000 | <img src="https://raw.githubusercontent.com/goi-gui/examples/main/images/shopping-mobile-light.png" alt="shopping on a phone, light scheme" width="215"> | <img src="https://raw.githubusercontent.com/goi-gui/examples/main/images/shopping-mobile-dark.png" alt="shopping on a phone, dark scheme" width="215"> |
+| Desktop, 1000 × 1000 | Phone, 500 × 1000 |
+| --- | --- |
+| <img src="https://raw.githubusercontent.com/goi-gui/examples/main/images/shopping-desktop.gif" alt="shopping on a desktop, dark then light scheme" width="430"> | <img src="https://raw.githubusercontent.com/goi-gui/examples/main/images/shopping-mobile.gif" alt="shopping on a phone, dark then light scheme" width="215"> |
 
 Run it from the [examples](https://github.com/goi-gui/examples/tree/main/shopping)
 checkout with `make shopping`.
