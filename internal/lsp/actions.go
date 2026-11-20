@@ -7,11 +7,10 @@ import (
 	"github.com/goi-gui/goi/internal/syntax"
 )
 
-// The one code action the server offers: wrap the element around the cursor or
-// selection in a new element. The wrapper's name is a snippet placeholder, so
-// the client puts the caret on it and the reader types Row, Card or any other
-// element.
-const wrapTitle = "Wrap with element"
+// The one code action the server offers: wrap the component under the cursor or
+// selection in a new component. No name is inserted; the caret lands where the
+// name goes, so the reader types Row, Card or any other component.
+const wrapTitle = "Wrap with component"
 
 type codeActionParams struct {
 	TextDocument struct {
@@ -35,7 +34,7 @@ type workspaceEdit struct {
 
 type textDocumentEdit struct {
 	TextDocument versionedTextDocumentID `json:"textDocument"`
-	Edits        []snippetTextEdit       `json:"edits"`
+	Edits        []wrapTextEdit          `json:"edits"`
 }
 
 type versionedTextDocumentID struct {
@@ -43,12 +42,19 @@ type versionedTextDocumentID struct {
 	Version *int   `json:"version,omitempty"`
 }
 
-// snippetTextEdit is a TextEdit whose newText is a snippet: insertTextFormat 2
-// is Snippet, which is what lets $1 become the caret.
-type snippetTextEdit struct {
-	Range            rng    `json:"range"`
-	NewText          string `json:"newText"`
-	InsertTextFormat int    `json:"insertTextFormat"`
+// wrapTextEdit is one edit in whichever snippet shape the client reads. The
+// 3.18 shape carries a snippet object; the older one carries newText and
+// insertTextFormat 2. A client with neither gets plain text.
+type wrapTextEdit struct {
+	Range            rng           `json:"range"`
+	NewText          string        `json:"newText,omitempty"`
+	InsertTextFormat int           `json:"insertTextFormat,omitempty"`
+	Snippet          *snippetValue `json:"snippet,omitempty"`
+}
+
+type snippetValue struct {
+	Kind  string `json:"kind"`
+	Value string `json:"value"`
 }
 
 func (s *Server) codeActions(raw json.RawMessage) any {
@@ -69,26 +75,37 @@ func (s *Server) codeActions(raw json.RawMessage) any {
 	if end < start {
 		start, end = end, start
 	}
-	e := elementForRange(file.Root, d.text, idx, start, end)
-	if e == nil || e == file.Root {
+	first, last, ok := wrapElements(file.Root, d.text, idx, start, end)
+	if !ok {
 		return []codeAction{}
 	}
-	named, format, snippet := "${1:Column}", 2, true
+
+	// Zed reads the 3.18 SnippetTextEdit ({snippet: {kind, value}}); other
+	// clients with snippet support read newText and insertTextFormat. Neither
+	// inserts a name: $0 is the caret's place. A client without snippets gets a
+	// literal Column and no caret movement.
+	named, snippet := "$0", true
 	if !s.snippetEdits {
-		named, format, snippet = "Column", 1, false
+		named, snippet = "Column", false
+	}
+	at, text := wrapRange(d.text, idx, first, last, named, snippet)
+	edit := wrapTextEdit{Range: at}
+	switch {
+	case s.snippetEdits && s.zed:
+		edit.Snippet = &snippetValue{Kind: "snippet", Value: text}
+	case s.snippetEdits:
+		edit.NewText = text
+		edit.InsertTextFormat = 2
+	default:
+		edit.NewText = text
 	}
 	version := d.version
-	at, text := wrapEdit(d.text, idx, e, named, snippet)
 	return []codeAction{{
 		Title: wrapTitle,
 		Kind:  "refactor.rewrite",
 		Edit: &workspaceEdit{DocumentChanges: []textDocumentEdit{{
 			TextDocument: versionedTextDocumentID{URI: d.uri, Version: &version},
-			Edits: []snippetTextEdit{{
-				Range:            at,
-				NewText:          text,
-				InsertTextFormat: format,
-			}},
+			Edits:        []wrapTextEdit{edit},
 		}}},
 	}}
 }
@@ -106,65 +123,190 @@ func wantsRefactor(only []string) bool {
 	return false
 }
 
-// elementForRange picks the innermost element that holds the whole selection.
-// A line selected with its indentation counts as the element, and a newline
-// selected after the closing brace does too. A caret just past a brace is
-// outside that element, so a click after a row does not offer to wrap it.
-func elementForRange(root *syntax.Element, src []byte, idx lineIndex, start, end int) *syntax.Element {
+// wrapElements picks the component or the run of components to wrap.
+//
+// A caret, or a selection inside one component, wraps that component. A
+// selection across several siblings wraps the run from the first to the last,
+// so the components beside it stay where they are. The window root is never
+// offered.
+func wrapElements(root *syntax.Element, src []byte, idx lineIndex, start, end int) (*syntax.Element, *syntax.Element, bool) {
+	if start == end {
+		e := elementAtPos(root, src, idx, start)
+		return e, e, e != nil && e != root
+	}
+	for end > start && isSpace(src[end-1]) {
+		end--
+	}
+	if end <= start {
+		return nil, nil, false
+	}
+	a := elementAtPos(root, src, idx, start)
+	b := elementAtPos(root, src, idx, end-1)
+	if a == nil || b == nil {
+		return nil, nil, false
+	}
+	if a == b {
+		return a, a, a != root
+	}
+
+	lookup := newElementLookup(root)
+	lca := lookup.common(a, b)
+	if lca == nil {
+		return a, a, a != root
+	}
+	first, last := lookup.childOf(a, lca), lookup.childOf(b, lca)
+	if first == nil || last == nil {
+		// The selection starts or ends on the parent itself; wrap the side that
+		// names a component.
+		if first == nil && last != nil {
+			return last, last, true
+		}
+		if last == nil && first != nil {
+			return first, first, true
+		}
+		return nil, nil, false
+	}
+	if first == last {
+		return first, first, true
+	}
+	if lookup.holder[first] != lookup.holder[last] {
+		// Different if/else arms: one wrapper cannot hold both without crossing
+		// a brace, so wrap the first component alone.
+		return first, first, true
+	}
+	return first, last, true
+}
+
+// elementAt is the innermost element whose box holds pos. A pos inside the
+// line indentation counts for the element on that line, so selecting a full
+// line keeps the element rather than climbing to its parent.
+func elementAtPos(root *syntax.Element, src []byte, idx lineIndex, pos int) *syntax.Element {
 	var best *syntax.Element
+	bestFrom := -1
 	syntax.WalkElements(root, func(e *syntax.Element) {
 		from, to := int(e.NameAt), int(e.Close)+1
-		lineStart := idx.starts[idx.line(int(e.NameAt))]
+		lineStart := idx.starts[idx.line(from)]
 		if onlyWhitespace(string(src[lineStart:from])) {
 			from = lineStart
 		}
-		selEnd := end
-		if selEnd > to && onlyWhitespace(string(src[to:selEnd])) {
-			selEnd = to
-		}
-		if start < from || selEnd > to || (start == end && start == to) {
+		if pos < from || pos >= to {
 			return
 		}
-		if best == nil || from >= int(best.NameAt) {
-			best = e
+		if from > bestFrom {
+			best, bestFrom = e, from
 		}
 	})
 	return best
 }
 
-// wrapEdit builds the snippet and the range it replaces. An element that starts
-// its line gets a fully indented two-line wrapper; an inline element keeps its
-// text on one line, and the goifmt pass puts it on its own lines later.
-func wrapEdit(src []byte, idx lineIndex, e *syntax.Element, named string, snippet bool) (rng, string) {
-	start, end := int(e.NameAt), int(e.Close)+1
-	lineStart := idx.starts[idx.line(start)]
-	indent := string(src[lineStart:start])
-	body := string(src[start:end])
+// elementLookup holds the element tree's parent and holder links. The holder is
+// the element or if/for/switch block an element sits in directly, so two
+// selected components in different arms are not wrapped together.
+type elementLookup struct {
+	parent map[*syntax.Element]*syntax.Element
+	holder map[*syntax.Element]any
+}
+
+func newElementLookup(root *syntax.Element) *elementLookup {
+	l := &elementLookup{
+		parent: map[*syntax.Element]*syntax.Element{},
+		holder: map[*syntax.Element]any{},
+	}
+	l.walk(root)
+	return l
+}
+
+func (l *elementLookup) walk(e *syntax.Element) {
+	for _, m := range e.Members {
+		switch x := m.(type) {
+		case *syntax.Element:
+			l.parent[x] = e
+			l.holder[x] = e
+			l.walk(x)
+		case *syntax.Block:
+			l.walkBlock(x, e)
+		}
+	}
+}
+
+func (l *elementLookup) walkBlock(b *syntax.Block, owner *syntax.Element) {
+	for _, br := range b.Branches {
+		for _, m := range br.Members {
+			switch x := m.(type) {
+			case *syntax.Element:
+				l.parent[x] = owner
+				l.holder[x] = b
+				l.walk(x)
+			case *syntax.Block:
+				l.walkBlock(x, owner)
+			}
+		}
+	}
+}
+
+// common returns the nearest element that contains both a and b.
+func (l *elementLookup) common(a, b *syntax.Element) *syntax.Element {
+	seen := map[*syntax.Element]bool{}
+	for e := a; e != nil; e = l.parent[e] {
+		seen[e] = true
+	}
+	for e := b; e != nil; e = l.parent[e] {
+		if seen[e] {
+			return e
+		}
+	}
+	return nil
+}
+
+// childOf climbs from e to the element directly inside parent.
+func (l *elementLookup) childOf(e, parent *syntax.Element) *syntax.Element {
+	for e != nil && l.parent[e] != parent {
+		e = l.parent[e]
+	}
+	return e
+}
+
+// wrapRange turns the first and last selected component into one wrapper. A
+// component that starts its line gets a fully indented block; an inline run
+// stays on one line and goifmt can break it later.
+func wrapRange(src []byte, idx lineIndex, first, last *syntax.Element, named string, snippet bool) (rng, string) {
+	from, to := int(first.NameAt), int(last.Close)+1
+	lineStart := idx.starts[idx.line(from)]
+	prefix := src[lineStart:from]
+	block := onlyWhitespace(string(prefix))
+	if block {
+		from = lineStart
+	}
+	body := string(src[from:to])
 	if snippet {
 		body = escapeSnippet(body)
 	}
-	if onlyWhitespace(indent) {
-		return idx.at(lineStart, end),
-			indent + named + " {\n" + indent + "\t" + indentLines(body) + "\n" + indent + "}"
+	if block {
+		indent := string(prefix)
+		return idx.at(from, to), indent + named + " {\n" + indentBlock(body) + "\n" + indent + "}"
 	}
-	return idx.at(start, end), named + " { " + body + " }"
+	return idx.at(from, to), named + " { " + body + " }"
 }
 
-// onlyWhitespace reports whether an element starts after indentation alone, or
-// a selection adds only space or a newline around it.
+// onlyWhitespace reports whether a prefix is indentation, or a selection adds
+// only space or a newline around the component.
 func onlyWhitespace(s string) bool {
-	for _, c := range s {
-		if c != ' ' && c != '\t' && c != '\n' && c != '\r' {
+	for i := 0; i < len(s); i++ {
+		if !isSpace(s[i]) {
 			return false
 		}
 	}
 	return true
 }
 
-// indentLines moves every line after the first one level deeper.
-func indentLines(body string) string {
-	lines := strings.Split(body, "\n")
-	for i := 1; i < len(lines); i++ {
+func isSpace(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\n' || c == '\r'
+}
+
+// indentBlock moves every non-empty line one level deeper.
+func indentBlock(block string) string {
+	lines := strings.Split(block, "\n")
+	for i := range lines {
 		if strings.TrimSpace(lines[i]) != "" {
 			lines[i] = "\t" + lines[i]
 		}

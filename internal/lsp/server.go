@@ -30,6 +30,9 @@ type Server struct {
 	// snippetEdits records whether a workspace edit may be a snippet. Without
 	// it the wrap action inserts a literal Column and cannot place the caret.
 	snippetEdits bool
+	// zed records the client, which reads the LSP 3.18 snippet object rather
+	// than the older newText + insertTextFormat pair.
+	zed bool
 
 	shutdown bool
 }
@@ -161,10 +164,14 @@ func (s *Server) initialize(raw json.RawMessage) any {
 				} `json:"workspaceEdit"`
 			} `json:"workspace"`
 		} `json:"capabilities"`
+		ClientInfo struct {
+			Name string `json:"name"`
+		} `json:"clientInfo"`
 	}
 	if json.Unmarshal(raw, &p) == nil {
 		s.snippets = p.Capabilities.TextDocument.Completion.CompletionItem.SnippetSupport
 		s.snippetEdits = p.Capabilities.Workspace.WorkspaceEdit.SnippetEditSupport
+		s.zed = strings.Contains(strings.ToLower(p.ClientInfo.Name), "zed")
 	}
 	return map[string]any{
 		"capabilities": map[string]any{

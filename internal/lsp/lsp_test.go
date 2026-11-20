@@ -2165,7 +2165,17 @@ func TestThemeHoverExplainsRegistration(t *testing.T) {
 // initializeWithSnippets performs the handshake, so the server knows whether the
 // editor can take a snippet.
 func (c *client) initializeWithSnippets(support bool) {
-	c.request("initialize", map[string]any{
+	c.initializeAs("", support)
+}
+
+// initializeAsZed performs the handshake as Zed does, which matters to the
+// code action because it reads snippets in the LSP 3.18 shape.
+func (c *client) initializeAsZed() {
+	c.initializeAs("Zed", true)
+}
+
+func (c *client) initializeAs(name string, support bool) {
+	params := map[string]any{
 		"capabilities": map[string]any{
 			"textDocument": map[string]any{
 				"completion": map[string]any{
@@ -2176,7 +2186,11 @@ func (c *client) initializeWithSnippets(support bool) {
 				"workspaceEdit": map[string]any{"snippetEditSupport": support},
 			},
 		},
-	})
+	}
+	if name != "" {
+		params["clientInfo"] = map[string]any{"name": name}
+	}
+	c.request("initialize", params)
 }
 
 // completionAt asks for completions at the end of marker in src.
@@ -2680,7 +2694,7 @@ func TestCodeActionWrapsTheElement(t *testing.T) {
 		t.Fatalf("actions = %v, want one", actions)
 	}
 	a := actions[0]
-	if a.Title != "Wrap with element" || a.Kind != "refactor.rewrite" {
+	if a.Title != "Wrap with component" || a.Kind != "refactor.rewrite" {
 		t.Fatalf("action = %+v", a)
 	}
 	if len(a.Edit.DocumentChanges) != 1 || len(a.Edit.DocumentChanges[0].Edits) != 1 {
@@ -2690,7 +2704,7 @@ func TestCodeActionWrapsTheElement(t *testing.T) {
 	if edit.InsertTextFormat != 2 {
 		t.Fatalf("insertTextFormat = %d, want snippet", edit.InsertTextFormat)
 	}
-	want := "\t\t${1:Column} {\n\t\t\tText {\n\t\t\t\ttext: \"hi\"\n\t\t\t}\n\t\t}"
+	want := "\t\t$0 {\n\t\t\tText {\n\t\t\t\ttext: \"hi\"\n\t\t\t}\n\t\t}"
 	if edit.NewText != want {
 		t.Fatalf("newText = %q\nwant %q", edit.NewText, want)
 	}
@@ -2761,7 +2775,7 @@ func TestCodeActionWrapsAnInlineElement(t *testing.T) {
 		t.Fatalf("actions = %+v", actions)
 	}
 	got := actions[0].Edit.DocumentChanges[0].Edits[0].NewText
-	if got != "${1:Column} { Text {} }" {
+	if got != "$0 { Text {} }" {
 		t.Fatalf("inline newText = %q", got)
 	}
 }
@@ -2798,7 +2812,7 @@ func TestCodeActionWithoutSnippetSupport(t *testing.T) {
 		t.Fatalf("actions = %+v", actions)
 	}
 	edit := actions[0].Edit.DocumentChanges[0].Edits[0]
-	if edit.InsertTextFormat != 1 || edit.NewText != "\tColumn {\n\t\tText { text: \"$5\" }\n\t}" {
+	if edit.InsertTextFormat != 0 || edit.NewText != "\tColumn {\n\t\tText { text: \"$5\" }\n\t}" {
 		t.Fatalf("plain wrap = %d %q", edit.InsertTextFormat, edit.NewText)
 	}
 }
@@ -2836,7 +2850,7 @@ func TestCodeActionKeepsAFullLineSelectionInsideItsElement(t *testing.T) {
 	if len(actions) != 1 {
 		t.Fatalf("actions = %+v", actions)
 	}
-	if got := actions[0].Edit.DocumentChanges[0].Edits[0].NewText; !strings.Contains(got, "${1:Column} {\n\t\t\tText {") {
+	if got := actions[0].Edit.DocumentChanges[0].Edits[0].NewText; !strings.Contains(got, "$0 {\n\t\t\tText {") {
 		t.Fatalf("selected line wrapped something else: %q", got)
 	}
 }
@@ -2871,5 +2885,91 @@ func TestCodeActionEscapesSnippetSyntax(t *testing.T) {
 	got := actions[0].Edit.DocumentChanges[0].Edits[0].NewText
 	if !strings.Contains(got, `text: "\$5"`) {
 		t.Fatalf("dollar was not escaped: %q", got)
+	}
+}
+
+// TestCodeActionUsesZedsSnippetShape: Zed reads the LSP 3.18 snippet object,
+// and $0 leaves the name empty with the caret waiting there.
+func TestCodeActionUsesZedsSnippetShape(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tText {}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.initializeAsZed()
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/codeAction", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"range":        map[string]any{"start": at(t, src, "Text", 0), "end": at(t, src, "Text", 0)},
+		"context":      map[string]any{"diagnostics": []any{}},
+	})
+	var actions []struct {
+		Edit struct {
+			DocumentChanges []struct {
+				Edits []struct {
+					NewText string `json:"newText"`
+					Snippet struct {
+						Kind  string `json:"kind"`
+						Value string `json:"value"`
+					} `json:"snippet"`
+				} `json:"edits"`
+			} `json:"documentChanges"`
+		} `json:"edit"`
+	}
+	if err := json.Unmarshal(res, &actions); err != nil {
+		t.Fatal(err)
+	}
+	if len(actions) != 1 {
+		t.Fatalf("actions = %+v", actions)
+	}
+	edit := actions[0].Edit.DocumentChanges[0].Edits[0]
+	if edit.Snippet.Kind != "snippet" || edit.Snippet.Value != "\t$0 {\n\t\tText {}\n\t}" {
+		t.Fatalf("zed snippet = %+v, newText %q", edit.Snippet, edit.NewText)
+	}
+	if edit.NewText != "" {
+		t.Fatalf("zed got newText %q, want none", edit.NewText)
+	}
+}
+
+// TestCodeActionWrapsSeveralSelectedComponents: a selection across two siblings
+// wraps that run, and the component after it stays outside.
+func TestCodeActionWrapsSeveralSelectedComponents(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tColumn {\n\t\tText { text: \"a\" }\n\t\tText { text: \"b\" }\n\t\tCard {}\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.initializeWithSnippets(true)
+	c.openDoc(uri, src)
+
+	from := strings.Index(src, "\t\tText")
+	second := strings.Index(src, "\t\tText { text: \"b\" }")
+	to := second + len("\t\tText { text: \"b\" }")
+	res := c.request("textDocument/codeAction", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"range":        map[string]any{"start": pos(src, from), "end": pos(src, to)},
+		"context":      map[string]any{"diagnostics": []any{}},
+	})
+	var actions []struct {
+		Edit struct {
+			DocumentChanges []struct {
+				Edits []struct {
+					NewText string `json:"newText"`
+				} `json:"edits"`
+			} `json:"documentChanges"`
+		} `json:"edit"`
+	}
+	if err := json.Unmarshal(res, &actions); err != nil {
+		t.Fatal(err)
+	}
+	if len(actions) != 1 {
+		t.Fatalf("actions = %+v", actions)
+	}
+	got := actions[0].Edit.DocumentChanges[0].Edits[0].NewText
+	want := "\t\t$0 {\n\t\t\tText { text: \"a\" }\n\t\t\tText { text: \"b\" }\n\t\t}"
+	if got != want {
+		t.Fatalf("multi wrap = %q\nwant %q", got, want)
+	}
+	if strings.Contains(got, "Card") {
+		t.Fatal("the component after the selection was wrapped")
 	}
 }
