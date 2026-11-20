@@ -920,6 +920,13 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 				fail("a valid blur gradient such as `linear-gradient(90deg, 0 0%, 6 60%, 0 100%)`")
 			}
 			return
+		case *syntax.Call, *syntax.Binary, *syntax.Unary, *syntax.Ternary, *syntax.Ref:
+			// A numeric expression evaluates at runtime and lands in the
+			// scalar form; a gradient expression is not supported.
+			if !v.checkNumeric(e, pd, val) {
+				fail("a number or a blur gradient")
+			}
+			return
 		}
 		fail("a blur radius or a linear-gradient/radial-gradient of radii")
 		return

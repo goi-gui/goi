@@ -809,6 +809,7 @@ func TestBackdropBlurGradient(t *testing.T) {
 		`Window { Column { backdropBlur: 6 } }`,
 		`Window { Column { backdropBlur: linear-gradient(90deg, 0 0%, 6 60%, 0 100%) } }`,
 		`Window { Column { backdropBlur: radial-gradient(circle, 0 0, 6 100, 0 260) } }`,
+		`Window { Column { backdropBlur: max(2, 4) } }`,
 	} {
 		if _, diag := validate(t, src); !diag.Empty() {
 			t.Fatalf("%s: %v", src, diag)
