@@ -3149,6 +3149,9 @@ func TestPathCompletion(t *testing.T) {
 	projectDesign(t, dir, "shared/Other.goi", "Column {}\n")
 	projectDesign(t, dir, "ui/Side.goi", "Column {}\n")
 	projectDesign(t, dir, "ui/pic.png", "not really a png\n")
+	if err := os.WriteFile(filepath.Join(dir, "pic.png"), []byte("root picture\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	projectDesign(t, dir, "images/cover.png", "not really a png\n")
 	src := "import \"goi://\n\nWindow {\n\tColumn {\n\t\tImage { src: \"goi://images/\" }\n\t\tImage { src: \"./\" }\n\t}\n}\n"
 	uri := projectDesign(t, dir, "ui/Main.goi", src)
@@ -3177,7 +3180,7 @@ func TestPathCompletion(t *testing.T) {
 
 	list = completionAt(t, c, uri, src, "src: \"./")
 	labels = pathLabels(list)
-	if !labels["./pic.png"] || !labels["./Side.goi"] {
+	if !labels["./pic.png"] {
 		t.Fatalf("relative src completion = %v", labels)
 	}
 }

@@ -76,7 +76,13 @@ func (s *Server) pathItems(d *document, kind pathKind, prefix string, start, end
 	dirPart, namePart := splitPath(typed)
 	dir := filepath.Join(root, filepath.FromSlash(dirPart))
 	if !container {
-		dir = filepath.Join(filepath.Dir(d.path), filepath.FromSlash(dirPart))
+		// An import is relative to the file; a plain src is relative to the
+		// project, which is where goi run starts the program.
+		base := filepath.Dir(d.path)
+		if kind == pathSrc {
+			base = s.projectDirFor(d)
+		}
+		dir = filepath.Join(base, filepath.FromSlash(dirPart))
 	}
 	if kind == pathImport && filepath.Clean(dir) != filepath.Clean(root) {
 		if _, ok := relUnder(root, dir); !ok {

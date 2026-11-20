@@ -45,6 +45,26 @@ func (s *Server) designRootFor(d *document) (dir, name string) {
 	return filepath.Dir(d.path), filepath.Base(d.path)
 }
 
+// projectDirFor finds the directory holding goi.yaml, which is where goi run
+// starts the program and therefore where a plain src path resolves. Without a
+// project it is the document's own directory.
+func (s *Server) projectDirFor(d *document) string {
+	if d == nil {
+		return ""
+	}
+	for at := filepath.Dir(d.path); ; {
+		if _, err := os.Stat(filepath.Join(at, "goi.yaml")); err == nil {
+			return at
+		}
+		parent := filepath.Dir(at)
+		if parent == at {
+			break
+		}
+		at = parent
+	}
+	return filepath.Dir(d.path)
+}
+
 // designOverlay roots the loader at the asset container and serves every open
 // document under it from memory, so an unsaved fragment is what validation
 // sees.
