@@ -1698,8 +1698,8 @@ func (e *Engine) containerNatural(k *tree.NodeBase, availW, availH float64) (flo
 	if horizontal {
 		return mainSum + insetW, maxH + insetH
 	}
-	if kind == "Stack" || kind == "Point" {
-		return maxf(maxW, mainSum) + insetW, maxH + insetH
+	if stack {
+		return maxW + insetW, maxH + insetH
 	}
 	return maxW + insetW, mainSum + insetH
 }

@@ -1110,3 +1110,25 @@ func TestNaturalSizeCountsChildMargins(t *testing.T) {
 		t.Fatalf("the row scrolls %v, want a box that fits its content", row.Base().ScrollMax())
 	}
 }
+
+// TestHeroHugsItsChild keeps the wrapper from taking the parent's width as its
+// height: in a Column, a Hero is as tall as the child it wraps.
+func TestHeroHugsItsChild(t *testing.T) {
+	tr := build(t, `Window {
+		Column {
+			Hero {
+				id:  pic
+				tag: "cover"
+				Image { width: 200 height: 80 }
+			}
+			Hero {
+				id:  next
+				tag: "other"
+				Image { width: 200 height: 80 }
+			}
+		}
+	}`)
+	New(nil).Layout(tr.Root, 400, 300)
+	want(t, bounds(t, tr, "pic"), 0, 0, 200, 80)
+	want(t, bounds(t, tr, "next"), 0, 80, 200, 80)
+}
