@@ -516,3 +516,19 @@ func TestFormatThemeTransition(t *testing.T) {
 		t.Fatalf("not idempotent:\n%s\n--- second ---\n%s", got, again)
 	}
 }
+
+// TestFormatUnquotedGradient keeps the gradient in the spelling the parser
+// now accepts and does not add quotes around it.
+func TestFormatUnquotedGradient(t *testing.T) {
+	src := "Window {\n\tColumn {\n\t\tbackground: linear-gradient(90deg, red 0%, blue 100%)\n\t}\n}"
+	got := string(Source([]byte(src)))
+	if !strings.Contains(got, "linear-gradient(90deg, red 0%, blue 100%)") {
+		t.Fatalf("format =\n%s", got)
+	}
+	if strings.Contains(got, `"linear-gradient`) {
+		t.Fatalf("gradient gained quotes:\n%s", got)
+	}
+	if again := string(Source([]byte(got))); again != got {
+		t.Fatalf("not idempotent:\n%s\n--- second ---\n%s", got, again)
+	}
+}

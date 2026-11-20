@@ -12,15 +12,19 @@ func TestWipeInstances(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("instances = %d, want 3", len(got))
 	}
-	for i, axis := range []float32{1, 2} {
+	for i, horizontal := range []bool{true, false} {
 		if got[i].Params[0] != 12 || got[i].Params[1] != 10 {
 			t.Fatalf("blur %d params = %v", i, got[i].Params)
 		}
 		if got[i].Params[2] != 100 || got[i].Params[3] != 300 {
 			t.Fatalf("blur %d band = %v", i, got[i].Params[2:])
 		}
-		if got[i].Misc[0] != axis || got[i].Misc[1] != 1 {
-			t.Fatalf("blur %d misc = %v, want axis %v and progressive", i, got[i].Misc, axis)
+		wantAxis := float32(2)
+		if horizontal {
+			wantAxis = 1
+		}
+		if got[i].Misc[0] != wantAxis || got[i].Misc[1] != 1 {
+			t.Fatalf("blur %d misc = %v, want axis %v and progressive", i, got[i].Misc, wantAxis)
 		}
 		if got[i].Rect != [4]float32{0, 0, 400, 500} {
 			t.Fatalf("blur %d rect = %v, want the whole window", i, got[i].Rect)

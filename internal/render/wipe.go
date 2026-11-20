@@ -31,7 +31,8 @@ func wipeInstances(r *wipeRequest, lw, lh float32) []gpuInstance {
 			Color:  [4]float32{1, 1, 1, 1},
 			Clip:   whole,
 			Params: [4]float32{12, r.blur, r.band[1], r.band[1] + r.band[3]},
-			// misc.y marks a progressive blur, whose radius follows the band.
+			// misc.y marks a progressive blur, whose radius follows the band;
+			// misc.x is the axis.
 			Misc: [4]float32{axis, 1, 0, 0},
 		}
 	}

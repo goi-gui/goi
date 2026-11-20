@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"bytes"
+	"fmt"
 	"time"
 
 	"github.com/goi-gui/goi/internal/csscolor"
@@ -1398,10 +1399,66 @@ func (p *parser) parseValue() (Value, bool) {
 			return p.parseModifier(ModifierConditional)
 		}
 	}
+	// An unquoted gradient is a value, not a call: its stops hold colours and
+	// percentages that the expression grammar does not take. Capture the raw
+	// text and hand it to the same string the quoted form produces. The lexer
+	// splits the hyphen in `linear-gradient`, so look at the next few tokens.
+	if p.rawGradientAhead() {
+		return p.parseRawGradient()
+	}
 	// Every other value is an expression: a literal, reference or call, with
 	// the operators and a conditional on top. Starting a bare identifier here
 	// is what lets `i+1` work inside a call's arguments.
 	return p.parseExpr()
+}
+
+// rawGradientAhead reports whether the next tokens spell an unquoted
+// linear-gradient or radial-gradient. The lexer reads the hyphen as a minus,
+// so the name arrives as three tokens; a lexer that keeps hyphens in an
+// identifier is handled too.
+func (p *parser) rawGradientAhead() bool {
+	t := p.peek()
+	if t.kind != tokIdent {
+		return false
+	}
+	if (t.text == "linear-gradient" || t.text == "radial-gradient") && p.peek2().kind == tokLParen {
+		return true
+	}
+	if t.text != "linear" && t.text != "radial" {
+		return false
+	}
+	at := func(n int) token { return p.toks[min(p.i+n, len(p.toks)-1)] }
+	return at(1).kind == tokMinus && at(2).text == "gradient" && at(3).kind == tokLParen
+}
+
+// parseRawGradient captures an unquoted `linear-gradient(...)` or
+// `radial-gradient(...)` as the string the quoted form would have produced.
+func (p *parser) parseRawGradient() (Value, bool) {
+	start := p.next()
+	if p.peek().kind == tokMinus {
+		p.next() // -
+		p.next() // gradient
+	}
+	if p.peek().kind != tokLParen {
+		p.errorf(p.peek(), fmt.Sprintf("expected '(' after %s", start.text))
+		return nil, false
+	}
+	p.next()
+	depth := 1
+	for p.peek().kind != tokEOF {
+		t := p.next()
+		switch t.kind {
+		case tokLParen:
+			depth++
+		case tokRParen:
+			depth--
+			if depth == 0 {
+				return &String{At: start.pos, Val: string(p.src[start.pos:t.end])}, true
+			}
+		}
+	}
+	p.errorf(start, fmt.Sprintf("unterminated %s", start.text))
+	return nil, false
 }
 
 // parseModifier reads `responsive { base: 8, md: 16 }` or

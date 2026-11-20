@@ -1,6 +1,7 @@
 package csscolor
 
 import (
+	"math"
 	"strconv"
 	"strings"
 )
@@ -14,9 +15,12 @@ const (
 	Radial
 )
 
-// Stop is one colour along a gradient, at a fraction 0..1.
+// Stop is one colour along a gradient. At is its position as a fraction of the
+// gradient line; Len is non-zero when the design wrote the position in dp, and
+// Resolve fills At in once the box is known.
 type Stop struct {
 	At    float64
+	Len   float64
 	Color uint32
 	// Role is a theme or custom colour the stop follows instead of a literal,
 	// written `theme.primary` or `customColor.brand` and stored with its
@@ -99,7 +103,9 @@ func ParseGradient(s string) (*Gradient, bool) {
 	if len(stops) < 2 {
 		return nil, false
 	}
-	fillMissingStops(stops)
+	if !hasLengthStops(stops) {
+		fillMissingStops(stops)
+	}
 	g.Stops = stops
 	return &g, true
 }
@@ -211,8 +217,12 @@ func parseStop(s string) (Stop, bool) {
 	st := Stop{Color: c, Role: role, At: -1}
 	if rest != "" {
 		fields := strings.Fields(rest)
-		if f, ok := parsePosition(fields[0]); ok {
-			st.At = f
+		if f, ln, ok := parsePosition(fields[0]); ok {
+			if ln > 0 {
+				st.Len = ln
+			} else {
+				st.At = f
+			}
 		}
 	}
 	return st, true
@@ -283,18 +293,69 @@ func isRefName(s string) bool {
 	return true
 }
 
-func parsePosition(s string) (float64, bool) {
+// parsePosition reads one stop position. A `%` is a fraction of the gradient
+// line, a `dp` suffix is a length, a bare 0..1 is the old fraction spelling and
+// a bare number above 1 is a length in dp.
+func parsePosition(s string) (at, length float64, ok bool) {
 	s = strings.TrimSpace(s)
 	percent := strings.HasSuffix(s, "%")
-	s = strings.TrimSuffix(s, "%")
-	v, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return 0, false
-	}
 	if percent {
-		v /= 100
+		s = strings.TrimSuffix(s, "%")
 	}
-	return v, true
+	dp := strings.HasSuffix(strings.ToLower(s), "dp")
+	if dp {
+		s = s[:len(s)-2]
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil || math.IsNaN(v) || math.IsInf(v, 0) {
+		return 0, 0, false
+	}
+	switch {
+	case percent:
+		return v / 100, 0, true
+	case dp:
+		return -1, v, true
+	case v <= 1:
+		return v, 0, true
+	}
+	return -1, v, true
+}
+
+// Resolve turns dp stop positions into fractions of the gradient line and fills
+// the stops that left their position out. The box is the element the gradient
+// paints; it is idempotent for a fixed box.
+func (g *Gradient) Resolve(w, h float64) {
+	if g == nil {
+		return
+	}
+	axis := gradientAxis(g.Kind, g.Angle, w, h)
+	for i := range g.Stops {
+		if g.Stops[i].Len > 0 {
+			g.Stops[i].At = g.Stops[i].Len / axis
+		}
+	}
+	fillMissingStops(g.Stops)
+}
+
+// gradientAxis is the length a stop position is measured against: the box
+// projected on the gradient line for a linear gradient, and the radius the
+// shader uses for a radial one.
+func gradientAxis(kind GradientKind, angle, w, h float64) float64 {
+	if kind == Radial {
+		return math.Max(math.Hypot(w, h)/2, 1)
+	}
+	a := angle * math.Pi / 180
+	return math.Max(math.Abs(w*math.Sin(a))+math.Abs(h*math.Cos(a)), 1)
+}
+
+// hasLengthStops reports whether a stop still needs the box to place it.
+func hasLengthStops(stops []Stop) bool {
+	for _, st := range stops {
+		if st.Len > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // fillMissingStops gives every stop a position the way CSS does: a missing one

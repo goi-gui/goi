@@ -42,6 +42,9 @@ const (
 	TypeDuration
 	// TypeThemeTransition is `crossfade 500ms`, `wipe 500ms` or `none`.
 	TypeThemeTransition
+	// TypeBackdropBlur is a blur radius, or a linear/radial gradient of radii
+	// with percentage or dp stops.
+	TypeBackdropBlur
 )
 
 func (t ValueType) String() string {
@@ -74,6 +77,8 @@ func (t ValueType) String() string {
 		return "a duration"
 	case TypeThemeTransition:
 		return "a theme transition"
+	case TypeBackdropBlur:
+		return "a number or a blur gradient"
 	}
 	return "unknown"
 }
@@ -305,7 +310,7 @@ var common = []Prop{
 	{Name: "opacity", Type: TypeNumber, Dirty: DirtyPaint, Default: 1.0, Common: true},
 	// backdropBlur blurs what is already painted behind the element, like CSS
 	// backdrop-filter. It is a radius in logical pixels; 0 is no blur.
-	{Name: "backdropBlur", Type: TypeNumber, Dirty: DirtyPaint, Default: 0.0, Common: true},
+	{Name: "backdropBlur", Type: TypeBackdropBlur, Dirty: DirtyPaint, Default: 0.0, Common: true},
 	// zIndex orders a node among its siblings when painting; layout ignores it.
 	{Name: "zIndex", Type: TypeNumber, Dirty: DirtyPaint, Default: 0.0, Common: true},
 	// cursor is the pointer shape, named the way CSS names it.

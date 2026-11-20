@@ -33,6 +33,8 @@ type backdropPanel struct {
 	rot            float32
 	pivotX, pivotY float32
 	scale          [4]float32
+	// grad is the alpha ramp of a blur gradient, -1 for a uniform blur.
+	grad int
 }
 
 // backdropTarget owns the offscreen scene and the two textures the blur passes
@@ -297,30 +299,39 @@ func (g *GPU) renderBackdrop(list *paint.List, width, height int, panels []backd
 }
 
 // backdropInstances builds the three instances a panel needs: the two blur
-// passes, which cover the box grown by the kernel, and the composite, which
-// samples the result masked to the box. lw and lh are the logical window size,
-// the space the blur radius is measured in.
+// passes, which cover the whole window, and the composite, which samples the
+// result masked to the box. Blurring the whole scene and masking the composite
+// keeps the panel-area pass coordinates trivial; a panel-sized quad with a
+// gradient mask is one place the mask and the sample can drift apart. lw and lh
+// are the logical window size, the space the blur radius is measured in.
 func backdropInstances(p backdropPanel, lw, lh float32) []gpuInstance {
-	pad := p.blur*2 + 2
 	whole := clipVec([4]float32{0, 0, lw, lh})
-	pass := func(axis float32) gpuInstance {
+	pass := func(horizontal bool) gpuInstance {
+		axis := float32(2)
+		if horizontal {
+			axis = 1
+		}
 		return gpuInstance{
-			Rect:   [4]float32{p.rect[0] - pad, p.rect[1] - pad, p.rect[2] + 2*pad, p.rect[3] + 2*pad},
+			Rect:   [4]float32{0, 0, lw, lh},
 			Clip:   whole,
 			Params: [4]float32{12, p.blur, 0, 0},
 			Misc:   [4]float32{axis, 0, 0, 0},
 		}
 	}
+	grad, masked := float32(0), float32(0)
+	if p.grad >= 0 {
+		grad, masked = float32(p.grad), 1
+	}
 	return []gpuInstance{
-		pass(1),
-		pass(2),
+		pass(true),
+		pass(false),
 		{
 			Rect:    p.rect,
 			Radius:  p.radius,
 			Color:   [4]float32{1, 1, 1, p.alpha},
 			Clip:    clipVec(p.clip),
 			ClipBox: clipVec(p.clipBox),
-			Params:  [4]float32{11, 0, 0, 0},
+			Params:  [4]float32{11, grad, masked, 0},
 			Misc:    [4]float32{0, 0, p.clipRadius, 0},
 			Rot:     [4]float32{p.rot, p.pivotX, p.pivotY, 0},
 			Scale:   p.scale,

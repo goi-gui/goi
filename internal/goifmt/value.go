@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/goi-gui/goi/internal/csscolor"
 	"github.com/goi-gui/goi/internal/syntax"
 )
 
@@ -43,6 +44,9 @@ func printProperty(name string, v syntax.Value, depth, valueCol int) string {
 		// in: one line per source line, indented under the property.
 		if strings.Contains(m.Val, "\n") {
 			return printMultiline(m.Val, depth, valueCol)
+		}
+		if csscolor.IsGradient(m.Val) {
+			return m.Val
 		}
 	}
 	switch name {

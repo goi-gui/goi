@@ -153,6 +153,8 @@ const (
 	propDuration
 	// propThemeTransition is a theme transition: `crossfade 500ms` or `none`.
 	propThemeTransition
+	// propBackdropBlur is `6` or a linear/radial gradient of radii.
+	propBackdropBlur
 )
 
 // Get returns the value as an interface, boxing it. The expression layer reads
@@ -165,6 +167,8 @@ func (p *NamedProp) Get() any {
 		return p.cell.(*Prop[time.Duration]).val
 	case propThemeTransition:
 		return p.cell.(*Prop[ThemeTransition]).val
+	case propBackdropBlur:
+		return p.cell.(*Prop[BackdropBlur]).val
 	case propRotate:
 		return p.cell.(*Prop[Rotation]).val
 	case propScale:
@@ -200,6 +204,8 @@ func (p *NamedProp) Written() bool {
 		return p.cell.(*Prop[time.Duration]).written
 	case propThemeTransition:
 		return p.cell.(*Prop[ThemeTransition]).written
+	case propBackdropBlur:
+		return p.cell.(*Prop[BackdropBlur]).written
 	case propString, propEnum, propScalar:
 		return p.cell.(*Prop[string]).written
 	case propBool:
@@ -227,6 +233,14 @@ func (p *NamedProp) Same(v any) bool {
 	case propThemeTransition:
 		t, ok := v.(ThemeTransition)
 		return ok && p.cell.(*Prop[ThemeTransition]).val == t
+	case propBackdropBlur:
+		switch x := v.(type) {
+		case float64:
+			return sameBackdropBlur(p.cell.(*Prop[BackdropBlur]).val, BackdropBlur{Radius: x})
+		case BackdropBlur:
+			return sameBackdropBlur(p.cell.(*Prop[BackdropBlur]).val, x)
+		}
+		return false
 	case propString, propEnum, propScalar:
 		s, ok := v.(string)
 		return ok && p.cell.(*Prop[string]).val == s
@@ -310,6 +324,20 @@ func (p *NamedProp) setLiteral(v syntax.Value) bool {
 		}
 		p.cell.(*Prop[ThemeTransition]).val = ThemeTransition{Name: t.Name, Dur: t.Duration}
 		return true
+	case propBackdropBlur:
+		switch x := v.(type) {
+		case *syntax.Number:
+			p.cell.(*Prop[BackdropBlur]).val = BackdropBlur{Radius: x.Val}
+			return true
+		case *syntax.String:
+			g, ok := csscolor.ParseValueGradient(x.Val)
+			if !ok {
+				return false
+			}
+			p.cell.(*Prop[BackdropBlur]).val = BackdropBlur{Radius: g.Max(), Gradient: g}
+			return true
+		}
+		return false
 	case propRotate:
 		r, ok := v.(*syntax.Rotate)
 		if !ok {
@@ -542,6 +570,15 @@ func (p *NamedProp) CopyFrom(src NamedProp) bool {
 			return false
 		}
 		p.cell.(*Prop[ThemeTransition]).val = v
+	case propBackdropBlur:
+		switch x := src.Get().(type) {
+		case float64:
+			p.cell.(*Prop[BackdropBlur]).val = BackdropBlur{Radius: x}
+		case BackdropBlur:
+			p.cell.(*Prop[BackdropBlur]).val = x
+		default:
+			return false
+		}
 	case propString, propEnum:
 		v, ok := src.Get().(string)
 		if !ok || (p.kind == propEnum && !p.allows(v)) {
@@ -597,6 +634,8 @@ func (p *NamedProp) GoSet() bool {
 		return p.cell.(*Prop[time.Duration]).goSet
 	case propThemeTransition:
 		return p.cell.(*Prop[ThemeTransition]).goSet
+	case propBackdropBlur:
+		return p.cell.(*Prop[BackdropBlur]).goSet
 	case propString, propEnum:
 		return p.cell.(*Prop[string]).goSet
 	case propBool:
@@ -617,6 +656,8 @@ func (p *NamedProp) setGoSet(v bool) {
 		p.cell.(*Prop[time.Duration]).goSet = v
 	case propThemeTransition:
 		p.cell.(*Prop[ThemeTransition]).goSet = v
+	case propBackdropBlur:
+		p.cell.(*Prop[BackdropBlur]).goSet = v
 	case propString, propEnum:
 		p.cell.(*Prop[string]).goSet = v
 	case propBool:
@@ -760,6 +801,12 @@ func DurationProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[time.Durati
 func ThemeTransitionProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[ThemeTransition]) NamedProp {
 	wire(b, name, p)
 	return NamedProp{Name: name, Dirty: dirty, kind: propThemeTransition, cell: p}
+}
+
+// BackdropBlurProp builds a NamedProp for a number or a blur gradient.
+func BackdropBlurProp(b *NodeBase, name string, dirty DirtyKind, p *Prop[BackdropBlur]) NamedProp {
+	wire(b, name, p)
+	return NamedProp{Name: name, Dirty: dirty, kind: propBackdropBlur, cell: p}
 }
 
 // SizeProp builds the `size` shorthand. It owns no cell of its own: writing it

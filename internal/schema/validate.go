@@ -904,6 +904,25 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 			fail("a theme transition like `crossfade 500ms`, `wipe 500ms` or `none`")
 		}
 		return
+	case TypeBackdropBlur:
+		switch x := val.(type) {
+		case *syntax.Number:
+			if x.Val < 0 {
+				fail("a non-negative blur radius or a blur gradient")
+			}
+			return
+		case *syntax.String:
+			if !csscolor.IsGradient(x.Val) {
+				fail("a blur radius or a linear-gradient/radial-gradient of radii")
+				return
+			}
+			if _, ok := csscolor.ParseValueGradient(x.Val); !ok {
+				fail("a valid blur gradient such as `linear-gradient(90deg, 0 0%, 6 60%, 0 100%)`")
+			}
+			return
+		}
+		fail("a blur radius or a linear-gradient/radial-gradient of radii")
+		return
 	case TypeRotate:
 		if _, ok := val.(*syntax.Rotate); !ok {
 			fail("a rotate value: none, 90deg, x 90deg or 1 1 1 90deg")

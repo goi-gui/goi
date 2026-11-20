@@ -1369,3 +1369,21 @@ func TestParseThemeTransition(t *testing.T) {
 		t.Fatalf("none value = %#v", f.Root.Prop("themeTransition").Value)
 	}
 }
+
+// TestParseUnquotedGradient: the stops hold percentages and numbers the
+// expression grammar does not take, so the gradient is captured raw and reads
+// as the same string the quoted form produces.
+func TestParseUnquotedGradient(t *testing.T) {
+	f, diag := Parse([]byte(`Window { Column { background: linear-gradient(90deg, 0 0%, 6 60%, 0 100%) } }`))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	v := f.Root.Children()[0].Prop("background").Value
+	s, ok := v.(*String)
+	if !ok {
+		t.Fatalf("value = %#v", v)
+	}
+	if s.Val != "linear-gradient(90deg, 0 0%, 6 60%, 0 100%)" {
+		t.Fatalf("gradient = %q", s.Val)
+	}
+}

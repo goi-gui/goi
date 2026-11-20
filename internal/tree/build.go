@@ -504,7 +504,7 @@ func newNode(name string) Node {
 			scrollSnapAlign:   newProp(nil, "scrollSnapAlign", DirtyPaint, "none"),
 			scrollPadding:     newProp(nil, "scrollPadding", DirtyPaint, 0.0),
 			opacity:           newProp(nil, "opacity", DirtyPaint, 1.0),
-			backdropBlur:      newProp(nil, "backdropBlur", DirtyPaint, 0.0),
+			backdropBlur:      newProp(nil, "backdropBlur", DirtyPaint, BackdropBlur{}),
 			zIndex:            newProp(nil, "zIndex", DirtyPaint, 0.0),
 			cursor:            newProp(nil, "cursor", DirtyPaint, ""),
 			width:             newProp(nil, "width", DirtyLayout, -1.0),

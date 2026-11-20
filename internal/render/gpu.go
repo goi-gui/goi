@@ -328,13 +328,20 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 		// Backdrop composite: the scene texture blurred by the passes above,
 		// masked to the panel's rounded box. The element's own background then
 		// paints over it, which is what makes a translucent background read as
-		// tinted glass.
+		// tinted glass. params.z selects a blur gradient: its alpha fades
+		// between the sharp scene and the fully blurred copy.
 		let r = radius_of(in.radius, in.local, in.size);
 		let d = sd_round_rect(in.local, in.size, r);
 		let cov = 1.0 - smoothstep(-aa, aa, d);
+		var a = in.color.a;
+		if (in.params.z > 0.5) {
+			let head = gradients[u32(in.params.y) * 6u];
+			let m = gradient_color(in.params.y, gradient_t(head, in.params.y, in.local, in.size));
+			a = a * m.a;
+		}
 		let c = textureSampleLevel(images, imgSamp, in.pos2 / viewport.size.xy, 0.0);
 		if (cov <= 0.0 || c.a <= 0.0) { discard; }
-		return vec4f(c.rgb, c.a * cov * in.color.a);
+		return vec4f(c.rgb, c.a * cov * a);
 	}
 
 	if (kind > 8.5) {
@@ -1188,6 +1195,10 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 				pivotX:     op.PivotX,
 				pivotY:     op.PivotY,
 				scale:      opScale(op),
+				grad:       -1,
+			}
+			if op.Gradient != nil {
+				panel.grad = g.gradIndex(op.Gradient)
 			}
 			panels = append(panels, panel)
 			g.instances = append(g.instances, backdropInstances(panel, float32(width)/g.scale, float32(height)/g.scale)...)

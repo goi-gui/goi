@@ -111,8 +111,9 @@ type NodeBase struct {
 	// opacity fades the node and everything under it.
 	opacity Prop[float64]
 	// backdropBlur softens what is already painted behind this node, the way
-	// CSS backdrop-filter does. 0 paints nothing.
-	backdropBlur Prop[float64]
+	// CSS backdrop-filter does. It is one radius, or a gradient of radii; a
+	// zero value paints nothing.
+	backdropBlur Prop[BackdropBlur]
 	// zIndex orders this node among its siblings when painting, like CSS: a
 	// higher value paints later, so it lands on top. Layout ignores it.
 	zIndex Prop[float64]
@@ -731,12 +732,15 @@ func (b *NodeBase) Opacity() float64 {
 // so a tween can fade a subtree in or out.
 func (b *NodeBase) SetOpacity(v float64) { b.opacity.Set(v) }
 
-// BackdropBlur returns the radius, in logical pixels, of the blur applied to
-// everything painted behind the node. 0 is no blur.
-func (b *NodeBase) BackdropBlur() float64 { return b.backdropBlur.Get() }
+// BackdropBlur returns the peak radius, in logical pixels, of the blur applied
+// to everything painted behind the node. 0 is no blur.
+func (b *NodeBase) BackdropBlur() float64 { return b.backdropBlur.Get().Radius }
 
-// SetBackdropBlur sets that radius.
-func (b *NodeBase) SetBackdropBlur(v float64) { b.backdropBlur.Set(v) }
+// BackdropBlurValue returns the radius or gradient the design wrote.
+func (b *NodeBase) BackdropBlurValue() BackdropBlur { return b.backdropBlur.Get() }
+
+// SetBackdropBlur sets a scalar radius.
+func (b *NodeBase) SetBackdropBlur(v float64) { b.backdropBlur.Set(BackdropBlur{Radius: v}) }
 
 // HideScrollbar reports whether the design removed the scrollbar.
 func (b *NodeBase) HideScrollbar() bool { return b.hideScrollbar.Get() }

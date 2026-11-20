@@ -134,8 +134,8 @@ type Op struct {
 	// edge. Zero means "round Clip itself".
 	ClipBox [4]float32
 
-	// Gradient is a CSS gradient fill, read only by CSSGradient. Its stops are
-	// in 0..1 with the same colour format as Color.
+	// Gradient is a CSS gradient fill for CSSGradient, or the alpha mask for a
+	// Backdrop. Its stops are in 0..1 with the same colour format as Color.
 	Gradient *tree.Gradient
 
 	// Rotate is the op's turn in radians, about PivotX/PivotY in window space.
@@ -498,7 +498,7 @@ func (l *List) paintContent(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
 	if !isText {
 		l.paintBoxShadows(b, r, clip, false)
 	}
-	if blur := b.BackdropBlur(); blur > 0 {
+	if blur := b.BackdropBlurValue(); blur.Gradient != nil || blur.Radius > 0 {
 		l.paintBackdrop(b, r, clip, blur)
 	}
 	l.rippleDrawn = false
@@ -554,15 +554,20 @@ func (l *List) paintContent(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
 // the element's rounded box. The element's own background then paints over it,
 // so `background: #00000044` reads as tinted glass. A rotated element keeps an
 // axis-aligned blur, because the blur samples the frame before the rotation.
-func (l *List) paintBackdrop(b *tree.NodeBase, r tree.Rect, clip tree.Rect, blur float64) {
+func (l *List) paintBackdrop(b *tree.NodeBase, r tree.Rect, clip tree.Rect, blur tree.BackdropBlur) {
+	mask, radius := blur.Mask(r.W, r.H)
+	if radius <= 0 {
+		return
+	}
 	radii := b.Radii()
 	l.Ops = append(l.Ops, Op{
-		Kind:   Backdrop,
-		Rect:   rectArr(r),
-		Radius: [4]float32{float32(radii[0]), float32(radii[1]), float32(radii[2]), float32(radii[3])},
-		Color:  0xFFFFFFFF,
-		Blur:   float32(blur),
-		Clip:   clipArr(clip),
+		Kind:     Backdrop,
+		Rect:     rectArr(r),
+		Radius:   [4]float32{float32(radii[0]), float32(radii[1]), float32(radii[2]), float32(radii[3])},
+		Color:    0xFFFFFFFF,
+		Blur:     float32(radius),
+		Gradient: mask,
+		Clip:     clipArr(clip),
 	})
 }
 
@@ -573,6 +578,9 @@ func (l *List) paintBackdrop(b *tree.NodeBase, r tree.Rect, clip tree.Rect, blur
 func (l *List) paintComponentBox(b *tree.NodeBase, r tree.Rect, clip tree.Rect, from int) {
 	color := b.Background()
 	grad := b.Gradient("background")
+	if grad != nil {
+		grad.Resolve(r.W, r.H)
+	}
 	hasPaint := color != 0 || grad != nil
 	radii := b.Radii()
 	hasRadius := b.RadiusSet()
@@ -735,6 +743,9 @@ func dashOf(b *tree.NodeBase) float32 {
 func (l *List) fillShape(r tree.Rect, color uint32, g *tree.Gradient, radii [4]float64, borderColor uint32, borderThickness float64, clip tree.Rect) {
 	if color == 0 && g == nil && (borderColor == 0 || borderThickness <= 0) {
 		return
+	}
+	if g != nil {
+		g.Resolve(r.W, r.H)
 	}
 	shape := RoundedRect
 	if g != nil {

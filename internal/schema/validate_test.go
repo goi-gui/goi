@@ -285,6 +285,8 @@ func plainValue(pd Prop) syntax.Value {
 		return &syntax.Duration{Val: 500 * time.Millisecond}
 	case TypeThemeTransition:
 		return &syntax.ThemeTransition{Name: "crossfade", Duration: 500 * time.Millisecond}
+	case TypeBackdropBlur:
+		return &syntax.Number{Val: 6}
 	}
 	return &syntax.Ident{Val: "start"}
 }
@@ -797,5 +799,22 @@ func TestLoopControlsNeedALoop(t *testing.T) {
 }`
 	if _, diag := validate(t, src); !diag.Empty() {
 		t.Fatalf("loop controls rejected: %v", diag)
+	}
+}
+
+// TestBackdropBlurGradient accepts the old radius and both gradient spellings,
+// and rejects a gradient whose stops are colours instead of radii.
+func TestBackdropBlurGradient(t *testing.T) {
+	for _, src := range []string{
+		`Window { Column { backdropBlur: 6 } }`,
+		`Window { Column { backdropBlur: linear-gradient(90deg, 0 0%, 6 60%, 0 100%) } }`,
+		`Window { Column { backdropBlur: radial-gradient(circle, 0 0, 6 100, 0 260) } }`,
+	} {
+		if _, diag := validate(t, src); !diag.Empty() {
+			t.Fatalf("%s: %v", src, diag)
+		}
+	}
+	if _, diag := validate(t, `Window { Column { backdropBlur: linear-gradient(90deg, red 0%, blue 100%) } }`); diag.Empty() {
+		t.Fatal("a colour gradient passed as a blur gradient")
 	}
 }

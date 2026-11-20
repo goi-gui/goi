@@ -2634,3 +2634,25 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   parts pay for samples. A frame that also has a backdrop filter runs the
   wipe's blur passes after the backdrop's, so a glass component does not take
   the soft edge away.
+
+- **A blur gradient is an alpha mask over one uniform blur.** `backdropBlur`
+  takes a radius or a `linear-gradient`/`radial-gradient` of radii. The renderer
+  blurs the scene at the gradient's peak and composites the blurred copy with the
+  normalized stop alpha, so the glass fades back to the sharp scene without a
+  position-dependent kernel per pixel. Stops accept percentages, `dp` lengths and
+  bare lengths above 1; lengths resolve at paint time against the same axis the
+  shader uses (the box projected on a linear gradient, half the diagonal for a
+  radial one), so a dp stop lands where the design drew it. The two separable
+  blur passes cover the whole window, not the panel box, so the mask and the
+  sampled scene share one coordinate space; the cost is two full-window passes
+  per glass panel.
+- **An unquoted gradient is captured as a string.** The lexer reads the hyphen in
+  `linear-gradient` as a minus, so the parser recognizes the token sequence and
+  slices the raw source through the matching `)`. This lets `background` and
+  `backdropBlur` write a gradient without quotes, and `goifmt` prints the
+  unquoted form. The quoted spelling stays valid.
+- **A backdrop blur pass names its axis in `misc.x`: 1 horizontal, 2 vertical.**
+  A gradient pass once left that at 0, which silently ran both separable passes
+  horizontally; a horizontal boundary then stayed sharp. The instance builder
+  always writes 1 or 2, and the gradient mask rides on the composite instance
+  instead.

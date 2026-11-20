@@ -92,7 +92,7 @@ func commonProps(b *NodeBase, extra int) []NamedProp {
 		EnumProp(b, "scrollSnapAlign", DirtyPaint, &b.scrollSnapAlign, SnapAlignValues),
 		NumberProp(b, "scrollPadding", DirtyPaint, &b.scrollPadding),
 		NumberProp(b, "opacity", DirtyPaint, &b.opacity),
-		NumberProp(b, "backdropBlur", DirtyPaint, &b.backdropBlur),
+		BackdropBlurProp(b, "backdropBlur", DirtyPaint, &b.backdropBlur),
 		NumberProp(b, "zIndex", DirtyPaint, &b.zIndex),
 		EnumProp(b, "cursor", DirtyPaint, &b.cursor, schema.CursorValues),
 		NumberProp(b, "flex", DirtyLayout, &b.flex),

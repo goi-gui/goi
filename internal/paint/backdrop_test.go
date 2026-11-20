@@ -60,3 +60,53 @@ func TestNoBackdropBlurDrawsNothing(t *testing.T) {
 		}
 	}
 }
+
+// TestBackdropBlurGradient: a blur gradient keeps its peak radius and carries an
+// alpha ramp for the composite.
+func TestBackdropBlurGradient(t *testing.T) {
+	l := list(t, `Window {
+		Column {
+			Rectangle {
+				width: 200
+				height: 100
+				background: #00000044
+				backdropBlur: linear-gradient(90deg, 0 0%, 6 60%, 0 100%)
+			}
+		}
+	}`, 400, 300)
+	for _, op := range l.Ops {
+		if op.Kind != Backdrop {
+			continue
+		}
+		if op.Blur != 6 || op.Gradient == nil || len(op.Gradient.Stops) != 3 {
+			t.Fatalf("backdrop = blur %v gradient %+v", op.Blur, op.Gradient)
+		}
+		if op.Gradient.Stops[1].At != 0.6 {
+			t.Fatalf("mask position = %v", op.Gradient.Stops[1].At)
+		}
+		return
+	}
+	t.Fatal("no backdrop op for the blur gradient")
+}
+
+// TestBackdropBlurDPStops resolves a blur gradient against the element box.
+func TestBackdropBlurDPStops(t *testing.T) {
+	l := list(t, `Window {
+		Column {
+			Rectangle {
+				width: 200
+				height: 100
+				backdropBlur: linear-gradient(90deg, 0 0, 6 100, 0 200)
+			}
+		}
+	}`, 400, 300)
+	for _, op := range l.Ops {
+		if op.Kind == Backdrop && op.Gradient != nil {
+			if op.Gradient.Stops[1].At != 0.5 || op.Gradient.Stops[2].At != 1 {
+				t.Fatalf("dp mask = %+v", op.Gradient.Stops)
+			}
+			return
+		}
+	}
+	t.Fatal("no backdrop op")
+}
