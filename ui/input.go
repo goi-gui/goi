@@ -4093,6 +4093,36 @@ func (i *interactor) focusNode(f *tree.Component) tree.Node {
 
 // absoluteRect returns a node's rectangle in window coordinates.
 func absoluteRect(n tree.Node) tree.Rect {
+	r := unshiftedAbsoluteRect(n)
+	if n == nil {
+		return r
+	}
+	// A popover panel shifts to stay inside the window in paint and in the hit
+	// walk. Internal controls (a colour square, a date/day grid, a slider) also
+	// use their node's absolute box, so the same shift has to reach this helper;
+	// otherwise a click on the drawn panel lands where the unshifted layout put
+	// it, which is a large miss once the panel moves.
+	for child := n; child != nil; {
+		parent := child.Base().Parent()
+		if parent == nil {
+			break
+		}
+		if pop, ok := parent.(*tree.Popover); ok && pop.Panel != nil && pop.Panel.Base() == child.Base() {
+			anchor := unshiftedAbsoluteRect(parent)
+			panel := unshiftedAbsoluteRect(child)
+			w, h := child.Base().TreeRef().Viewport()
+			dx, dy := pop.PanelShift(anchor, panel, w, h)
+			r.X += dx
+			r.Y += dy
+		}
+		child = parent
+	}
+	return r
+}
+
+// unshiftedAbsoluteRect is the layout box of n in window space, before a
+// popover panel shift.
+func unshiftedAbsoluteRect(n tree.Node) tree.Rect {
 	if n == nil {
 		return tree.Rect{}
 	}
