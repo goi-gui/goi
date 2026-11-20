@@ -52,6 +52,24 @@ func TestScrollToHelpers(t *testing.T) {
 	if got := page.ScrollOffset(); got != 60 {
 		t.Fatalf("ScrollToNthChild(2) = %v, want 60", got)
 	}
+	if !page.ScrollToNthChild(2, tree.ScrollEnd) {
+		t.Fatal("the second child was not found for end alignment")
+	}
+	if got := page.ScrollOffset(); got != 20 {
+		t.Fatalf("end-aligned second child = %v, want 20", got)
+	}
+	if !page.ScrollToNthChild(2, tree.ScrollCenter) {
+		t.Fatal("the second child was not found for center alignment")
+	}
+	if got := page.ScrollOffset(); got != 40 {
+		t.Fatalf("centered second child = %v, want 40", got)
+	}
+	if !page.ScrollToChild("c", tree.ScrollEnd) {
+		t.Fatal("the third child was not found by id")
+	}
+	if got := page.ScrollOffset(); got != 80 {
+		t.Fatalf("end-aligned ScrollToChild(c) = %v, want 80", got)
+	}
 	if !page.ScrollToChild("c") {
 		t.Fatal("the third child was not found by id")
 	}
@@ -87,6 +105,14 @@ func TestScrollToSmoothEasesAndStops(t *testing.T) {
 	}
 	if tr.AdvanceTransitions(0.02) {
 		t.Fatal("a finished smooth scroll kept the frame loop awake")
+	}
+
+	// The alignment also applies to a smooth child scroll.
+	page.ScrollTo(0)
+	page.ScrollToNthChildSmooth(2, 100*time.Millisecond, tree.ScrollCenter)
+	tr.AdvanceTransitions(0.11)
+	if got := page.ScrollOffset(); got != 40 {
+		t.Fatalf("smooth centered second child = %v, want 40", got)
 	}
 
 	// A wheel or a drag writes the offset directly, so it cancels the flight.
@@ -129,7 +155,7 @@ func TestScrollMethodsFromADesign(t *testing.T) {
 			height:  100
 			spacing: 0
 			Button { id: jump label: "Jump" onClick: page.scrollTo(50) }
-			Button { id: markButton label: "Mark" onClick: page.scrollToChild("mark") }
+			Button { id: markButton label: "Mark" onClick: page.scrollToChild("mark", center) }
 			Button { id: smoothButton label: "Smooth" onClick: page.scrollToSmooth(80, 500ms) }
 			Column { id: mark width: 10 height: 60 }
 			Rectangle { width: 10 height: 60 }
@@ -147,8 +173,9 @@ func TestScrollMethodsFromADesign(t *testing.T) {
 	}
 	markButton, _ := tr.ByID("markButton")
 	markButton.(*tree.Button).Base().Click.Emit(tree.ClickEvent{})
-	if got, want := page.Base().ScrollOffset(), mark.Base().Bounds().Y; got != want {
-		t.Fatalf("scrollToChild(mark) = %v, want %v", got, want)
+	want := mark.Base().Bounds().Y + mark.Base().Bounds().H/2 - (page.Base().Bounds().Y + page.Base().Bounds().H/2)
+	if got := page.Base().ScrollOffset(); got != want {
+		t.Fatalf("scrollToChild(mark, center) = %v, want %v", got, want)
 	}
 	smoothButton, _ := tr.ByID("smoothButton")
 	smoothButton.(*tree.Button).Base().Click.Emit(tree.ClickEvent{})

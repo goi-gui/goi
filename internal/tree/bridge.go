@@ -349,6 +349,19 @@ func (t *Tree) callNodeMethodX(id, method string, args []any) {
 	}
 }
 
+// scrollAlignArg reads the start, center or end word a scroll shortcut may name.
+func scrollAlignArg(v any) (ScrollAlign, bool) {
+	s, ok := v.(string)
+	if !ok {
+		return ScrollStart, false
+	}
+	switch a := ScrollAlign(s); a {
+	case ScrollStart, ScrollCenter, ScrollEnd:
+		return a, true
+	}
+	return ScrollStart, false
+}
+
 // callScrollMethod runs one of the scroll shortcuts a design calls by id.
 func callScrollMethod(b *NodeBase, method string, args []any) error {
 	if b.ScrollAxis() == AxisNone {
@@ -390,37 +403,77 @@ func callScrollMethod(b *NodeBase, method string, args []any) error {
 		}
 		b.ScrollToSmooth(v, d)
 	case "scrollToNthChild":
-		v, ok := number(0)
-		if !ok || len(args) != 1 {
-			return fmt.Errorf("goi: %s.scrollToNthChild takes one number", b.Node().Kind())
+		n, ok := number(0)
+		if !ok || len(args) > 2 {
+			return fmt.Errorf("goi: %s.scrollToNthChild takes a child number and an optional start, center or end", b.Node().Kind())
 		}
-		if !b.ScrollToNthChild(int(v)) {
-			return fmt.Errorf("goi: %s has no visible child %d", b.Node().Kind(), int(v))
+		align := ScrollStart
+		if len(args) == 2 {
+			align, ok = scrollAlignArg(args[1])
+			if !ok {
+				return fmt.Errorf("goi: %s.scrollToNthChild takes start, center or end as its alignment", b.Node().Kind())
+			}
+		}
+		if !b.ScrollToNthChild(int(n), align) {
+			return fmt.Errorf("goi: %s has no visible child %d", b.Node().Kind(), int(n))
 		}
 	case "scrollToNthChildSmooth":
-		v, ok := number(0)
-		d, dok := duration(1)
-		if !ok || !dok || len(args) != 2 {
+		n, ok := number(0)
+		if !ok || (len(args) != 2 && len(args) != 3) {
+			return fmt.Errorf("goi: %s.scrollToNthChildSmooth takes a child number, an optional start, center or end, and a duration", b.Node().Kind())
+		}
+		align := ScrollStart
+		d, dok := time.Duration(0), false
+		if len(args) == 2 {
+			d, dok = duration(1)
+		} else {
+			align, ok = scrollAlignArg(args[1])
+			d, dok = duration(2)
+			if !ok || !dok {
+				return fmt.Errorf("goi: %s.scrollToNthChildSmooth takes a child number, an optional start, center or end, and a duration", b.Node().Kind())
+			}
+		}
+		if !dok {
 			return fmt.Errorf("goi: %s.scrollToNthChildSmooth takes a number and a duration", b.Node().Kind())
 		}
-		if !b.ScrollToNthChildSmooth(int(v), d) {
-			return fmt.Errorf("goi: %s has no visible child %d", b.Node().Kind(), int(v))
+		if !b.ScrollToNthChildSmooth(int(n), d, align) {
+			return fmt.Errorf("goi: %s has no visible child %d", b.Node().Kind(), int(n))
 		}
 	case "scrollToChild":
 		id, ok := childID()
-		if !ok || len(args) != 1 {
-			return fmt.Errorf("goi: %s.scrollToChild takes one id", b.Node().Kind())
+		if !ok || len(args) > 2 {
+			return fmt.Errorf("goi: %s.scrollToChild takes an id and an optional start, center or end", b.Node().Kind())
 		}
-		if !b.ScrollToChild(id) {
+		align := ScrollStart
+		if len(args) == 2 {
+			align, ok = scrollAlignArg(args[1])
+			if !ok {
+				return fmt.Errorf("goi: %s.scrollToChild takes start, center or end as its alignment", b.Node().Kind())
+			}
+		}
+		if !b.ScrollToChild(id, align) {
 			return fmt.Errorf("goi: %s has no child %q to scroll to", b.Node().Kind(), id)
 		}
 	case "scrollToChildSmooth":
 		id, ok := childID()
-		d, dok := duration(1)
-		if !ok || !dok || len(args) != 2 {
+		if !ok || (len(args) != 2 && len(args) != 3) {
+			return fmt.Errorf("goi: %s.scrollToChildSmooth takes an id, an optional start, center or end, and a duration", b.Node().Kind())
+		}
+		align := ScrollStart
+		d, dok := time.Duration(0), false
+		if len(args) == 2 {
+			d, dok = duration(1)
+		} else {
+			align, ok = scrollAlignArg(args[1])
+			d, dok = duration(2)
+			if !ok || !dok {
+				return fmt.Errorf("goi: %s.scrollToChildSmooth takes an id, an optional start, center or end, and a duration", b.Node().Kind())
+			}
+		}
+		if !dok {
 			return fmt.Errorf("goi: %s.scrollToChildSmooth takes an id and a duration", b.Node().Kind())
 		}
-		if !b.ScrollToChildSmooth(id, d) {
+		if !b.ScrollToChildSmooth(id, d, align) {
 			return fmt.Errorf("goi: %s has no child %q to scroll to", b.Node().Kind(), id)
 		}
 	}

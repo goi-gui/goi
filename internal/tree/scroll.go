@@ -6,6 +6,18 @@ import (
 	"time"
 )
 
+// ScrollAlign is where a child lands in the viewport when a scroll shortcut
+// brings it there.
+type ScrollAlign string
+
+// Scroll alignments: the child's leading edge at the start, its middle in the
+// middle, or its trailing edge at the end.
+const (
+	ScrollStart  ScrollAlign = "start"
+	ScrollCenter ScrollAlign = "center"
+	ScrollEnd    ScrollAlign = "end"
+)
+
 // Axis is a scroll direction.
 type Axis uint8
 
@@ -223,10 +235,11 @@ func (b *NodeBase) ScrollToSmooth(v float64, d time.Duration) {
 	b.MarkDirty(DirtyPaint)
 }
 
-// ScrollToNthChild scrolls so the nth visible direct child starts at the top
-// (or left) of the viewport. n counts from one.
-func (b *NodeBase) ScrollToNthChild(n int) bool {
-	off, ok := b.nthChildOffset(n)
+// ScrollToNthChild scrolls the nth visible direct child into view, counting
+// from one. The alignment picks its leading edge, its middle or its trailing
+// edge; no alignment means start.
+func (b *NodeBase) ScrollToNthChild(n int, align ...ScrollAlign) bool {
+	off, ok := b.nthChildOffset(n, firstAlign(align))
 	if !ok {
 		return false
 	}
@@ -234,9 +247,11 @@ func (b *NodeBase) ScrollToNthChild(n int) bool {
 	return true
 }
 
-// ScrollToNthChildSmooth is ScrollToNthChild eased over d.
-func (b *NodeBase) ScrollToNthChildSmooth(n int, d time.Duration) bool {
-	off, ok := b.nthChildOffset(n)
+// ScrollToNthChildSmooth is ScrollToNthChild eased over d. The alignment is
+// optional and follows the duration, so a start-aligned jump stays
+// ScrollToNthChildSmooth(5, 300*time.Millisecond).
+func (b *NodeBase) ScrollToNthChildSmooth(n int, d time.Duration, align ...ScrollAlign) bool {
+	off, ok := b.nthChildOffset(n, firstAlign(align))
 	if !ok {
 		return false
 	}
@@ -244,11 +259,12 @@ func (b *NodeBase) ScrollToNthChildSmooth(n int, d time.Duration) bool {
 	return true
 }
 
-// ScrollToChild scrolls so the element with id, anywhere inside this node,
-// starts at the top (or left) of the viewport. It reports false when the id is
-// not inside this node or the node does not scroll.
-func (b *NodeBase) ScrollToChild(id string) bool {
-	off, ok := b.childOffset(id)
+// ScrollToChild scrolls the element with id, anywhere inside this node, into
+// view. The alignment picks its leading edge, its middle or its trailing edge;
+// no alignment means start. It reports false when the id is not inside this
+// node or the node does not scroll.
+func (b *NodeBase) ScrollToChild(id string, align ...ScrollAlign) bool {
+	off, ok := b.childOffset(id, firstAlign(align))
 	if !ok {
 		return false
 	}
@@ -256,14 +272,23 @@ func (b *NodeBase) ScrollToChild(id string) bool {
 	return true
 }
 
-// ScrollToChildSmooth is ScrollToChild eased over d.
-func (b *NodeBase) ScrollToChildSmooth(id string, d time.Duration) bool {
-	off, ok := b.childOffset(id)
+// ScrollToChildSmooth is ScrollToChild eased over d. The alignment is optional
+// and follows the duration.
+func (b *NodeBase) ScrollToChildSmooth(id string, d time.Duration, align ...ScrollAlign) bool {
+	off, ok := b.childOffset(id, firstAlign(align))
 	if !ok {
 		return false
 	}
 	b.ScrollToSmooth(off, d)
 	return true
+}
+
+// firstAlign is the requested alignment, or start when the caller named none.
+func firstAlign(align []ScrollAlign) ScrollAlign {
+	if len(align) > 0 {
+		return align[0]
+	}
+	return ScrollStart
 }
 
 // primaryScrollAxis is the one axis the shortcut helpers move: a table's
@@ -276,8 +301,8 @@ func (b *NodeBase) primaryScrollAxis() Axis {
 	return axis
 }
 
-// nthChildOffset aligns one visible direct child with the viewport's start.
-func (b *NodeBase) nthChildOffset(n int) (float64, bool) {
+// nthChildOffset aligns one visible direct child in the viewport.
+func (b *NodeBase) nthChildOffset(n int, align ScrollAlign) (float64, bool) {
 	axis := b.primaryScrollAxis()
 	if axis == AxisNone || n < 1 {
 		return 0, false
@@ -289,14 +314,14 @@ func (b *NodeBase) nthChildOffset(n int) (float64, bool) {
 		}
 		i++
 		if i == n {
-			return b.startOffset(axis, k), true
+			return b.alignOffset(axis, k, align), true
 		}
 	}
 	return 0, false
 }
 
 // childOffset finds an element by id and aligns it when it is inside b.
-func (b *NodeBase) childOffset(id string) (float64, bool) {
+func (b *NodeBase) childOffset(id string, align ScrollAlign) (float64, bool) {
 	axis := b.primaryScrollAxis()
 	if axis == AxisNone || b.tree == nil {
 		return 0, false
@@ -309,7 +334,7 @@ func (b *NodeBase) childOffset(id string) (float64, bool) {
 	if k == b || !b.holds(k) {
 		return 0, false
 	}
-	return b.startOffset(axis, k), true
+	return b.alignOffset(axis, k, align), true
 }
 
 // holds reports whether k is somewhere below b.
@@ -322,14 +347,24 @@ func (b *NodeBase) holds(k *NodeBase) bool {
 	return false
 }
 
-// startOffset is where k's leading edge sits inside b's content box before
-// scrolling, which is the offset that puts it at the viewport's start.
-func (b *NodeBase) startOffset(axis Axis, k *NodeBase) float64 {
+// alignOffset is the offset that puts k at the requested place in b's viewport
+// before scrolling.
+func (b *NodeBase) alignOffset(axis Axis, k *NodeBase, align ScrollAlign) float64 {
 	be := b.BorderEdges()
+	start, size := k.bounds.Y, k.bounds.H
+	viewStart, view := b.bounds.Y+be.Top, b.bounds.H-be.Top-be.Bottom
 	if axis == AxisX {
-		return k.bounds.X - (b.bounds.X + be.Left)
+		start, size = k.bounds.X, k.bounds.W
+		viewStart, view = b.bounds.X+be.Left, b.bounds.W-be.Left-be.Right
 	}
-	return k.bounds.Y - (b.bounds.Y + be.Top)
+	switch align {
+	case ScrollCenter:
+		return start + size/2 - (viewStart + view/2)
+	case ScrollEnd:
+		return start + size - (viewStart + view)
+	default:
+		return start - viewStart
+	}
 }
 
 // scrollAnimation is one smooth scroll. It is written every frame by

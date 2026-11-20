@@ -1573,34 +1573,65 @@ func (v *validator) checkEventCall(e *syntax.Element, ev EventDef, p *syntax.Pro
 				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes one number",
 					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
 			}
-		case "scrollTo", "scrollToNthChild":
+		case "scrollTo":
 			if len(call.Args) != 1 {
 				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes one number",
 					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
 			}
-		case "scrollToChild":
-			if len(call.Args) != 1 {
-				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes one id",
-					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
-			}
-		case "scrollToSmooth", "scrollToNthChildSmooth":
+		case "scrollToSmooth":
 			if len(call.Args) != 2 {
 				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes a number and a duration",
 					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+			} else if _, ok := call.Args[1].(*syntax.Duration); !ok {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes a duration such as 300ms as its second argument",
+					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+			}
+		case "scrollToNthChild":
+			if len(call.Args) < 1 || len(call.Args) > 2 {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes a number and an optional start, center or end",
+					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+			} else if len(call.Args) == 2 && !scrollAlignValue(call.Args[1]) {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes start, center or end as its alignment",
+					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+			}
+		case "scrollToNthChildSmooth":
+			if len(call.Args) != 2 && len(call.Args) != 3 {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes a number, an optional start, center or end, and a duration",
+					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
 				return
 			}
-			if _, ok := call.Args[1].(*syntax.Duration); !ok {
-				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes a duration such as 300ms as its second argument",
+			last := call.Args[len(call.Args)-1]
+			if _, ok := last.(*syntax.Duration); !ok {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes a duration such as 300ms as its last argument",
+					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+				return
+			}
+			if len(call.Args) == 3 && !scrollAlignValue(call.Args[1]) {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes start, center or end as its alignment",
+					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+			}
+		case "scrollToChild":
+			if len(call.Args) < 1 || len(call.Args) > 2 {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes an id and an optional start, center or end",
+					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+			} else if len(call.Args) == 2 && !scrollAlignValue(call.Args[1]) {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes start, center or end as its alignment",
 					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
 			}
 		case "scrollToChildSmooth":
-			if len(call.Args) != 2 {
-				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes an id and a duration",
+			if len(call.Args) != 2 && len(call.Args) != 3 {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes an id, an optional start, center or end, and a duration",
 					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
 				return
 			}
-			if _, ok := call.Args[1].(*syntax.Duration); !ok {
-				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes a duration such as 300ms as its second argument",
+			last := call.Args[len(call.Args)-1]
+			if _, ok := last.(*syntax.Duration); !ok {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes a duration such as 300ms as its last argument",
+					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+				return
+			}
+			if len(call.Args) == 3 && !scrollAlignValue(call.Args[1]) {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes start, center or end as its alignment",
 					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
 			}
 		case "setObscureText":
@@ -1895,6 +1926,21 @@ func listItemLen(v syntax.Value) int {
 		return len(x.ID) + 1 + len(x.Prop)
 	}
 	return 1
+}
+
+// scrollAlignValue reports whether a scroll alignment could be start, center or
+// end at run time. An expression is left to the frame that evaluates it.
+func scrollAlignValue(v syntax.Value) bool {
+	name := ""
+	switch x := v.(type) {
+	case *syntax.Ident:
+		name = x.Val
+	case *syntax.String:
+		name = x.Val
+	default:
+		return true
+	}
+	return name == "start" || name == "center" || name == "end"
 }
 
 // boolishValue reports whether a value could be a bool at run time: a literal

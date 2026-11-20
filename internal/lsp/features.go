@@ -960,13 +960,13 @@ func nodeMethodDoc(name string) string {
 	case "scrollToSmooth":
 		return "**scrollToSmooth(offset, duration)**\n\nEases to an offset over a duration such as `300ms`; the default curve starts fast and lands soft."
 	case "scrollToNthChild":
-		return "**scrollToNthChild(n)**\n\nScrolls so the nth visible direct child, counting from one, starts at the top or left of the area."
+		return "**scrollToNthChild(n, align?)**\n\nScrolls the nth visible direct child, counting from one, into view. The optional alignment is `start` (the default), `center` or `end`."
 	case "scrollToNthChildSmooth":
-		return "**scrollToNthChildSmooth(n, duration)**\n\nEases to the nth visible direct child over a duration."
+		return "**scrollToNthChildSmooth(n, align?, duration)**\n\nEases the nth visible direct child into view over a duration; the optional `start`, `center` or `end` comes before the duration."
 	case "scrollToChild":
-		return "**scrollToChild(id)**\n\nScrolls so an element anywhere inside the area starts at its top or left."
+		return "**scrollToChild(id, align?)**\n\nScrolls an element anywhere inside the area into view. The optional alignment is `start` (the default), `center` or `end`."
 	case "scrollToChildSmooth":
-		return "**scrollToChildSmooth(id, duration)**\n\nEases to an element anywhere inside the area over a duration."
+		return "**scrollToChildSmooth(id, align?, duration)**\n\nEases an element anywhere inside the area into view over a duration; the optional `start`, `center` or `end` comes before the duration."
 	}
 	return ""
 }

@@ -838,9 +838,13 @@ func TestScrollMethodsValidate(t *testing.T) {
 		Button { onClick: page.scrollTo(200) }
 		Button { onClick: page.scrollToSmooth(200, 500ms) }
 		Button { onClick: page.scrollToNthChild(5) }
+		Button { onClick: page.scrollToNthChild(5, center) }
 		Button { onClick: page.scrollToNthChildSmooth(5, 500ms) }
+		Button { onClick: page.scrollToNthChildSmooth(5, center, 500ms) }
 		Button { onClick: page.scrollToChild("row") }
+		Button { onClick: page.scrollToChild("row", end) }
 		Button { onClick: page.scrollToChildSmooth("row", 500ms) }
+		Button { onClick: page.scrollToChildSmooth("row", end, 500ms) }
 	} }`
 	if _, diag := validate(t, ok); !diag.Empty() {
 		t.Fatalf("%v", diag)
@@ -851,6 +855,9 @@ func TestScrollMethodsValidate(t *testing.T) {
 		`Window { Column { id: page Button { onClick: page.scrollToSmooth(200, "soon") } } }`,
 		`Window { Column { id: page Button { onClick: page.scrollToChild() } } }`,
 		`Window { Column { id: page Button { onClick: page.scrollToChildSmooth("row") } } }`,
+		`Window { Column { id: page Button { onClick: page.scrollToNthChild(5, middle) } } }`,
+		`Window { Column { id: page Button { onClick: page.scrollToNthChildSmooth(5, center) } } }`,
+		`Window { Column { id: page Button { onClick: page.scrollToChild("row", middle, 500ms) } } }`,
 	} {
 		if _, diag := validate(t, src); diag.Empty() {
 			t.Fatalf("%s passed", src)

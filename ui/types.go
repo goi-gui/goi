@@ -41,6 +41,16 @@ type Node = tree.Node
 // Rect is a layout rectangle in logical pixels.
 type Rect = tree.Rect
 
+// ScrollAlign is where a scroll shortcut lands a child in the viewport.
+type ScrollAlign = tree.ScrollAlign
+
+// Scroll alignments.
+const (
+	ScrollStart  = tree.ScrollStart
+	ScrollCenter = tree.ScrollCenter
+	ScrollEnd    = tree.ScrollEnd
+)
+
 // Shadow is one shadow layer, the same value `shadow:` writes: an offset, an
 // optional blur and spread, a colour and whether it paints inside the shape.
 type Shadow = tree.ShadowLayer
