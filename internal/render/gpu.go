@@ -1200,6 +1200,7 @@ func (g *GPU) Render(list *paint.List, width, height int) error {
 				pivotY:     op.PivotY,
 				scale:      opScale(op),
 				grad:       -1,
+				rounds:     blurRounds(op.Blur),
 			}
 			if op.Gradient != nil {
 				panel.grad = g.gradIndex(op.Gradient)

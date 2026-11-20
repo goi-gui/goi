@@ -2642,10 +2642,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   position-dependent kernel per pixel. Stops accept percentages, `dp` lengths and
   bare lengths above 1; lengths resolve at paint time against the same axis the
   shader uses (the box projected on a linear gradient, half the diagonal for a
-  radial one), so a dp stop lands where the design drew it. The two separable
-  blur passes cover the whole window, not the panel box, so the mask and the
-  sampled scene share one coordinate space; the cost is two full-window passes
-  per glass panel.
+  radial one), so a dp stop lands where the design drew it. Large radii repeat
+  the separable kernel in up to four rounds, each at a fraction of the peak, so
+  the nine taps stay close enough to read smooth; the passes cover the panel
+  plus the kernel, not the whole window.
 - **An unquoted gradient is captured as a string.** The lexer reads the hyphen in
   `linear-gradient` as a minus, so the parser recognizes the token sequence and
   slices the raw source through the matching `)`. This lets `background` and

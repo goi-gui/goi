@@ -4,6 +4,7 @@ package render
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/gogpu/gputypes"
 	"github.com/gogpu/wgpu"
@@ -35,6 +36,10 @@ type backdropPanel struct {
 	scale          [4]float32
 	// grad is the alpha ramp of a blur gradient, -1 for a uniform blur.
 	grad int
+	// rounds is how many separable blur pairs to repeat. A large radius with
+	// one pair leaves the nine taps too far apart; repeating a smaller radius
+	// fills the gaps and approaches a Gaussian. 0 means one round.
+	rounds int
 }
 
 // backdropTarget owns the offscreen scene and the two textures the blur passes
@@ -208,6 +213,21 @@ func (g *GPU) shapePass(enc *wgpu.CommandEncoder, bd *backdropTarget, slot int, 
 // before the panel, the two blur passes over what they drew, the composite of
 // the blurred copy, and then the rest of the frame. The finished scene is blitted
 // onto the surface with its last instance.
+// blurRounds picks how many separable blur pairs a backdrop radius needs. The
+// taps of one 9-tap pass are a quarter of the radius apart, so a 100dp blur
+// samples 25dp apart and reads blocky; repeating a smaller radius smooths it.
+func blurRounds(radius float32) int {
+	switch {
+	case radius < 24:
+		return 1
+	case radius < 48:
+		return 2
+	case radius < 80:
+		return 3
+	}
+	return 4
+}
+
 func (g *GPU) renderBackdrop(list *paint.List, width, height int, panels []backdropPanel, blit int, wipe *wipeRequest) error {
 	bd, err := g.ensureBackdrop(width, height)
 	if err != nil {
@@ -244,21 +264,34 @@ func (g *GPU) renderBackdrop(list *paint.List, width, height int, panels []backd
 		}
 		slot++
 		load = true
-		// Horizontal then vertical: a Gaussian-weighted 9-tap kernel from two passes.
-		// Each samples what the previous one wrote, so the blur is separable.
-		if err := g.shapePass(enc, bd, slot, bd.tmpView, nil, true, clear, p.at, 1, bd.sceneView); err != nil {
+
+		rounds := p.rounds
+		if rounds < 1 {
+			rounds = 1
+		}
+		passes := 2 * rounds
+		// Horizontal then vertical, repeated: each round samples what the
+		// previous one wrote. Repeating a smaller radius fills the gaps a single
+		// large kernel leaves, which is what keeps a 100dp blur smooth.
+		for i := 0; i < passes; i++ {
+			target, src := bd.tmpView, bd.blurView
+			if i%2 == 1 {
+				target, src = bd.blurView, bd.tmpView
+			}
+			if i == 0 {
+				src = bd.sceneView
+			}
+			if err := g.shapePass(enc, bd, slot, target, nil, true, clear, p.at+i, 1, src); err != nil {
+				return err
+			}
+			slot++
+		}
+		// The composite samples the last vertical pass and lands in the scene.
+		if err := g.shapePass(enc, bd, slot, bd.sceneView, nil, true, clear, p.at+passes, 1, bd.blurView); err != nil {
 			return err
 		}
 		slot++
-		if err := g.shapePass(enc, bd, slot, bd.blurView, nil, true, clear, p.at+1, 1, bd.tmpView); err != nil {
-			return err
-		}
-		slot++
-		if err := g.shapePass(enc, bd, slot, bd.sceneView, nil, true, clear, p.at+2, 1, bd.blurView); err != nil {
-			return err
-		}
-		slot++
-		start = p.at + 3
+		start = p.at + passes + 1
 	}
 	// The scene ends where the blit instance begins.
 	if err := g.shapePass(enc, bd, slot, bd.sceneView, nil, load, clear, start, blit-start, nil); err != nil {
@@ -298,23 +331,27 @@ func (g *GPU) renderBackdrop(list *paint.List, width, height int, panels []backd
 	return nil
 }
 
-// backdropInstances builds the three instances a panel needs: the two blur
-// passes, which cover the whole window, and the composite, which samples the
-// result masked to the box. Blurring the whole scene and masking the composite
-// keeps the panel-area pass coordinates trivial; a panel-sized quad with a
-// gradient mask is one place the mask and the sample can drift apart. lw and lh
-// are the logical window size, the space the blur radius is measured in.
+// backdropInstances builds the blur passes and the composite a panel needs.
+// Large radii repeat a smaller separable kernel: one 9-tap pass at 100dp samples
+// 25dp apart and reads blocky, while several rounds fill the gaps. lw and lh are
+// the logical window size, the space the blur radius is measured in.
 func backdropInstances(p backdropPanel, lw, lh float32) []gpuInstance {
+	pad := p.blur*2 + 2
 	whole := clipVec([4]float32{0, 0, lw, lh})
+	rounds := p.rounds
+	if rounds < 1 {
+		rounds = 1
+	}
+	per := p.blur / float32(math.Sqrt(float64(rounds)))
 	pass := func(horizontal bool) gpuInstance {
 		axis := float32(2)
 		if horizontal {
 			axis = 1
 		}
 		return gpuInstance{
-			Rect:   [4]float32{0, 0, lw, lh},
+			Rect:   [4]float32{p.rect[0] - pad, p.rect[1] - pad, p.rect[2] + 2*pad, p.rect[3] + 2*pad},
 			Clip:   whole,
-			Params: [4]float32{12, p.blur, 0, 0},
+			Params: [4]float32{12, per, 0, 0},
 			Misc:   [4]float32{axis, 0, 0, 0},
 		}
 	}
@@ -322,19 +359,19 @@ func backdropInstances(p backdropPanel, lw, lh float32) []gpuInstance {
 	if p.grad >= 0 {
 		grad, masked = float32(p.grad), 1
 	}
-	return []gpuInstance{
-		pass(true),
-		pass(false),
-		{
-			Rect:    p.rect,
-			Radius:  p.radius,
-			Color:   [4]float32{1, 1, 1, p.alpha},
-			Clip:    clipVec(p.clip),
-			ClipBox: clipVec(p.clipBox),
-			Params:  [4]float32{11, grad, masked, 0},
-			Misc:    [4]float32{0, 0, p.clipRadius, 0},
-			Rot:     [4]float32{p.rot, p.pivotX, p.pivotY, 0},
-			Scale:   p.scale,
-		},
+	out := make([]gpuInstance, 0, 2*rounds+1)
+	for i := 0; i < rounds; i++ {
+		out = append(out, pass(true), pass(false))
 	}
+	return append(out, gpuInstance{
+		Rect:    p.rect,
+		Radius:  p.radius,
+		Color:   [4]float32{1, 1, 1, p.alpha},
+		Clip:    clipVec(p.clip),
+		ClipBox: clipVec(p.clipBox),
+		Params:  [4]float32{11, grad, masked, 0},
+		Misc:    [4]float32{0, 0, p.clipRadius, 0},
+		Rot:     [4]float32{p.rot, p.pivotX, p.pivotY, 0},
+		Scale:   p.scale,
+	})
 }
