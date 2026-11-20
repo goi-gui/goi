@@ -113,7 +113,7 @@ id. Hot reload updates the open window as the file changes; the
 
 ## Requirements
 
-Go 1.27 or newer and the **SDL3 runtime library**. purego loads it at run time,
+Go 1.27.3 or newer and the **SDL3 runtime library**. purego loads it at run time,
 so there is no C toolchain, SDL development package or `pkg-config` to install.
 The supported build is cgo-free:
 
