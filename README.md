@@ -69,11 +69,20 @@ bridge {
 
 Window {
 	title: "Hello"
+
 	Column {
 		padding: 24
 		gap:     12
-		Text { text: "Hello, goi" role: headlineMedium }
-		Button { label: "Say hello" onClick: bridge.onSayHello() }
+
+		Text {
+			text: "Hello, goi"
+			role: headlineMedium
+		}
+
+		Button {
+			label:   "Say hello"
+			onClick: bridge.onSayHello()
+		}
 	}
 }
 ```
