@@ -3,6 +3,7 @@ package syntax
 import (
 	"bytes"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/goi-gui/goi/internal/csscolor"
@@ -192,27 +193,41 @@ func (p *parser) parseTrailer() {
 	}
 }
 
-// parseImport reads `import Sidebar "./Sidebar.goi"`, the order Go writes an
-// import alias in.
+// parseImport reads `import Sidebar "./Sidebar.goi"` or, with no alias, the
+// file's base name: `import "./Sidebar.goi"`.
 func (p *parser) parseImport() (Import, bool) {
 	kw := p.next() // import
 	imp := Import{At: kw.pos}
 	alias := p.peek()
-	if alias.kind != tokIdent {
-		p.errorf(alias, "expected an alias after import: import Sidebar \"./Sidebar.goi\"")
-		p.sync()
-		return imp, false
+	if alias.kind == tokString {
+		p.next()
+		imp.Path = alias.text
+		imp.AliasAt = alias.pos
+		imp.Implicit = true
+		name, ok := DeriveAlias(alias.text)
+		if !ok {
+			p.errorf(alias, "cannot derive an element name from "+strconv.Quote(alias.text)+"; name the import: import Name "+strconv.Quote(alias.text))
+			p.sync()
+			return imp, false
+		}
+		imp.Alias = name
+	} else {
+		if alias.kind != tokIdent {
+			p.errorf(alias, "expected an alias or a quoted path after import")
+			p.sync()
+			return imp, false
+		}
+		p.next()
+		imp.Alias, imp.AliasAt = alias.text, alias.pos
+		t := p.peek()
+		if t.kind != tokString {
+			p.errorf(t, "expected a quoted path after the import alias")
+			p.sync()
+			return imp, false
+		}
+		p.next()
+		imp.Path = t.text
 	}
-	p.next()
-	imp.Alias, imp.AliasAt = alias.text, alias.pos
-	t := p.peek()
-	if t.kind != tokString {
-		p.errorf(t, "expected a quoted path after the import alias")
-		p.sync()
-		return imp, false
-	}
-	p.next()
-	imp.Path = t.text
 	if p.peek().kind == tokSemicolon {
 		p.next()
 	}

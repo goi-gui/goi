@@ -189,7 +189,7 @@ func (s *Server) initialize(raw json.RawMessage) any {
 			"documentFormattingProvider": true,
 			"foldingRangeProvider":       true,
 			"codeActionProvider": map[string]any{
-				"codeActionKinds": []string{"refactor.rewrite"},
+				"codeActionKinds": []string{"quickfix", "refactor.rewrite"},
 			},
 		},
 		"serverInfo": map[string]any{

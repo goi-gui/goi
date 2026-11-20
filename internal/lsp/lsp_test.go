@@ -2973,3 +2973,98 @@ func TestCodeActionWrapsSeveralSelectedComponents(t *testing.T) {
 		t.Fatal("the component after the selection was wrapped")
 	}
 }
+
+// TestCompletionAutoImportsAFragment: a sibling .goi file that the design does
+// not import yet is offered with the unnamed import in additionalTextEdits.
+func TestCompletionAutoImportsAFragment(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	writeDesign(t, dir, "Side.goi", "Column { Text { text: \"hi\" } }\n")
+	src := "Window {\n\t\n}\n"
+	uri := writeDesign(t, dir, "Main.goi", src)
+	c.openDoc(uri, src)
+
+	list := completionAt(t, c, uri, src, "\t")
+	var found bool
+	for _, it := range list.Items {
+		if it.Label != "Side" {
+			continue
+		}
+		found = true
+		if it.Detail != "fragment · auto import" {
+			t.Fatalf("detail = %q", it.Detail)
+		}
+		if len(it.AdditionalTextEdits) != 1 {
+			t.Fatalf("import edits = %+v", it.AdditionalTextEdits)
+		}
+		edit := it.AdditionalTextEdits[0]
+		if edit.NewText != "import \"./Side.goi\"\n\n" {
+			t.Fatalf("import text = %q", edit.NewText)
+		}
+		if edit.Range.Start.Line != 0 || edit.Range.Start.Character != 0 {
+			t.Fatalf("import range = %+v", edit.Range)
+		}
+	}
+	if !found {
+		t.Fatalf("Side was not offered: %+v", list.Items)
+	}
+
+	// An imported file is not offered again as an auto import.
+	src = "import Side \"./Side.goi\"\nWindow {\n\t\n}\n"
+	uri = writeDesign(t, dir, "Imported.goi", src)
+	c.openDoc(uri, src)
+	list = completionAt(t, c, uri, src, "\t")
+	for _, it := range list.Items {
+		if it.Label == "Side" && len(it.AdditionalTextEdits) > 0 {
+			t.Fatalf("an imported fragment got a second import: %+v", it.AdditionalTextEdits)
+		}
+	}
+}
+
+// TestCodeActionImportsTheUnknownFragment: the unknown-element diagnostic gets
+// a quick fix that inserts the unnamed import.
+func TestCodeActionImportsTheUnknownFragment(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	writeDesign(t, dir, "Side.goi", "Column { Text { text: \"hi\" } }\n")
+	src := "Window {\n\tSide {}\n}\n"
+	uri := writeDesign(t, dir, "Main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/codeAction", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"range":        map[string]any{"start": at(t, src, "Side", 0), "end": at(t, src, "Side", len("Side"))},
+		"context": map[string]any{"diagnostics": []any{map[string]any{
+			"message": `unknown element "Side"`,
+			"range":   map[string]any{"start": at(t, src, "Side", 0), "end": at(t, src, "Side", len("Side"))},
+		}}},
+	})
+	var actions []struct {
+		Title string `json:"title"`
+		Kind  string `json:"kind"`
+		Edit  struct {
+			DocumentChanges []struct {
+				Edits []struct {
+					NewText string `json:"newText"`
+				} `json:"edits"`
+			} `json:"documentChanges"`
+		} `json:"edit"`
+	}
+	if err := json.Unmarshal(res, &actions); err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range actions {
+		if a.Title != `Import "./Side.goi"` {
+			continue
+		}
+		if a.Kind != "quickfix" {
+			t.Fatalf("kind = %q", a.Kind)
+		}
+		got := a.Edit.DocumentChanges[0].Edits[0].NewText
+		if got != "import \"./Side.goi\"\n\n" {
+			t.Fatalf("import text = %q", got)
+		}
+		return
+	}
+	t.Fatalf("no import quick fix: %+v", actions)
+}

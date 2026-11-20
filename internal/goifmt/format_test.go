@@ -532,3 +532,20 @@ func TestFormatUnquotedGradient(t *testing.T) {
 		t.Fatalf("not idempotent:\n%s\n--- second ---\n%s", got, again)
 	}
 }
+
+// TestFormatKeepsUnnamedImports: the formatter must not turn the optional alias
+// into the explicit one, because the file name is the source of the name.
+func TestFormatKeepsUnnamedImports(t *testing.T) {
+	src := `import "./Sidebar.goi"
+import Named "./Named.goi"
+Window { }
+`
+	want := `import "./Sidebar.goi"
+import Named "./Named.goi"
+
+Window {}
+`
+	if got := string(Source([]byte(src))); got != want {
+		t.Fatalf("format = %q\nwant %q", got, want)
+	}
+}

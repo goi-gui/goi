@@ -156,6 +156,9 @@ type completionResult struct {
 	Snippet string `json:"-"`
 	// InsertTextFormat is 1 (plain) or 2 (snippet), per the LSP.
 	InsertTextFormat int `json:"insertTextFormat,omitempty"`
+	// AdditionalTextEdits run with the insertion, which is where an auto-import
+	// adds the import for the fragment the reader just picked.
+	AdditionalTextEdits []completionTextEdit `json:"additionalTextEdits,omitempty"`
 }
 
 // completionTextEdit is a single replacement range, the shape LSP completion
@@ -276,8 +279,10 @@ func (s *Server) completion(raw json.RawMessage) any {
 			items = append(items, blockItems(file)...)
 			items = append(items, loopControlItems(file, off)...)
 		}
+		items = append(items, s.autoImportItems(d, file)...)
 	case prop == "" && !inMap:
 		items = append(items, elementItems(file)...)
+		items = append(items, s.autoImportItems(d, file)...)
 	}
 
 	// A snippet lands with the caret where the entry wants it, indented one

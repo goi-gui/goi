@@ -70,13 +70,17 @@ func (f *File) CommentAt(pos Pos) *Comment {
 // opened as a window: it declares props or a `$children` slot.
 func (f *File) IsFragment() bool { return len(f.Props) > 0 || f.Fragment }
 
-// Import is `import Sidebar "./Sidebar.goi"`.
+// Import is `import Sidebar "./Sidebar.goi"`, or `import "./Sidebar.goi"`
+// when the alias follows the file's base name.
 type Import struct {
 	Path  string // as written, relative to the importing file
 	Alias string // the element name that instantiates the fragment
 	At    Pos
-	// AliasAt is the position of the alias, for diagnostics.
+	// AliasAt is the position of the alias, for diagnostics. An implicit alias
+	// points at the quoted path, because that is what the design wrote.
 	AliasAt Pos
+	// Implicit marks `import "path"`, whose alias comes from the file name.
+	Implicit bool
 }
 
 // TypeKind is the shape of a declared type.

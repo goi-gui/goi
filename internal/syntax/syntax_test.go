@@ -287,8 +287,8 @@ Column { Text { text: props.Title } }`))
 
 func TestParsePreambleErrors(t *testing.T) {
 	cases := []struct{ name, src, want string }{
-		{"path first", `import "./a.goi" as A
-Window { }`, "expected an alias after import"},
+		{"not an alias", `import 123
+Window { }`, "expected an alias or a quoted path after import"},
 		{"missing path", `import A
 Window { }`, "expected a quoted path"},
 		{"missing brace", "props Title string\nWindow { }", "expected '{' after props"},
@@ -1385,5 +1385,35 @@ func TestParseUnquotedGradient(t *testing.T) {
 	}
 	if s.Val != "linear-gradient(90deg, 0 0%, 6 60%, 0 100%)" {
 		t.Fatalf("gradient = %q", s.Val)
+	}
+}
+
+// TestUnnamedImportDerivesItsAlias: the path's base name is the element name,
+// and a base that is not an identifier is folded into one.
+func TestUnnamedImportDerivesItsAlias(t *testing.T) {
+	f, diag := Parse([]byte(`import "./Sidebar.goi"
+import "./my-card.goi"
+import "./123.goi"
+import Named "./Named.goi"
+Window { Sidebar {} }`))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	want := []struct {
+		alias    string
+		implicit bool
+	}{
+		{"Sidebar", true},
+		{"MyCard", true},
+		{"File123", true},
+		{"Named", false},
+	}
+	if len(f.Imports) != len(want) {
+		t.Fatalf("imports = %+v", f.Imports)
+	}
+	for i, w := range want {
+		if f.Imports[i].Alias != w.alias || f.Imports[i].Implicit != w.implicit {
+			t.Fatalf("import %d = %+v, want %s implicit=%v", i, f.Imports[i], w.alias, w.implicit)
+		}
 	}
 }

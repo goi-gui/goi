@@ -82,6 +82,10 @@ func (p *printer) document() {
 		section(func() {
 			for _, imp := range p.file.Imports {
 				p.commentsBefore(imp.At)
+				if imp.Implicit {
+					p.b.WriteString("import " + strconv.Quote(imp.Path) + "\n")
+					continue
+				}
 				p.b.WriteString("import " + imp.Alias + " " + strconv.Quote(imp.Path) + "\n")
 			}
 		})

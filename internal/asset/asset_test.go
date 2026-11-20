@@ -707,3 +707,28 @@ Card {
 		t.Fatalf("label after SetData = %q", got)
 	}
 }
+
+// TestUnnamedImportExpands: a path on its own names the fragment from the file
+// base, so `Sidebar {}` resolves without an alias in the import.
+func TestUnnamedImportExpands(t *testing.T) {
+	dir := design(t, map[string]string{
+		"Main.goi": `import "./Sidebar.goi"
+Window {
+	Sidebar { }
+}`,
+		"Sidebar.goi": `Column {
+	width: 200
+	Text { text: "Mail" }
+}`,
+	})
+	tr, err := load(t, dir, "Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range tr.All() {
+		if n.Kind() == "Column" && n.Base().Width() == 200 {
+			return
+		}
+	}
+	t.Fatalf("the unnamed import did not expand:\n%s", dump(tr))
+}

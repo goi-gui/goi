@@ -18,7 +18,11 @@ type codeActionParams struct {
 	} `json:"textDocument"`
 	Range   rng `json:"range"`
 	Context struct {
-		Only []string `json:"only"`
+		Only        []string `json:"only"`
+		Diagnostics []struct {
+			Message string `json:"message"`
+			Range   rng    `json:"range"`
+		} `json:"diagnostics"`
 	} `json:"context"`
 }
 
@@ -59,7 +63,7 @@ type snippetValue struct {
 
 func (s *Server) codeActions(raw json.RawMessage) any {
 	var p codeActionParams
-	if json.Unmarshal(raw, &p) != nil || !wantsRefactor(p.Context.Only) {
+	if json.Unmarshal(raw, &p) != nil {
 		return []codeAction{}
 	}
 	d := s.docs[p.TextDocument.URI]
@@ -70,6 +74,13 @@ func (s *Server) codeActions(raw json.RawMessage) any {
 	if !diag.Empty() || file == nil || file.Root == nil {
 		return []codeAction{}
 	}
+	actions := []codeAction{}
+	if wantsQuickfix(p.Context.Only) {
+		actions = append(actions, s.importActions(d, file, p.Context.Diagnostics)...)
+	}
+	if !wantsRefactor(p.Context.Only) {
+		return actions
+	}
 	idx := newLineIndex(d.text)
 	start, end := idx.offset(p.Range.Start), idx.offset(p.Range.End)
 	if end < start {
@@ -77,7 +88,7 @@ func (s *Server) codeActions(raw json.RawMessage) any {
 	}
 	first, last, ok := wrapElements(file.Root, d.text, idx, start, end)
 	if !ok {
-		return []codeAction{}
+		return actions
 	}
 
 	// Zed reads the 3.18 SnippetTextEdit ({snippet: {kind, value}}); other
@@ -100,14 +111,85 @@ func (s *Server) codeActions(raw json.RawMessage) any {
 		edit.NewText = text
 	}
 	version := d.version
-	return []codeAction{{
+	actions = append(actions, codeAction{
 		Title: wrapTitle,
 		Kind:  "refactor.rewrite",
 		Edit: &workspaceEdit{DocumentChanges: []textDocumentEdit{{
 			TextDocument: versionedTextDocumentID{URI: d.uri, Version: &version},
 			Edits:        []wrapTextEdit{edit},
 		}}},
-	}}
+	})
+	return actions
+}
+
+// importActions offers the unnamed import for an "unknown element" the checker
+// reported, when a fragment beside the document derives that name.
+func (s *Server) importActions(d *document, file *syntax.File, diags []struct {
+	Message string `json:"message"`
+	Range   rng    `json:"range"`
+}) []codeAction {
+	idx := newLineIndex(d.text)
+	cands := s.fragmentCandidates(d, file)
+	byAlias := make(map[string]fragmentCandidate, len(cands))
+	for _, c := range cands {
+		byAlias[c.Alias] = c
+	}
+	var out []codeAction
+	seen := map[string]bool{}
+	for _, dg := range diags {
+		name, ok := unknownElement(dg.Message)
+		if !ok || seen[name] {
+			continue
+		}
+		c, ok := byAlias[name]
+		if !ok {
+			continue
+		}
+		edit, ok := importEdit(d, file, idx, c.Target)
+		if !ok {
+			continue
+		}
+		seen[name] = true
+		version := d.version
+		out = append(out, codeAction{
+			Title: "Import \"" + c.Target + "\"",
+			Kind:  "quickfix",
+			Edit: &workspaceEdit{DocumentChanges: []textDocumentEdit{{
+				TextDocument: versionedTextDocumentID{URI: d.uri, Version: &version},
+				Edits:        []wrapTextEdit{{Range: edit.Range, NewText: edit.NewText}},
+			}}},
+		})
+	}
+	return out
+}
+
+// unknownElement reads the name out of `unknown element "Side"`, with or
+// without a suggestion after it.
+func unknownElement(msg string) (string, bool) {
+	const prefix = `unknown element "`
+	i := strings.Index(msg, prefix)
+	if i < 0 {
+		return "", false
+	}
+	rest := msg[i+len(prefix):]
+	j := strings.IndexByte(rest, '"')
+	if j <= 0 {
+		return "", false
+	}
+	return rest[:j], true
+}
+
+// wantsQuickfix respects the client's `only` filter.
+func wantsQuickfix(only []string) bool {
+	if len(only) == 0 {
+		return true
+	}
+	for _, kind := range only {
+		if kind == "quickfix" || strings.HasPrefix(kind, "quickfix.") {
+			return true
+		}
+	}
+	return false
 }
 
 // wantsRefactor respects the client's `only` filter; no filter means offer it.
