@@ -1555,7 +1555,7 @@ func (v *validator) checkEventCall(e *syntax.Element, ev EventDef, p *syntax.Pro
 		}
 		if !NodeMethod(call.Callee.Prop) {
 			v.add(at, end,
-				fmt.Sprintf("%s.%s: a handler call starts with bridge., or calls play, pause, stop, toggle, seek, volume, fullscreen, audioTrack, expand or setObscureText on an id",
+				fmt.Sprintf("%s.%s: a handler call starts with bridge., or calls a method on an id",
 					e.Name, p.Name),
 				syntax.Suggest(call.Callee.Prop, NodeMethods))
 			return
@@ -1571,6 +1571,36 @@ func (v *validator) checkEventCall(e *syntax.Element, ev EventDef, p *syntax.Pro
 			// A player's transport takes one number.
 			if len(call.Args) != 1 {
 				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes one number",
+					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+			}
+		case "scrollTo", "scrollToNthChild":
+			if len(call.Args) != 1 {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes one number",
+					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+			}
+		case "scrollToChild":
+			if len(call.Args) != 1 {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes one id",
+					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+			}
+		case "scrollToSmooth", "scrollToNthChildSmooth":
+			if len(call.Args) != 2 {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes a number and a duration",
+					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+				return
+			}
+			if _, ok := call.Args[1].(*syntax.Duration); !ok {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes a duration such as 300ms as its second argument",
+					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+			}
+		case "scrollToChildSmooth":
+			if len(call.Args) != 2 {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes an id and a duration",
+					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+				return
+			}
+			if _, ok := call.Args[1].(*syntax.Duration); !ok {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes a duration such as 300ms as its second argument",
 					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
 			}
 		case "setObscureText":

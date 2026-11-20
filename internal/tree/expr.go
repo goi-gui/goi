@@ -525,6 +525,8 @@ func (c *evalCtx) eval(v syntax.Value, percent float64) (any, bool) {
 		return x.Val, true
 	case *syntax.Color:
 		return x.RGBA, true
+	case *syntax.Duration:
+		return x.Val, true
 	case *syntax.Ident:
 		// A bare name is a loop variable when one is in scope; otherwise it is
 		// the literal word an enum or a string property reads.

@@ -284,6 +284,14 @@ func (t *Tree) callNodeMethodX(id, method string, args []any) {
 		t.bridgeErr(fmt.Errorf("goi: no element with id %q", id))
 		return
 	}
+	// `id.scrollTo(200)` and its child forms move a scroll area without a Go
+	// handler, which is what a "jump to top" button in a design needs.
+	if schema.ScrollMethod(method) {
+		if err := callScrollMethod(n.Base(), method, args); err != nil {
+			t.bridgeErr(err)
+		}
+		return
+	}
 	// `id.setObscureText(false)` reveals a password field, the reveal button
 	// a design can wire without a Go handler.
 	if method == "setObscureText" {
@@ -339,6 +347,84 @@ func (t *Tree) callNodeMethodX(id, method string, args []any) {
 	if !ok || !tr.Transport(method) {
 		t.bridgeErr(fmt.Errorf("goi: %s has no method %s", n.Kind(), method))
 	}
+}
+
+// callScrollMethod runs one of the scroll shortcuts a design calls by id.
+func callScrollMethod(b *NodeBase, method string, args []any) error {
+	if b.ScrollAxis() == AxisNone {
+		return fmt.Errorf("goi: %s does not scroll", b.Node().Kind())
+	}
+	number := func(i int) (float64, bool) {
+		if i >= len(args) {
+			return 0, false
+		}
+		v, ok := args[i].(float64)
+		return v, ok
+	}
+	duration := func(i int) (time.Duration, bool) {
+		if i >= len(args) {
+			return 0, false
+		}
+		d, ok := args[i].(time.Duration)
+		return d, ok
+	}
+	childID := func() (string, bool) {
+		if len(args) < 1 {
+			return "", false
+		}
+		v, ok := args[0].(string)
+		return v, ok
+	}
+	switch method {
+	case "scrollTo":
+		v, ok := number(0)
+		if !ok || len(args) != 1 {
+			return fmt.Errorf("goi: %s.scrollTo takes one number", b.Node().Kind())
+		}
+		b.ScrollTo(v)
+	case "scrollToSmooth":
+		v, ok := number(0)
+		d, dok := duration(1)
+		if !ok || !dok || len(args) != 2 {
+			return fmt.Errorf("goi: %s.scrollToSmooth takes a number and a duration", b.Node().Kind())
+		}
+		b.ScrollToSmooth(v, d)
+	case "scrollToNthChild":
+		v, ok := number(0)
+		if !ok || len(args) != 1 {
+			return fmt.Errorf("goi: %s.scrollToNthChild takes one number", b.Node().Kind())
+		}
+		if !b.ScrollToNthChild(int(v)) {
+			return fmt.Errorf("goi: %s has no visible child %d", b.Node().Kind(), int(v))
+		}
+	case "scrollToNthChildSmooth":
+		v, ok := number(0)
+		d, dok := duration(1)
+		if !ok || !dok || len(args) != 2 {
+			return fmt.Errorf("goi: %s.scrollToNthChildSmooth takes a number and a duration", b.Node().Kind())
+		}
+		if !b.ScrollToNthChildSmooth(int(v), d) {
+			return fmt.Errorf("goi: %s has no visible child %d", b.Node().Kind(), int(v))
+		}
+	case "scrollToChild":
+		id, ok := childID()
+		if !ok || len(args) != 1 {
+			return fmt.Errorf("goi: %s.scrollToChild takes one id", b.Node().Kind())
+		}
+		if !b.ScrollToChild(id) {
+			return fmt.Errorf("goi: %s has no child %q to scroll to", b.Node().Kind(), id)
+		}
+	case "scrollToChildSmooth":
+		id, ok := childID()
+		d, dok := duration(1)
+		if !ok || !dok || len(args) != 2 {
+			return fmt.Errorf("goi: %s.scrollToChildSmooth takes an id and a duration", b.Node().Kind())
+		}
+		if !b.ScrollToChildSmooth(id, d) {
+			return fmt.Errorf("goi: %s has no child %q to scroll to", b.Node().Kind(), id)
+		}
+	}
+	return nil
 }
 
 // bridgeErr reports a handler problem to the app instead of killing the frame.

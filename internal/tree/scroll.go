@@ -172,6 +172,13 @@ func (b *NodeBase) SetScrollOffset(v float64) {
 
 // SetScrollOffsetFor scrolls one axis, storing the raw value like SetScrollOffset.
 func (b *NodeBase) SetScrollOffsetFor(axis Axis, v float64) {
+	b.scrollAnim = nil
+	b.setScrollOffsetRaw(axis, v)
+}
+
+// setScrollOffsetRaw writes the offset without stopping a smooth scroll, which
+// is what the animation's own frames use.
+func (b *NodeBase) setScrollOffsetRaw(axis Axis, v float64) {
 	switch axis {
 	case AxisX:
 		b.scrollX = v
@@ -181,6 +188,181 @@ func (b *NodeBase) SetScrollOffsetFor(axis Axis, v float64) {
 		return
 	}
 	b.MarkDirty(DirtyPaint)
+}
+
+// ScrollTo jumps along the node's primary axis: down a column, sideways along a
+// row, and down a two-axis table. It does nothing on a node that does not scroll.
+func (b *NodeBase) ScrollTo(v float64) {
+	axis := b.primaryScrollAxis()
+	if axis == AxisNone {
+		return
+	}
+	b.SetScrollOffsetFor(axis, v)
+	b.ShowScrollbar()
+}
+
+// ScrollToSmooth eases to v over d, starting from the offset it shows now. A
+// duration of zero or less jumps. It does nothing on a node that does not scroll.
+func (b *NodeBase) ScrollToSmooth(v float64, d time.Duration) {
+	axis := b.primaryScrollAxis()
+	if axis == AxisNone {
+		return
+	}
+	if d <= 0 {
+		b.ScrollTo(v)
+		return
+	}
+	from := b.ScrollOffsetFor(axis)
+	if from == v {
+		b.SetScrollOffsetFor(axis, v)
+		return
+	}
+	b.scrollAnim = &scrollAnimation{axis: axis, from: from, to: v, dur: d}
+	b.listTransition()
+	b.ShowScrollbar()
+	b.MarkDirty(DirtyPaint)
+}
+
+// ScrollToNthChild scrolls so the nth visible direct child starts at the top
+// (or left) of the viewport. n counts from one.
+func (b *NodeBase) ScrollToNthChild(n int) bool {
+	off, ok := b.nthChildOffset(n)
+	if !ok {
+		return false
+	}
+	b.ScrollTo(off)
+	return true
+}
+
+// ScrollToNthChildSmooth is ScrollToNthChild eased over d.
+func (b *NodeBase) ScrollToNthChildSmooth(n int, d time.Duration) bool {
+	off, ok := b.nthChildOffset(n)
+	if !ok {
+		return false
+	}
+	b.ScrollToSmooth(off, d)
+	return true
+}
+
+// ScrollToChild scrolls so the element with id, anywhere inside this node,
+// starts at the top (or left) of the viewport. It reports false when the id is
+// not inside this node or the node does not scroll.
+func (b *NodeBase) ScrollToChild(id string) bool {
+	off, ok := b.childOffset(id)
+	if !ok {
+		return false
+	}
+	b.ScrollTo(off)
+	return true
+}
+
+// ScrollToChildSmooth is ScrollToChild eased over d.
+func (b *NodeBase) ScrollToChildSmooth(id string, d time.Duration) bool {
+	off, ok := b.childOffset(id)
+	if !ok {
+		return false
+	}
+	b.ScrollToSmooth(off, d)
+	return true
+}
+
+// primaryScrollAxis is the one axis the shortcut helpers move: a table's
+// vertical axis, and the node's own direction otherwise.
+func (b *NodeBase) primaryScrollAxis() Axis {
+	axis := b.ScrollAxis()
+	if axis == AxisBoth {
+		axis = AxisY
+	}
+	return axis
+}
+
+// nthChildOffset aligns one visible direct child with the viewport's start.
+func (b *NodeBase) nthChildOffset(n int) (float64, bool) {
+	axis := b.primaryScrollAxis()
+	if axis == AxisNone || n < 1 {
+		return 0, false
+	}
+	i := 0
+	for _, k := range b.kids {
+		if !k.Visible() {
+			continue
+		}
+		i++
+		if i == n {
+			return b.startOffset(axis, k), true
+		}
+	}
+	return 0, false
+}
+
+// childOffset finds an element by id and aligns it when it is inside b.
+func (b *NodeBase) childOffset(id string) (float64, bool) {
+	axis := b.primaryScrollAxis()
+	if axis == AxisNone || b.tree == nil {
+		return 0, false
+	}
+	n, ok := b.tree.ByID(id)
+	if !ok {
+		return 0, false
+	}
+	k := n.Base()
+	if k == b || !b.holds(k) {
+		return 0, false
+	}
+	return b.startOffset(axis, k), true
+}
+
+// holds reports whether k is somewhere below b.
+func (b *NodeBase) holds(k *NodeBase) bool {
+	for n := k.parent; n != nil; n = n.parent {
+		if n == b {
+			return true
+		}
+	}
+	return false
+}
+
+// startOffset is where k's leading edge sits inside b's content box before
+// scrolling, which is the offset that puts it at the viewport's start.
+func (b *NodeBase) startOffset(axis Axis, k *NodeBase) float64 {
+	be := b.BorderEdges()
+	if axis == AxisX {
+		return k.bounds.X - (b.bounds.X + be.Left)
+	}
+	return k.bounds.Y - (b.bounds.Y + be.Top)
+}
+
+// scrollAnimation is one smooth scroll. It is written every frame by
+// AdvanceTransitions, so a flight does not need a tween of its own.
+type scrollAnimation struct {
+	axis         Axis
+	from, to     float64
+	elapsed, dur time.Duration
+}
+
+// advanceScroll moves a smooth scroll one frame forward and reports whether it
+// is still running.
+func (b *NodeBase) advanceScroll(elapsed time.Duration) bool {
+	a := b.scrollAnim
+	if a == nil {
+		return false
+	}
+	a.elapsed += elapsed
+	p := 1.0
+	if a.dur > 0 {
+		p = float64(a.elapsed) / float64(a.dur)
+	}
+	if p > 1 {
+		p = 1
+	}
+	// The same cubic ease-out a transition uses by default.
+	e := 1 - (1-p)*(1-p)*(1-p)
+	b.setScrollOffsetRaw(a.axis, a.from+(a.to-a.from)*e)
+	b.ShowScrollbar()
+	if p >= 1 {
+		b.scrollAnim = nil
+	}
+	return true
 }
 
 // fixedChild reports whether a child ignores the node's vertical scroll, which

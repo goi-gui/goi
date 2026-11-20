@@ -1856,7 +1856,7 @@ func (p *parser) parseCall(ref *Ref) (Value, bool) {
 	p.next() // '('
 	call := &Call{At: ref.At, Callee: ref}
 	for p.peek().kind != tokRParen {
-		v, ok := p.parseValue()
+		v, ok := p.parseCallArg()
 		if !ok {
 			p.sync()
 			return nil, false
@@ -1873,6 +1873,20 @@ func (p *parser) parseCall(ref *Ref) (Value, bool) {
 	}
 	p.next() // ')'
 	return call, true
+}
+
+// parseCallArg reads one argument of a handler call. A number directly followed
+// by ms or s is a duration, which is how `scrollToSmooth(0, 300ms)` carries a
+// time value; a bare 0 stays a number for `seek(0)`.
+func (p *parser) parseCallArg() (Value, bool) {
+	t := p.peek()
+	if t.kind == tokNumber {
+		u := p.peek2()
+		if u.kind == tokIdent && u.pos == t.end && (u.text == "ms" || u.text == "s") {
+			return p.parseDurationValue()
+		}
+	}
+	return p.parseValue()
 }
 
 // parseMap parses `{ key: value, ... }`, the responsive form of a value.

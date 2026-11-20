@@ -841,10 +841,11 @@ func isNumericName(name string) bool {
 // file. It offers the element's properties (the schema already merges the
 // common ones into Attrs), so an id reference reads like the node it names.
 func idMemberItems(file *syntax.File, ref string) []completionResult {
-	kind, ok := idElementAt(file, ref)
+	id, ok := idElementAt(file, ref)
 	if !ok {
 		return nil
 	}
+	kind := id.kind
 	el, ok := schema.Lookup(kind)
 	if !ok {
 		return nil
@@ -858,13 +859,21 @@ func idMemberItems(file *syntax.File, ref string) []completionResult {
 			Documentation: &doc{Kind: "markdown", Value: propDoc(el.Name, p)},
 		})
 	}
-	if animatedKind(el.Name) {
+	canScroll := idCanScroll(id)
+	if animatedKind(el.Name) || canScroll {
 		for _, m := range schema.NodeMethods {
+			if !kindHasNodeMethod(el.Name, m) && !(canScroll && schema.ScrollMethod(m)) {
+				continue
+			}
+			detail := ref + "." + m + "() · playback"
+			if schema.ScrollMethod(m) {
+				detail = ref + "." + m + "() · scroll"
+			}
 			out = append(out, completionResult{
 				Label:         m + "(…)",
 				InsertText:    m + "(",
 				Kind:          kindFunction,
-				Detail:        ref + "." + m + "() · playback",
+				Detail:        detail,
 				Documentation: &doc{Kind: "markdown", Value: nodeMethodDoc(m)},
 			})
 		}
@@ -900,6 +909,26 @@ func kindHasNodeMethod(kind, method string) bool {
 }
 
 // nodeMethodDoc explains one playback method, for completion and hover.
+// idCanScroll reports whether an id names an element that scrolls: one that
+// does so by kind, or one whose design says `scroll: true`.
+func idCanScroll(id idElement) bool {
+	if id.scrollSet {
+		return id.scroll
+	}
+	return scrollsKind(id.kind)
+}
+
+// scrollsKind reports whether a kind scrolls without the `scroll` property:
+// the containers that do so by default and the components that always do.
+func scrollsKind(kind string) bool {
+	switch kind {
+	case "Column", "Row", "Flex", "Carousel", "NavigationRail",
+		"List", "Menu", "NavigationDrawer", "Dialog", "DatePicker", "Table":
+		return true
+	}
+	return false
+}
+
 func nodeMethodDoc(name string) string {
 	switch name {
 	case "play":
@@ -926,6 +955,18 @@ func nodeMethodDoc(name string) string {
 		return "**setObscureText(true|false)**\n\nHides or shows a text field's value; a hidden field paints one dot per character. The value is unchanged, so `onEdit` keeps reporting the real string."
 	case "toggleFullscreen":
 		return "**toggleFullscreen()**\n\nFlips between fullscreen and windowed."
+	case "scrollTo":
+		return "**scrollTo(offset)**\n\nJumps to an offset along the area's scrolling axis, clamped to the content."
+	case "scrollToSmooth":
+		return "**scrollToSmooth(offset, duration)**\n\nEases to an offset over a duration such as `300ms`; the default curve starts fast and lands soft."
+	case "scrollToNthChild":
+		return "**scrollToNthChild(n)**\n\nScrolls so the nth visible direct child, counting from one, starts at the top or left of the area."
+	case "scrollToNthChildSmooth":
+		return "**scrollToNthChildSmooth(n, duration)**\n\nEases to the nth visible direct child over a duration."
+	case "scrollToChild":
+		return "**scrollToChild(id)**\n\nScrolls so an element anywhere inside the area starts at its top or left."
+	case "scrollToChildSmooth":
+		return "**scrollToChildSmooth(id, duration)**\n\nEases to an element anywhere inside the area over a duration."
 	}
 	return ""
 }
@@ -1106,13 +1147,15 @@ func valueItems(file *syntax.File, prop string, src []byte, off int, prefix stri
 				Documentation: &doc{Kind: "markdown", Value: "**bridge." + f.Name + "**\n\n" + f.Type.String() + "\n\nRuns the Go handler registered with `ui.SetHandler(w, \"" + f.Name + "\", …)` when this event fires."},
 			})
 		}
-		// An event can drive an animation by id without a Go handler.
+		// An event can drive an animation or a scroll area by id without a Go
+		// handler.
 		for _, id := range fileIDElements(file) {
-			if !animatedKind(id.kind) {
+			canScroll := idCanScroll(id)
+			if !animatedKind(id.kind) && !canScroll {
 				continue
 			}
 			for _, m := range schema.NodeMethods {
-				if !kindHasNodeMethod(id.kind, m) {
+				if !kindHasNodeMethod(id.kind, m) && !(canScroll && schema.ScrollMethod(m)) {
 					continue
 				}
 				out = append(out, completionResult{
@@ -1553,14 +1596,14 @@ func (s *Server) hover(raw json.RawMessage) any {
 			return nil
 		}
 		if off >= propStart {
-			if kind, ok := idElementAt(file, r.ID); ok {
-				if schema.NodeMethod(r.Prop) && kindHasNodeMethod(kind, r.Prop) {
+			if id, ok := idElementAt(file, r.ID); ok {
+				if schema.NodeMethod(r.Prop) && (kindHasNodeMethod(id.kind, r.Prop) || schema.ScrollMethod(r.Prop)) {
 					return map[string]any{
 						"contents": doc{Kind: "markdown", Value: nodeMethodDoc(r.Prop)},
 						"range":    idx.at(propStart, propStart+len(r.Prop)),
 					}
 				}
-				if el, ok := schema.Lookup(kind); ok {
+				if el, ok := schema.Lookup(id.kind); ok {
 					if pd := el.Prop(r.Prop); pd != nil {
 						return map[string]any{
 							"contents": doc{Kind: "markdown", Value: propDoc(el.Name, *pd)},
@@ -1571,7 +1614,8 @@ func (s *Server) hover(raw json.RawMessage) any {
 			}
 			return nil
 		}
-		if kind, ok := idElementAt(file, r.ID); ok {
+		if id, ok := idElementAt(file, r.ID); ok {
+			kind := id.kind
 			if el, ok := schema.Lookup(kind); ok {
 				return map[string]any{
 					"contents": doc{Kind: "markdown", Value: "**" + r.ID + "**\n\n" + elementDoc(el)},
@@ -2355,6 +2399,10 @@ type idElement struct {
 	kind string
 	// at is the byte offset of the id's value, for go-to-definition.
 	at int
+	// scroll is the design's `scroll` value, and scrollSet says whether it
+	// wrote one; an unwritten property follows the kind's default.
+	scroll    bool
+	scrollSet bool
 }
 
 // fileIDElements lists the ids a design declares, with their element kind,
@@ -2366,11 +2414,22 @@ func fileIDElements(file *syntax.File) []idElement {
 	}
 	syntax.WalkElements(file.Root, func(e *syntax.Element) {
 		if p := e.Prop("id"); p != nil {
+			scroll, scrollSet := false, false
+			if sp := e.Prop("scroll"); sp != nil {
+				switch v := sp.Value.(type) {
+				case *syntax.Bool:
+					scroll, scrollSet = v.Val, true
+				case *syntax.Ident:
+					if v.Val == "true" || v.Val == "false" {
+						scroll, scrollSet = v.Val == "true", true
+					}
+				}
+			}
 			switch v := p.Value.(type) {
 			case *syntax.Ident:
-				out = append(out, idElement{name: v.Val, kind: e.Name, at: int(v.At)})
+				out = append(out, idElement{name: v.Val, kind: e.Name, at: int(v.At), scroll: scroll, scrollSet: scrollSet})
 			case *syntax.String:
-				out = append(out, idElement{name: v.Val, kind: e.Name, at: int(v.At) + 1})
+				out = append(out, idElement{name: v.Val, kind: e.Name, at: int(v.At) + 1, scroll: scroll, scrollSet: scrollSet})
 			}
 		}
 	})
@@ -2379,13 +2438,13 @@ func fileIDElements(file *syntax.File) []idElement {
 }
 
 // idElementAt finds the id ref names in the file, for `abc.` completion.
-func idElementAt(file *syntax.File, ref string) (string, bool) {
+func idElementAt(file *syntax.File, ref string) (idElement, bool) {
 	for _, id := range fileIDElements(file) {
 		if id.name == ref {
-			return id.kind, true
+			return id, true
 		}
 	}
-	return "", false
+	return idElement{}, false
 }
 
 // refAt finds the reference under off, for hover and go-to-definition.

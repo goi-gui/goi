@@ -829,3 +829,31 @@ func TestHeroValidates(t *testing.T) {
 		t.Fatalf("default duration: %v", diag)
 	}
 }
+
+// TestScrollMethodsValidate covers the six scroll shortcuts, their numeric and
+// duration arguments, and a wrong duration.
+func TestScrollMethodsValidate(t *testing.T) {
+	ok := `Window { Column {
+		id: page
+		Button { onClick: page.scrollTo(200) }
+		Button { onClick: page.scrollToSmooth(200, 500ms) }
+		Button { onClick: page.scrollToNthChild(5) }
+		Button { onClick: page.scrollToNthChildSmooth(5, 500ms) }
+		Button { onClick: page.scrollToChild("row") }
+		Button { onClick: page.scrollToChildSmooth("row", 500ms) }
+	} }`
+	if _, diag := validate(t, ok); !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	for _, src := range []string{
+		`Window { Column { id: page Button { onClick: page.scrollTo() } } }`,
+		`Window { Column { id: page Button { onClick: page.scrollToSmooth(200) } } }`,
+		`Window { Column { id: page Button { onClick: page.scrollToSmooth(200, "soon") } } }`,
+		`Window { Column { id: page Button { onClick: page.scrollToChild() } } }`,
+		`Window { Column { id: page Button { onClick: page.scrollToChildSmooth("row") } } }`,
+	} {
+		if _, diag := validate(t, src); diag.Empty() {
+			t.Fatalf("%s passed", src)
+		}
+	}
+}

@@ -2565,3 +2565,75 @@ func TestCompletionOffersLoopControls(t *testing.T) {
 		}
 	}
 }
+
+// TestCompletionOffersScrollMethods: a scrolling id completes the six scroll
+// shortcuts, and an element that does not scroll does not.
+func TestCompletionOffersScrollMethods(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tColumn {\n\t\tid: page\n\t\tButton {\n\t\t\tonClick: page.\n\t\t}\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "onClick: page.", len("onClick: page.")),
+	})
+	var list completionList
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	labels := map[string]bool{}
+	for _, it := range list.Items {
+		labels[it.Label] = true
+	}
+	for _, want := range []string{"scrollTo(…)", "scrollToSmooth(…)", "scrollToChildSmooth(…)"} {
+		if !labels[want] {
+			t.Fatalf("%s missing: %v", want, list.Items)
+		}
+	}
+
+	still := "Window {\n\tStack {\n\t\tid: still\n\t\tButton {\n\t\t\tonClick: still.\n\t\t}\n\t}\n}\n"
+	uri = writeDesign(t, dir, "still.goi", still)
+	c.openDoc(uri, still)
+	res = c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, still, "onClick: still.", len("onClick: still.")),
+	})
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range list.Items {
+		if it.Label == "scrollTo(…)" {
+			t.Fatal("a Stack that does not scroll offers scrollTo")
+		}
+	}
+
+	// An explicit property overrides the kind's default in both directions.
+	for _, tc := range []struct {
+		name, src string
+		want      bool
+	}{
+		{"stack on", "Window {\n\tStack {\n\t\tid: box\n\t\tscroll: true\n\t\tButton {\n\t\t\tonClick: box.\n\t\t}\n\t}\n}\n", true},
+		{"column off", "Window {\n\tColumn {\n\t\tid: box\n\t\tscroll: false\n\t\tButton {\n\t\t\tonClick: box.\n\t\t}\n\t}\n}\n", false},
+	} {
+		uri := writeDesign(t, dir, tc.name+".goi", tc.src)
+		c.openDoc(uri, tc.src)
+		res := c.request("textDocument/completion", map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     at(t, tc.src, "onClick: box.", len("onClick: box.")),
+		})
+		if err := json.Unmarshal(res, &list); err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, it := range list.Items {
+			if it.Label == "scrollTo(…)" {
+				found = true
+			}
+		}
+		if found != tc.want {
+			t.Fatalf("%s: scrollTo offered = %v, want %v", tc.name, found, tc.want)
+		}
+	}
+}

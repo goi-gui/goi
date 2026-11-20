@@ -575,6 +575,9 @@ func (t *Tree) AdvanceTransitions(dt float64) bool {
 	elapsed := time.Duration(dt * float64(time.Second))
 	changed := false
 	for _, b := range t.transitionNodes {
+		if b.advanceScroll(elapsed) {
+			changed = true
+		}
 		for name, st := range b.transitionStates {
 			if !st.active {
 				continue

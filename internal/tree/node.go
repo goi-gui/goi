@@ -51,6 +51,8 @@ type NodeBase struct {
 	// Scroll offsets are runtime state, clamped against the content extent when
 	// read, so stale values after a relayout cannot scroll past the end.
 	scrollX, scrollY float64
+	// scrollAnim is the smooth scroll in flight, if any.
+	scrollAnim *scrollAnimation
 
 	// dirty is true when the node needs work; kind is the strongest of the
 	// pending kinds (layout implies paint).

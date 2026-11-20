@@ -149,15 +149,34 @@ type EventDef struct {
 	Component bool
 }
 
+// ScrollMethods are the scroll shortcuts an event can call on a scrolling
+// element by id, as in `onClick: page.scrollToSmooth(0, 300ms)`.
+var ScrollMethods = []string{
+	"scrollTo", "scrollToSmooth",
+	"scrollToNthChild", "scrollToNthChildSmooth",
+	"scrollToChild", "scrollToChildSmooth",
+}
+
 // NodeMethods are the methods an event can call on an element by id, as in
 // `onClick: spin.pause()`. They are the transport of an animated Image or SVG,
-// and of an Audio or Video player.
-var NodeMethods = []string{"play", "pause", "stop", "toggle", "seek", "volume",
-	"fullscreen", "windowed", "toggleFullscreen", "audioTrack", "expand", "setObscureText"}
+// the transport of a player, and the scroll shortcuts.
+var NodeMethods = append([]string{"play", "pause", "stop", "toggle", "seek", "volume",
+	"fullscreen", "windowed", "toggleFullscreen", "audioTrack", "expand", "setObscureText"},
+	ScrollMethods...)
 
 // NodeMethod reports whether name is a method an event can call on an element.
 func NodeMethod(name string) bool {
 	for _, m := range NodeMethods {
+		if m == name {
+			return true
+		}
+	}
+	return false
+}
+
+// ScrollMethod reports whether name is one of the scroll shortcuts.
+func ScrollMethod(name string) bool {
+	for _, m := range ScrollMethods {
 		if m == name {
 			return true
 		}
