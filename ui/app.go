@@ -506,6 +506,15 @@ func (a *App) Run() error {
 	if a.driver == nil {
 		return fmt.Errorf("ui: Run needs a platform driver (use NewApp)")
 	}
+	// An app configures VSync and MaxFPS after LoadWindow, so the start of the
+	// loop is where the values it will actually use are known.
+	if goiDebug() {
+		width, height := 0, 0
+		if a.win != nil {
+			width, height = a.win.Size()
+		}
+		logg().Info(logCtx, "ui: window", "width", width, "height", height, "vsync", a.vsync, "maxFPS", a.maxFPS)
+	}
 	return a.driver.run(a.frame)
 }
 
