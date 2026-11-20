@@ -22,7 +22,7 @@ One `.goi` file and a small `main.go`: a rail of categories that becomes a
 bottom bar on a phone, a picture column that turns from a row into a column,
 size and colour pickers, and a review card. Three colour swatches rebuild both
 schemes from their seed with `ui.NewThemeFromSeed`, and `themeTransition: wipe`
-carries each change in. The clips show the same session in both schemes.
+carries each change in. Each clip shows one layout in both schemes.
 
 | Desktop, 1000 × 1000 | Phone, 500 × 1000 |
 | --- | --- |
