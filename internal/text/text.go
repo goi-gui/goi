@@ -204,6 +204,14 @@ func NewLibrary() *Library {
 	if f, err := font.ParseTTF(bytes.NewReader(materialSymbolsFilled)); err == nil {
 		l.iconFilled = f
 	}
+	// A monospace family for terminals and code-like content. It is a built-in
+	// family, so a design writes `fontFamily: "Roboto Mono"` like any other.
+	if len(robotoMono) > 0 {
+		if f, err := font.ParseTTF(bytes.NewReader(robotoMono)); err == nil {
+			l.families["Roboto Mono"] = familyFace{face: f, tag: l.familyTag}
+			l.familyTag += 2
+		}
+	}
 	return l
 }
 

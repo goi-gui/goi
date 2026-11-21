@@ -37,6 +37,10 @@ type Hooks struct {
 	// The players live in the ui layer, so the tree forwards the request and
 	// reports whether the node handled it.
 	Media func(n Node, method string, args []any) bool
+	// Post queues fn on the UI goroutine. A Terminal reader runs on its own
+	// goroutine and uses this to deliver bytes; nil runs fn at once, which is
+	// what a headless test wants.
+	Post func(fn func())
 }
 
 // NodeBase holds the state every node shares: identity, tree links, layout result

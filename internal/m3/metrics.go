@@ -258,6 +258,10 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 			h += 20
 		}
 		return Metrics{W: 0, H: h, FillW: true}
+	case "Terminal":
+		// A terminal has no content of its own to measure; this is the size a
+		// design gets when it leaves width and height out.
+		return Metrics{W: 640, H: 360}
 	case "Code":
 		// Height follows the hard line breaks, since a code block does not
 		// wrap: what is counted here is exactly what the painter draws.

@@ -484,6 +484,8 @@ func (l *List) paintComponent(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		l.paintTextArea(c, r, clip)
 	case "Code":
 		l.paintCode(c, r, clip)
+	case "Terminal":
+		l.paintTerminal(c, r, clip)
 	case "Mermaid":
 		l.paintMermaid(c, r, clip)
 	case "Carousel":

@@ -19,6 +19,7 @@ var Kinds = []Kind{
 	// Content: components that are plain nodes with behaviour.
 	{"Icon", false},
 	{"Code", false},
+	{"Terminal", false},
 	{"Markdown", false},
 	{"Map", true},
 	{"Geom", false},
@@ -160,6 +161,7 @@ var props = map[string][]string{
 	"Toolbar":          {},
 	"TextArea":         {"label", "text", "placeholder", "supporting", "variant", "disabled"},
 	"Code":             {"text", "language", "variant", "showCopy"},
+	"Terminal":         {"fontSize", "cols", "rows", "scrollback", "foreground"},
 	"Markdown":         {"text"},
 	"Mermaid":          {"data"},
 	"Map":              {"tiles", "attribution", "center", "zoom", "bbox", "reverseTileColors", "disablePan", "disableZoom"},
@@ -262,6 +264,10 @@ var defaults = map[string]any{
 	"separatorSize": 20.0,
 	"tiles":         "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
 	"attribution":   "© OpenStreetMap contributors",
+	// A terminal draws a readable grid unless the design names a size and a
+	// scrollback depth.
+	"fontSize":   13.0,
+	"scrollback": 1000.0,
 }
 
 // kindDefaults are defaults that belong to one kind, for a property name that
@@ -350,14 +356,14 @@ func TypeOf(name string) PropType {
 	case "value", "end", "center", "min", "max", "step", "spacing", "gap", "size", "hourFormat", "separatorSize",
 		"rowHeight", "headerHeight", "sortColumn", "selectedRow",
 		"innerRadius", "startAngle", "thickness", "zoom",
-		"barRadius", "barGap", "barBorderThickness":
+		"barRadius", "barGap", "barBorderThickness", "fontSize", "cols", "rows", "scrollback":
 		return Number
 	case "variant", "animation", "crossAxisAlign", "mainAxisAlign", "align", "selectable":
 		return Enum
 	case "textColor", "gridColor", "color", "lineColor", "fillColor", "highlight", "barBorderColor",
 		"leadingIconColor", "trailingIconColor", "labelColor", "supportingColor",
 		"selectedLabelColor", "selectedIconColor", "selectedContainerColor", "selectionColor",
-		"separatorColor", "iconColor":
+		"separatorColor", "iconColor", "foreground":
 		return Color
 	case "categories", "bbox", "data", "coordinate", "coordinates":
 		return List

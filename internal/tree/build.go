@@ -98,6 +98,21 @@ type Tree struct {
 	bridge *Bridge
 	// report receives runtime errors, when the app supplied Hooks.Error.
 	report func(error)
+	// post queues work on the UI goroutine for a Terminal reader.
+	post func(func())
+}
+
+// Post runs fn on the UI goroutine. It is the tree's side of a reader that
+// lives on another goroutine; without a hook it runs fn immediately.
+func (t *Tree) Post(fn func()) {
+	if fn == nil {
+		return
+	}
+	if t != nil && t.post != nil {
+		t.post(fn)
+		return
+	}
+	fn()
 }
 
 // ByID returns the node with the given id.
@@ -169,6 +184,7 @@ func Build(f *syntax.File, hooks *Hooks) (*Tree, error) {
 	t := &Tree{ids: map[string]Node{}, bridge: &Bridge{}, building: true}
 	if hooks != nil {
 		t.report = hooks.Error
+		t.post = hooks.Post
 	}
 	// A bridge variable starts at its type's zero value, so a design that reads
 	// one before Go sets it still has a value.
@@ -862,6 +878,15 @@ func newM3Component(name string) Node {
 		return &TextArea{Component: newComponent()}
 	case "Code":
 		return &Code{Component: newComponent()}
+	case "Terminal":
+		return &Terminal{
+			Component:  newComponent(),
+			FontSize:   newProp(nil, "fontSize", DirtyLayout, 13.0),
+			Columns:    newProp(nil, "cols", DirtyLayout, 0.0),
+			Lines:      newProp(nil, "rows", DirtyLayout, 0.0),
+			Scrollback: newProp(nil, "scrollback", DirtyPaint, 1000.0),
+			Foreground: newProp(nil, "foreground", DirtyPaint, uint32(0)),
+		}
 	case "Markdown":
 		return &Markdown{Component: newComponent()}
 	case "Mermaid":

@@ -307,7 +307,7 @@ func interactive(n tree.Node) bool {
 	case "Button", "IconButton", "FAB", "FABMenu", "SplitButton", "SegmentedButton",
 		"Chip", "Checkbox", "RadioButton", "Switch", "Slider", "TextField",
 		"SearchBar", "ListItem", "MenuItem", "Tab", "Card", "NavigationItem",
-		"DatePicker", "TimePicker", "ColorPicker",
+		"DatePicker", "TimePicker", "ColorPicker", "Terminal",
 		"LineChart", "AreaChart", "BarChart", "PieChart", "ScatterChart", "RadarChart",
 		"GaugeChart", "Audio", "Video":
 		return true
@@ -2187,7 +2187,14 @@ func (i *interactor) Scroll(dx, dy float64, shift bool) {
 		i.markDirty()
 		return
 	}
-	start := scrollableAt(i.hit(i.cursorX, i.cursorY))
+	hit := i.hit(i.cursorX, i.cursorY)
+	if term := terminalAt(hit); term != nil && dy != 0 {
+		if term.ScrollBy(int(dy) * 3) {
+			i.markDirty()
+			return
+		}
+	}
+	start := scrollableAt(hit)
 	if start == nil {
 		return
 	}
@@ -2477,6 +2484,17 @@ func (i *interactor) dragScroll(x, y float64) bool {
 	return true
 }
 
+// terminalAt returns the terminal at or above n.
+func terminalAt(n tree.Node) *tree.Terminal {
+	for n != nil {
+		if t, ok := n.(*tree.Terminal); ok {
+			return t
+		}
+		n = n.Base().Parent()
+	}
+	return nil
+}
+
 // scrollableAt returns the nearest node at or above n that scrolls.
 func scrollableAt(n tree.Node) tree.Node {
 	for ; n != nil; n = n.Base().Parent() {
@@ -2668,6 +2686,14 @@ func (i *interactor) key(k tree.Key, mods tree.Mods) {
 	if i.app.win != nil {
 		i.app.win.keys.Emit(tree.KeyEvent{Key: k, Mods: mods})
 	}
+	// A terminal owns the keyboard while it has focus: Tab, Escape and the
+	// control letters belong to the shell, not to focus traversal or copy.
+	if term, ok := i.kbd.(*tree.Terminal); ok && i.focus == nil {
+		if term.Key(k, mods) {
+			i.markDirty()
+			return
+		}
+	}
 	// A static text selection is not an editable focus, so its two shortcuts
 	// are handled before the field path.
 	if mods.Control() && k == tree.KeyC && i.copyTextSelection() {
@@ -2790,6 +2816,12 @@ func (i *interactor) key(k tree.Key, mods tree.Mods) {
 // so a composed run is inserted over the selection like typed text.
 func (i *interactor) Char(r rune) {
 	i.event("Char", "rune", string(r))
+	if term, ok := i.kbd.(*tree.Terminal); ok {
+		if r >= 32 {
+			term.WriteInput(string(r))
+		}
+		return
+	}
 	if i.pickerText(string(r)) {
 		return
 	}
@@ -4235,12 +4267,56 @@ func toTreeKey(k platform.Key) tree.Key {
 		return tree.KeyDown
 	case platform.KeyA:
 		return tree.KeyA
+	case platform.KeyB:
+		return tree.KeyB
 	case platform.KeyC:
 		return tree.KeyC
+	case platform.KeyD:
+		return tree.KeyD
+	case platform.KeyE:
+		return tree.KeyE
+	case platform.KeyF:
+		return tree.KeyF
+	case platform.KeyG:
+		return tree.KeyG
+	case platform.KeyH:
+		return tree.KeyH
+	case platform.KeyI:
+		return tree.KeyI
+	case platform.KeyJ:
+		return tree.KeyJ
+	case platform.KeyK:
+		return tree.KeyK
+	case platform.KeyL:
+		return tree.KeyL
+	case platform.KeyM:
+		return tree.KeyM
+	case platform.KeyN:
+		return tree.KeyN
+	case platform.KeyO:
+		return tree.KeyO
+	case platform.KeyP:
+		return tree.KeyP
+	case platform.KeyQ:
+		return tree.KeyQ
+	case platform.KeyR:
+		return tree.KeyR
+	case platform.KeyS:
+		return tree.KeyS
+	case platform.KeyT:
+		return tree.KeyT
+	case platform.KeyU:
+		return tree.KeyU
 	case platform.KeyV:
 		return tree.KeyV
+	case platform.KeyW:
+		return tree.KeyW
 	case platform.KeyX:
 		return tree.KeyX
+	case platform.KeyY:
+		return tree.KeyY
+	case platform.KeyZ:
+		return tree.KeyZ
 	}
 	return tree.KeyNone
 }

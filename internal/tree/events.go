@@ -75,9 +75,31 @@ const (
 	// Letter keys the editing shortcuts need; text entry itself arrives as
 	// Char events, not keys.
 	KeyA
+	KeyB
 	KeyC
+	KeyD
+	KeyE
+	KeyF
+	KeyG
+	KeyH
+	KeyI
+	KeyJ
+	KeyK
+	KeyL
+	KeyM
+	KeyN
+	KeyO
+	KeyP
+	KeyQ
+	KeyR
+	KeyS
+	KeyT
+	KeyU
 	KeyV
+	KeyW
 	KeyX
+	KeyY
+	KeyZ
 )
 
 // FocusEvent is delivered when a node gains or loses focus.

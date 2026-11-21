@@ -106,8 +106,8 @@ id. Hot reload updates the open window as the file changes; the
   snapping, shaped and bidirectional text, PNG, JPEG, GIF and SVG, plus
   Markdown and Mermaid behind their feature tags.
 - **Native shell.** Custom window chrome, file dialogs, notifications, keyboard
-  and pointer input, and a WebGPU renderer over pure-Go Vulkan, Direct3D 12 and
-  Metal backends.
+  and pointer input, an ANSI terminal component that takes a tty from Go, and a
+  WebGPU renderer over pure-Go Vulkan, Direct3D 12 and Metal backends.
 - **Tooling.** `goipls` adds diagnostics, completion, hover docs, an outline and
   formatting on save; `goifmt` formats from the CLI; `goicheck -layout` catches
   collapsed nodes. A [Zed extension](https://github.com/goi-gui/zed-goi) wires

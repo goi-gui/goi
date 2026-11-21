@@ -270,7 +270,7 @@ func (a *App) LoadWindow(entry string, opts ...Option) (*Window, error) {
 		logg().Error(logCtx, "ui: design failed to load", "file", name, "error", err)
 		return nil, err
 	}
-	tr, err := tree.Build(b.File, &tree.Hooks{Marked: a.markDirty, Error: a.reportError, Media: a.mediaRequest})
+	tr, err := tree.Build(b.File, &tree.Hooks{Marked: a.markDirty, Error: a.reportError, Media: a.mediaRequest, Post: a.Post})
 	if err != nil {
 		return nil, fmt.Errorf("goi: %s: %w", name, err)
 	}

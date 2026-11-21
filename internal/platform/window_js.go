@@ -474,12 +474,56 @@ func keyFor(s string, ctrl bool) (Key, string, bool) {
 		switch s {
 		case "a", "A":
 			return KeyA, "", true
+		case "b", "B":
+			return KeyB, "", true
 		case "c", "C":
 			return KeyC, "", true
+		case "d", "D":
+			return KeyD, "", true
+		case "e", "E":
+			return KeyE, "", true
+		case "f", "F":
+			return KeyF, "", true
+		case "g", "G":
+			return KeyG, "", true
+		case "h", "H":
+			return KeyH, "", true
+		case "i", "I":
+			return KeyI, "", true
+		case "j", "J":
+			return KeyJ, "", true
+		case "k", "K":
+			return KeyK, "", true
+		case "l", "L":
+			return KeyL, "", true
+		case "m", "M":
+			return KeyM, "", true
+		case "n", "N":
+			return KeyN, "", true
+		case "o", "O":
+			return KeyO, "", true
+		case "p", "P":
+			return KeyP, "", true
+		case "q", "Q":
+			return KeyQ, "", true
+		case "r", "R":
+			return KeyR, "", true
+		case "s", "S":
+			return KeyS, "", true
+		case "t", "T":
+			return KeyT, "", true
+		case "u", "U":
+			return KeyU, "", true
 		case "v", "V":
 			return KeyV, "", true
+		case "w", "W":
+			return KeyW, "", true
 		case "x", "X":
 			return KeyX, "", true
+		case "y", "Y":
+			return KeyY, "", true
+		case "z", "Z":
+			return KeyZ, "", true
 		}
 		return KeyNone, "", false
 	}

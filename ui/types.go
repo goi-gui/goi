@@ -196,6 +196,10 @@ type (
 	ChartSeries      = tree.ChartSeries
 	ClipRRect        = tree.ClipRRect
 	Code             = tree.Code
+	Terminal         = tree.Terminal
+	TerminalSize     = tree.TerminalSize
+	TerminalCell     = tree.TerminalCell
+	TerminalView     = tree.TerminalView
 	Markdown         = tree.Markdown
 	Map              = tree.Map
 	Geom             = tree.Geom

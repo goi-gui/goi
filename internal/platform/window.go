@@ -621,12 +621,56 @@ func translateKey(s int) Key {
 		return KeyDown
 	case scancodeA:
 		return KeyA
+	case scancodeB:
+		return KeyB
 	case scancodeC:
 		return KeyC
+	case scancodeD:
+		return KeyD
+	case scancodeE:
+		return KeyE
+	case scancodeF:
+		return KeyF
+	case scancodeG:
+		return KeyG
+	case scancodeH:
+		return KeyH
+	case scancodeI:
+		return KeyI
+	case scancodeJ:
+		return KeyJ
+	case scancodeK:
+		return KeyK
+	case scancodeL:
+		return KeyL
+	case scancodeM:
+		return KeyM
+	case scancodeN:
+		return KeyN
+	case scancodeO:
+		return KeyO
+	case scancodeP:
+		return KeyP
+	case scancodeQ:
+		return KeyQ
+	case scancodeR:
+		return KeyR
+	case scancodeS:
+		return KeyS
+	case scancodeT:
+		return KeyT
+	case scancodeU:
+		return KeyU
 	case scancodeV:
 		return KeyV
+	case scancodeW:
+		return KeyW
 	case scancodeX:
 		return KeyX
+	case scancodeY:
+		return KeyY
+	case scancodeZ:
+		return KeyZ
 	}
 	return KeyNone
 }
