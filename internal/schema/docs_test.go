@@ -13,7 +13,7 @@ import (
 // here first. The docs live in the sibling goi-gui/docs repository, so CI
 // without that checkout skips the test.
 func TestComponentDocsExamplesValidate(t *testing.T) {
-	dir := "../../../docs/docs/components"
+	dir := "../../../docs/src/content/docs/components"
 	if _, err := os.Stat(dir); err != nil {
 		if os.IsNotExist(err) {
 			t.Skip("docs site is not checked out next to the repo")

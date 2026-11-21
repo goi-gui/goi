@@ -453,7 +453,7 @@ func TestBuiltinCallInANumberProperty(t *testing.T) {
 // them. The docs live in the sibling goi-gui/docs repository, so CI without
 // that checkout skips the test.
 func TestBlockSamplesAreTheShippedDocs(t *testing.T) {
-	pagePath := "../../../docs/docs/syntax.md"
+	pagePath := "../../../docs/src/content/docs/syntax.md"
 	if _, err := os.Stat(pagePath); err != nil {
 		if os.IsNotExist(err) {
 			t.Skip("docs site is not checked out next to the repo")
@@ -488,7 +488,7 @@ func TestBlockSamplesAreTheShippedDocs(t *testing.T) {
 			full = src
 		}
 		if _, diag := validate(t, full); !diag.Empty() {
-			t.Errorf("../docs/docs/syntax.md block:\n%s\n%v", src, diag.Format("doc", []byte(full)))
+			t.Errorf("../docs/src/content/docs/syntax.md block:\n%s\n%v", src, diag.Format("doc", []byte(full)))
 		}
 	}
 }

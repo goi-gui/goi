@@ -17,7 +17,7 @@ import (
 // must show them on its own box. It reads the docs checkout next to the repo, so
 // CI without it skips.
 func TestEveryComponentTakesTheBoxProps(t *testing.T) {
-	dir := "../../../docs/docs/components"
+	dir := "../../../docs/src/content/docs/components"
 	if _, err := os.Stat(dir); err != nil {
 		if os.IsNotExist(err) {
 			t.Skip("docs site is not checked out next to the repo")
@@ -29,7 +29,7 @@ func TestEveryComponentTakesTheBoxProps(t *testing.T) {
 		t.Fatal(err)
 	}
 	block := regexp.MustCompile("(?s)```goi\n(.*?)```")
-	heading := regexp.MustCompile(`(?m)^#\s+(.+)$`)
+	heading := regexp.MustCompile(`(?m)^title:\s*"?([^"\n]+)"?$`)
 	for _, page := range pages {
 		body, err := os.ReadFile(page)
 		if err != nil {
