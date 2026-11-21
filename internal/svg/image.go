@@ -5,6 +5,7 @@ package svg
 import (
 	"encoding/base64"
 	"image"
+	"os"
 	"strings"
 
 	"github.com/goi-gui/goi/internal/img"
@@ -49,6 +50,15 @@ func drawImages(dst *image.RGBA, root *elem, scale float64) bool {
 func drawImage(dst *image.RGBA, e *elem, m affine, scale float64) bool {
 	href := attr(e, "href")
 	data, ok := dataURI(href)
+	if !ok {
+		if strings.Contains(href, "://") {
+			return false
+		}
+		data, ok = func() ([]byte, bool) {
+			b, err := os.ReadFile(href)
+			return b, err == nil
+		}()
+	}
 	if !ok {
 		return false
 	}

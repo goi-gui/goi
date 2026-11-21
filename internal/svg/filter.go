@@ -234,6 +234,7 @@ type filterLayer struct {
 	blurX  float64
 	blurY  float64
 	shadow *dropShadow
+	region [4]float64
 }
 
 // collectFilters handles a filter on an ordinary element by rendering that
@@ -254,7 +255,7 @@ func collectFilters(root *elem, sheet *css) ([]filterLayer, []byte) {
 			if spec, ok := filterSpecFor(root, e); ok {
 				doc := filterDocument(root, sheet, e, m)
 				if doc != nil {
-					layers = append(layers, filterLayer{doc: doc, blurX: spec.blurX, blurY: spec.blurY, shadow: spec.shadow})
+					layers = append(layers, filterLayer{doc: doc, blurX: spec.blurX, blurY: spec.blurY, shadow: spec.shadow, region: spec.region})
 					return nil
 				}
 			}
@@ -278,6 +279,7 @@ func collectFilters(root *elem, sheet *css) ([]filterLayer, []byte) {
 type filterSpec struct {
 	blurX, blurY float64
 	shadow       *dropShadow
+	region       [4]float64
 }
 
 func filterSpecFor(root, e *elem) (filterSpec, bool) {
@@ -289,7 +291,8 @@ func filterSpecFor(root, e *elem) (filterSpec, bool) {
 	if def == nil || def.name.Local != "filter" {
 		return filterSpec{}, false
 	}
-	var out filterSpec
+	out := filterSpec{region: [4]float64{-0.1, -0.1, 1.2, 1.2}}
+	parseFilterRegion(def, &out.region)
 	for _, k := range def.kids {
 		switch k.name.Local {
 		case "feGaussianBlur":
@@ -397,9 +400,11 @@ func drawFilterLayers(dst *image.RGBA, layers []filterLayer, color uint32, w, h 
 				img.Pix = base.Pix
 			}
 		}
+		bounds := alphaBounds(img.Pix, w, h)
 		if lay.blurX > 0 || lay.blurY > 0 {
 			blurRGBA(img.Pix, w, h, lay.blurX*scale, lay.blurY*scale)
 		}
+		clipFilterRegion(img.Pix, w, h, bounds, lay.region)
 		draw.Draw(dst, dst.Bounds(),
 			&image.RGBA{Pix: img.Pix, Stride: img.W * 4, Rect: image.Rect(0, 0, img.W, img.H)},
 			image.Point{}, draw.Over)
@@ -417,4 +422,67 @@ func withoutStyleProp(style, drop string) string {
 		b.WriteByte(';')
 	}
 	return b.String()
+}
+
+func parseFilterRegion(e *elem, region *[4]float64) {
+	keys := [4]string{"x", "y", "width", "height"}
+	for i, k := range keys {
+		v := strings.TrimSpace(attr(e, k))
+		if v == "" {
+			continue
+		}
+		if strings.HasSuffix(v, "%") {
+			if n, err := strconv.ParseFloat(strings.TrimSuffix(v, "%"), 64); err == nil {
+				region[i] = n / 100
+			}
+		} else if n, err := strconv.ParseFloat(v, 64); err == nil {
+			region[i] = n
+		}
+	}
+}
+
+func alphaBounds(pix []byte, w, h int) image.Rectangle {
+	b := image.Rectangle{Min: image.Point{X: w, Y: h}}
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			if pix[(y*w+x)*4+3] == 0 {
+				continue
+			}
+			if x < b.Min.X {
+				b.Min.X = x
+			}
+			if y < b.Min.Y {
+				b.Min.Y = y
+			}
+			if x >= b.Max.X {
+				b.Max.X = x + 1
+			}
+			if y >= b.Max.Y {
+				b.Max.Y = y + 1
+			}
+		}
+	}
+	if b.Max.X <= b.Min.X || b.Max.Y <= b.Min.Y {
+		return image.Rect(0, 0, 0, 0)
+	}
+	return b
+}
+
+func clipFilterRegion(pix []byte, w, h int, box image.Rectangle, region [4]float64) {
+	bw, bh := float64(box.Dx()), float64(box.Dy())
+	if bw <= 0 || bh <= 0 {
+		return
+	}
+	x0 := int(float64(box.Min.X) + region[0]*bw)
+	y0 := int(float64(box.Min.Y) + region[1]*bh)
+	x1 := int(float64(box.Min.X) + (region[0]+region[2])*bw)
+	y1 := int(float64(box.Min.Y) + (region[1]+region[3])*bh)
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			if x >= x0 && x < x1 && y >= y0 && y < y1 {
+				continue
+			}
+			pix[(y*w+x)*4+3] = 0
+		}
+	}
 }

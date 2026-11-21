@@ -13,6 +13,9 @@ import (
 
 	srw "github.com/srwiley/oksvg"
 	"golang.org/x/image/font"
+	"golang.org/x/image/font/gofont/gobold"
+	"golang.org/x/image/font/gofont/gobolditalic"
+	"golang.org/x/image/font/gofont/goitalic"
 	"golang.org/x/image/font/gofont/goregular"
 	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
@@ -123,29 +126,49 @@ func parseTransform(s string) affine {
 }
 
 var (
-	goFaceOnce sync.Once
-	goFaceFont *opentype.Font
+	goFaceOnce       sync.Once
+	goFaceRegular    *opentype.Font
+	goFaceBold       *opentype.Font
+	goFaceItalic     *opentype.Font
+	goFaceBoldItalic *opentype.Font
 )
 
-func svgFace(size float64) (font.Face, error) {
+func svgFace(size float64, bold, italic bool) (font.Face, error) {
 	goFaceOnce.Do(func() {
-		goFaceFont, _ = opentype.Parse(goregular.TTF)
+		goFaceRegular, _ = opentype.Parse(goregular.TTF)
+		goFaceBold, _ = opentype.Parse(gobold.TTF)
+		goFaceItalic, _ = opentype.Parse(goitalic.TTF)
+		goFaceBoldItalic, _ = opentype.Parse(gobolditalic.TTF)
 	})
-	if goFaceFont == nil || size <= 0 {
+	f := goFaceRegular
+	switch {
+	case bold && italic:
+		f = goFaceBoldItalic
+	case bold:
+		f = goFaceBold
+	case italic:
+		f = goFaceItalic
+	}
+	if f == nil || size <= 0 {
 		return nil, errors.New("svg: no text face")
 	}
-	return opentype.NewFace(goFaceFont, &opentype.FaceOptions{
+	return opentype.NewFace(f, &opentype.FaceOptions{
 		Size: size, DPI: 72, Hinting: font.HintingFull,
 	})
 }
 
 type textStyle struct {
-	fill        string
-	fontSize    float64
-	anchor      string
-	opacity     float64
-	fillOpacity float64
-	hidden      bool
+	fill          string
+	fontSize      float64
+	anchor        string
+	opacity       float64
+	fillOpacity   float64
+	letterSpacing float64
+	stroke        string
+	strokeWidth   float64
+	bold          bool
+	italic        bool
+	hidden        bool
 }
 
 func styleAt(e *elem, sheet *css, base textStyle) textStyle {
@@ -183,6 +206,29 @@ func styleAt(e *elem, sheet *css, base textStyle) textStyle {
 			if n, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
 				s.fillOpacity = n
 			}
+		}
+		if v, ok := m["letter-spacing"]; ok {
+			if n, ok := lengthPx(v); ok {
+				s.letterSpacing = n
+			}
+		}
+		if v, ok := m["stroke"]; ok {
+			s.stroke = v
+		}
+		if v, ok := m["stroke-width"]; ok {
+			if n, ok := lengthPx(v); ok {
+				s.strokeWidth = n
+			}
+		}
+		if v, ok := m["font-weight"]; ok {
+			w := strings.TrimSpace(v)
+			s.bold = w == "bold" || w == "bolder" || (func() bool {
+				n, err := strconv.Atoi(w)
+				return err == nil && n >= 600
+			})()
+		}
+		if v, ok := m["font-style"]; ok {
+			s.italic = strings.TrimSpace(v) == "italic"
 		}
 		if v, ok := m["display"]; ok && strings.TrimSpace(v) == "none" {
 			s.hidden = true
@@ -245,7 +291,7 @@ func drawText(dst *image.RGBA, e *elem, m affine, st textStyle, scale float64, i
 	if size <= 0 || size > 4096 {
 		return
 	}
-	face, err := svgFace(size)
+	face, err := svgFace(size, st.bold, st.italic)
 	if err != nil {
 		return
 	}
@@ -256,21 +302,18 @@ func drawText(dst *image.RGBA, e *elem, m affine, st textStyle, scale float64, i
 	if bw <= 0 || bh <= 0 {
 		return
 	}
-	pad := 2
-	tw, th := bw+2*pad, bh+2*pad
-	tmp := image.NewRGBA(image.Rect(0, 0, tw, th))
-	col := textColor(st, ink)
-	if col.A == 0 {
-		return
+	runes := []rune(text)
+	spacingPx := st.letterSpacing * scale
+	total := float64(adv) / 64
+	if len(runes) > 1 && spacingPx != 0 {
+		total += spacingPx * float64(len(runes)-1)
 	}
-	// Dot is the baseline; the glyph box can extend above it, so the bitmap
-	// origin has to move by the bounding box's own minimum.
-	dotX, dotY := pad-b.Min.X.Ceil(), pad-b.Min.Y.Ceil()
-	d := font.Drawer{
-		Dst:  tmp,
-		Src:  image.NewUniform(col),
-		Face: face,
-		Dot:  fixed.P(dotX, dotY),
+	strokePx := st.strokeWidth * scale
+	strokePad := int(math.Ceil(strokePx / 2))
+	pad := 2 + strokePad
+	tw, th := int(total)+2*pad, bh+2*pad
+	if tw <= 0 || th <= 0 {
+		return
 	}
 	x, _ := lengthPx(attr(e, "x"))
 	if dx, ok := lengthPx(attr(e, "dx")); ok {
@@ -282,16 +325,55 @@ func drawText(dst *image.RGBA, e *elem, m affine, st textStyle, scale float64, i
 	}
 	switch st.anchor {
 	case "middle":
-		x -= float64(adv) / 64 / 2
+		x -= total / scale / 2
 	case "end":
-		x -= float64(adv) / 64
+		x -= total / scale
 	}
+	tmp := image.NewRGBA(image.Rect(0, 0, tw, th))
+	col := textColor(st, ink)
+	if col.A == 0 {
+		return
+	}
+	dotX, dotY := pad-b.Min.X.Ceil(), pad-b.Min.Y.Ceil()
+	d := font.Drawer{
+		Dst:  tmp,
+		Src:  image.NewUniform(col),
+		Face: face,
+		Dot:  fixed.P(dotX, dotY),
+	}
+	drawRun := func(offX, offY int, c color.NRGBA) {
+		d.Src = image.NewUniform(c)
+		if spacingPx == 0 || len(runes) < 2 {
+			d.Dot = fixed.P(dotX+offX, dotY+offY)
+			d.DrawString(text)
+			return
+		}
+		x := dotX + offX
+		for _, r := range runes {
+			d.Dot = fixed.P(x, dotY+offY)
+			d.DrawString(string(r))
+			x += int(font.MeasureString(face, string(r)))/64 + int(spacingPx+0.5)
+		}
+	}
+	if st.stroke != "" && st.strokeWidth > 0 {
+		stroke := svgColor(st.stroke, ink, st.opacity)
+		if stroke.A > 0 {
+			rad := int(math.Ceil(strokePx / 2))
+			for i := -rad; i <= rad; i += maxInt(1, rad) {
+				for j := -rad; j <= rad; j += maxInt(1, rad) {
+					if i == 0 && j == 0 {
+						continue
+					}
+					drawRun(i, j, stroke)
+				}
+			}
+		}
+	}
+	drawRun(0, 0, col)
 	// The face is a pixel size already multiplied by scale, so map the temp
 	// bitmap back into SVG units before the local-to-canvas matrix places it.
-	d.Dot = fixed.P(dotX, dotY)
-	d.DrawString(text)
 	invScale := 1 / scale
-	tempM := affine{invScale, 0, 0, invScale, x - float64(dotX)*invScale, y - float64(dotY)*invScale}.then(m)
+	tempM := affine{invScale, 0, 0, invScale, x - float64(pad)*invScale, y - float64(pad)*invScale}.then(m)
 	compositeTransformed(dst, tmp, tempM, 0)
 }
 
@@ -311,17 +393,32 @@ func collectText(e *elem) string {
 }
 
 func textColor(st textStyle, ink uint32) color.NRGBA {
-	fill := strings.TrimSpace(st.fill)
-	if fill == "currentColor" {
-		fill = hexRGB(ink)
-	}
-	c, err := srw.ParseSVGColor(fill)
-	if err != nil || c == nil {
+	c := svgColor(st.fill, ink, st.opacity*st.fillOpacity)
+	if c.A == 0 {
 		c = color.NRGBA{0, 0, 0, 255}
 	}
+	return c
+}
+
+func svgColor(v string, ink uint32, opacity float64) color.NRGBA {
+	v = strings.TrimSpace(v)
+	if v == "currentColor" {
+		v = hexRGB(ink)
+	}
+	c, err := srw.ParseSVGColor(v)
+	if err != nil || c == nil {
+		return color.NRGBA{}
+	}
 	r, g, b, a := c.RGBA()
-	alpha := float64(a) / 65535 * st.opacity * st.fillOpacity
+	alpha := float64(a) / 65535 * opacity
 	return color.NRGBA{uint8(r >> 8), uint8(g >> 8), uint8(b >> 8), uint8(alpha*255 + 0.5)}
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // compositeTransformed maps a small bitmap into dst through a local-to-canvas
