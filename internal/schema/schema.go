@@ -155,6 +155,7 @@ var ScrollMethods = []string{
 	"scrollTo", "scrollToSmooth",
 	"scrollToNthChild", "scrollToNthChildSmooth",
 	"scrollToChild", "scrollToChildSmooth",
+	"autoScroll", "autoScrollSmooth",
 }
 
 // NodeMethods are the methods an event can call on an element by id, as in
@@ -214,6 +215,12 @@ var eventDefs = []EventDef{
 	// A press outside the element's subtree. It carries a ClickEvent, which no
 	// scalar type names, so `event` cannot be passed from a design.
 	{Name: "onClickOutside", Type: TypeString},
+	// Scroll events are on every element: any node may scroll. The payload is a
+	// ScrollEvent, so its fields are read as `event.x`, `event.y` and
+	// `event.byUser`; the scalar `event` is not a value here.
+	{Name: "onScroll"},
+	{Name: "onScrollToEnd"},
+	{Name: "onScrollToStart"},
 	{Name: "onToggle", Type: TypeBool, HasValue: true, Component: true},
 	{Name: "onChange", Type: TypeNumber, HasValue: true, Component: true},
 	{Name: "onEdit", Type: TypeString, HasValue: true, Component: true},
@@ -311,6 +318,7 @@ var common = []Prop{
 	{Name: "flex", Type: TypeNumber, Dirty: DirtyLayout, Default: 0.0, Common: true},
 	{Name: "alignSelf", Type: TypeEnum, Dirty: DirtyLayout, Enum: []string{"start", "center", "end", "stretch"}, Default: "", Common: true},
 	{Name: "scroll", Type: TypeBool, Dirty: DirtyPaint, Default: false, Common: true},
+	{Name: "autoScroll", Type: TypeBool, Dirty: DirtyPaint, Default: false, Common: true},
 	// Scrollbar and scroll-shadow behaviour on any scrollable element.
 	{Name: "hideScrollbar", Type: TypeBool, Dirty: DirtyPaint, Default: false, Common: true},
 	{Name: "autoHideScrollbar", Type: TypeBool, Dirty: DirtyPaint, Default: true, Common: true},
@@ -668,7 +676,8 @@ var elements = func() []Element {
 	// events. The list stays in one place so the validator, the builder and the
 	// language server cannot drift apart.
 	for i := range out {
-		out[i].Events = append(out[i].Events, "onClick", "onClickOutside")
+		out[i].Events = append(out[i].Events,
+			"onClick", "onClickOutside", "onScroll", "onScrollToEnd", "onScrollToStart")
 		if out[i].Name == "Audio" || out[i].Name == "Video" {
 			out[i].Events = append(out[i].Events, "onPlay", "onPause", "onEnd")
 			continue

@@ -95,6 +95,18 @@ type NodeBase struct {
 	// `scale` does. Layout ignores it, so the box keeps its place.
 	scale  Prop[Scale]
 	scroll Prop[bool]
+	// autoScroll follows content growth when the reader is at the end, which is
+	// how a chat keeps its newest message in view. autoScrollDur is the smooth
+	// variant's duration, set by AutoScrollSmooth.
+	autoScroll        Prop[bool]
+	autoScrollDur     time.Duration
+	autoScrollLastMax float64
+	autoScrollPaused  bool
+	autoScrollForce   bool
+	// scrollAtStart and scrollAtEnd remember the last edge each side reached,
+	// so the edge events fire once on arrival instead of every frame.
+	scrollAtStart bool
+	scrollAtEnd   bool
 	// Scrollbar and scroll-shadow behaviour. `hideScrollbar` removes the bar;
 	// `autoHideScrollbar` (the default) shows it only while the pointer is over
 	// the area or the area scrolled recently.
@@ -175,6 +187,11 @@ type NodeBase struct {
 	// Outside is the click-outside handler slot, on every node for the same
 	// reason: a press anywhere outside it is reported here.
 	Outside Event[ClickEvent]
+	// Scroll, ScrollEnd and ScrollStart are the scroll area's events. They live
+	// on every node because any element with `scroll: true` can move.
+	Scroll      Event[ScrollEvent]
+	ScrollEnd   Event[struct{}]
+	ScrollStart Event[struct{}]
 	// modifiers holds properties whose value comes from a responsive,
 	// conditional or state block, including nested blocks.
 	modifiers []modifierProp

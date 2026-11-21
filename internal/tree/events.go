@@ -22,6 +22,14 @@ type MouseEvent struct {
 	X, Y float64
 }
 
+// ScrollEvent is delivered when a scroll area moves. X and Y are the clamped
+// offsets, and ByUser is false for a programmatic scroll, a smooth auto-scroll
+// or the first layout.
+type ScrollEvent struct {
+	X, Y   float64
+	ByUser bool
+}
+
 // KeyEvent is delivered for key presses and text input.
 type KeyEvent struct {
 	Key  Key
@@ -98,3 +106,17 @@ func (c *Component) OnSelect(fn func(int)) (off func()) { return c.Select.On(fn)
 // OnHoverPoint subscribes to a chart point coming under the pointer, with the
 // point's index, or -1 when the pointer leaves the chart.
 func (c *Component) OnHoverPoint(fn func(int)) (off func()) { return c.HoverPoint.On(fn) }
+
+// OnScroll subscribes to every movement of a scrolling area. The event carries
+// the clamped offsets and whether the reader moved it.
+func (b *NodeBase) OnScroll(fn func(ScrollEvent)) (off func()) { return b.Scroll.On(fn) }
+
+// OnScrollToEnd subscribes to reaching the end of the area's primary axis.
+func (b *NodeBase) OnScrollToEnd(fn func()) (off func()) {
+	return b.ScrollEnd.On(func(struct{}) { fn() })
+}
+
+// OnScrollToStart subscribes to returning to the start of the primary axis.
+func (b *NodeBase) OnScrollToStart(fn func()) (off func()) {
+	return b.ScrollStart.On(func(struct{}) { fn() })
+}

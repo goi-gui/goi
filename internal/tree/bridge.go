@@ -134,6 +134,12 @@ func (t *Tree) bindEvent(b *NodeBase, name string, v syntax.Value) error {
 		b.Click.On(func(e ClickEvent) { t.fire(b, name, call, e) })
 	case "onClickOutside":
 		b.Outside.On(func(e ClickEvent) { t.fire(b, name, call, e) })
+	case "onScroll":
+		b.Scroll.On(func(e ScrollEvent) { t.fire(b, name, call, e) })
+	case "onScrollToEnd":
+		b.ScrollEnd.On(func(struct{}) { t.fire(b, name, call, nil) })
+	case "onScrollToStart":
+		b.ScrollStart.On(func(struct{}) { t.fire(b, name, call, nil) })
 	case "onToggle":
 		c := bridgeComponent(b)
 		if c == nil {
@@ -260,6 +266,14 @@ func (t *Tree) fire(b *NodeBase, name string, call *syntax.Call, payload any) {
 			args[i] = payload
 			continue
 		}
+		// A scroll event carries three fields; the design reads them as
+		// `event.x`, `event.y` and `event.byUser`.
+		if r, ok := a.(*syntax.Ref); ok && r.ID == "event" {
+			if v, ok := eventField(payload, r.Prop); ok {
+				args[i] = v
+				continue
+			}
+		}
 		v, ok := c.eval(a, 0)
 		if !ok {
 			t.bridgeErr(fmt.Errorf("goi: %s.%s: cannot evaluate argument %d of %s", b.node.Kind(), name, i+1, call.Callee.Prop))
@@ -276,6 +290,22 @@ func (t *Tree) fire(b *NodeBase, name string, call *syntax.Call, payload any) {
 	}
 }
 
+// eventField reads one named field of an event payload.
+func eventField(payload any, name string) (any, bool) {
+	switch e := payload.(type) {
+	case ScrollEvent:
+		switch name {
+		case "x":
+			return e.X, true
+		case "y":
+			return e.Y, true
+		case "byUser":
+			return e.ByUser, true
+		}
+	}
+	return nil, false
+}
+
 // callNodeMethodX drives an element's transport from an event, with the call's
 // arguments: `spin.pause()`, or `clip.seek(12)` on a player.
 func (t *Tree) callNodeMethodX(id, method string, args []any) {
@@ -286,6 +316,24 @@ func (t *Tree) callNodeMethodX(id, method string, args []any) {
 	}
 	// `id.scrollTo(200)` and its child forms move a scroll area without a Go
 	// handler, which is what a "jump to top" button in a design needs.
+	if method == "autoScroll" || method == "autoScrollSmooth" {
+		on, ok := args[0].(bool)
+		if !ok {
+			t.bridgeErr(fmt.Errorf("goi: %s.%s takes a bool", n.Kind(), method))
+			return
+		}
+		if method == "autoScroll" {
+			n.Base().AutoScroll(on)
+			return
+		}
+		d, ok := args[1].(time.Duration)
+		if !ok {
+			t.bridgeErr(fmt.Errorf("goi: %s.autoScrollSmooth takes a duration", n.Kind()))
+			return
+		}
+		n.Base().AutoScrollSmooth(on, d)
+		return
+	}
 	if schema.ScrollMethod(method) {
 		if err := callScrollMethod(n.Base(), method, args); err != nil {
 			t.bridgeErr(err)

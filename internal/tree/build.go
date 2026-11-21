@@ -498,6 +498,7 @@ func newNode(name string) Node {
 			alignSelf:         newProp(nil, "alignSelf", DirtyLayout, ""),
 			scale:             newProp(nil, "scale", DirtyPaint, IdentityScale),
 			scroll:            newProp(nil, "scroll", DirtyPaint, false),
+			autoScroll:        newProp(nil, "autoScroll", DirtyPaint, false),
 			hideScrollbar:     newProp(nil, "hideScrollbar", DirtyPaint, false),
 			autoHideScrollbar: newProp(nil, "autoHideScrollbar", DirtyPaint, true),
 			scrollbarWidth:    newProp(nil, "scrollbarWidth", DirtyPaint, ScrollbarThickness),
@@ -531,6 +532,9 @@ func newNode(name string) Node {
 			radiusBottomRight: newProp(nil, "radiusBottomRight", DirtyPaint, -1.0),
 			radiusBottomLeft:  newProp(nil, "radiusBottomLeft", DirtyPaint, -1.0),
 			fontFamily:        newProp(nil, "fontFamily", DirtyLayout, ""),
+			// A fresh node starts at the top; an auto-scrolled chat reaches the
+			// bottom later and fires its end event then.
+			scrollAtStart: true,
 		}
 	}
 	switch name {

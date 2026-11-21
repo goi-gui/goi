@@ -214,11 +214,12 @@ type (
 
 // Event types.
 type (
-	ClickEvent = tree.ClickEvent
-	SortOrder  = tree.SortOrder
-	KeyEvent   = tree.KeyEvent
-	Mods       = tree.Mods
-	FocusEvent = tree.FocusEvent
+	ClickEvent  = tree.ClickEvent
+	SortOrder   = tree.SortOrder
+	KeyEvent    = tree.KeyEvent
+	Mods        = tree.Mods
+	FocusEvent  = tree.FocusEvent
+	ScrollEvent = tree.ScrollEvent
 )
 
 // Keys.

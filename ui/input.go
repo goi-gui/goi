@@ -2238,7 +2238,7 @@ func scrollChain(start tree.Node, panX, panY float64) (tree.Node, float64, tree.
 			off := b.ScrollOffsetFor(tree.AxisX)
 			after := min(max(off+panX, 0), b.ScrollMaxFor(tree.AxisX))
 			if after != off {
-				b.SetScrollOffsetFor(tree.AxisX, after)
+				b.SetScrollOffsetForBy(tree.AxisX, after, true)
 				panX -= after - off
 				moved, axis = after-off, tree.AxisX
 			}
@@ -2247,7 +2247,7 @@ func scrollChain(start tree.Node, panX, panY float64) (tree.Node, float64, tree.
 			off := b.ScrollOffsetFor(tree.AxisY)
 			after := min(max(off+panY, 0), b.ScrollMaxFor(tree.AxisY))
 			if after != off {
-				b.SetScrollOffsetFor(tree.AxisY, after)
+				b.SetScrollOffsetForBy(tree.AxisY, after, true)
 				panY -= after - off
 				moved, axis = after-off, tree.AxisY
 			}
@@ -2404,7 +2404,7 @@ func (i *interactor) tickSnap(dt float64) bool {
 	i.snapT += dt
 	p := min(i.snapT/i.snapDur, 1)
 	off := i.snapFrom + (i.snapTo-i.snapFrom)*Standard(p)
-	n.Base().SetScrollOffsetFor(i.snapAxis, off)
+	n.Base().SetScrollOffsetForBy(i.snapAxis, off, true)
 	if p >= 1 {
 		i.snapNode = nil
 	}
@@ -2580,7 +2580,7 @@ func (i *interactor) dragScrollbar(x, y float64) {
 	} else if frac > 1 {
 		frac = 1
 	}
-	b.SetScrollOffsetFor(i.scrollbarAxis, frac*b.ScrollMaxFor(i.scrollbarAxis))
+	b.SetScrollOffsetForBy(i.scrollbarAxis, frac*b.ScrollMaxFor(i.scrollbarAxis), true)
 	i.flingNode, i.flingV = nil, 0
 	i.showScrollbar(n)
 	i.markDirty()

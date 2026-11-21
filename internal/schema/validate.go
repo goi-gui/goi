@@ -1533,9 +1533,46 @@ func (v *validator) checkCallArgs(e *syntax.Element, pname string, call *syntax.
 			}
 			continue
 		}
+		if r, ok := a.(*syntax.Ref); ok && r.ID == "event" && ev != nil {
+			fieldType, ok := eventFieldType(pname, r.Prop)
+			if !ok {
+				v.add(r.At, r.At+syntax.Pos(len(r.ID)+1+len(r.Prop)),
+					fmt.Sprintf("%s.%s: %s has no field %q", e.Name, pname, pname, r.Prop),
+					syntax.Suggest(r.Prop, eventFieldNames(pname)))
+				continue
+			}
+			if !typesFit(fieldType, ft) {
+				v.add(r.At, r.At+syntax.Pos(len(r.ID)+1+len(r.Prop)),
+					fmt.Sprintf("%s.%s: event.%s is %s, which cannot feed %s",
+						e.Name, pname, r.Prop, typeName(fieldType), typeName(ft)), "")
+			}
+			continue
+		}
 		v.checkLiteral(e, prop, a)
 		v.checkRefs(e, prop, a)
 	}
+}
+
+// eventFieldType is the type of one named field on an event payload.
+func eventFieldType(event, field string) (ValueType, bool) {
+	if event != "onScroll" {
+		return 0, false
+	}
+	switch field {
+	case "x", "y":
+		return TypeNumber, true
+	case "byUser":
+		return TypeBool, true
+	}
+	return 0, false
+}
+
+// eventFieldNames lists the fields a diagnostic can suggest.
+func eventFieldNames(event string) []string {
+	if event == "onScroll" {
+		return []string{"x", "y", "byUser"}
+	}
+	return nil
 }
 
 // handlerNames lists the bridge handlers, for suggestions.
@@ -1591,6 +1628,19 @@ func (v *validator) checkEventCall(e *syntax.Element, ev EventDef, p *syntax.Pro
 		case "scrollTo":
 			if len(call.Args) != 1 {
 				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes one number",
+					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+			}
+		case "autoScroll":
+			if len(call.Args) != 1 {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes one bool",
+					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+			}
+		case "autoScrollSmooth":
+			if len(call.Args) != 2 {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes a bool and a duration",
+					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+			} else if _, ok := call.Args[1].(*syntax.Duration); !ok {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes a duration such as 300ms as its second argument",
 					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
 			}
 		case "scrollToSmooth":

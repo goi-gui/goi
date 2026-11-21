@@ -342,6 +342,9 @@ func (a *App) frame() {
 	kind, dirty := root.Base().Dirty()
 	if dirty && kind == tree.DirtyLayout {
 		d.engine.Layout(root, float64(d.pendingW)/float64(maxScale(d.pendingScale)), float64(d.pendingH)/float64(maxScale(d.pendingScale)))
+		// A chat's auto-scroll follows after layout, when the new content has
+		// its height; it moves children, so it lands before the repaint mark.
+		a.win.tree.ApplyAutoScroll()
 		// A relayout moves children, so everything must be repainted.
 		markAll(root.Base(), tree.DirtyPaint)
 	}

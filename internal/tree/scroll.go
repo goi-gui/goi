@@ -188,9 +188,22 @@ func (b *NodeBase) SetScrollOffsetFor(axis Axis, v float64) {
 	b.setScrollOffsetRaw(axis, v)
 }
 
+// SetScrollOffsetForBy scrolls one axis and says who moved it. Input uses
+// byUser true for a wheel, drag, fling or scrollbar; a design or Go shortcut
+// uses false.
+func (b *NodeBase) SetScrollOffsetForBy(axis Axis, v float64, byUser bool) {
+	b.scrollAnim = nil
+	b.setScrollOffsetRawBy(axis, v, byUser)
+}
+
 // setScrollOffsetRaw writes the offset without stopping a smooth scroll, which
 // is what the animation's own frames use.
 func (b *NodeBase) setScrollOffsetRaw(axis Axis, v float64) {
+	b.setScrollOffsetRawBy(axis, v, false)
+}
+
+func (b *NodeBase) setScrollOffsetRawBy(axis Axis, v float64, byUser bool) {
+	oldX, oldY := b.ScrollOffsetFor(AxisX), b.ScrollOffsetFor(AxisY)
 	switch axis {
 	case AxisX:
 		b.scrollX = v
@@ -206,6 +219,51 @@ func (b *NodeBase) setScrollOffsetRaw(axis Axis, v float64) {
 		dirty = DirtyLayout
 	}
 	b.MarkDirty(dirty)
+	b.scrollMoved(oldX, oldY, byUser)
+}
+
+// scrollMoved reports a real offset change and updates the edge and auto-scroll
+// state. The clamped offsets are what the design sees.
+func (b *NodeBase) scrollMoved(oldX, oldY float64, byUser bool) {
+	x, y := b.ScrollOffsetFor(AxisX), b.ScrollOffsetFor(AxisY)
+	if x == oldX && y == oldY {
+		return
+	}
+	b.Scroll.Emit(ScrollEvent{X: x, Y: y, ByUser: byUser})
+	b.updateScrollEdges()
+	if !byUser || !b.autoScroll.Get() {
+		return
+	}
+	axis := b.primaryScrollAxis()
+	if axis == AxisNone {
+		return
+	}
+	max := b.ScrollMaxFor(axis)
+	off := b.ScrollOffsetFor(axis)
+	// A user scroll away from the end pauses the follow; reaching the end
+	// starts it again even without the end event's help.
+	b.autoScrollPaused = max > 0 && off < max-0.5
+}
+
+// updateScrollEdges fires the start and end events once when the primary axis
+// reaches an edge. A fresh node starts at the top, so the first move down does
+// not report a start.
+func (b *NodeBase) updateScrollEdges() {
+	axis := b.primaryScrollAxis()
+	if axis == AxisNone {
+		return
+	}
+	max := b.ScrollMaxFor(axis)
+	off := b.ScrollOffsetFor(axis)
+	atStart := off <= 0.5
+	atEnd := max <= 0 || off >= max-0.5
+	if atStart && !b.scrollAtStart {
+		b.ScrollStart.Emit(struct{}{})
+	}
+	if atEnd && !b.scrollAtEnd {
+		b.ScrollEnd.Emit(struct{}{})
+	}
+	b.scrollAtStart, b.scrollAtEnd = atStart, atEnd
 }
 
 // ScrollTo jumps along the node's primary axis: down a column, sideways along a
@@ -222,23 +280,112 @@ func (b *NodeBase) ScrollTo(v float64) {
 // ScrollToSmooth eases to v over d, starting from the offset it shows now. A
 // duration of zero or less jumps. It does nothing on a node that does not scroll.
 func (b *NodeBase) ScrollToSmooth(v float64, d time.Duration) {
+	b.scrollToSmoothBy(v, d, false)
+}
+
+func (b *NodeBase) scrollToSmoothBy(v float64, d time.Duration, byUser bool) {
 	axis := b.primaryScrollAxis()
 	if axis == AxisNone {
 		return
 	}
 	if d <= 0 {
-		b.ScrollTo(v)
+		b.SetScrollOffsetForBy(axis, v, byUser)
 		return
 	}
 	from := b.ScrollOffsetFor(axis)
 	if from == v {
-		b.SetScrollOffsetFor(axis, v)
+		b.SetScrollOffsetForBy(axis, v, byUser)
 		return
 	}
-	b.scrollAnim = &scrollAnimation{axis: axis, from: from, to: v, dur: d}
+	b.scrollAnim = &scrollAnimation{axis: axis, from: from, to: v, dur: d, byUser: byUser}
 	b.listTransition()
 	b.ShowScrollbar()
 	b.MarkDirty(DirtyPaint)
+}
+
+// AutoScroll turns following the end of the content on or off and scrolls to
+// it now. While it is on, content that grows keeps the newest row in view;
+// scrolling away pauses that until the reader returns to the end.
+func (b *NodeBase) AutoScroll(on bool) { b.setAutoScroll(on, 0) }
+
+// AutoScrollSmooth is AutoScroll with an eased move over d. The duration stays
+// on the node, so later content growth uses the same ease.
+func (b *NodeBase) AutoScrollSmooth(on bool, d time.Duration) { b.setAutoScroll(on, d) }
+
+// AutoScrollEnabled reports whether the node follows its end.
+func (b *NodeBase) AutoScrollEnabled() bool { return b.autoScroll.Get() }
+
+func (b *NodeBase) setAutoScroll(on bool, d time.Duration) {
+	b.autoScroll.Set(on)
+	b.autoScrollDur = d
+	b.autoScrollPaused = false
+	b.autoScrollForce = on
+	if !on {
+		return
+	}
+	if max := b.ScrollMaxFor(b.primaryScrollAxis()); max > 0 {
+		b.scrollToEnd(d)
+		return
+	}
+	// The first layout has not measured the content yet; force one so the
+	// pending follow can land.
+	b.MarkDirty(DirtyLayout)
+}
+
+func (b *NodeBase) scrollToEnd(d time.Duration) {
+	axis := b.primaryScrollAxis()
+	if axis == AxisNone {
+		return
+	}
+	max := b.ScrollMaxFor(axis)
+	if max <= 0 {
+		return
+	}
+	if d > 0 {
+		b.scrollToSmoothBy(max, d, false)
+		return
+	}
+	b.SetScrollOffsetFor(axis, max)
+}
+
+// ScrollAtEnd reports whether the primary axis is at its end. A short or
+// non-scrolling area counts as both at the start and at the end.
+func (b *NodeBase) ScrollAtEnd() bool {
+	axis := b.primaryScrollAxis()
+	if axis == AxisNone {
+		return true
+	}
+	max := b.ScrollMaxFor(axis)
+	return max <= 0 || b.ScrollOffsetFor(axis) >= max-0.5
+}
+
+// ScrollAtStart reports whether the primary axis is at its start.
+func (b *NodeBase) ScrollAtStart() bool {
+	return b.ScrollOffsetFor(b.primaryScrollAxis()) <= 0.5
+}
+
+// ApplyAutoScroll follows content growth for every node with autoScroll on. It
+// runs after layout, once the new content has a size. A pause set by a user
+// scroll clears when the reader reaches the end again.
+func (t *Tree) ApplyAutoScroll() {
+	t.Walk(func(n Node) {
+		b := n.Base()
+		axis := b.primaryScrollAxis()
+		if axis == AxisNone {
+			return
+		}
+		max := b.ScrollMaxFor(axis)
+		// Content can shrink under the reader, which clamps the offset without
+		// a write. The edges still have to follow that.
+		if max != b.autoScrollLastMax {
+			b.updateScrollEdges()
+		}
+		if b.autoScroll.Get() && (b.autoScrollForce || (max > b.autoScrollLastMax+0.5 && !b.autoScrollPaused)) {
+			b.scrollToEnd(b.autoScrollDur)
+		}
+		b.autoScrollLastMax = max
+		b.autoScrollForce = false
+	})
 }
 
 // ScrollToNthChild scrolls the nth visible direct child into view, counting
@@ -379,6 +526,7 @@ type scrollAnimation struct {
 	axis         Axis
 	from, to     float64
 	elapsed, dur time.Duration
+	byUser       bool
 }
 
 // advanceScroll moves a smooth scroll one frame forward and reports whether it
@@ -398,7 +546,7 @@ func (b *NodeBase) advanceScroll(elapsed time.Duration) bool {
 	}
 	// The same cubic ease-out a transition uses by default.
 	e := 1 - (1-p)*(1-p)*(1-p)
-	b.setScrollOffsetRaw(a.axis, a.from+(a.to-a.from)*e)
+	b.setScrollOffsetRawBy(a.axis, a.from+(a.to-a.from)*e, a.byUser)
 	b.ShowScrollbar()
 	if p >= 1 {
 		b.scrollAnim = nil

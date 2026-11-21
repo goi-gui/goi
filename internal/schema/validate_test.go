@@ -892,3 +892,35 @@ Window { Column { gap: conditional { bridge.wide: state { default: 8 hover: 12 }
 		}
 	}
 }
+
+// TestScrollEventFields checks the three scroll handlers: the payload fields
+// feed the declared handler parameters, and a typo is a diagnostic.
+func TestScrollEventFields(t *testing.T) {
+	good := `bridge {
+		onMoved func(x float64, y float64, byUser bool)
+		onEnd func()
+		onStart func()
+	}
+	Window {
+		Column {
+			id:              page
+			scroll:          true
+			onScroll:        bridge.onMoved(event.x, event.y, event.byUser)
+			onScrollToEnd:   bridge.onEnd()
+			onScrollToStart: bridge.onStart()
+		}
+	}`
+	if _, diag := validate(t, good); !diag.Empty() {
+		t.Fatalf("scroll handlers rejected: %v", diag)
+	}
+	bad := `bridge { onMoved func(x float64) }
+	Window { Column { scroll: true onScroll: bridge.onMoved(event.z) } }`
+	if _, diag := validate(t, bad); diag.Empty() || !strings.Contains(diag.Format("x", []byte(bad)), "no field") {
+		t.Fatalf("typo field: %v", diag)
+	}
+	// Any element can scroll, so Text takes the events too.
+	if _, diag := validate(t, `bridge { onEnd func() }
+Window { Text { text: "x" onScrollToEnd: bridge.onEnd() } }`); !diag.Empty() {
+		t.Fatalf("Text scroll event: %v", diag)
+	}
+}
