@@ -656,19 +656,22 @@ func propNames(def *Element) []string {
 	return append(out, def.Events...)
 }
 
-// checkValue verifies the literal kind and records the element's id. A map is
-// the responsive form: one ordinary literal per breakpoint.
+// checkValue verifies the literal kind and records the element's id.
 func (v *validator) checkValue(e *syntax.Element, p *syntax.Property, pd *Prop) {
-	val := p.Value
+	v.checkEntryValue(e, pd, p.Value)
+}
+
+// checkEntryValue checks one value inside a map or modifier entry, where a
+// nested modifier is legal.
+func (v *validator) checkEntryValue(e *syntax.Element, pd *Prop, val syntax.Value) {
 	switch x := val.(type) {
 	case *syntax.Map:
 		v.checkMap(e, pd, x)
-		return
 	case *syntax.Modifier:
 		v.checkModifier(e, pd, x)
-		return
+	default:
+		v.checkLiteral(e, pd, val)
 	}
-	v.checkLiteral(e, pd, val)
 }
 
 // checkProps validates a fragment's input block: unique names and a declared
@@ -747,8 +750,7 @@ func (v *validator) checkPropRef(e *syntax.Element, pd *Prop, x *syntax.Ref, at,
 	}
 }
 
-// checkMap verifies a responsive value. id is not responsive (it names a node
-// once) and maps do not nest.
+// checkMap verifies the older brace map, which is the responsive form.
 func (v *validator) checkMap(e *syntax.Element, pd *Prop, m *syntax.Map) {
 	if pd.Type == TypeID {
 		v.add(m.At, m.At+1, fmt.Sprintf("%s.%s cannot be responsive", e.Name, pd.Name), "")
@@ -769,18 +771,12 @@ func (v *validator) checkMap(e *syntax.Element, pd *Prop, m *syntax.Map) {
 			continue
 		}
 		seen[entry.Key] = true
-		if nested, ok := entry.Value.(*syntax.Map); ok {
-			v.add(nested.At, nested.At+1,
-				fmt.Sprintf("%s.%s: a breakpoint value cannot be another map", e.Name, pd.Name), "")
-			continue
-		}
-		v.checkLiteral(e, pd, entry.Value)
+		v.checkEntryValue(e, pd, entry.Value)
 	}
 }
 
-// checkModifier verifies a responsive or conditional value block. A responsive
-// entry checks exactly like the map form it replaces; a conditional entry's
-// value must fit the property and its condition must be a bool expression.
+// checkModifier verifies a responsive, conditional or state value block. Every
+// entry value may itself be a modifier, so the three forms nest in any order.
 func (v *validator) checkModifier(e *syntax.Element, pd *Prop, m *syntax.Modifier) {
 	if pd.Type == TypeID {
 		v.add(m.At, m.At+1, fmt.Sprintf("%s.%s cannot be %s", e.Name, pd.Name, m.Form), "")
@@ -790,7 +786,8 @@ func (v *validator) checkModifier(e *syntax.Element, pd *Prop, m *syntax.Modifie
 		v.add(m.At, m.At+1, fmt.Sprintf("%s.%s: an empty %s block does nothing", e.Name, pd.Name, m.Form), "")
 		return
 	}
-	if m.Form == syntax.ModifierResponsive {
+	switch m.Form {
+	case syntax.ModifierResponsive:
 		seen := map[string]bool{}
 		for _, entry := range m.Entries {
 			keyAt, keyEnd := entry.KeyAt, entry.KeyAt+syntax.Pos(len(entry.Key))
@@ -806,27 +803,45 @@ func (v *validator) checkModifier(e *syntax.Element, pd *Prop, m *syntax.Modifie
 				continue
 			}
 			seen[entry.Key] = true
-			if nested, ok := entry.Value.(*syntax.Modifier); ok {
-				v.add(nested.At, nested.At+1,
-					fmt.Sprintf("%s.%s: a breakpoint value cannot be another modifier", e.Name, pd.Name), "")
+			v.checkEntryValue(e, pd, entry.Value)
+		}
+	case syntax.ModifierState:
+		seen := map[string]bool{}
+		for _, entry := range m.Entries {
+			keyAt, keyEnd := entry.KeyAt, entry.KeyAt+syntax.Pos(len(entry.Key))
+			if !StateName(entry.Key) {
+				v.add(keyAt, keyEnd,
+					fmt.Sprintf("%s.%s has no state %q", e.Name, pd.Name, entry.Key),
+					syntax.Suggest(entry.Key, StateNames))
 				continue
 			}
-			v.checkLiteral(e, pd, entry.Value)
-		}
-		return
-	}
-	for _, entry := range m.Entries {
-		if nested, ok := entry.Value.(*syntax.Modifier); ok {
-			v.add(nested.At, nested.At+1,
-				fmt.Sprintf("%s.%s: a conditional value cannot be another modifier", e.Name, pd.Name), "")
-			continue
-		}
-		v.checkLiteral(e, pd, entry.Value)
-		if entry.Cond != nil && !isExprValue(entry.Cond) {
-			if b, ok := entry.Cond.(*syntax.Bool); !ok || !b.Val {
-				v.add(entry.Cond.Pos(), entry.Cond.Pos()+1,
-					fmt.Sprintf("%s.%s: a condition must be a bool, got %s", e.Name, pd.Name, kindName(entry.Cond)), "")
+			if seen[entry.Key] {
+				v.add(keyAt, keyEnd,
+					fmt.Sprintf("%s.%s repeats the state %q", e.Name, pd.Name, entry.Key), "")
+				continue
 			}
+			seen[entry.Key] = true
+			v.checkEntryValue(e, pd, entry.Value)
+		}
+	case syntax.ModifierConditional:
+		sawDefault := false
+		for _, entry := range m.Entries {
+			if entry.Cond == nil {
+				if sawDefault {
+					v.add(entry.At, entry.At+1,
+						fmt.Sprintf("%s.%s repeats the default value", e.Name, pd.Name), "")
+				}
+				sawDefault = true
+				v.checkEntryValue(e, pd, entry.Value)
+				continue
+			}
+			if !isExprValue(entry.Cond) {
+				if b, ok := entry.Cond.(*syntax.Bool); !ok || !b.Val {
+					v.add(entry.Cond.Pos(), entry.Cond.Pos()+1,
+						fmt.Sprintf("%s.%s: a condition must be a bool, got %s", e.Name, pd.Name, kindName(entry.Cond)), "")
+				}
+			}
+			v.checkEntryValue(e, pd, entry.Value)
 		}
 	}
 }

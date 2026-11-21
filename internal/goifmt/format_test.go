@@ -79,7 +79,7 @@ func TestFormatModifiers(t *testing.T) {
 	src := `Window {
 Column {
 padding: { base: 8, md: 16 }
-Text { text: conditional { "a": true "b": false } }
+Text { text: conditional { true: "a" false: "b" } }
 }
 }
 `
@@ -92,8 +92,8 @@ Text { text: conditional { "a": true "b": false } }
 
 		Text {
 			text: conditional {
-				"a": true
-				"b": false
+				true: "a"
+				false: "b"
 			}
 		}
 	}
@@ -547,5 +547,28 @@ Window {}
 `
 	if got := string(Source([]byte(src))); got != want {
 		t.Fatalf("format = %q\nwant %q", got, want)
+	}
+}
+
+func TestFormatStateAndNestedModifier(t *testing.T) {
+	src := `Window {
+Column {
+background: responsive { base: state { default: red hover: blue } }
+}
+}
+`
+	want := `Window {
+	Column {
+		background: responsive {
+			base: state {
+				default: red
+				hover: blue
+			}
+		}
+	}
+}
+`
+	if got := string(Source([]byte(src))); got != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
 	}
 }

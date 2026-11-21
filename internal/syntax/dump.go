@@ -217,8 +217,8 @@ func dumpValue(v Value) string {
 	case *Modifier:
 		parts := make([]string, len(v.Entries))
 		for i, e := range v.Entries {
-			if v.Form == ModifierConditional {
-				parts[i] = dumpValue(e.Value) + ": " + dumpValue(e.Cond)
+			if v.Form == ModifierConditional && e.Cond != nil {
+				parts[i] = dumpValue(e.Cond) + ": " + dumpValue(e.Value)
 			} else {
 				parts[i] = e.Key + ": " + dumpValue(e.Value)
 			}

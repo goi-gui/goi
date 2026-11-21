@@ -215,7 +215,7 @@ func (s *Server) completion(raw json.RawMessage) any {
 	items := []completionResult{}
 	incomplete := false
 	file, _ := syntax.Parse(d.text)
-	prop, inMap := enclosingProperty(file, d.text, off)
+	prop, keys := enclosingProperty(file, d.text, off)
 	ref := enclosingRef(before)
 	// refStart is where the whole reference begins, so an item can replace
 	// `theme.pr` instead of inserting after it.
@@ -228,8 +228,10 @@ func (s *Server) completion(raw json.RawMessage) any {
 	// value of a property, or a member of a reserved namespace (`app.`,
 	// `window.`).
 	switch {
-	case inMap:
+	case keys == breakpointKeys:
 		items = append(items, breakpointItems()...)
+	case keys == stateKeys:
+		items = append(items, stateItems()...)
 	case inDeclBlock(d.text, off):
 		items = append(items, declTypeItems(file, d.text, off)...)
 	case prop != "" && slotPrefix(string(d.text), off):
@@ -249,22 +251,22 @@ func (s *Server) completion(raw json.RawMessage) any {
 	// `te` should offer `text:` beside `Text`).
 	trimmed := strings.TrimSpace(string(line))
 	switch {
-	case prop == "" && !inMap && strings.HasPrefix(prefix, "{"):
+	case prop == "" && keys == noKeys && strings.HasPrefix(prefix, "{"):
 		// The Svelte spelling is gone; point at the Go one.
 		items = append(items, completionResult{
 			Label: "if", Kind: kindKeyword, Detail: "control",
 			Documentation: &doc{Kind: "markdown", Value: "The `{#if}` form is gone: write `if cond { … } else { … }`."},
 		})
-	case prop == "" && !inMap && strings.HasPrefix(prefix, "$"):
+	case prop == "" && keys == noKeys && strings.HasPrefix(prefix, "$"):
 		// `$` starts a slot here: a slot is an element, a prop is a value.
 		items = append(items, slotItems(file, d.text, off)...)
-	case prop == "" && !inMap && beforeRoot(file, off):
+	case prop == "" && keys == noKeys && beforeRoot(file, off):
 		// Before the root element only the file's own declarations are legal.
 		items = append(items, declItems()...)
-	case prop == "" && !inMap && braceWord(d.text, off) == "switch":
+	case prop == "" && keys == noKeys && braceWord(d.text, off) == "switch":
 		// A switch body holds arms, not elements.
 		items = append(items, switchArmItems()...)
-	case prop == "" && !inMap && (trimmed == "" || strings.HasSuffix(trimmed, "{") || trimmed == prefix):
+	case prop == "" && keys == noKeys && (trimmed == "" || strings.HasSuffix(trimmed, "{") || trimmed == prefix):
 		if imp, ok := s.fragmentAt(d, file, d.text, off); ok {
 			// A fragment instance body: its props, the root's overridable
 			// properties and the slots it fills.
@@ -276,7 +278,7 @@ func (s *Server) completion(raw json.RawMessage) any {
 			items = append(items, loopControlItems(file, off)...)
 		}
 		items = append(items, s.autoImportItems(d, file)...)
-	case prop == "" && !inMap:
+	case prop == "" && keys == noKeys:
 		items = append(items, elementItems(file)...)
 		items = append(items, s.autoImportItems(d, file)...)
 	}
@@ -1438,6 +1440,19 @@ func breakpointItems() []completionResult {
 	return out
 }
 
+// stateItems lists the keys of a `state` modifier.
+func stateItems() []completionResult {
+	out := make([]completionResult, 0, len(schema.StateNames))
+	for _, name := range schema.StateNames {
+		detail := "state"
+		if name == "default" {
+			detail = "fallback"
+		}
+		out = append(out, completionResult{Label: name, Kind: kindEnumMember, Detail: detail})
+	}
+	return out
+}
+
 // dedupe drops items that do not match the prefix being typed.
 func dedupe(items []completionResult, prefix, ref string) []completionResult {
 	seen := map[string]bool{}
@@ -2146,17 +2161,26 @@ func braceElementName(src []byte, off int) string {
 	return ""
 }
 
-// enclosingProperty reports the property whose value the cursor sits in. A
-// responsive map key reports inMap instead.
-func enclosingProperty(file *syntax.File, src []byte, off int) (string, bool) {
+// modifierKeys says which key set a modifier block expects at the cursor.
+type modifierKeys uint8
+
+const (
+	noKeys modifierKeys = iota
+	breakpointKeys
+	stateKeys
+)
+
+// enclosingProperty reports the property whose value the cursor sits in, and
+// whether that value is a responsive or state block whose keys are being typed.
+func enclosingProperty(file *syntax.File, src []byte, off int) (string, modifierKeys) {
 	el := elementAt(file, off)
 	// Mid-typing the AST drops the broken property, so the line is the more
 	// reliable witness when it names a property this element really has. A
 	// fragment instance is not in the schema, so for it the line is the only
 	// witness: every `name:` there is a prop or a root override.
-	if name, inMap := braceProperty(src, off); inMap || isElementMember(el, name) ||
+	if name, keys := braceProperty(src, off); keys != noKeys || isElementMember(el, name) ||
 		(name != "" && el != nil && !isSchemaElement(el.Name)) {
-		return name, inMap
+		return name, keys
 	}
 	if el != nil {
 		props := el.Props()
@@ -2173,16 +2197,25 @@ func enclosingProperty(file *syntax.File, src []byte, off int) (string, bool) {
 			switch v := p.Value.(type) {
 			case *syntax.Map:
 				// Inside the braces of a map the keys are breakpoints.
-				return "", mapKeyPosition(src, start, off)
+				if mapKeyPosition(src, start, off) {
+					return "", breakpointKeys
+				}
 			case *syntax.Modifier:
-				if v.Form == syntax.ModifierResponsive {
-					return "", mapKeyPosition(src, start, off)
+				switch v.Form {
+				case syntax.ModifierResponsive:
+					if mapKeyPosition(src, start, off) {
+						return "", breakpointKeys
+					}
+				case syntax.ModifierState:
+					if mapKeyPosition(src, start, off) {
+						return "", stateKeys
+					}
 				}
 			}
-			return p.Name, false
+			return p.Name, noKeys
 		}
 	}
-	return "", false
+	return "", noKeys
 }
 
 // isSchemaElement reports whether the element name is a core element.
@@ -2244,7 +2277,7 @@ func mapKeyPosition(src []byte, open, off int) bool {
 
 // braceProperty is the fallback for an unparsable buffer: the property name on
 // the current line, if the cursor is after its colon.
-func braceProperty(src []byte, off int) (string, bool) {
+func braceProperty(src []byte, off int) (string, modifierKeys) {
 	line := off
 	for line > 0 && src[line-1] != '\n' {
 		line--
@@ -2256,7 +2289,7 @@ func braceProperty(src []byte, off int) (string, bool) {
 		}
 	}
 	if colon < 0 {
-		return "", false
+		return "", noKeys
 	}
 	j := colon - 1
 	for j >= line && (src[j] == ' ' || src[j] == '\t') {
@@ -2268,7 +2301,7 @@ func braceProperty(src []byte, off int) (string, bool) {
 	}
 	name := string(src[j+1 : end])
 	if name == "" {
-		return "", false
+		return "", noKeys
 	}
 	// A value that opens a brace is a responsive map, and the responsive
 	// modifier spells the same keys after a word: both offer breakpoints.
@@ -2277,15 +2310,27 @@ func braceProperty(src []byte, off int) (string, bool) {
 		j++
 	}
 	if j < len(src) && src[j] == '{' {
-		return "", mapKeyPosition(src, j, off)
+		if mapKeyPosition(src, j, off) {
+			return "", breakpointKeys
+		}
 	}
 	if j+len("responsive") <= len(src) && string(src[j:j+len("responsive")]) == "responsive" {
 		for j < off && j < len(src) && src[j] != '{' {
 			j++
 		}
-		return "", mapKeyPosition(src, j, off)
+		if mapKeyPosition(src, j, off) {
+			return "", breakpointKeys
+		}
 	}
-	return name, false
+	if j+len("state") <= len(src) && string(src[j:j+len("state")]) == "state" {
+		for j < off && j < len(src) && src[j] != '{' {
+			j++
+		}
+		if mapKeyPosition(src, j, off) {
+			return "", stateKeys
+		}
+	}
+	return name, noKeys
 }
 
 // valueExtent returns the byte span of a property's value.
@@ -3203,9 +3248,9 @@ func declItems() []completionResult {
 	}
 }
 
-// modifierItems lists the two blocks any value may open. Their keys are the
-// breakpoints for `responsive` and an ordinary value for `conditional`, so the
-// snippet writes the first entry of each.
+// modifierItems lists the three blocks any value may open. Their keys are the
+// breakpoints for `responsive`, the element state for `state`, and an ordinary
+// condition for `conditional`, so each snippet writes the first entry.
 func modifierItems() []completionResult {
 	return []completionResult{
 		{
@@ -3220,9 +3265,18 @@ func modifierItems() []completionResult {
 			Label: "conditional", Kind: kindKeyword, Detail: "modifier",
 			InsertText: "conditional ",
 			Snippet:    "conditional {\n\t$0: true\n}",
-			Documentation: &doc{Kind: "markdown", Value: "**conditional { 10: bridge.isWide, 4 }**\n\n" +
-				"The first true condition picks the value, so one property can read differently per " +
-				"state. Write entries as `value: condition`."},
+			Documentation: &doc{Kind: "markdown", Value: "**conditional { bridge.isWide: 10 default: 4 }**\n\n" +
+				"The first true condition picks the value, and `default` is the fallback when none " +
+				"is true. Write entries as `condition: value`."},
+		},
+		{
+			Label: "state", Kind: kindKeyword, Detail: "modifier",
+			InsertText: "state ",
+			Snippet:    "state {\n\tdefault: $0\n}",
+			Documentation: &doc{Kind: "markdown", Value: "**state { hover: #ff0000 active: #0000ff }**\n\n" +
+				"One value per interaction state: `default`, `hover`, `active`, `focus`, " +
+				"`disabled`, `enabled`, `checked`, `unchecked`, `selected`, `expanded`, " +
+				"`collapsed`. The last matching entry wins."},
 		},
 	}
 }

@@ -595,13 +595,13 @@ func (t *Tree) prune() {
 	}
 	t.conds = keepConds
 
-	keepResp := t.responsive[:0]
-	for _, b := range t.responsive {
+	keepMods := t.modifierNodes[:0]
+	for _, b := range t.modifierNodes {
 		if live(b) {
-			keepResp = append(keepResp, b)
+			keepMods = append(keepMods, b)
 		}
 	}
-	t.responsive = keepResp
+	t.modifierNodes = keepMods
 
 	keepColors := t.colorNodes[:0]
 	for _, b := range t.colorNodes {

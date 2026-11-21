@@ -74,7 +74,7 @@ func TestConditionalColorTransition(t *testing.T) {
 Window {
 	Rectangle {
 		id:         box
-		background: conditional { #ff0000ff: bridge.on }
+		background: conditional { bridge.on: #ff0000ff }
 		transition: background 200ms
 	}
 }`), nil)

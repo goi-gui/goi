@@ -175,10 +175,15 @@ type NodeBase struct {
 	// Outside is the click-outside handler slot, on every node for the same
 	// reason: a press anywhere outside it is reported here.
 	Outside Event[ClickEvent]
-	// responsive holds properties declared as a breakpoint map.
-	responsive []responsiveProp
-	// conds holds properties whose value the first true conditional arm picks.
-	conds []conditionalProp
+	// modifiers holds properties whose value comes from a responsive,
+	// conditional or state block, including nested blocks.
+	modifiers []modifierProp
+	// stateHover, statePressed and stateFocused are the generic interaction
+	// flags a state modifier reads. Components mirror their own Hover, Pressed
+	// and Focused fields here so a plain element can react too.
+	stateHover, statePressed, stateFocused bool
+	// modifierListed keeps the node in the tree-level modifier list once.
+	modifierListed bool
 	// exprs holds expression-valued properties, resolved every frame and (for
 	// percentages) during layout.
 	exprs      []exprSpec
@@ -205,6 +210,25 @@ type NodeBase struct {
 
 // NodeBase returns the node's shared state.
 func (b *NodeBase) Base() *NodeBase { return b }
+
+// StateHover reports whether the pointer is over the node, including over one
+// of its children. A state modifier reads it.
+func (b *NodeBase) StateHover() bool { return b.stateHover }
+
+// SetStateHover records the pointer state for a state modifier.
+func (b *NodeBase) SetStateHover(v bool) { b.stateHover = v }
+
+// StatePressed reports whether a pointer press is held on the node.
+func (b *NodeBase) StatePressed() bool { return b.statePressed }
+
+// SetStatePressed records the press state for a state modifier.
+func (b *NodeBase) SetStatePressed(v bool) { b.statePressed = v }
+
+// StateFocused reports whether keyboard focus is on the node.
+func (b *NodeBase) StateFocused() bool { return b.stateFocused }
+
+// SetStateFocused records the focus state for a state modifier.
+func (b *NodeBase) SetStateFocused(v bool) { b.stateFocused = v }
 
 // ID returns the id declared in the .goi file, or "".
 func (b *NodeBase) ID() string { return b.id }

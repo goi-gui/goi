@@ -124,15 +124,27 @@ func printModifier(m *syntax.Modifier, depth int) string {
 	b.WriteString(m.Form.String() + " {\n")
 	for _, e := range m.Entries {
 		b.WriteString(pad)
-		if m.Form == syntax.ModifierConditional {
-			b.WriteString(printValue(e.Value) + ": " + printValue(e.Cond))
+		if m.Form == syntax.ModifierConditional && e.Cond != nil {
+			b.WriteString(printValue(e.Cond) + ": " + printEntryValue(e.Value, depth+1))
 		} else {
-			b.WriteString(e.Key + ": " + printValue(e.Value))
+			b.WriteString(e.Key + ": " + printEntryValue(e.Value, depth+1))
 		}
 		b.WriteString("\n")
 	}
 	b.WriteString(strings.Repeat("\t", depth) + "}")
 	return b.String()
+}
+
+// printEntryValue keeps a nested modifier block readable: the opening brace
+// stays on the entry line, the entries below it are indented one more level.
+func printEntryValue(v syntax.Value, depth int) string {
+	switch x := v.(type) {
+	case *syntax.Modifier:
+		return printModifier(x, depth)
+	case *syntax.Map:
+		return printResponsive(x, depth)
+	}
+	return printValue(v)
 }
 
 // isDecorationText reports whether a string is only the keywords `decoration`
@@ -237,8 +249,8 @@ func printInner(v syntax.Value) string {
 	case *syntax.Modifier:
 		parts := make([]string, len(x.Entries))
 		for i, e := range x.Entries {
-			if x.Form == syntax.ModifierConditional {
-				parts[i] = printValue(e.Value) + ": " + printValue(e.Cond)
+			if x.Form == syntax.ModifierConditional && e.Cond != nil {
+				parts[i] = printValue(e.Cond) + ": " + printValue(e.Value)
 			} else {
 				parts[i] = e.Key + ": " + printValue(e.Value)
 			}

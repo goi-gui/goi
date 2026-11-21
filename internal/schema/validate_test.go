@@ -110,11 +110,11 @@ func TestDiagnosticCases(t *testing.T) {
 		{"bad enum type", `Window { Column { crossAxisAlign: 3 } }`, "expects an identifier", ""},
 		{"unknown breakpoint", `Window { width: { md: 1, xxl: 2 } }`, "no breakpoint", "xl"},
 		{"unknown responsive breakpoint", `Window { width: responsive { md: 1 xxl: 2 } }`, "no breakpoint", "xl"},
-		{"conditional id", `Window { Text { id: conditional { a: true } } }`, "cannot be conditional", ""},
+		{"conditional id", `Window { Text { id: conditional { true: a } } }`, "cannot be conditional", ""},
 		{"conditional condition not bool", `Window { width: conditional { 1: "x" } }`, "must be a bool", ""},
-		{"nested conditional value", `Window { width: conditional { responsive { md: 1 }: true } }`, "cannot be another modifier", ""},
+
 		{"bad breakpoint value", `Window { width: { md: "wide" } }`, "expects a number", ""},
-		{"nested map", `Window { width: { md: { base: 1 } } }`, "cannot be another map", ""},
+
 		{"responsive id", `Window { Text { id: { md: a } } }`, "cannot be responsive", ""},
 		{"repeated breakpoint", `Window { width: { md: 1, md: 2 } }`, "repeats the breakpoint", ""},
 		{"positioned outside stack", `Window { Column { Positioned { left: 1 } } }`, "direct child of Stack", ""},
@@ -861,6 +861,34 @@ func TestScrollMethodsValidate(t *testing.T) {
 	} {
 		if _, diag := validate(t, src); diag.Empty() {
 			t.Fatalf("%s passed", src)
+		}
+	}
+}
+
+func TestStateModifierValidation(t *testing.T) {
+	bad := []struct {
+		name, src, want string
+	}{
+		{"unknown state", `Window { Rectangle { background: state { hovr: red } } }`, "no state"},
+		{"repeated state", `Window { Rectangle { background: state { hover: red hover: blue } } }`, "repeats the state"},
+		{"state id", `Window { Text { id: state { hover: a } } }`, "cannot be state"},
+		{"state type", `Window { Text { background: state { hover: 1 } } }`, "expects a color"},
+		{"conditional default repeated", `Window { Column { gap: conditional { default: 1 default: 2 } } }`, "repeats the default"},
+	}
+	for _, c := range bad {
+		if _, diag := validate(t, c.src); diag.Empty() || !strings.Contains(diag.Format("x", []byte(c.src)), c.want) {
+			t.Errorf("%s: got %v, want %q", c.name, diag, c.want)
+		}
+	}
+	good := []string{
+		`Window { Rectangle { background: state { default: red hover: blue active: green } } }`,
+		`Window { Column { gap: responsive { base: 4 sm: state { hover: 8 } } } }`,
+		`bridge { wide bool }
+Window { Column { gap: conditional { bridge.wide: state { default: 8 hover: 12 } default: 4 } } }`,
+	}
+	for _, src := range good {
+		if _, diag := validate(t, src); !diag.Empty() {
+			t.Errorf("valid modifier rejected: %v\n%s", diag, src)
 		}
 	}
 }

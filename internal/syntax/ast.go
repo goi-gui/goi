@@ -538,8 +538,8 @@ type MapEntry struct {
 	Value Value
 }
 
-// ModifierKind is the keyword of a `responsive { ... }` or
-// `conditional { ... }` value.
+// ModifierKind is the keyword of a `responsive { ... }`, `conditional { ... }`
+// or `state { ... }` value.
 type ModifierKind int
 
 // Modifier kinds.
@@ -547,31 +547,40 @@ const (
 	// ModifierResponsive is `responsive { base: 8, md: 16 }`: the value follows
 	// the window width.
 	ModifierResponsive ModifierKind = iota
-	// ModifierConditional is `conditional { 10: bridge.narrow }`: the first
+	// ModifierConditional is `conditional { bridge.narrow: 10 }`: the first
 	// true condition picks the value.
 	ModifierConditional
+	// ModifierState is `state { hover: #ff0000 }`: the value follows the
+	// element's interaction state.
+	ModifierState
 )
 
 // String returns the keyword as written.
 func (k ModifierKind) String() string {
-	if k == ModifierConditional {
+	switch k {
+	case ModifierConditional:
 		return "conditional"
+	case ModifierState:
+		return "state"
+	default:
+		return "responsive"
 	}
-	return "responsive"
 }
 
 // Modifier is a keyword-led value block. Responsive entries key a breakpoint
-// name to a value; conditional entries pair a value with the condition that
-// selects it.
+// name to a value, state entries key an interaction state to a value, and
+// conditional entries pair a condition with the value it selects. Any entry
+// value may be another modifier, so the three forms nest.
 type Modifier struct {
 	At      Pos
 	Form    ModifierKind
 	Entries []ModifierEntry
 }
 
-// ModifierEntry is one line of a Modifier. Key and KeyAt are the breakpoint
-// name of a responsive entry; Value is the result in both forms, and Cond is
-// the condition of a conditional entry.
+// ModifierEntry is one line of a Modifier. Key and KeyAt are the breakpoint or
+// state name; Value is the result in every form, and Cond is the condition of a
+// conditional entry. A conditional `default: value` entry has Key "default" and
+// no Cond.
 type ModifierEntry struct {
 	At    Pos
 	Key   string

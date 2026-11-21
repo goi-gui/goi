@@ -16,8 +16,9 @@ import (
 type Tree struct {
 	Root *Window
 	ids  map[string]Node
-	// responsive lists the nodes that declared at least one breakpoint map.
-	responsive []*NodeBase
+	// modifierNodes lists the nodes with at least one responsive, conditional
+	// or state value, which the frame pass evaluates.
+	modifierNodes []*NodeBase
 	// exprNodes lists the nodes with at least one expression property, which
 	// includes a node whose only expression is a conditional modifier.
 	exprNodes []*NodeBase
@@ -28,8 +29,11 @@ type Tree struct {
 	shadowNodes   []*NodeBase
 	gradientNodes []*NodeBase
 	// viewW and viewH are the last viewport in logical pixels, so an expression
-	// can read window.width and window.height.
+	// can read window.width and window.height. modifierW is the width the last
+	// breakpoint pass used; layout may measure at another width in a test, so
+	// the two cannot share a field.
 	viewW, viewH float64
+	modifierW    float64
 	// mode is the resolved scheme's light/dark mood, so `app.mode` and
 	// `app.dark` follow any registered theme, not only one literally named
 	// "dark". modeSet marks that the driver resolved it; before that a tree
@@ -277,9 +281,6 @@ func (t *Tree) build(el *syntax.Element, parent *NodeBase, hooks *Hooks) (Node, 
 		if !b.applyValue(p.Name, p.Value) {
 			return nil, fmt.Errorf("%s.%s: value not valid for the property type", el.Name, p.Name)
 		}
-	}
-	if len(b.responsive) > 0 {
-		t.responsive = append(t.responsive, b)
 	}
 
 	if err := t.buildMembers(el.Members, b, hooks, nil); err != nil {

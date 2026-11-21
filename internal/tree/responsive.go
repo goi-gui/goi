@@ -1,7 +1,6 @@
 package tree
 
 import (
-	"sort"
 	"time"
 
 	"github.com/goi-gui/goi/internal/csscolor"
@@ -9,93 +8,252 @@ import (
 	"github.com/goi-gui/goi/internal/syntax"
 )
 
-// responsiveProp is one property whose value follows the window width. The
-// tiers are sorted by minimum width; fallback is the value the property had
-// before the map was applied, used below the first tier.
-type responsiveProp struct {
-	prop     NamedProp
-	tiers    []responsiveTier
+// modifierProp is one property whose value comes from a responsive,
+// conditional or state block. The block is evaluated every frame, so nesting
+// any of the three forms works: the value is found by walking the block.
+type modifierProp struct {
+	name     string
+	root     syntax.Value
 	fallback syntax.Value
-	// applied is the value last written, so a breakpoint that does not change
-	// is a no-op even for expressions.
+	// applied is the block value last written, so re-evaluating an unchanged
+	// expression is a no-op.
 	applied syntax.Value
 }
 
-type responsiveTier struct {
-	min   float64
-	value syntax.Value
-}
-
-// setResponsive registers a map literal for one property. It returns false when
-// the property is unknown, a tier name is unknown, or the map is empty.
+// setResponsive registers the older `{ base: 8, md: 16 }` brace map, which is
+// the responsive form.
 func (b *NodeBase) setResponsive(name string, m *syntax.Map) bool {
-	return b.setResponsiveEntries(name, m.Entries)
+	mod := &syntax.Modifier{At: m.At, Form: syntax.ModifierResponsive}
+	for _, e := range m.Entries {
+		mod.Entries = append(mod.Entries, syntax.ModifierEntry{
+			At: e.KeyAt, Key: e.Key, KeyAt: e.KeyAt, Value: e.Value,
+		})
+	}
+	return b.setModifier(name, mod)
 }
 
-// setResponsiveEntries is the shared body of the map and the responsive
-// modifier: a breakpoint name and its value.
-func (b *NodeBase) setResponsiveEntries(name string, entries []syntax.MapEntry) bool {
+// setModifier registers a responsive, conditional or state modifier on a
+// property. It returns false when the property is unknown or the block is
+// empty.
+func (b *NodeBase) setModifier(name string, m *syntax.Modifier) bool {
 	b.properties()
 	i, ok := b.byName[name]
-	if !ok {
+	if !ok || len(m.Entries) == 0 {
 		return false
 	}
-	rp := responsiveProp{prop: b.props[i], fallback: valueLiteral(b.props[i].Get())}
-	rp.applied = rp.fallback
-	for _, e := range entries {
-		min, ok := schema.BreakpointMin(e.Key)
-		if !ok {
-			return false
+	mp := modifierProp{name: name, root: m, fallback: valueLiteral(b.props[i].Get())}
+	for j := range b.modifiers {
+		if b.modifiers[j].name == name {
+			b.modifiers[j] = mp
+			b.applyModifierBase(&b.modifiers[j])
+			return true
 		}
-		// Base is the value for a window narrower than sm, which is also the
-		// only value the tree can assume before it knows the real width.
-		if e.Key == schema.BaseBreakpoint {
-			b.applyValue(name, e.Value)
-			rp.applied = e.Value
-		}
-		rp.tiers = append(rp.tiers, responsiveTier{min: min, value: e.Value})
 	}
-	if len(rp.tiers) == 0 {
-		return false
+	b.modifiers = append(b.modifiers, mp)
+	// A responsive `base` is the value the property has before any frame runs,
+	// which is what a headless build or a screenshot of the first layout sees.
+	b.applyModifierBase(&b.modifiers[len(b.modifiers)-1])
+	if b.tree != nil && !b.modifierListed {
+		b.modifierListed = true
+		b.tree.modifierNodes = append(b.tree.modifierNodes, b)
 	}
-	sort.SliceStable(rp.tiers, func(i, j int) bool { return rp.tiers[i].min < rp.tiers[j].min })
-	b.responsive = append(b.responsive, rp)
 	return true
 }
 
-// applyBreakpoints writes the value of the largest tier whose threshold is at
-// or below width, and marks the node dirty only when the value changed.
-func (b *NodeBase) applyBreakpoints(width float64) {
-	for i := range b.responsive {
-		rp := &b.responsive[i]
-		v := rp.fallback
-		for _, t := range rp.tiers {
-			if t.min <= width {
-				v = t.value
-			}
+// applyModifierBase writes the responsive base value at build time. A base that
+// is itself a conditional or state block waits for the frame pass.
+func (b *NodeBase) applyModifierBase(mp *modifierProp) {
+	m, ok := mp.root.(*syntax.Modifier)
+	if !ok || m.Form != syntax.ModifierResponsive {
+		return
+	}
+	for _, e := range m.Entries {
+		if e.Key != schema.BaseBreakpoint {
+			continue
+		}
+		if _, nested := e.Value.(*syntax.Modifier); nested {
+			return
+		}
+		b.applyValue(mp.name, e.Value)
+		mp.applied = e.Value
+		return
+	}
+}
+
+// applyModifiers rewrites every modifier property in the node for the current
+// viewport width and interaction state.
+func (b *NodeBase) applyModifiers(width float64) {
+	for i := range b.modifiers {
+		mp := &b.modifiers[i]
+		v := b.resolveModifier(mp.root, width)
+		if v == nil {
+			v = mp.fallback
 		}
 		if v == nil {
 			continue
 		}
-		if rp.applied != nil && LiteralEqual(rp.applied, v) {
-			// An expression is re-resolved each layout, so only a plain value
-			// needs the Go-set check to stay file-owned.
-			if b.isLoopVar(v) || isExpression(v) || literalMatches(rp.prop.Get(), v) {
-				continue
+		if b.modifierCurrent(mp, v) {
+			// The fallback is already on the cell. Seed the transition from it
+			// so the first matching arm animates instead of jumping.
+			if mp.fallback == v {
+				b.initTransitionCurrent(mp.name)
 			}
+			continue
 		}
-		if b.applyValue(rp.prop.Name, v) {
-			rp.applied = v
-			b.mark(rp.prop.Dirty)
+		if b.applyValue(mp.name, v) {
+			mp.applied = v
+			b.mark(b.PropDirty(mp.name))
 		}
 	}
 }
 
+// resolveModifier walks a modifier block and returns the value its current
+// width, conditions and state select. A nil result means "restore the
+// property's fallback".
+func (b *NodeBase) resolveModifier(v syntax.Value, width float64) syntax.Value {
+	if m, ok := v.(*syntax.Map); ok {
+		var chosen syntax.Value
+		best := -1.0
+		for _, e := range m.Entries {
+			min, ok := schema.BreakpointMin(e.Key)
+			if !ok || min > width || min < best {
+				continue
+			}
+			best, chosen = min, e.Value
+		}
+		if chosen == nil {
+			return nil
+		}
+		return b.resolveModifier(chosen, width)
+	}
+	m, ok := v.(*syntax.Modifier)
+	if !ok {
+		return v
+	}
+	switch m.Form {
+	case syntax.ModifierResponsive:
+		var chosen syntax.Value
+		best := -1.0
+		for _, e := range m.Entries {
+			min, ok := schema.BreakpointMin(e.Key)
+			if !ok || min > width || min < best {
+				continue
+			}
+			best, chosen = min, e.Value
+		}
+		if chosen == nil {
+			return nil
+		}
+		return b.resolveModifier(chosen, width)
+	case syntax.ModifierConditional:
+		var fallback syntax.Value
+		c := evalCtx{tree: b.tree, sc: b.scope}
+		for _, e := range m.Entries {
+			if e.Cond == nil {
+				fallback = e.Value
+				continue
+			}
+			got, ok := c.eval(e.Cond, 0)
+			if truth, isBool := got.(bool); ok && isBool && truth {
+				return b.resolveModifier(e.Value, width)
+			}
+		}
+		if fallback == nil {
+			return nil
+		}
+		return b.resolveModifier(fallback, width)
+	case syntax.ModifierState:
+		var fallback, matched syntax.Value
+		for _, e := range m.Entries {
+			if e.Key == "default" {
+				fallback = e.Value
+				continue
+			}
+			// The last matching state wins, so a design can order the block the
+			// way CSS orders its rules: hover then active, disabled last.
+			if b.stateOn(e.Key) {
+				matched = e.Value
+			}
+		}
+		if matched != nil {
+			return b.resolveModifier(matched, width)
+		}
+		if fallback == nil {
+			return nil
+		}
+		return b.resolveModifier(fallback, width)
+	}
+	return nil
+}
+
+// stateOn reports whether one state key is active on this node.
+func (b *NodeBase) stateOn(name string) bool {
+	c := componentOf(b)
+	switch name {
+	case "hover":
+		return b.stateHover || (c != nil && c.Hover)
+	case "active", "pressed":
+		return b.statePressed || (c != nil && c.Pressed)
+	case "focus":
+		return b.stateFocused || (c != nil && c.Focused)
+	}
+	if c == nil {
+		return name == "enabled"
+	}
+	switch name {
+	case "disabled":
+		return c.Disabled.Get()
+	case "enabled":
+		return !c.Disabled.Get()
+	case "checked":
+		return c.Checked.Get()
+	case "unchecked":
+		return !c.Checked.Get()
+	case "selected":
+		return c.Selected.Get()
+	case "expanded":
+		return c.Expanded.Get()
+	case "collapsed":
+		return !c.Expanded.Get()
+	}
+	return false
+}
+
+// componentOf returns the component a node embeds, or nil for a plain element.
+func componentOf(b *NodeBase) *Component {
+	if m, ok := b.node.(interface{ M3() *Component }); ok {
+		return m.M3()
+	}
+	return nil
+}
+
+// modifierCurrent reports whether the property already holds v, so an unchanged
+// state does not mark the node dirty every frame.
+func (b *NodeBase) modifierCurrent(mp *modifierProp, v syntax.Value) bool {
+	if r, ok := v.(*syntax.Ref); ok && (r.ID == "theme" || r.ID == "customColor") {
+		return b.colorRoleFor(mp.name) == r.ID+":"+r.Prop
+	}
+	if isExpression(v) || b.isLoopVar(v) {
+		return mp.applied == v
+	}
+	cur, ok := b.PropValue(mp.name)
+	return ok && literalMatches(cur, v)
+}
+
 // ApplyBreakpoints rewrites every responsive property in the tree for the given
-// logical window width. The driver calls it once per frame before layout.
+// logical window width, then resolves the conditional and state blocks that
+// nest inside it. The driver calls it once per frame before layout.
 func (t *Tree) ApplyBreakpoints(width float64) {
-	for _, b := range t.responsive {
-		b.applyBreakpoints(width)
+	t.modifierW = width
+	t.applyModifiers()
+}
+
+// applyModifiers evaluates every modifier block. ApplyExpressions calls it a
+// second time, after expression values are current, so a nested condition reads
+// the same frame's values.
+func (t *Tree) applyModifiers() {
+	for _, b := range t.modifierNodes {
+		b.applyModifiers(t.modifierW)
 	}
 }
 

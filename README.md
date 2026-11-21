@@ -95,6 +95,8 @@ id. Hot reload updates the open window as the file changes; the
 
 - **Declarative designs.** Elements, properties, ids, `if`/`else`,
   `for … range`, imports and fragments, with diagnostics at `file:line:col`.
+  Any value can follow the window width, bridge data or hover/press/focus and
+  control state, and those modifiers nest.
 - **Go state and events.** Typed `bridge` values, `ui.SetData`,
   `ui.SetHandler`, `Prop[T]`, `Event[E]` and `ByID[T]`; state survives hot
   reload.

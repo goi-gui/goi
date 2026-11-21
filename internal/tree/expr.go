@@ -261,6 +261,9 @@ func (t *Tree) ApplyExpressions() {
 	// Block conditions may read the same properties; both passes use the
 	// values as they are now, so they run together.
 	t.applyConds()
+	// A modifier's condition reads the values this pass just wrote, so the
+	// resolved property stays in the same frame.
+	t.applyModifiers()
 }
 
 // ApplyExpressions is the layout entry point; it delegates to the owning tree.
@@ -430,7 +433,6 @@ func (b *NodeBase) applyExpressions() {
 			b.writeExpr(spec.name, v)
 		}
 	}
-	b.applyConditionals()
 }
 
 // ResolveSize resolves a percentage width or height against the space the

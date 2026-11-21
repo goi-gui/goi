@@ -595,6 +595,14 @@ func (i *interactor) MouseMove(x, y float64) {
 	i.hover = hit
 	changed := false
 	i.tree.Walk(func(n tree.Node) {
+		want := isDescendantOf(hit, n)
+		// A plain element can carry a state modifier too, so it follows the
+		// pointer even when it is not a control.
+		if n.Base().StateHover() != want {
+			n.Base().SetStateHover(want)
+			n.Base().MarkDirty(tree.DirtyPaint)
+			changed = true
+		}
 		c := comp(n)
 		if c == nil {
 			return
@@ -602,7 +610,7 @@ func (i *interactor) MouseMove(x, y float64) {
 		// A tooltip is not a control, so it takes no focus and no press, but it
 		// follows the pointer the way a control does: its hint is shown while
 		// any part of the child under it is hovered.
-		want := isDescendantOf(hit, n) && (interactive(n) || n.Kind() == "Tooltip")
+		want = want && (interactive(n) || n.Kind() == "Tooltip")
 		if c.Hover != want {
 			c.Hover = want
 			c.Base().MarkDirty(tree.DirtyPaint)
@@ -955,6 +963,8 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 	if i.pressed == nil {
 		if g, gn := gestureAt(hit); g != nil && g.Base().Click.Len() > 0 {
 			i.pressed = gn
+			gn.Base().SetStatePressed(true)
+			gn.Base().MarkDirty(tree.DirtyPaint)
 		}
 	}
 	// A press on a child belongs to the nearest node that has an action when
@@ -975,6 +985,8 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 	if i.clickable(hit, x, y) {
 		i.setKbd(hit)
 		i.pressed = hit
+		hit.Base().SetStatePressed(true)
+		hit.Base().MarkDirty(tree.DirtyPaint)
 		if c := comp(hit); c != nil {
 			c.Pressed = true
 			c.Base().MarkDirty(tree.DirtyPaint)
@@ -995,6 +1007,8 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 	// Tapping a container selects its nearest selectable child.
 	if sel := selectableChildAt(i.tree, hit); sel != nil {
 		i.pressed = sel
+		sel.Base().SetStatePressed(true)
+		sel.Base().MarkDirty(tree.DirtyPaint)
 	}
 	_ = button
 }
@@ -1030,6 +1044,8 @@ func (i *interactor) MouseUp(x, y float64, button int) {
 		return
 	}
 	target := i.pressed
+	target.Base().SetStatePressed(false)
+	target.Base().MarkDirty(tree.DirtyPaint)
 	c := comp(target)
 	if c != nil && c.Pressed {
 		c.Pressed = false
@@ -1066,6 +1082,10 @@ func (i *interactor) endPress() {
 	// A thumb that was pulled and let go settles the same way a drag does.
 	if i.scrollbar != nil {
 		i.settleSnap(i.scrollbar, i.scrollbarAxis)
+	}
+	if i.pressed != nil {
+		i.pressed.Base().SetStatePressed(false)
+		i.pressed.Base().MarkDirty(tree.DirtyPaint)
 	}
 	i.pressed = nil
 	i.dragging = false
@@ -2426,9 +2446,12 @@ func (i *interactor) dragScroll(x, y float64) bool {
 				i.dragAxis = tree.AxisY
 			}
 		}
-		if c := comp(i.pressed); c != nil && c.Pressed {
-			c.Pressed = false
-			c.Base().MarkDirty(tree.DirtyPaint)
+		if target := i.pressed; target != nil {
+			target.Base().SetStatePressed(false)
+			target.Base().MarkDirty(tree.DirtyPaint)
+			if c := comp(target); c != nil && c.Pressed {
+				c.Pressed = false
+			}
 		}
 		i.pressed = nil
 		i.dragging = false
@@ -3185,11 +3208,13 @@ func (i *interactor) setFocus(c *tree.Component) {
 			cp.CommitHex()
 		}
 		i.focus.Focused = false
+		i.focus.Base().SetStateFocused(false)
 		i.focus.Base().MarkDirty(tree.DirtyPaint)
 	}
 	i.focus = c
 	if c != nil {
 		c.Focused = true
+		c.Base().SetStateFocused(true)
 		c.Base().MarkDirty(tree.DirtyPaint)
 	}
 	i.imeSync()
@@ -3229,6 +3254,7 @@ func (i *interactor) setKbd(n tree.Node) {
 		return
 	}
 	if old := i.kbd; old != nil {
+		old.Base().SetStateFocused(false)
 		if c := comp(old); c != nil {
 			c.Focused = false
 			c.FocusRing = false
@@ -3248,6 +3274,7 @@ func (i *interactor) setKbd(n tree.Node) {
 	} else {
 		i.setFocus(nil)
 		c.Focused = true
+		c.Base().SetStateFocused(true)
 		c.Base().MarkDirty(tree.DirtyPaint)
 	}
 	i.markDirty()

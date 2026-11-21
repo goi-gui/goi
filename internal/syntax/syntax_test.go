@@ -979,8 +979,8 @@ func TestParseModifiers(t *testing.T) {
 			}
 			Text {
 				text: conditional {
-					"✅": l == "W"
-					"❌": l == "L"
+					l == "W": "✅"
+					l == "L": "❌"
 				}
 			}
 		}
@@ -1151,7 +1151,7 @@ func TestSlotBracesAreAFill(t *testing.T) {
 		t.Fatal("a filled slot made the caller a fragment")
 	}
 	// A slot in a value is the len argument.
-	if _, diag := Parse([]byte(`Column { gap: conditional { 10: len($header) > 0 } }`)); !diag.Empty() {
+	if _, diag := Parse([]byte(`Column { gap: conditional { len($header) > 0: 10 } }`)); !diag.Empty() {
 		t.Fatal(diag)
 	}
 }
@@ -1415,5 +1415,64 @@ Window { Sidebar {} }`))
 		if f.Imports[i].Alias != w.alias || f.Imports[i].Implicit != w.implicit {
 			t.Fatalf("import %d = %+v, want %s implicit=%v", i, f.Imports[i], w.alias, w.implicit)
 		}
+	}
+}
+
+// TestParseStateModifier covers the state block and a state nested in a
+// responsive one: the entry keys are state names, and any entry value may be
+// another modifier.
+func TestParseStateModifier(t *testing.T) {
+	f, diag := Parse([]byte(`Window {
+		Rectangle {
+			background: state {
+				default: #ff0000ff
+				hover:   #00ff00ff
+				active:  #0000ffff
+			}
+			width: responsive {
+				base: 10
+				sm: state {
+					hover: 20
+					default: 10
+				}
+			}
+		}
+	}`))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	rect := f.Root.Children()[0]
+	bg, ok := rect.Prop("background").Value.(*Modifier)
+	if !ok || bg.Form != ModifierState || len(bg.Entries) != 3 {
+		t.Fatalf("background = %#v", rect.Prop("background").Value)
+	}
+	if bg.Entries[0].Key != "default" || bg.Entries[1].Key != "hover" || bg.Entries[2].Key != "active" {
+		t.Fatalf("state keys = %+v", bg.Entries)
+	}
+	width := rect.Prop("width").Value.(*Modifier)
+	sm, ok := width.Entries[1].Value.(*Modifier)
+	if !ok || sm.Form != ModifierState {
+		t.Fatalf("nested value = %#v", width.Entries[1].Value)
+	}
+}
+
+// TestParseConditionalDefault covers the reversed conditional form: the
+// condition leads, and `default` is the fallback without one.
+func TestParseConditionalDefault(t *testing.T) {
+	f, diag := Parse([]byte(`Window {
+		Column { gap: conditional { bridge.wide: 20 default: 10 } }
+	}`))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	m := f.Root.Children()[0].Prop("gap").Value.(*Modifier)
+	if len(m.Entries) != 2 {
+		t.Fatalf("entries = %+v", m.Entries)
+	}
+	if m.Entries[0].Cond == nil || m.Entries[0].Value.(*Number).Val != 20 {
+		t.Fatalf("first = %+v", m.Entries[0])
+	}
+	if m.Entries[1].Cond != nil || m.Entries[1].Key != "default" || m.Entries[1].Value.(*Number).Val != 10 {
+		t.Fatalf("default = %+v", m.Entries[1])
 	}
 }

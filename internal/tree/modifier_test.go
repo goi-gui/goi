@@ -19,7 +19,7 @@ func TestConditionalPicksFirstTrueArm(t *testing.T) {
 		Column {
 			Text {
 				id:   label
-				text: conditional { "wide": window.width > 500 "narrow": window.width > 300 }
+				text: conditional { window.width > 500: "wide" window.width > 300: "narrow" }
 			}
 		}
 	}`)
@@ -108,12 +108,12 @@ Window {
 	Column {
 		Chip {
 			id:         chip
-			background: conditional { theme.primaryContainer: bridge.on }
+			background: conditional { bridge.on: theme.primaryContainer }
 		}
 		IconButton {
 			id:        star
 			icon:      favorite
-			iconColor: conditional { red: bridge.on }
+			iconColor: conditional { bridge.on: red }
 		}
 	}
 }`)
@@ -279,5 +279,138 @@ Window {
 	tr.ApplyExpressions()
 	if got := texts(tr); len(got) != 2 || got[0] != "a" || got[1] != "b" {
 		t.Fatalf("selected 1 = %v, want [a b]", got)
+	}
+}
+
+// TestStateModifierPlainElement is the Column example: a plain element follows
+// the pointer even though it is not a Material component.
+func TestStateModifierPlainElement(t *testing.T) {
+	tr := buildModifier(t, `Window {
+		Column {
+			id:         box
+			background: state {
+				default: #ff0000ff
+				hover:   #00ff00ff
+				active:  #0000ffff
+			}
+		}
+	}`)
+	box := tr.ids["box"].Base()
+	read := func() uint32 {
+		tr.ApplyExpressions()
+		return box.Background()
+	}
+	if got := read(); got != 0xFF0000FF {
+		t.Fatalf("default = %08x", got)
+	}
+	box.SetStateHover(true)
+	if got := read(); got != 0x00FF00FF {
+		t.Fatalf("hover = %08x", got)
+	}
+	box.SetStatePressed(true)
+	if got := read(); got != 0x0000FFFF {
+		t.Fatalf("active, which is written last, = %08x", got)
+	}
+	box.SetStateHover(false)
+	box.SetStatePressed(false)
+	if got := read(); got != 0xFF0000FF {
+		t.Fatalf("back to default = %08x", got)
+	}
+}
+
+// TestStateModifierControlStates covers checked, disabled and focus on the
+// components that own those states.
+func TestStateModifierControlStates(t *testing.T) {
+	tr := buildModifier(t, `Window {
+		Switch {
+			id:         sw
+			checked:    true
+			background: state { default: #ff0000ff checked: #00ff00ff disabled: #0000ffff }
+		}
+		TextField {
+			id:         field
+			background: state { default: #ff0000ff focus: #00ff00ff }
+		}
+	}`)
+	sw := tr.ids["sw"].(*Switch)
+	field := tr.ids["field"].(*TextField)
+	tr.ApplyExpressions()
+	if got := sw.Background(); got != 0x00FF00FF {
+		t.Fatalf("checked switch = %08x", got)
+	}
+	sw.Disabled.Set(true)
+	tr.ApplyExpressions()
+	if got := sw.Background(); got != 0x0000FFFF {
+		t.Fatalf("disabled switch = %08x", got)
+	}
+	sw.Disabled.Set(false)
+	sw.Checked.Set(false)
+	tr.ApplyExpressions()
+	if got := sw.Background(); got != 0xFF0000FF {
+		t.Fatalf("unchecked switch = %08x", got)
+	}
+	field.Base().SetStateFocused(true)
+	tr.ApplyExpressions()
+	if got := field.Background(); got != 0x00FF00FF {
+		t.Fatalf("focused field = %08x", got)
+	}
+}
+
+// TestNestedModifiers combines responsive, conditional and state in the two
+// orders the language allows.
+func TestNestedModifiers(t *testing.T) {
+	tr := buildModifier(t, `bridge { on bool }
+Window {
+	Rectangle {
+		id:         box
+		background: responsive {
+			base: #ff0000ff
+			sm: state {
+				default: #00ff00ff
+				hover:   #0000ffff
+			}
+		}
+	}
+	Rectangle {
+		id:         second
+		background: conditional {
+			bridge.on: state { default: #111111ff hover: #222222ff }
+			default:   #333333ff
+		}
+	}
+}`)
+	box := tr.ids["box"].Base()
+	second := tr.ids["second"].Base()
+	read := func(width float64) {
+		tr.ApplyBreakpoints(width)
+		tr.ApplyExpressions()
+	}
+	read(800)
+	if got := box.Background(); got != 0x00FF00FF {
+		t.Fatalf("responsive state default = %08x", got)
+	}
+	box.SetStateHover(true)
+	read(800)
+	if got := box.Background(); got != 0x0000FFFF {
+		t.Fatalf("responsive state hover = %08x", got)
+	}
+	read(300)
+	if got := box.Background(); got != 0xFF0000FF {
+		t.Fatalf("below sm = %08x", got)
+	}
+
+	read(800)
+	if got := second.Background(); got != 0x333333FF {
+		t.Fatalf("conditional default = %08x", got)
+	}
+	tr.SetData("on", true)
+	read(800)
+	if got := second.Background(); got != 0x111111FF {
+		t.Fatalf("conditional state default = %08x", got)
+	}
+	second.SetStateHover(true)
+	read(800)
+	if got := second.Background(); got != 0x222222FF {
+		t.Fatalf("conditional state hover = %08x", got)
 	}
 }

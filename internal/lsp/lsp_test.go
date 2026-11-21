@@ -586,6 +586,32 @@ func TestCompletionOffersBreakpointsInsideMap(t *testing.T) {
 	}
 }
 
+func TestCompletionOffersStatesInsideState(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "Window {\n\tColumn {\n\t\tbackground: state { \n\t\t}\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	res := c.request("textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     at(t, src, "background: state { ", len("background: state { ")),
+	})
+	var list completionList
+	if err := json.Unmarshal(res, &list); err != nil {
+		t.Fatal(err)
+	}
+	found := map[string]bool{}
+	for _, it := range list.Items {
+		found[it.Label] = true
+	}
+	for _, want := range []string{"default", "hover", "active", "focus", "disabled", "checked"} {
+		if !found[want] {
+			t.Fatalf("state %q missing: %v", want, list.Items)
+		}
+	}
+}
+
 func TestCompletionOffersIconNames(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()
@@ -2312,21 +2338,24 @@ func TestCompletionOffersDeclarations(t *testing.T) {
 	}
 }
 
-// TestCompletionOffersModifierSnippets covers the two blocks any value may open.
+// TestCompletionOffersModifierSnippets covers the blocks any value may open.
 func TestCompletionOffersModifierSnippets(t *testing.T) {
 	c := newClient(t)
 	c.initializeWithSnippets(true)
 	dir := t.TempDir()
-	src := "Window {\n\tColumn {\n\t\tpadding: res\n\t}\n}\n"
+	src := "Window {\n\tColumn {\n\t\tpadding: \n\t}\n}\n"
 	uri := writeDesign(t, dir, "main.goi", src)
 	c.openDoc(uri, src)
 
 	byLabel := map[string]completionResult{}
-	for _, it := range completionAt(t, c, uri, src, "padding: res").Items {
+	for _, it := range completionAt(t, c, uri, src, "padding: ").Items {
 		byLabel[it.Label] = it
 	}
 	if got := byLabel["responsive"]; got.InsertText != "responsive {\n\t\t\tbase: $0\n\t\t}" {
 		t.Fatalf("responsive inserts %q", got.InsertText)
+	}
+	if got := byLabel["state"]; got.InsertText != "state {\n\t\t\tdefault: $0\n\t\t}" {
+		t.Fatalf("state inserts %q", got.InsertText)
 	}
 }
 

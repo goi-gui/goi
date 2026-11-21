@@ -341,7 +341,7 @@ Window { Card { } }`,
 		"Card.goi": `Column {
 	$header
 	height: conditional {
-		10: len($footer) > 0
+		len($footer) > 0: 10
 	}
 }`,
 	})
@@ -362,7 +362,7 @@ func TestSlotLenInAPreviewIsZero(t *testing.T) {
 		"Card.goi": `Column {
 	$children
 	height: conditional {
-		10: len($children) > 0
+		len($children) > 0: 10
 	}
 }`,
 	})

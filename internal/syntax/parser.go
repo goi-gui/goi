@@ -1404,14 +1404,17 @@ func (p *parser) parseValue() (Value, bool) {
 		// produce two diagnostics for one typo.
 		return nil, false
 	}
-	// A modifier is a keyword-led block, not an expression: `responsive { … }`
-	// and `conditional { … }` are values with their own member syntax.
+	// A modifier is a keyword-led block, not an expression: `responsive { … }`,
+	// `conditional { … }` and `state { … }` are values with their own member
+	// syntax.
 	if t.kind == tokIdent && p.peek2().kind == tokLBrace {
 		switch t.text {
 		case "responsive":
 			return p.parseModifier(ModifierResponsive)
 		case "conditional":
 			return p.parseModifier(ModifierConditional)
+		case "state":
+			return p.parseModifier(ModifierState)
 		}
 	}
 	// An unquoted gradient is a value, not a call: its stops hold colours and
@@ -1476,23 +1479,25 @@ func (p *parser) parseRawGradient() (Value, bool) {
 	return nil, false
 }
 
-// parseModifier reads `responsive { base: 8, md: 16 }` or
-// `conditional { 10: bridge.narrow 20: !bridge.narrow }`. A comma between
-// entries is optional, so a one-line block reads without punctuation.
+// parseModifier reads `responsive { base: 8, md: 16 }`,
+// `conditional { bridge.narrow: 20 default: 10 }` or
+// `state { hover: #ff0000 active: #0000ff }`. A comma between entries is
+// optional, so a one-line block reads without punctuation.
 func (p *parser) parseModifier(kind ModifierKind) (Value, bool) {
 	kw := p.next()
 	p.next() // '{'
 	m := &Modifier{At: kw.pos, Form: kind}
 	for p.peek().kind != tokRBrace && p.peek().kind != tokEOF {
 		at := p.peek().pos
-		if kind == ModifierResponsive {
+		switch kind {
+		case ModifierResponsive, ModifierState:
 			key := p.next()
 			if key.kind != tokIdent {
-				p.errorf(key, "expected a breakpoint name")
+				p.errorf(key, "expected a "+kind.String()+" name")
 				return nil, false
 			}
 			if p.peek().kind != tokColon {
-				p.errorf(p.peek(), "expected ':' after the breakpoint name")
+				p.errorf(p.peek(), "expected ':' after the "+kind.String()+" name")
 				return nil, false
 			}
 			p.next()
@@ -1501,17 +1506,33 @@ func (p *parser) parseModifier(kind ModifierKind) (Value, bool) {
 				return nil, false
 			}
 			m.Entries = append(m.Entries, ModifierEntry{At: at, Key: key.text, KeyAt: key.pos, Value: v})
-		} else {
-			v, ok := p.parseValue()
+		case ModifierConditional:
+			// The condition leads, so a `default:` entry has no condition and
+			// is the fallback when none of the arms is true.
+			var cond Value
+			if p.peek().kind == tokIdent && p.peek().text == "default" && p.peek2().kind == tokColon {
+				kw := p.next()
+				p.next()
+				v, ok := p.parseValue()
+				if !ok {
+					return nil, false
+				}
+				m.Entries = append(m.Entries, ModifierEntry{At: at, Key: "default", KeyAt: kw.pos, Value: v})
+				if p.peek().kind == tokComma {
+					p.next()
+				}
+				continue
+			}
+			cond, ok := p.parseValue()
 			if !ok {
 				return nil, false
 			}
 			if p.peek().kind != tokColon {
-				p.errorf(p.peek(), "expected ':' after the value")
+				p.errorf(p.peek(), "expected ':' after the condition")
 				return nil, false
 			}
 			p.next()
-			cond, ok := p.parseValue()
+			v, ok := p.parseValue()
 			if !ok {
 				return nil, false
 			}
