@@ -262,52 +262,60 @@ func newBuildCmd(goRun runFunc) *cobra.Command {
 	return cmd
 }
 
-// promptInit asks for the values the flags left empty. Nothing is asked when all
-// values are already set, which keeps goi init scriptable.
+// promptInit asks for the values the flags left empty, one question per page in
+// the order overwrite, name, id, module, git. Nothing is asked when all values
+// are already set, which keeps goi init scriptable.
 func promptInit(opts initOptions) (initOptions, error) {
-	var fields []huh.Field
+	var groups []*huh.Group
+	// Declining the overwrite ends init, so the later pages are skipped. The
+	// answer is read after the first page submits, which is when each hide
+	// function runs.
+	canceled := func() bool { return opts.AskOverwrite && !opts.Overwrite }
+	page := func(field huh.Field) *huh.Group {
+		return huh.NewGroup(field).WithHideFunc(canceled)
+	}
 	if opts.AskOverwrite {
-		fields = append(fields, huh.NewConfirm().
+		groups = append(groups, huh.NewGroup(huh.NewConfirm().
 			Title("Directory is not empty. Overwrite the project files?").
 			Affirmative("Yes").
 			Negative("No").
-			Value(&opts.Overwrite))
-	}
-	if opts.AskGit {
-		fields = append(fields, huh.NewConfirm().
-			Title("Initialize a git repository?").
-			Affirmative("Yes").
-			Negative("No").
-			Value(&opts.Git))
+			Value(&opts.Overwrite)))
 	}
 	if opts.Name == "" {
-		fields = append(fields, huh.NewInput().
+		groups = append(groups, page(huh.NewInput().
 			Title("Application name").
 			Description("Used as the executable name by goi build.").
 			Placeholder("myapp").
 			Validate(required).
-			Value(&opts.Name))
+			Value(&opts.Name)))
 	}
 	if opts.ID == "" {
-		fields = append(fields, huh.NewInput().
+		groups = append(groups, page(huh.NewInput().
 			Title("Application id").
 			Description("Reverse-DNS id, e.g. com.example.myapp.").
 			Placeholder("com.example.myapp").
 			Validate(required).
-			Value(&opts.ID))
+			Value(&opts.ID)))
 	}
 	if opts.Module == "" {
-		fields = append(fields, huh.NewInput().
+		groups = append(groups, page(huh.NewInput().
 			Title("Go module").
 			Description("The module path passed to go mod init.").
 			Placeholder("github.com/you/myapp").
 			Validate(required).
-			Value(&opts.Module))
+			Value(&opts.Module)))
 	}
-	if len(fields) == 0 {
+	if opts.AskGit {
+		groups = append(groups, page(huh.NewConfirm().
+			Title("Initialize a git repository?").
+			Affirmative("Yes").
+			Negative("No").
+			Value(&opts.Git)))
+	}
+	if len(groups) == 0 {
 		return opts, nil
 	}
-	if err := huh.NewForm(huh.NewGroup(fields...)).Run(); err != nil {
+	if err := huh.NewForm(groups...).Run(); err != nil {
 		return opts, err
 	}
 	return opts, nil
