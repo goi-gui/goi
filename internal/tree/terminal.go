@@ -1,11 +1,14 @@
 package tree
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"math"
+	"os"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -26,10 +29,11 @@ type Terminal struct {
 	Resize Event[TerminalSize]
 	// Exit fires once when the reader given to SetReader ends. A shell ends
 	// there after `exit` or Ctrl+D, so an app can close its window from it.
-	Exit Event[struct{}]
+	Exit Event[TerminalExit]
 
 	mu      sync.Mutex
 	exited  bool
+	waiter  func() (int, error)
 	state   terminalState
 	normal  terminalState
 	alt     bool
@@ -64,6 +68,16 @@ type termPoint struct{ row, col int }
 // TerminalSize is the character grid a terminal measured.
 type TerminalSize struct {
 	Cols, Rows int
+}
+
+// TerminalExit describes how a session ended.
+type TerminalExit struct {
+	// Code is the process exit code when a waiter was set with SetWaiter.
+	// It is -1 when unknown, including a process stopped by a signal.
+	Code int
+	// Err is an unexpected read or wait error. A normal end of stream is nil,
+	// including the EIO a Unix pty reports when its child closes.
+	Err error
 }
 
 // Kind implements Node.
@@ -102,28 +116,57 @@ func (t *Terminal) SetReader(r io.Reader) {
 				}
 			}
 			if err != nil {
-				t.readerEnded(tr, r)
+				t.readerEnded(tr, r, err)
 				return
 			}
 		}
 	}()
 }
 
+// SetWaiter gives Exit the process exit code. wait must wait for the process
+// behind the reader and return its status; the terminal calls it once after
+// the reader ends, so the app must not also wait on the same process. A nil
+// waiter leaves TerminalExit.Code at -1.
+func (t *Terminal) SetWaiter(wait func() (int, error)) {
+	t.mu.Lock()
+	t.waiter = wait
+	t.mu.Unlock()
+}
+
 // readerEnded emits Exit once, on the UI goroutine, for the current reader.
-func (t *Terminal) readerEnded(tr *Tree, r io.Reader) {
+func (t *Terminal) readerEnded(tr *Tree, r io.Reader, readErr error) {
 	t.mu.Lock()
 	if t.reader != r || t.exited {
 		t.mu.Unlock()
 		return
 	}
 	t.exited = true
+	wait := t.waiter
 	t.mu.Unlock()
-	emit := func() { t.Exit.Emit(struct{}{}) }
+	exit := TerminalExit{Code: -1, Err: terminalReadError(readErr)}
+	if wait != nil {
+		code, err := wait()
+		if code >= 0 {
+			exit.Code = code
+		}
+		if exit.Err == nil && code < 0 && err != nil {
+			exit.Err = err
+		}
+	}
+	emit := func() { t.Exit.Emit(exit) }
 	if tr != nil {
 		tr.Post(emit)
 		return
 	}
 	emit()
+}
+
+// terminalReadError hides the errors a closed session normally reports.
+func terminalReadError(err error) error {
+	if errors.Is(err, io.EOF) || errors.Is(err, syscall.EIO) || errors.Is(err, os.ErrClosed) {
+		return nil
+	}
+	return err
 }
 
 // SetWriter is the writer keyboard input goes to, usually the other end of a
@@ -204,9 +247,7 @@ func (t *Terminal) OnResize(fn func(TerminalSize)) (off func()) { return t.Resiz
 
 // OnExit subscribes to the end of the reader, after the shell exits or the
 // stream closes. The callback runs on the UI goroutine.
-func (t *Terminal) OnExit(fn func()) (off func()) {
-	return t.Exit.On(func(struct{}) { fn() })
-}
+func (t *Terminal) OnExit(fn func(TerminalExit)) (off func()) { return t.Exit.On(fn) }
 
 // ScrollBy moves the scrollback by n lines; positive moves into history. It
 // reports whether the view changed.

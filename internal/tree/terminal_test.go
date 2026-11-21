@@ -1,6 +1,7 @@
 package tree
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -177,12 +178,35 @@ func TestTerminalDECModes(t *testing.T) {
 
 func TestTerminalExitEvent(t *testing.T) {
 	var term Terminal
-	done := make(chan struct{}, 1)
-	term.OnExit(func() { done <- struct{}{} })
+	term.SetWaiter(func() (int, error) { return 7, errors.New("exit status 7") })
+	done := make(chan TerminalExit, 1)
+	term.OnExit(func(exit TerminalExit) { done <- exit })
 	term.SetReader(strings.NewReader("exit\r\n"))
 	select {
-	case <-done:
+	case exit := <-done:
+		if exit.Code != 7 || exit.Err != nil {
+			t.Fatalf("exit = %+v, want code 7 and no error", exit)
+		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("no exit event after the reader ended")
+	}
+}
+
+type exitErrReader struct{}
+
+func (exitErrReader) Read([]byte) (int, error) { return 0, errors.New("read failed") }
+
+func TestTerminalExitReportsReadError(t *testing.T) {
+	var term Terminal
+	done := make(chan TerminalExit, 1)
+	term.OnExit(func(exit TerminalExit) { done <- exit })
+	term.SetReader(exitErrReader{})
+	select {
+	case exit := <-done:
+		if exit.Code != -1 || exit.Err == nil || exit.Err.Error() != "read failed" {
+			t.Fatalf("exit = %+v", exit)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no exit event after the reader failed")
 	}
 }

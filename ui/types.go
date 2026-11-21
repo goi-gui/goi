@@ -198,6 +198,7 @@ type (
 	Code             = tree.Code
 	Terminal         = tree.Terminal
 	TerminalSize     = tree.TerminalSize
+	TerminalExit     = tree.TerminalExit
 	TerminalCell     = tree.TerminalCell
 	TerminalView     = tree.TerminalView
 	Markdown         = tree.Markdown
