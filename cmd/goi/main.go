@@ -342,16 +342,27 @@ func runProject(dir string, goRun runFunc, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	pkg := "./" + filepath.ToSlash(cfg.Entrypoint)
 	if _, err := os.Stat(filepath.Join(dir, cfg.Entrypoint, "main.go")); err != nil {
 		return fmt.Errorf("no %s/main.go in %s; run goi init first", cfg.Entrypoint, dir)
 	}
+	flags, err := resolveFlags(dir, cfg.Assets, cfg.RunFlags)
+	if err != nil {
+		return err
+	}
+	logTags(stdout, "run", flags)
+	if flags.Auto {
+		return runAutoProject(dir, cfg, flags, stdout, stderr)
+	}
+	return goRun(dir, runArgs(cfg, flags), stdout, stderr, runEnv())
+}
+
+// runArgs is the go run invocation for a resolved flag set.
+func runArgs(cfg config, flags resolvedFlags) []string {
 	args := []string{"run"}
-	if tags := buildTags(cfg.RunFlags); len(tags) > 0 {
+	if tags := buildTags(flags.Tags); len(tags) > 0 {
 		args = append(args, "-tags", strings.Join(tags, ","))
 	}
-	args = append(args, pkg)
-	return goRun(dir, args, stdout, stderr, runEnv())
+	return append(args, "./"+filepath.ToSlash(cfg.Entrypoint))
 }
 
 // runEnv is the environment for goi run: the caller's, with CGO_ENABLED=0 and
@@ -387,6 +398,11 @@ func buildProject(dir, targetOS, targetArch string, goRun runFunc, stdout, stder
 	if cfg.Name == "." || cfg.Name == ".." || strings.ContainsAny(cfg.Name, `/\`) {
 		return "", fmt.Errorf("goi.yaml name %q is not a file name", cfg.Name)
 	}
+	flags, err := resolveFlags(dir, cfg.Assets, cfg.BuildFlags)
+	if err != nil {
+		return "", err
+	}
+	logTags(stdout, "build", flags)
 	cleanup, err := prepareEmbed(dir, cfg.Entrypoint, cfg.Assets)
 	if err != nil {
 		return "", err
@@ -397,7 +413,7 @@ func buildProject(dir, targetOS, targetArch string, goRun runFunc, stdout, stder
 		return "", err
 	}
 	pkg := "./" + filepath.ToSlash(cfg.Entrypoint)
-	args := []string{"build", "-tags", strings.Join(buildTags(cfg.BuildFlags), ","),
+	args := []string{"build", "-tags", strings.Join(buildTags(flags.Tags), ","),
 		"-trimpath", "-ldflags", buildLDFlags(targetOS), "-o", out, pkg}
 	env := envWith(os.Environ(), "CGO_ENABLED", "0")
 	env = envWith(env, "GOOS", targetOS)
