@@ -9,6 +9,7 @@
 | `material-symbols-filled.woff` | Material Symbols Outlined, `FILL` axis at 1 | Apache License 2.0 |
 | `noto-color-emoji.ttf` | Noto Color Emoji | SIL Open Font License 1.1 |
 | `roboto-mono.ttf` | Roboto Mono | Apache License 2.0 |
+| `meslo-lg-nf-mono.ttf` | Meslo LG S NF Mono | Apache License 2.0 |
 
 The two icon files are the same family, instanced from the variable font with
 the `FILL` axis at 0 and at 1, so `filledIcon` switches the glyphs an icon draws

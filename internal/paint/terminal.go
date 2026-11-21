@@ -32,7 +32,7 @@ func (l *List) paintTerminal(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	// the default is the embedded face so columns line up.
 	family := l.family
 	if family == "" {
-		l.family = "Roboto Mono"
+		l.family = text.TerminalFamily()
 	}
 	defer func() { l.family = family }()
 
@@ -61,14 +61,8 @@ func (l *List) paintTerminal(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	if inner.W <= 0 || inner.H <= 0 {
 		return
 	}
-	cols := int(term.Columns.Get())
-	rows := int(term.Lines.Get())
-	if cols <= 0 {
-		cols = int(inner.W / cellW)
-	}
-	if rows <= 0 {
-		rows = int(inner.H / cellH)
-	}
+	cols := int(inner.W / cellW)
+	rows := int(inner.H / cellH)
 	if cols < 1 {
 		cols = 1
 	}

@@ -212,6 +212,7 @@ func NewLibrary() *Library {
 			l.familyTag += 2
 		}
 	}
+	registerTerminalFont(l)
 	return l
 }
 

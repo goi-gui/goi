@@ -13,8 +13,6 @@ const terminalUI = `Window {
 		width:  400
 		height: 200
 		fontSize: 14
-		cols:   40
-		rows:   10
 	}
 }`
 

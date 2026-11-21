@@ -12,8 +12,6 @@ import (
 type Terminal struct {
 	Component
 	FontSize   Prop[float64]
-	Columns    Prop[float64]
-	Lines      Prop[float64]
 	Scrollback Prop[float64]
 	Foreground Prop[uint32]
 	// Resize fires when the grid measured from the box changes, which is what a
@@ -43,10 +41,8 @@ func (*Terminal) Kind() string { return "Terminal" }
 
 func (t *Terminal) namedProps() []NamedProp {
 	b := &t.NodeBase
-	return append(t.propsExcept("Terminal", "fontSize", "cols", "rows", "scrollback", "foreground"),
+	return append(t.propsExcept("Terminal", "fontSize", "scrollback", "foreground"),
 		NumberProp(b, "fontSize", DirtyLayout, &t.FontSize),
-		NumberProp(b, "cols", DirtyLayout, &t.Columns),
-		NumberProp(b, "rows", DirtyLayout, &t.Lines),
 		NumberProp(b, "scrollback", DirtyPaint, &t.Scrollback),
 		ColorProp(b, "foreground", DirtyPaint, &t.Foreground),
 	)

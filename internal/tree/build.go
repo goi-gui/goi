@@ -882,8 +882,6 @@ func newM3Component(name string) Node {
 		return &Terminal{
 			Component:  newComponent(),
 			FontSize:   newProp(nil, "fontSize", DirtyLayout, 13.0),
-			Columns:    newProp(nil, "cols", DirtyLayout, 0.0),
-			Lines:      newProp(nil, "rows", DirtyLayout, 0.0),
 			Scrollback: newProp(nil, "scrollback", DirtyPaint, 1000.0),
 			Foreground: newProp(nil, "foreground", DirtyPaint, uint32(0)),
 		}

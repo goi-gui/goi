@@ -2920,6 +2920,14 @@ func (i *interactor) imeSync() {
 	if !ok || d == nil || d.win == nil {
 		return
 	}
+	// A terminal has no Component text cell, but it still needs the platform's
+	// text input: SDL delivers ordinary characters through that path, and
+	// without it only the special keys would reach the shell.
+	if t, ok := i.kbd.(*tree.Terminal); ok {
+		r := absoluteRect(t)
+		d.win.SetTextInput(true, r.X+r.W/2, r.Y+r.H/2, 2, 20)
+		return
+	}
 	// A time picker's input variant takes digits from the keyboard too, so the
 	// platform's text input has to stay on for it, anchored to the active field.
 	if i.focus == nil {
@@ -3295,6 +3303,7 @@ func (i *interactor) setKbd(n tree.Node) {
 	}
 	i.kbd = n
 	if n == nil {
+		i.imeSync()
 		return
 	}
 	c := comp(n)
@@ -3309,6 +3318,7 @@ func (i *interactor) setKbd(n tree.Node) {
 		c.Base().SetStateFocused(true)
 		c.Base().MarkDirty(tree.DirtyPaint)
 	}
+	i.imeSync()
 	i.markDirty()
 }
 

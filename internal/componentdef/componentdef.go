@@ -161,7 +161,7 @@ var props = map[string][]string{
 	"Toolbar":          {},
 	"TextArea":         {"label", "text", "placeholder", "supporting", "variant", "disabled"},
 	"Code":             {"text", "language", "variant", "showCopy"},
-	"Terminal":         {"fontSize", "cols", "rows", "scrollback", "foreground"},
+	"Terminal":         {"fontSize", "scrollback", "foreground"},
 	"Markdown":         {"text"},
 	"Mermaid":          {"data"},
 	"Map":              {"tiles", "attribution", "center", "zoom", "bbox", "reverseTileColors", "disablePan", "disableZoom"},
@@ -356,7 +356,7 @@ func TypeOf(name string) PropType {
 	case "value", "end", "center", "min", "max", "step", "spacing", "gap", "size", "hourFormat", "separatorSize",
 		"rowHeight", "headerHeight", "sortColumn", "selectedRow",
 		"innerRadius", "startAngle", "thickness", "zoom",
-		"barRadius", "barGap", "barBorderThickness", "fontSize", "cols", "rows", "scrollback":
+		"barRadius", "barGap", "barBorderThickness", "fontSize", "scrollback":
 		return Number
 	case "variant", "animation", "crossAxisAlign", "mainAxisAlign", "align", "selectable":
 		return Enum

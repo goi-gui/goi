@@ -150,3 +150,14 @@ func TestBuildProjectAutoUsesDetectedTags(t *testing.T) {
 		t.Fatalf("tags = %q", got)
 	}
 }
+
+func TestResolveFlagsAutoDetectsTerminal(t *testing.T) {
+	dir := flagProject(t, `Window { Terminal { width: 640 height: 320 } }`, "name: app\n")
+	flags, err := resolveFlags(dir, "assets", []string{"auto"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(flags.Tags) != 1 || flags.Tags[0] != "terminal" {
+		t.Fatalf("tags = %v, want the terminal font", flags.Tags)
+	}
+}
