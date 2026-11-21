@@ -20,11 +20,11 @@ const (
 )
 
 // autoFeatures are the optional build tags that a design can prove it needs.
-// allFeatures is what `all` turns on; auto never adds dialog because the design
-// cannot say it needs a native picker.
+// allFeatures is what `all` turns on. The dialog and notification APIs are
+// always available now, so there is no tag to add for them.
 var (
 	autoFeatures = []string{"emoji", "svg", "mermaid", "markdown", "code", "net"}
-	allFeatures  = []string{"emoji", "svg", "mermaid", "markdown", "code", "net", "dialog"}
+	allFeatures  = []string{"emoji", "svg", "mermaid", "markdown", "code", "net"}
 )
 
 // resolvedFlags is the result of reading one flag list. Tags go to the go
@@ -44,6 +44,9 @@ type resolvedFlags struct {
 // covers every feature.
 func resolveFlags(projectDir, assets string, configured []string) (resolvedFlags, error) {
 	flags := splitFlags(configured)
+	// dialog used to gate the picker and notification APIs. Keep old configs
+	// working by retiring the tag silently; dialogs are always available.
+	flags = removeFlag(flags, "dialog")
 	hasAll := containsFlag(flags, allFlag)
 	hasAuto := containsFlag(flags, autoFlag) && !hasAll
 
@@ -55,9 +58,6 @@ func resolveFlags(projectDir, assets string, configured []string) (resolvedFlags
 		if (hasAuto || hasAll) && containsFlag(autoFeatures, flag) {
 			// Auto owns these tags: a stale one has to disappear when the
 			// design stops using the feature. all already covers them.
-			continue
-		}
-		if hasAll && flag == "dialog" {
 			continue
 		}
 		custom = append(custom, flag)
@@ -102,6 +102,16 @@ func splitFlags(flags []string) []string {
 			}
 			seen[tag] = true
 			out = append(out, tag)
+		}
+	}
+	return out
+}
+
+func removeFlag(flags []string, drop string) []string {
+	out := flags[:0]
+	for _, flag := range flags {
+		if flag != drop {
+			out = append(out, flag)
 		}
 	}
 	return out

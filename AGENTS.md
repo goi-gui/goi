@@ -31,8 +31,9 @@ go run ./cmd/goifmt -l .                                # CI fails on any output
   build is not supported: goffi and purego each ship a fake C runtime, so
   `CGO_ENABLED=0` and `-tags nofakecgo` are mandatory, and `nofakecgo` lets
   goffi use purego's copy. Optional features are opt-in (`-tags emoji`, `svg`,
-  `mermaid`, `markdown`, `code`, `net`, `dialog`); `-tags all` turns them on,
-  which is what the examples and the test commands use.
+  `mermaid`, `markdown`, `code`, `net`); `-tags all` turns them on, which is what
+  the examples and the test commands use. File dialogs and `Notify` are part of
+  every desktop build and have no tag.
 - The purego platform cross-compiles for Linux, Windows and macOS. There is no
   build tag per platform: `SurfaceHandles` asks SDL which driver it got.
 - The examples are separate modules in `../examples`, next to this checkout.

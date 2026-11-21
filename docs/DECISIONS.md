@@ -2494,8 +2494,8 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   build (`noemoji`, `nosvg`, `nomarkdown`, `nocode`, `nonet`, `nodialog`,
   `nomermaid`), so a minimal app paid for every feature it never used and a
   release had to remember each `-no` flag. The tags now name what they add:
-  `emoji`, `svg`, `mermaid`, `markdown`, `code`, `net` and `dialog`, and `all`
-  turns on every one. The core build still has the window, renderer, layout and
+  `emoji`, `svg`, `mermaid`, `markdown`, `code` and `net`, and `all` turns on
+  every one. File dialogs and `Notify` are always built. The core build still has the window, renderer, layout and
   text; a design that uses a missing feature parses but the element reports the
   tag to add. Platform and toolchain tags (`js`, `nofakecgo`, `nogpu`) are not
   feature switches and keep their meaning. Tests and examples use `all`, because
@@ -2667,3 +2667,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   second render target. The flight is one-way: switching again ends it, and the
   next page draws normally. A tag must be unique among the visible Heroes, and a
   Hero that only moves within one page follows layout instead.
+
+- **Dialogs and notifications are not a feature tag.** They were behind
+  `dialog`, which forced every app that picked a file or showed a notification
+  to opt in and made `all` the only sane development setting. The zenity and
+  beeep wrappers are pure Go and add little to the binary, so they are now part
+  of every desktop build. `goi` removes an old `dialog` entry from runFlags and
+  buildFlags instead of failing on it; the browser still has a stub.

@@ -1,4 +1,4 @@
-//go:build !js && (all || dialog)
+//go:build !js
 
 package ui
 

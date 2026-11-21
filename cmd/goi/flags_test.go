@@ -95,6 +95,17 @@ func TestResolveFlagsAllWinsAndExpandsForTheLog(t *testing.T) {
 	}
 }
 
+func TestResolveFlagsRetiresDialog(t *testing.T) {
+	dir := flagProject(t, "Window { }\n", "name: app\n")
+	flags, err := resolveFlags(dir, "assets", []string{"auto", "dialog", "abc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(flags.Tags, []string{"abc"}) {
+		t.Fatalf("tags = %v, dialog should be retired", flags.Tags)
+	}
+}
+
 func TestResolveFlagsLeavesCustomFlagsAlone(t *testing.T) {
 	dir := flagProject(t, "Window { }\n", "name: app\n")
 	flags, err := resolveFlags(dir, "assets", []string{"abc", "myflag"})
