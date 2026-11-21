@@ -634,3 +634,27 @@ func TestElementFilter(t *testing.T) {
 		t.Fatalf("filtered edge alpha = %d, want a soft falloff", a)
 	}
 }
+
+func TestObjectBoundingBoxPattern(t *testing.T) {
+	const src = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+		<defs><pattern id="p" width=".25" height="1" patternContentUnits="objectBoundingBox">
+			<rect width=".5" height="1" fill="red"/>
+			<rect x=".5" width=".5" height="1" fill="blue"/>
+		</pattern></defs>
+		<rect x="20" y="20" width="60" height="60" fill="url(#p)"/>
+	</svg>`
+	s, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := s.Render(0xFFFFFFFF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, g, b, a := pixelAt(d, 23*d.W/100, 50*d.H/100); a < 250 || r < 220 || g > 30 || b > 30 {
+		t.Fatalf("bbox pattern red = %d,%d,%d,%d", r, g, b, a)
+	}
+	if r, g, b, a := pixelAt(d, 30*d.W/100, 50*d.H/100); a < 250 || b < 220 || r > 30 || g > 30 {
+		t.Fatalf("bbox pattern blue = %d,%d,%d,%d", r, g, b, a)
+	}
+}
