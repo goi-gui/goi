@@ -229,7 +229,7 @@ type driver interface {
 // NewApp creates an app with the platform driver for this OS.
 func NewApp() (*App, error) {
 	a := &App{vsync: true, debugUI: debugUI()}
-	logg().Info(logCtx, "ui: starting")
+	logg().Debug(logCtx, "ui: starting")
 	if err := a.initPlatform(); err != nil {
 		logg().Error(logCtx, "ui: platform init failed", "error", err)
 		return nil, err
@@ -306,7 +306,7 @@ func (a *App) LoadWindow(entry string, opts ...Option) (*Window, error) {
 	if err := a.initWindow(w); err != nil {
 		return nil, err
 	}
-	logg().Info(logCtx, "ui: window loaded", "file", name, "took", time.Since(start).String())
+	logg().Debug(logCtx, "ui: window loaded", "file", name, "took", time.Since(start).String())
 	// An embedded design has no directory to watch; reload needs the disk.
 	if _, ok := watchRoot(assets); o.HotReload && ok {
 		if err := a.enableWatcher(b); err != nil {
@@ -513,7 +513,7 @@ func (a *App) Run() error {
 		if a.win != nil {
 			width, height = a.win.Size()
 		}
-		logg().Info(logCtx, "ui: window", "width", width, "height", height, "vsync", a.vsync, "maxFPS", a.maxFPS)
+		logg().Debug(logCtx, "ui: window", "width", width, "height", height, "vsync", a.vsync, "maxFPS", a.maxFPS)
 	}
 	return a.driver.run(a.frame)
 }

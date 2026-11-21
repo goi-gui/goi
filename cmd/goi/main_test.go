@@ -484,3 +484,73 @@ func TestRunProjectNeedsGoiYAML(t *testing.T) {
 		t.Fatalf("err = %v, want a goi.yaml hint", err)
 	}
 }
+
+func TestInitProjectWritesGitignore(t *testing.T) {
+	dir := t.TempDir()
+	opts := initOptions{Name: "myapp", ID: "com.example.myapp", Module: "example.com/myapp", Assets: "assets"}
+	if err := initProject(dir, opts, func(string, []string) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, ".gitignore"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "dist/") {
+		t.Fatalf(".gitignore = %q, want dist/", b)
+	}
+
+	// An existing file keeps its entries.
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("node_modules/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureGitignore(dir); err != nil {
+		t.Fatal(err)
+	}
+	b, _ = os.ReadFile(filepath.Join(dir, ".gitignore"))
+	if !strings.Contains(string(b), "node_modules/") || !strings.Contains(string(b), "dist/") {
+		t.Fatalf(".gitignore = %q", b)
+	}
+}
+
+func TestInitProjectOverwritesWithTheFlag(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "cmd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "cmd", "main.go"), []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module old.example/app\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	opts := initOptions{Name: "myapp", ID: "com.example.myapp", Module: "example.com/myapp", Assets: "assets", Overwrite: true}
+	var calls int
+	if err := initProject(dir, opts, func(string, []string) error { calls++; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 0 {
+		t.Fatalf("go mod init ran over an existing go.mod: %d calls", calls)
+	}
+	main, err := os.ReadFile(filepath.Join(dir, "cmd", "main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(main) == "keep" || !strings.Contains(string(main), "LoadWindow") {
+		t.Fatalf("main.go was not overwritten:\n%s", main)
+	}
+}
+
+func TestInitProjectInitializesGit(t *testing.T) {
+	old := gitInit
+	t.Cleanup(func() { gitInit = old })
+	var called string
+	gitInit = func(dir string) error { called = dir; return nil }
+	dir := t.TempDir()
+	opts := initOptions{Name: "myapp", ID: "com.example.myapp", Module: "example.com/myapp", Assets: "assets", Git: true}
+	if err := initProject(dir, opts, func(string, []string) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if called != dir {
+		t.Fatalf("git init dir = %q, want %q", called, dir)
+	}
+}

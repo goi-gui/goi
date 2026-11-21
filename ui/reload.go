@@ -87,7 +87,7 @@ func (a *App) applyReload(f *syntax.File) error {
 		a.win.noteMissingFonts(tr)
 	}
 	a.swapTree(tr)
-	logg().Info(logCtx, "ui: hot reload", "file", a.path, "took", time.Since(start).String())
+	logg().Debug(logCtx, "ui: hot reload", "file", a.path, "took", time.Since(start).String())
 	return nil
 }
 
