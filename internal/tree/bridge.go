@@ -301,6 +301,12 @@ func eventField(payload any, name string) (any, bool) {
 			return e.Y, true
 		case "byUser":
 			return e.ByUser, true
+		case "maxX":
+			return e.MaxX, true
+		case "maxY":
+			return e.MaxY, true
+		case "progress":
+			return e.Progress, true
 		}
 	}
 	return nil, false

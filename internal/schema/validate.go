@@ -1559,7 +1559,7 @@ func eventFieldType(event, field string) (ValueType, bool) {
 		return 0, false
 	}
 	switch field {
-	case "x", "y":
+	case "x", "y", "maxX", "maxY", "progress":
 		return TypeNumber, true
 	case "byUser":
 		return TypeBool, true
@@ -1570,7 +1570,7 @@ func eventFieldType(event, field string) (ValueType, bool) {
 // eventFieldNames lists the fields a diagnostic can suggest.
 func eventFieldNames(event string) []string {
 	if event == "onScroll" {
-		return []string{"x", "y", "byUser"}
+		return []string{"x", "y", "maxX", "maxY", "progress", "byUser"}
 	}
 	return nil
 }

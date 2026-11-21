@@ -34,20 +34,21 @@ Window {
 	b.OnScrollToStart(func() { start++ })
 
 	b.SetScrollOffsetForBy(tree.AxisY, 50, true)
-	if len(moves) != 1 || moves[0].Y != 50 || !moves[0].ByUser {
-		t.Fatalf("moves = %+v", moves)
-	}
 	max := b.ScrollMaxFor(tree.AxisY)
 	if max <= 0 {
 		t.Fatal("the page did not overflow")
+	}
+	if len(moves) != 1 || moves[0].Y != 50 || moves[0].MaxY != max ||
+		moves[0].Progress != 50/max || !moves[0].ByUser {
+		t.Fatalf("moves = %+v, max = %v", moves, max)
 	}
 	b.SetScrollOffsetForBy(tree.AxisY, max, true)
 	if end != 1 || start != 0 {
 		t.Fatalf("after end: end=%d start=%d", end, start)
 	}
 	b.SetScrollOffsetForBy(tree.AxisY, 0, true)
-	if start != 1 {
-		t.Fatalf("back at start: start=%d", start)
+	if start != 1 || moves[len(moves)-1].Progress != 0 {
+		t.Fatalf("back at start: start=%d progress=%v", start, moves[len(moves)-1].Progress)
 	}
 	// Repeating the same offset is not a move and does not repeat the edge.
 	b.SetScrollOffsetForBy(tree.AxisY, 0, true)

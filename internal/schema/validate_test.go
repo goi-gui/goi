@@ -897,7 +897,7 @@ Window { Column { gap: conditional { bridge.wide: state { default: 8 hover: 12 }
 // feed the declared handler parameters, and a typo is a diagnostic.
 func TestScrollEventFields(t *testing.T) {
 	good := `bridge {
-		onMoved func(x float64, y float64, byUser bool)
+		onMoved func(x float64, y float64, maxY float64, progress float64, byUser bool)
 		onEnd func()
 		onStart func()
 	}
@@ -905,7 +905,7 @@ func TestScrollEventFields(t *testing.T) {
 		Column {
 			id:              page
 			scroll:          true
-			onScroll:        bridge.onMoved(event.x, event.y, event.byUser)
+			onScroll:        bridge.onMoved(event.x, event.y, event.maxY, event.progress, event.byUser)
 			onScrollToEnd:   bridge.onEnd()
 			onScrollToStart: bridge.onStart()
 		}

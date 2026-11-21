@@ -229,7 +229,12 @@ func (b *NodeBase) scrollMoved(oldX, oldY float64, byUser bool) {
 	if x == oldX && y == oldY {
 		return
 	}
-	b.Scroll.Emit(ScrollEvent{X: x, Y: y, ByUser: byUser})
+	b.Scroll.Emit(ScrollEvent{
+		X: x, Y: y,
+		MaxX: b.ScrollMaxFor(AxisX), MaxY: b.ScrollMaxFor(AxisY),
+		Progress: b.scrollProgress(),
+		ByUser:   byUser,
+	})
 	b.updateScrollEdges()
 	if !byUser || !b.autoScroll.Get() {
 		return
@@ -243,6 +248,27 @@ func (b *NodeBase) scrollMoved(oldX, oldY float64, byUser bool) {
 	// A user scroll away from the end pauses the follow; reaching the end
 	// starts it again even without the end event's help.
 	b.autoScrollPaused = max > 0 && off < max-0.5
+}
+
+// scrollProgress reports the primary axis from 0 at the start to 1 at the end.
+// A short area has no travel, so it reports 0.
+func (b *NodeBase) scrollProgress() float64 {
+	axis := b.primaryScrollAxis()
+	if axis == AxisNone {
+		return 0
+	}
+	max := b.ScrollMaxFor(axis)
+	if max <= 0 {
+		return 0
+	}
+	p := b.ScrollOffsetFor(axis) / max
+	if p < 0 {
+		return 0
+	}
+	if p > 1 {
+		return 1
+	}
+	return p
 }
 
 // updateScrollEdges fires the start and end events once when the primary axis

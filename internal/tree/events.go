@@ -23,11 +23,16 @@ type MouseEvent struct {
 }
 
 // ScrollEvent is delivered when a scroll area moves. X and Y are the clamped
-// offsets, and ByUser is false for a programmatic scroll, a smooth auto-scroll
-// or the first layout.
+// offsets, MaxX and MaxY are the largest offsets the content allows, and
+// Progress is the primary axis at 0 (start) to 1 (end), or 0 when the content
+// does not overflow. ByUser is false for a programmatic scroll, a smooth
+// auto-scroll or the first layout.
 type ScrollEvent struct {
-	X, Y   float64
-	ByUser bool
+	X, Y     float64
+	MaxX     float64
+	MaxY     float64
+	Progress float64
+	ByUser   bool
 }
 
 // KeyEvent is delivered for key presses and text input.
@@ -108,7 +113,8 @@ func (c *Component) OnSelect(fn func(int)) (off func()) { return c.Select.On(fn)
 func (c *Component) OnHoverPoint(fn func(int)) (off func()) { return c.HoverPoint.On(fn) }
 
 // OnScroll subscribes to every movement of a scrolling area. The event carries
-// the clamped offsets and whether the reader moved it.
+// the clamped offsets, the maximum each axis allows, the primary-axis progress
+// and whether the reader moved it.
 func (b *NodeBase) OnScroll(fn func(ScrollEvent)) (off func()) { return b.Scroll.On(fn) }
 
 // OnScrollToEnd subscribes to reaching the end of the area's primary axis.
