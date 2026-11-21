@@ -37,6 +37,10 @@ type SVG struct {
 	tree  *elem
 	css   *css
 	anims []*anim
+	// mask is a second document that paints a root-level clipPath white, for
+	// the renderer's missing clip support.
+	mask    []byte
+	maskLum bool
 	// dur is the longest animation in the file, zero for a still document.
 	dur time.Duration
 }
@@ -50,25 +54,33 @@ func Parse(b []byte) (*SVG, error) {
 	}
 	w, h := icon.ViewBox.W, icon.ViewBox.H
 	if w <= 0 || h <= 0 {
-		// A file with neither a viewBox nor width/height has no intrinsic size;
-		// a small square gives it somewhere to draw.
+		w, h = 0, 0
+	}
+	if tree, err := parseTree(b); err == nil {
+		resolveGradientRefs(tree)
+		normalizeViewBox(tree)
+		flattenNestedSVG(tree)
+		expandSymbolUses(tree)
+		anims, dur := collectAnims(tree)
+		mask, maskLum := clipMaskSource(tree), false
+		if mask == nil {
+			mask, maskLum = luminanceMaskSource(tree)
+		}
+		s := &SVG{src: b, w: w, h: h, tree: tree, css: collectCSS(tree), anims: anims, dur: dur, mask: mask, maskLum: maskLum}
+		if s.w <= 0 || s.h <= 0 {
+			s.w, s.h = rootSize(tree)
+		}
+		if s.w <= 0 || s.h <= 0 {
+			// A file with neither a viewBox nor width/height has no intrinsic
+			// size; a small square gives it somewhere to draw.
+			s.w, s.h = 24, 24
+		}
+		return s, nil
+	}
+	if w <= 0 || h <= 0 {
 		w, h = 24, 24
 	}
-	s := &SVG{src: b, w: w, h: h}
-	// The tree is only needed when the file animates or keeps its paint in a
-	// stylesheet, and parsing it costs a second walk of the document.
-	if bytes.Contains(b, []byte("<animate")) || bytes.Contains(b, []byte("<style")) {
-		if tree, err := parseTree(b); err == nil {
-			anims, dur := collectAnims(tree)
-			s.tree, s.css, s.anims, s.dur = tree, collectCSS(tree), anims, dur
-			// A file with only a stylesheet still needs the rewrite, so that the
-			// classes become attributes the rasterizer understands.
-			if len(anims) == 0 && s.css.empty() {
-				s.tree, s.css = nil, nil
-			}
-		}
-	}
-	return s, nil
+	return &SVG{src: b, w: w, h: h}, nil
 }
 
 // Duration is the longest animation in the file; zero means it is still.
@@ -119,14 +131,36 @@ func (s *SVG) RenderAtLoop(color uint32, elapsed time.Duration, loop bool) (*img
 	src := defaultRectRy(s.renderAt(elapsed, loop))
 	pixelW, _ := s.pixels()
 	src = scaleStrokeWidths(src, float64(pixelW)/s.w)
+	w, h := s.pixels()
+	d, err := drawSVG(src, color, w, h, s.w, s.h)
+	if err != nil {
+		return nil, err
+	}
+	if len(s.mask) > 0 {
+		mask, err := drawSVG(defaultRectRy(scaleStrokeWidths(s.mask, float64(pixelW)/s.w)),
+			0xFFFFFFFF, w, h, s.w, s.h)
+		if err == nil && mask.W == d.W && mask.H == d.H {
+			for i := 0; i < len(d.Pix); i += 4 {
+				a := uint16(mask.Pix[i+3])
+				if s.maskLum {
+					lum := (299*int(mask.Pix[i]) + 587*int(mask.Pix[i+1]) + 114*int(mask.Pix[i+2])) / 1000
+					a = a * uint16(lum) / 255
+				}
+				d.Pix[i+3] = byte(uint16(d.Pix[i+3]) * a / 255)
+			}
+		}
+	}
+	return d, nil
+}
+
+func drawSVG(src []byte, color uint32, w, h int, vbW, vbH float64) (*img.Data, error) {
 	icon, err := oksvg.ReadReplacingCurrentColor(bytes.NewReader(src), hexRGB(color))
 	if err != nil {
 		return nil, fmt.Errorf("svg: render: %w", err)
 	}
 	if icon.ViewBox.W <= 0 || icon.ViewBox.H <= 0 {
-		icon.ViewBox.W, icon.ViewBox.H = s.w, s.h
+		icon.ViewBox.W, icon.ViewBox.H = vbW, vbH
 	}
-	w, h := s.pixels()
 	m := image.NewRGBA(image.Rect(0, 0, w, h))
 	scanner := rasterx.NewScannerGV(w, h, m, m.Bounds())
 	raster := rasterx.NewDasher(w, h, scanner)

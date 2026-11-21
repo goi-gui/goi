@@ -3,6 +3,7 @@
 package svg
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
@@ -254,8 +255,127 @@ func TestStillSVGStaysStill(t *testing.T) {
 	if s.Animated() || s.Duration() != 0 {
 		t.Fatalf("a plain SVG reported animation: %v %v", s.Animated(), s.Duration())
 	}
-	if string(s.renderAt(time.Second, true)) != testSVG {
-		t.Fatal("a still file was rewritten")
+	if got := string(s.renderAt(time.Second, true)); bytes.Contains([]byte(got), []byte("<animate")) || !bytes.Contains([]byte(got), []byte("<rect")) {
+		t.Fatalf("a still file gained an animation or lost its shape: %s", got)
+	}
+}
+
+func TestInlineStyleGradientFollowsHref(t *testing.T) {
+	const src = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+		<defs>
+			<linearGradient id="base">
+				<stop offset="0" style="stop-color:#0000ff;stop-opacity:1"/>
+				<stop offset="1" style="stop-color:#ff0000;stop-opacity:1"/>
+			</linearGradient>
+			<linearGradient id="g" href="#base" x1="0" y1="0" x2="1" y2="0"/>
+		</defs>
+		<rect width="100" height="100" style="fill:url(#g) rgb(0,0,0)"/>
+	</svg>`
+	s, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := s.Render(0xFFFFFFFF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, g, b, a := pixelAt(d, 10, d.H/2)
+	if a < 250 || b < 220 || r > 30 || g > 30 {
+		t.Fatalf("left = %d,%d,%d,%d, want the blue stop", r, g, b, a)
+	}
+	r, g, b, a = pixelAt(d, d.W-10, d.H/2)
+	if a < 250 || r < 220 || g > 30 || b > 30 {
+		t.Fatalf("right = %d,%d,%d,%d, want the red stop", r, g, b, a)
+	}
+}
+
+func TestSingleArgumentScaleDraws(t *testing.T) {
+	const src = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 95">
+		<g transform="scale(0.1)"><path fill="red" d="M100,100 L900,100 L900,900 Z"/></g>
+	</svg>`
+	s, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := s.Render(0xFFFFFFFF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, a := pixelAt(d, d.W/2, d.H/2); a < 250 {
+		t.Fatalf("single-argument scale drew nothing (alpha %d)", a)
+	}
+}
+
+func TestWidthHeightGivesIntrinsicSize(t *testing.T) {
+	const src = `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50">
+		<rect width="100" height="50" fill="red"/>
+	</svg>`
+	s, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w, h := s.Intrinsic(); w != 100 || h != 50 {
+		t.Fatalf("intrinsic = %vx%v, want 100x50", w, h)
+	}
+}
+
+func TestNegativeViewBoxOrigin(t *testing.T) {
+	const src = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-50 -50 100 100">
+		<rect x="-50" y="-50" width="100" height="100" fill="red"/>
+	</svg>`
+	s, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := s.Render(0xFFFFFFFF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range [][2]int{{2, 2}, {d.W - 3, 2}, {2, d.H - 3}, {d.W - 3, d.H - 3}} {
+		if _, _, _, a := pixelAt(d, p[0], p[1]); a < 250 {
+			t.Fatalf("corner %v alpha = %d, want the shifted box filled", p, a)
+		}
+	}
+}
+
+func TestNestedSVGViewport(t *testing.T) {
+	const src = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+		<rect width="200" height="200" fill="white"/>
+		<svg x="50" y="50" width="100" height="100" viewBox="0 0 10 10">
+			<rect width="10" height="10" fill="red"/>
+		</svg>
+	</svg>`
+	s, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := s.Render(0xFFFFFFFF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, g, b, a := pixelAt(d, d.W/2, d.H/2); a < 250 || r < 220 || g > 30 || b > 30 {
+		t.Fatalf("centre = %d,%d,%d,%d, want red", r, g, b, a)
+	}
+	if r, g, b, a := pixelAt(d, 10, 10); a < 250 || r < 220 || g < 220 || b < 220 {
+		t.Fatalf("corner = %d,%d,%d,%d, want white outside the nested viewport", r, g, b, a)
+	}
+}
+
+func TestSymbolUseDraws(t *testing.T) {
+	const src = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+		<defs><symbol id="s" viewBox="0 0 10 10"><rect width="10" height="10" fill="red"/></symbol></defs>
+		<use href="#s" x="10" y="10" width="40" height="40"/>
+	</svg>`
+	s, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := s.Render(0xFFFFFFFF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, a := pixelAt(d, d.W/4, d.H/4); a < 250 {
+		t.Fatalf("symbol use drew nothing (alpha %d)", a)
 	}
 }
 
@@ -326,5 +446,65 @@ func TestBlendPathKeepsLetters(t *testing.T) {
 	}
 	if _, ok := blendPath("M0,0 L10,10 Z", "M0,0 C1,1 2,2 3,3 Z", 0.5); ok {
 		t.Fatal("paths with different commands were blended")
+	}
+}
+
+func TestRootClipPath(t *testing.T) {
+	const src = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+		<defs><clipPath id="c"><circle cx="50" cy="50" r="30"/></clipPath></defs>
+		<rect width="100" height="100" fill="red" clip-path="url(#c)"/>
+	</svg>`
+	s, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := s.Render(0xFFFFFFFF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, g, b, a := pixelAt(d, d.W/2, d.H/2); a < 250 || r < 220 || g > 30 || b > 30 {
+		t.Fatalf("centre = %d,%d,%d,%d, want red", r, g, b, a)
+	}
+	if _, _, _, a := pixelAt(d, 2, 2); a > 10 {
+		t.Fatalf("corner alpha = %d, want the circle clip", a)
+	}
+}
+
+func TestGroupClipPath(t *testing.T) {
+	const src = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+		<defs><clipPath id="c"><circle cx="50" cy="50" r="30"/></clipPath></defs>
+		<g clip-path="url(#c)"><rect width="100" height="100" fill="red"/></g>
+	</svg>`
+	s, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := s.Render(0xFFFFFFFF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, a := pixelAt(d, 2, 2); a > 10 {
+		t.Fatalf("corner alpha = %d, want the group clipped", a)
+	}
+}
+
+func TestRootMask(t *testing.T) {
+	const src = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+		<defs><mask id="m"><circle cx="50" cy="50" r="30" fill="white"/></mask></defs>
+		<rect width="100" height="100" fill="red" mask="url(#m)"/>
+	</svg>`
+	s, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := s.Render(0xFFFFFFFF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, g, b, a := pixelAt(d, d.W/2, d.H/2); a < 250 || r < 220 || g > 30 || b > 30 {
+		t.Fatalf("centre = %d,%d,%d,%d, want the mask to keep red", r, g, b, a)
+	}
+	if _, _, _, a := pixelAt(d, 2, 2); a > 10 {
+		t.Fatalf("corner alpha = %d, want the mask to hide it", a)
 	}
 }

@@ -507,24 +507,41 @@ func emitElem(enc *xml.Encoder, e *elem, sheet *css, elapsed time.Duration, loop
 	if over == nil {
 		over = map[string]string{}
 	}
+	// Inline style wins over a class, as in CSS, and stops oksvg from having to
+	// understand the stop-color and stroke-* declarations it ignores there.
+	for name, v := range inlineStyle(e) {
+		if name == "fill" || name == "stroke" {
+			v = urlOnly(v)
+		}
+		over[name] = v
+	}
 	for _, a := range e.anims {
 		if v, ok := a.valueAt(elapsed, loop); ok {
 			over[a.attr] = v
 		}
 	}
-	start := xml.StartElement{Name: e.name}
+	start := xml.StartElement{Name: xml.Name{Local: e.name.Local}}
 	for _, at := range e.attrs {
+		if at.Name.Local == "style" || at.Name.Local == "xmlns" || at.Name.Space == "xmlns" {
+			continue // folded, or a namespace the encoder would rewrite
+		}
+		name := xml.Name{Local: at.Name.Local}
 		if v, ok := over[at.Name.Local]; ok {
-			start.Attr = append(start.Attr, xml.Attr{Name: at.Name, Value: v})
+			start.Attr = append(start.Attr, xml.Attr{Name: name, Value: v})
 			delete(over, at.Name.Local)
 			continue
 		}
-		start.Attr = append(start.Attr, at)
+		start.Attr = append(start.Attr, xml.Attr{Name: name, Value: at.Value})
 	}
 	// An attribute the base element does not carry at all still gets its
 	// animated value.
 	for name, v := range over {
 		start.Attr = append(start.Attr, xml.Attr{Name: xml.Name{Local: name}, Value: v})
+	}
+	for i := range start.Attr {
+		if start.Attr[i].Name.Local == "transform" || strings.HasSuffix(start.Attr[i].Name.Local, "Transform") {
+			start.Attr[i].Value = normalizeTransform(start.Attr[i].Value)
+		}
 	}
 	if err := enc.EncodeToken(start); err != nil {
 		return err

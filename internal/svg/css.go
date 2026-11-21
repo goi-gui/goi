@@ -129,6 +129,10 @@ func parseDecls(body string) map[string]string {
 		if k == "" || v == "" || strings.Contains(k, " ") {
 			continue
 		}
+		if !strings.HasPrefix(k, "--") {
+			k = strings.ToLower(k)
+		}
+		v = strings.TrimSpace(strings.TrimSuffix(v, "!important"))
 		out[k] = v
 	}
 	return out
