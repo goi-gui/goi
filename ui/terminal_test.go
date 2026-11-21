@@ -32,8 +32,15 @@ func TestTerminalTakesKeyboard(t *testing.T) {
 		t.Fatalf("typed = %q, want %q", got, want)
 	}
 	out.Reset()
+	in.key(tree.KeyA, tree.Mods{})
+	in.Char('a')
+	if got, want := out.String(), "a"; got != want {
+		t.Fatalf("duplicate letter = %q, want %q", got, want)
+	}
+	out.Reset()
+	in.CommitText(" ")
 	in.key(tree.KeyC, tree.Mods{Ctrl: true})
-	if got, want := out.String(), "\x03"; got != want {
+	if got, want := out.String(), " \x03"; got != want {
 		t.Fatalf("ctrl-c = %q, want %q", got, want)
 	}
 

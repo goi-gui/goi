@@ -3,6 +3,7 @@ package tree
 import (
 	"io"
 	"sync"
+	"time"
 	"unicode/utf8"
 )
 
@@ -29,6 +30,10 @@ type Terminal struct {
 	scroll  int
 	fg, bg  uint32
 	attr    termAttr
+	// lastKey suppresses the text-input copy of a printable key: some
+	// platforms deliver a letter as both KeyA and Char, others only as KeyA.
+	lastKey   rune
+	lastKeyAt time.Time
 }
 
 // TerminalSize is the character grid a terminal measured.
@@ -104,6 +109,34 @@ func (t *Terminal) Feed(data []byte) {
 
 // FeedString is Feed with a string.
 func (t *Terminal) FeedString(s string) { t.Feed([]byte(s)) }
+
+// takeKeyRune drops the Char event that follows a printable Key event on
+// platforms that deliver both; a rune with no preceding key is left alone.
+func (t *Terminal) takeKeyRune(r rune) bool {
+	if t.lastKey == r && time.Since(t.lastKeyAt) < 100*time.Millisecond {
+		t.lastKey = 0
+		return true
+	}
+	return false
+}
+
+// WriteRune sends one typed rune and drops the duplicate a platform may report
+// after a printable Key event.
+func (t *Terminal) WriteRune(r rune) {
+	if t.takeKeyRune(r) {
+		return
+	}
+	t.WriteInput(string(r))
+}
+
+// WriteText sends committed text. A one-rune commit that follows its printable
+// Key event is the same character arriving twice, so it is dropped.
+func (t *Terminal) WriteText(s string) {
+	if r, size := utf8.DecodeRuneInString(s); size == len(s) && t.takeKeyRune(r) {
+		return
+	}
+	t.WriteInput(s)
+}
 
 // WriteInput sends text to the writer, as if the user typed it.
 func (t *Terminal) WriteInput(s string) {
@@ -995,13 +1028,22 @@ func (t *Terminal) Key(k Key, m Mods) bool {
 	ctrl := m.Control()
 	if ctrl {
 		switch {
-		case k >= KeyA && k <= KeyA+25:
+		case k >= KeyA && k <= KeyZ:
 			t.WriteInput(string(rune(1 + int(k-KeyA))))
 			return true
 		case k == KeySpace:
 			t.WriteInput("\x00")
 			return true
 		}
+	}
+	if !ctrl && k >= KeyA && k <= KeyZ {
+		r := rune('a' + (k - KeyA))
+		if m.Shift {
+			r -= 'a' - 'A'
+		}
+		t.lastKey, t.lastKeyAt = r, time.Now()
+		t.WriteInput(string(r))
+		return true
 	}
 	var out string
 	switch k {

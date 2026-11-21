@@ -2818,7 +2818,7 @@ func (i *interactor) Char(r rune) {
 	i.event("Char", "rune", string(r))
 	if term, ok := i.kbd.(*tree.Terminal); ok {
 		if r >= 32 {
-			term.WriteInput(string(r))
+			term.WriteRune(r)
 		}
 		return
 	}
@@ -2855,6 +2855,10 @@ func (i *interactor) Preedit(text string, caret int) {
 // CommitText replaces the composition with finished text, over any selection.
 func (i *interactor) CommitText(text string) {
 	i.event("CommitText", "text", text)
+	if term, ok := i.kbd.(*tree.Terminal); ok {
+		term.WriteText(text)
+		return
+	}
 	// A picker has no text field, but its input variant still takes digits from
 	// the keyboard, and every platform delivers them here.
 	if i.pickerText(text) {
