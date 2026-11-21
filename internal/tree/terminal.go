@@ -24,8 +24,12 @@ type Terminal struct {
 	// Resize fires when the grid measured from the box changes, which is what a
 	// pty needs for its window size.
 	Resize Event[TerminalSize]
+	// Exit fires once when the reader given to SetReader ends. A shell ends
+	// there after `exit` or Ctrl+D, so an app can close its window from it.
+	Exit Event[struct{}]
 
 	mu      sync.Mutex
+	exited  bool
 	state   terminalState
 	normal  terminalState
 	alt     bool
@@ -75,10 +79,11 @@ func (t *Terminal) namedProps() []NamedProp {
 }
 
 // SetReader starts a reader goroutine that feeds the terminal. The goroutine
-// ends at EOF; replacing it does not close the previous reader.
+// ends at EOF and emits Exit; replacing it does not close the previous reader.
 func (t *Terminal) SetReader(r io.Reader) {
 	t.mu.Lock()
 	t.reader = r
+	t.exited = false
 	t.mu.Unlock()
 	if r == nil {
 		return
@@ -97,10 +102,28 @@ func (t *Terminal) SetReader(r io.Reader) {
 				}
 			}
 			if err != nil {
+				t.readerEnded(tr, r)
 				return
 			}
 		}
 	}()
+}
+
+// readerEnded emits Exit once, on the UI goroutine, for the current reader.
+func (t *Terminal) readerEnded(tr *Tree, r io.Reader) {
+	t.mu.Lock()
+	if t.reader != r || t.exited {
+		t.mu.Unlock()
+		return
+	}
+	t.exited = true
+	t.mu.Unlock()
+	emit := func() { t.Exit.Emit(struct{}{}) }
+	if tr != nil {
+		tr.Post(emit)
+		return
+	}
+	emit()
 }
 
 // SetWriter is the writer keyboard input goes to, usually the other end of a
@@ -178,6 +201,12 @@ func (t *Terminal) Grid() TerminalSize {
 
 // OnResize subscribes to grid changes. The callback runs on the UI goroutine.
 func (t *Terminal) OnResize(fn func(TerminalSize)) (off func()) { return t.Resize.On(fn) }
+
+// OnExit subscribes to the end of the reader, after the shell exits or the
+// stream closes. The callback runs on the UI goroutine.
+func (t *Terminal) OnExit(fn func()) (off func()) {
+	return t.Exit.On(func(struct{}) { fn() })
+}
 
 // ScrollBy moves the scrollback by n lines; positive moves into history. It
 // reports whether the view changed.

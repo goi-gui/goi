@@ -3,6 +3,7 @@ package tree
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestTerminalParsesTextAndSGR(t *testing.T) {
@@ -171,5 +172,17 @@ func TestTerminalDECModes(t *testing.T) {
 	term.WriteMouse(0, 1, 2, true, false)
 	if got := out.String(); got != "\x1b[32;3;2M" {
 		t.Fatalf("urxvt mouse = %q", got)
+	}
+}
+
+func TestTerminalExitEvent(t *testing.T) {
+	var term Terminal
+	done := make(chan struct{}, 1)
+	term.OnExit(func() { done <- struct{}{} })
+	term.SetReader(strings.NewReader("exit\r\n"))
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("no exit event after the reader ended")
 	}
 }
