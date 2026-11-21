@@ -155,7 +155,7 @@ var props = map[string][]string{
 	"DatePicker":       {"label", "text"},
 	"TimePicker":       {"label", "text", "variant", "hourFormat"},
 	"ColorPicker":      {"label", "text"},
-	"Carousel":         {},
+	"Carousel":         {"shrink"},
 	"CarouselItem":     {"label", "supporting", "labelColor", "supportingColor"},
 	"Toolbar":          {},
 	"TextArea":         {"label", "text", "placeholder", "supporting", "variant", "disabled"},

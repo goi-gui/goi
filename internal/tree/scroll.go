@@ -199,7 +199,13 @@ func (b *NodeBase) setScrollOffsetRaw(axis Axis, v float64) {
 	default:
 		return
 	}
-	b.MarkDirty(DirtyPaint)
+	dirty := DirtyPaint
+	if b.Node().Kind() == "Carousel" {
+		// A carousel's card widths follow the offset, so every scroll frame is
+		// also a layout frame.
+		dirty = DirtyLayout
+	}
+	b.MarkDirty(dirty)
 }
 
 // ScrollTo jumps along the node's primary axis: down a column, sideways along a

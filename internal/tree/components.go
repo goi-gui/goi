@@ -1132,12 +1132,20 @@ func (c *Code) highlight() (string, []highlight.Span) {
 	return c.hlSrc, c.hlSpans
 }
 
-// Carousel shows a scrollable row of items.
-type Carousel struct{ Component }
+// Carousel shows a scrollable row of items whose width follows the scroll: the
+// leading card is full size and the next one grows into place.
+type Carousel struct {
+	Component
+	// Shrink is the share of a card's width kept when it is not the leading one.
+	Shrink Prop[float64]
+}
 
 // Kind implements Node.
-func (*Carousel) Kind() string              { return "Carousel" }
-func (c *Carousel) namedProps() []NamedProp { return c.props("Carousel") }
+func (*Carousel) Kind() string { return "Carousel" }
+func (c *Carousel) namedProps() []NamedProp {
+	return append(c.propsExcept("Carousel", "shrink"),
+		NumberProp(&c.NodeBase, "shrink", DirtyLayout, &c.Shrink))
+}
 
 // CarouselItem is one card in a Carousel. It clips its child to a rounded box,
 // paints a label over a bottom scrim and takes a press like a card.

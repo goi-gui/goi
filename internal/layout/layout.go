@@ -181,8 +181,10 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 			e.textFieldSlots(b, kids, cw, ch, insetL, insetT)
 		case "SearchBar":
 			e.searchBarSlots(b, kids, cw, ch, insetL, insetT)
-		case "ButtonGroup", "Row", "Toolbar", "Carousel", "Breadcrumb":
+		case "ButtonGroup", "Row", "Toolbar", "Breadcrumb":
 			e.linear(b, kids, cw, ch, insetL, true, insetT)
+		case "Carousel":
+			e.carouselChildren(b, kids, cw, ch, insetL, insetT)
 		case "CarouselItem":
 			// A card's image or overlay fills it; a Positioned child still
 			// anchors itself.
@@ -206,6 +208,89 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 		e.grid(b, kids, cw, ch, pe.Left+be.Left, pe.Top+be.Top)
 	default: // Window, Column
 		e.linear(b, kids, cw, ch, pe.Left+be.Left, false, pe.Top+be.Top)
+	}
+}
+
+// carouselChildren lays a carousel out from its scroll offset: every card before
+// the leading one keeps the full width, the leading one is full, the next grows
+// from shrink to full as the strip scrolls, and the rest stay shrunk. That is
+// what makes the incoming card widen while the outgoing card leaves.
+func (e *Engine) carouselChildren(b *tree.NodeBase, kids []*tree.NodeBase, w, h, insetL, insetT float64) {
+	c, ok := b.Node().(*tree.Carousel)
+	if !ok {
+		e.linear(b, kids, w, h, insetL, true, insetT)
+		return
+	}
+	shrink := c.Shrink.Get()
+	if shrink < 0 {
+		shrink = 0
+	}
+	if shrink > 1 {
+		shrink = 1
+	}
+	spacing := c.Spacing.Get()
+	offset := b.ScrollOffsetFor(tree.AxisX)
+	align := c.CrossAlign.Get()
+
+	large := func(k *tree.NodeBase) float64 {
+		if v := k.Width(); v >= 0 {
+			return v
+		}
+		mw, _ := e.natural(k, w, h)
+		if mw < 0 {
+			mw = 0
+		}
+		return mw
+	}
+
+	// The items before the leading one are full width, so their starts are
+	// independent of the animated cards. Find the last start the leading edge
+	// has passed.
+	lead, leadStart := 0, 0.0
+	x := 0.0
+	for i, k := range kids {
+		if x <= offset+0.5 {
+			lead, leadStart = i, x
+		}
+		x += large(k) + spacing
+	}
+	progress := 0.0
+	if lead < len(kids) {
+		if pitch := large(kids[lead]) + spacing; pitch > 0 {
+			progress = (offset - leadStart) / pitch
+			progress = maxf(0, minf(1, progress))
+		}
+	}
+
+	x = 0
+	for i, k := range kids {
+		width := large(k)
+		if i > lead {
+			small := width * shrink
+			width = small
+			if i == lead+1 {
+				width = small + (large(k)-small)*progress
+			}
+		}
+		height := k.Height()
+		if height < 0 {
+			if align == "stretch" {
+				height = h
+			} else {
+				_, height = e.natural(k, width, h)
+			}
+		}
+		me := k.MarginEdges()
+		y := insetT + crossAlign(align, h, height)
+		r := tree.Rect{
+			X: insetL + x + me.Left,
+			Y: y + me.Top,
+			W: maxf(width, 0),
+			H: maxf(height, 0),
+		}
+		k.SetBounds(r)
+		e.children(k, r.W, r.H)
+		x += me.Left + r.W + me.Right + spacing
 	}
 }
 

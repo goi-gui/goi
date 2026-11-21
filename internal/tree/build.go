@@ -845,7 +845,10 @@ func newM3Component(name string) Node {
 		tp.Variant.dirty = DirtyLayout
 		return tp
 	case "Carousel":
-		return &Carousel{Component: newComponent()}
+		return &Carousel{
+			Component: newComponent(),
+			Shrink:    newProp(nil, "shrink", DirtyLayout, 0.7),
+		}
 	case "CarouselItem":
 		return &CarouselItem{Component: newComponent()}
 	case "Toolbar":

@@ -652,6 +652,9 @@ var elements = func() []Element {
 			if p := out[i].Prop("crossAxisAlign"); p != nil {
 				p.Default = "stretch"
 			}
+			if p := out[i].Prop("shrink"); p != nil {
+				p.Default = 0.7
+			}
 		case "CarouselItem":
 			if p := out[i].Prop("scrollSnapAlign"); p != nil {
 				p.Default = "start"
