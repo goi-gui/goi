@@ -508,3 +508,129 @@ func TestRootMask(t *testing.T) {
 		t.Fatalf("corner alpha = %d, want the mask to hide it", a)
 	}
 }
+
+func TestTextDraws(t *testing.T) {
+	const src = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50">
+		<text x="10" y="30" font-size="20" fill="red">Hi</text>
+	</svg>`
+	s, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := s.Render(0xFFFFFFFF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	red := 0
+	for i := 0; i < len(d.Pix); i += 4 {
+		if d.Pix[i] > 200 && d.Pix[i+1] < 60 && d.Pix[i+3] > 0 {
+			red++
+		}
+	}
+	if red < 20 {
+		t.Fatalf("red text pixels = %d, want a drawn label", red)
+	}
+}
+
+func TestEmbeddedImage(t *testing.T) {
+	const src = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+		<image x="10" y="10" width="40" height="40" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII="/>
+	</svg>`
+	s, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := s.Render(0xFFFFFFFF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, g, b, a := pixelAt(d, d.W/5, d.H/5); a < 250 || r < 220 || g > 30 || b > 30 {
+		t.Fatalf("image centre = %d,%d,%d,%d, want red", r, g, b, a)
+	}
+	if _, _, _, a := pixelAt(d, 2, 2); a > 10 {
+		t.Fatalf("outside image alpha = %d, want transparent", a)
+	}
+}
+
+func TestRootGaussianBlur(t *testing.T) {
+	const src = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+		<defs><filter id="f"><feGaussianBlur stdDeviation="2"/></filter></defs>
+		<g filter="url(#f)"><rect x="40" y="40" width="20" height="20" fill="red"/></g>
+	</svg>`
+	s, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := s.Render(0xFFFFFFFF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, a := pixelAt(d, 38*d.W/100, 50*d.H/100); a < 10 || a > 240 {
+		t.Fatalf("blurred edge alpha = %d, want a soft falloff", a)
+	}
+}
+
+func TestRootDropShadow(t *testing.T) {
+	const src = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+		<defs><filter id="f"><feDropShadow dx="4" dy="4" stdDeviation="1" flood-color="#000000" flood-opacity="0.8"/></filter></defs>
+		<g filter="url(#f)"><rect x="30" y="30" width="30" height="30" fill="red"/></g>
+	</svg>`
+	s, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := s.Render(0xFFFFFFFF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, a := pixelAt(d, 63*d.W/100, 63*d.H/100); a < 20 {
+		t.Fatalf("shadow alpha = %d, want a soft shadow below the box", a)
+	}
+	if r, g, b, a := pixelAt(d, 45*d.W/100, 45*d.H/100); a < 250 || r < 220 || g > 30 || b > 30 {
+		t.Fatalf("box centre = %d,%d,%d,%d, want red", r, g, b, a)
+	}
+}
+
+func TestPatternFill(t *testing.T) {
+	const src = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+		<defs><pattern id="p" width="10" height="10" patternUnits="userSpaceOnUse">
+			<rect width="5" height="10" fill="red"/>
+			<rect x="5" width="5" height="10" fill="blue"/>
+		</pattern></defs>
+		<rect width="100" height="100" fill="url(#p)"/>
+	</svg>`
+	s, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := s.Render(0xFFFFFFFF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, g, b, a := pixelAt(d, 10*d.W/100, 50*d.H/100)
+	if a < 250 || r < 220 || g > 30 || b > 30 {
+		t.Fatalf("pattern red cell = %d,%d,%d,%d", r, g, b, a)
+	}
+	r, g, b, a = pixelAt(d, 15*d.W/100, 50*d.H/100)
+	if a < 250 || b < 220 || r > 30 || g > 30 {
+		t.Fatalf("pattern blue cell = %d,%d,%d,%d", r, g, b, a)
+	}
+}
+
+func TestElementFilter(t *testing.T) {
+	const src = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+		<defs><filter id="f"><feGaussianBlur stdDeviation="2"/></filter></defs>
+		<rect x="40" y="40" width="20" height="20" fill="red" filter="url(#f)"/>
+	</svg>`
+	s, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := s.Render(0xFFFFFFFF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, a := pixelAt(d, 38*d.W/100, 50*d.H/100); a < 10 || a > 240 {
+		t.Fatalf("filtered edge alpha = %d, want a soft falloff", a)
+	}
+}

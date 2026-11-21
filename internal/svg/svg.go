@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"image"
+	"image/draw"
 	"math"
 	"regexp"
 	"strconv"
@@ -41,6 +42,15 @@ type SVG struct {
 	// the renderer's missing clip support.
 	mask    []byte
 	maskLum bool
+	blurX   float64
+	blurY   float64
+	// patterns are top-level pattern-filled shapes, tiled separately because
+	// oksvg has no pattern support.
+	patterns     []patternLayer
+	patternMain  []byte
+	shadow       *dropShadow
+	filterLayers []filterLayer
+	filterMain   []byte
 	// dur is the longest animation in the file, zero for a still document.
 	dur time.Duration
 }
@@ -58,6 +68,7 @@ func Parse(b []byte) (*SVG, error) {
 	}
 	if tree, err := parseTree(b); err == nil {
 		resolveGradientRefs(tree)
+		resolvePatternRefs(tree)
 		normalizeViewBox(tree)
 		flattenNestedSVG(tree)
 		expandSymbolUses(tree)
@@ -66,7 +77,16 @@ func Parse(b []byte) (*SVG, error) {
 		if mask == nil {
 			mask, maskLum = luminanceMaskSource(tree)
 		}
-		s := &SVG{src: b, w: w, h: h, tree: tree, css: collectCSS(tree), anims: anims, dur: dur, mask: mask, maskLum: maskLum}
+		blurX, blurY, _ := blurRadius(tree)
+		shadow := dropShadowOf(tree)
+		sheet := collectCSS(tree)
+		patterns, patternMain := collectPatterns(tree, sheet)
+		var filters []filterLayer
+		var filterMain []byte
+		if blurX == 0 && blurY == 0 && shadow == nil {
+			filters, filterMain = collectFilters(tree, sheet)
+		}
+		s := &SVG{src: b, w: w, h: h, tree: tree, css: sheet, anims: anims, dur: dur, mask: mask, maskLum: maskLum, blurX: blurX, blurY: blurY, patterns: patterns, patternMain: patternMain, shadow: shadow, filterLayers: filters, filterMain: filterMain}
 		if s.w <= 0 || s.h <= 0 {
 			s.w, s.h = rootSize(tree)
 		}
@@ -128,13 +148,73 @@ func (s *SVG) RenderAt(color uint32, elapsed time.Duration) (*img.Data, error) {
 // RenderAtLoop is RenderAt with a loop choice: false plays each animation once
 // and holds its last frame, whatever repeatCount the file declares.
 func (s *SVG) RenderAtLoop(color uint32, elapsed time.Duration, loop bool) (*img.Data, error) {
-	src := defaultRectRy(s.renderAt(elapsed, loop))
+	rendered := s.renderAt(elapsed, loop)
+	if len(s.patterns) > 0 && s.patternMain != nil {
+		rendered = s.patternMain
+	}
+	if len(s.filterLayers) > 0 && s.filterMain != nil {
+		rendered = s.filterMain
+	}
+	src := defaultRectRy(rendered)
 	pixelW, _ := s.pixels()
 	src = scaleStrokeWidths(src, float64(pixelW)/s.w)
 	w, h := s.pixels()
+	var under *image.RGBA
+	if s.tree != nil {
+		layer := image.NewRGBA(image.Rect(0, 0, w, h))
+		if drawImages(layer, s.tree, float64(w)/s.w) {
+			under = layer
+		}
+	}
 	d, err := drawSVG(src, color, w, h, s.w, s.h)
 	if err != nil {
 		return nil, err
+	}
+	if len(s.patterns) > 0 {
+		overlay := patternOverlay(s.patterns, color, w, h, float64(w)/s.w)
+		if under != nil {
+			draw.Draw(overlay, overlay.Bounds(), under, image.Point{}, draw.Over)
+		}
+		if len(s.filterLayers) > 0 {
+			drawFilterLayers(overlay, s.filterLayers, color, w, h, s.w, s.w)
+		}
+		draw.Draw(overlay, overlay.Bounds(),
+			&image.RGBA{Pix: d.Pix, Stride: d.W * 4, Rect: image.Rect(0, 0, d.W, d.H)},
+			image.Point{}, draw.Over)
+		d.Pix = overlay.Pix
+	} else if len(s.filterLayers) > 0 {
+		overlay := image.NewRGBA(image.Rect(0, 0, w, h))
+		if under != nil {
+			draw.Draw(overlay, overlay.Bounds(), under, image.Point{}, draw.Over)
+		}
+		drawFilterLayers(overlay, s.filterLayers, color, w, h, s.w, s.w)
+		draw.Draw(overlay, overlay.Bounds(),
+			&image.RGBA{Pix: d.Pix, Stride: d.W * 4, Rect: image.Rect(0, 0, d.W, d.H)},
+			image.Point{}, draw.Over)
+		d.Pix = overlay.Pix
+	} else if under != nil {
+		draw.Draw(under, under.Bounds(),
+			&image.RGBA{Pix: d.Pix, Stride: d.W * 4, Rect: image.Rect(0, 0, d.W, d.H)},
+			image.Point{}, draw.Over)
+		d.Pix = under.Pix
+	}
+	if s.tree != nil {
+		canvas := &image.RGBA{Pix: d.Pix, Stride: d.W * 4, Rect: image.Rect(0, 0, d.W, d.H)}
+		drawTexts(canvas, s.tree, s.css, float64(w)/s.w, color)
+	}
+	scale := float64(w) / s.w
+	if s.shadow != nil {
+		if sh := dropShadowImage(d.Pix, w, h, s.shadow, scale); sh != nil {
+			base := &image.RGBA{Pix: make([]byte, len(sh)), Stride: w * 4, Rect: image.Rect(0, 0, w, h)}
+			copy(base.Pix, sh)
+			draw.Draw(base, base.Bounds(),
+				&image.RGBA{Pix: d.Pix, Stride: d.W * 4, Rect: image.Rect(0, 0, d.W, d.H)},
+				image.Point{}, draw.Over)
+			d.Pix = base.Pix
+		}
+	}
+	if s.blurX > 0 || s.blurY > 0 {
+		blurRGBA(d.Pix, w, h, s.blurX*scale, s.blurY*scale)
 	}
 	if len(s.mask) > 0 {
 		mask, err := drawSVG(defaultRectRy(scaleStrokeWidths(s.mask, float64(pixelW)/s.w)),

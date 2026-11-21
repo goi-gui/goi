@@ -27,11 +27,16 @@ func clipMaskSource(root *elem) []byte {
 	}
 	clip := attr(target, "clip-path")
 	if clip == "" {
-		if len(drawable) != 1 {
+		if len(drawable) == 0 {
 			return nil
 		}
+		clip = attr(drawable[0], "clip-path")
+		for _, k := range drawable {
+			if attr(k, "clip-path") != clip {
+				return nil
+			}
+		}
 		target = drawable[0]
-		clip = attr(target, "clip-path")
 	}
 	if clip == "" {
 		return nil
@@ -155,11 +160,16 @@ func luminanceMaskSource(root *elem) ([]byte, bool) {
 	}
 	ref := attr(target, "mask")
 	if ref == "" {
-		if len(drawable) != 1 {
+		if len(drawable) == 0 {
 			return nil, false
 		}
+		ref = attr(drawable[0], "mask")
+		for _, k := range drawable {
+			if attr(k, "mask") != ref {
+				return nil, false
+			}
+		}
 		target = drawable[0]
-		ref = attr(target, "mask")
 	}
 	if ref == "" {
 		return nil, false

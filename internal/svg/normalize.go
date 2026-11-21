@@ -127,6 +127,56 @@ func resolveGradientRefs(root *elem) {
 	}
 }
 
+func resolvePatternRefs(root *elem) {
+	byID := make(map[string]*elem)
+	walkPaths(root, nil, func(e *elem, _ []int) {
+		if id := attr(e, "id"); id != "" {
+			byID[id] = e
+		}
+	})
+	var resolve func(e *elem, seen map[*elem]bool)
+	resolve = func(e *elem, seen map[*elem]bool) {
+		if seen[e] {
+			return
+		}
+		seen[e] = true
+		href := attr(e, "href")
+		if href == "" {
+			return
+		}
+		target := byID[strings.TrimPrefix(href, "#")]
+		if target == nil || target.name.Local != "pattern" {
+			return
+		}
+		resolve(target, seen)
+		for _, a := range target.attrs {
+			if a.Name.Local == "id" || a.Name.Local == "href" {
+				continue
+			}
+			if !hasAttr(e, a.Name.Local) {
+				e.attrs = append(e.attrs, a)
+			}
+		}
+		if !hasChild(e, "rect") && !hasChild(e, "path") && !hasChild(e, "circle") &&
+			!hasChild(e, "ellipse") && !hasChild(e, "polygon") && !hasChild(e, "polyline") &&
+			!hasChild(e, "line") && !hasChild(e, "use") {
+			e.kids = append(e.kids, target.kids...)
+		}
+		filtered := e.attrs[:0]
+		for _, a := range e.attrs {
+			if a.Name.Local != "href" {
+				filtered = append(filtered, a)
+			}
+		}
+		e.attrs = filtered
+	}
+	walkPaths(root, nil, func(e *elem, _ []int) {
+		if e.name.Local == "pattern" {
+			resolve(e, map[*elem]bool{})
+		}
+	})
+}
+
 func allGradients(root *elem) []*elem {
 	var out []*elem
 	walkPaths(root, nil, func(e *elem, _ []int) {
