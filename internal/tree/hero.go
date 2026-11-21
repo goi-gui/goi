@@ -1,6 +1,9 @@
 package tree
 
-import "time"
+import (
+	"math"
+	"time"
+)
 
 // defaultHeroDuration is how long a shared element flies when the design does
 // not name a duration.
@@ -139,17 +142,29 @@ func heroProgress(f *HeroFlight, clock time.Duration) float64 {
 	if p >= 1 {
 		return 1
 	}
-	// The same cubic ease-out a transition uses without a timing function.
-	return 1 - (1-p)*(1-p)*(1-p)
+	// Material's fast-out-slow-in curve: the flight leaves gently, covers most
+	// of the distance in the middle, and settles instead of stopping abruptly.
+	return cubicBezier(0.4, 0, 0.2, 1, p)
 }
 
-// heroRect interpolates the old and new boxes. Size and position travel
-// together, so the content grows into place instead of jumping.
+// heroRect moves the centre along a slight arc and the size linearly. Flutter's
+// Material rect tween does the same: an element that changes both axes sweeps
+// around the page instead of cutting a straight diagonal. Aligned flights stay
+// straight, where an arc would only look like a wobble.
 func heroRect(f *HeroFlight, p float64) Rect {
-	return Rect{
-		X: f.FromRect.X + (f.ToRect.X-f.FromRect.X)*p,
-		Y: f.FromRect.Y + (f.ToRect.Y-f.FromRect.Y)*p,
-		W: f.FromRect.W + (f.ToRect.W-f.FromRect.W)*p,
-		H: f.FromRect.H + (f.ToRect.H-f.FromRect.H)*p,
+	w := f.FromRect.W + (f.ToRect.W-f.FromRect.W)*p
+	h := f.FromRect.H + (f.ToRect.H-f.FromRect.H)*p
+	fx, fy := f.FromRect.X+f.FromRect.W/2, f.FromRect.Y+f.FromRect.H/2
+	tx, ty := f.ToRect.X+f.ToRect.W/2, f.ToRect.Y+f.ToRect.H/2
+	cx, cy := (fx+tx)/2, (fy+ty)/2
+	if dx, dy := tx-fx, ty-fy; math.Abs(dx) > 1 && math.Abs(dy) > 1 {
+		d := math.Hypot(dx, dy)
+		// A shallow bend, so the path reads as an arc and not a loop.
+		bend := d * 0.12
+		cx -= dy / d * bend
+		cy += dx / d * bend
 	}
+	x := (1-p)*(1-p)*fx + 2*(1-p)*p*cx + p*p*tx
+	y := (1-p)*(1-p)*fy + 2*(1-p)*p*cy + p*p*ty
+	return Rect{X: x - w/2, Y: y - h/2, W: w, H: h}
 }

@@ -231,9 +231,6 @@ type List struct {
 	// heroOps are the flight copies of shared elements, collected during the
 	// walk and painted above the page.
 	heroOps []Op
-	// heroCache keeps the last painted ops of each Hero tag, so a flight can
-	// show the source page's content rather than the destination's.
-	heroCache map[string][]Op
 }
 
 // Reset empties the list but keeps its capacity.

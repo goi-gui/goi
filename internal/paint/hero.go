@@ -24,32 +24,20 @@ func (l *List) heroFinish(b *tree.NodeBase, r tree.Rect, from int) {
 		if flight == nil || cur.W <= 0 || cur.H <= 0 || flight.FromRect.W <= 0 || flight.FromRect.H <= 0 {
 			return
 		}
-		var ops []Op
-		dst := r
-		if old := l.heroCache[h.Tag.Get()]; len(old) > 0 {
-			ops = append([]Op(nil), old...)
-			dst = flight.FromRect
-		} else if from < len(l.Ops) {
-			ops = append([]Op(nil), l.Ops[from:]...)
-		}
-		if len(ops) == 0 {
+		if from >= len(l.Ops) {
 			return
 		}
+		// Fly the destination's own content. It is already laid out for the
+		// landing box, so the last frame is the real Hero with no content swap.
+		ops := append([]Op(nil), l.Ops[from:]...)
 		l.Ops = l.Ops[:from]
 		for i := range ops {
-			flyOp(&ops[i], dst, cur)
+			flyOp(&ops[i], r, cur)
 		}
 		l.heroOps = append(l.heroOps, ops...)
 		l.Animating = true
 	case tree.HeroNormal:
-		if l.heroCache == nil {
-			l.heroCache = map[string][]Op{}
-		}
-		if from < len(l.Ops) {
-			l.heroCache[h.Tag.Get()] = append([]Op(nil), l.Ops[from:]...)
-		} else {
-			delete(l.heroCache, h.Tag.Get())
-		}
+		// The destination already painted itself in place.
 	}
 }
 

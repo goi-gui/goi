@@ -8,10 +8,10 @@ import (
 	"github.com/goi-gui/goi/internal/tree"
 )
 
-// TestHeroFliesTheOldContent: switching which Hero is visible starts a flight
-// from the old Hero's box, and the flight paints the old content, not the
-// destination's.
-func TestHeroFliesTheOldContent(t *testing.T) {
+// TestHeroFliesTheDestinationContent: switching which Hero is visible starts a
+// flight at the old Hero's box and paints the destination's own content, so the
+// last frame is already the real Hero and nothing pops when it lands.
+func TestHeroFliesTheDestinationContent(t *testing.T) {
 	tr, diag := tree.BuildSource([]byte(`Window {
 		Stack {
 			Hero {
@@ -58,11 +58,11 @@ func TestHeroFliesTheOldContent(t *testing.T) {
 			destination = true
 		}
 	}
-	if !old {
-		t.Fatal("the old Hero content is not in the flight")
+	if old {
+		t.Fatal("the old Hero content should be hidden during the flight")
 	}
-	if destination {
-		t.Fatal("the destination Hero painted before the flight ended")
+	if !destination {
+		t.Fatal("the flight does not paint the destination content")
 	}
 	if !l.Animating {
 		t.Fatal("the flight did not keep the frame loop awake")

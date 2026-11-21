@@ -6,8 +6,7 @@ import (
 )
 
 // TestHeroFlightProgress: the tag's old and new nodes start a flight, and its
-// box interpolates between the two over the duration. The old content is what
-// paint draws during the flight.
+// box interpolates between the two over the duration.
 func TestHeroFlightProgress(t *testing.T) {
 	tr, diag := BuildSource([]byte(`Window {
 		Stack {
@@ -52,4 +51,30 @@ func TestHeroFlightProgress(t *testing.T) {
 		t.Fatalf("flight middle = %v at %v", mode, cur)
 	}
 	tr.EndHeroFrame()
+}
+
+func TestHeroCurveAndArc(t *testing.T) {
+	// fastOutSlowIn covers most of the distance by the middle, then settles.
+	if p := heroProgress(&HeroFlight{Duration: time.Second}, 500*time.Millisecond); p < 0.7 || p > 0.85 {
+		t.Fatalf("mid progress = %v, want a fast-out-slow-in curve", p)
+	}
+	// A diagonal flight bends away from the straight midpoint.
+	f := &HeroFlight{
+		FromRect: Rect{X: 0, Y: 0, W: 100, H: 100},
+		ToRect:   Rect{X: 200, Y: 200, W: 100, H: 100},
+	}
+	r := heroRect(f, 0.5)
+	center := r.X + r.W/2
+	if center == 150 {
+		t.Fatalf("diagonal flight went straight: %v", r)
+	}
+	// Aligned flights stay straight, so a tile that only changes width or
+	// position on one axis does not wobble.
+	f = &HeroFlight{
+		FromRect: Rect{X: 0, Y: 0, W: 100, H: 100},
+		ToRect:   Rect{X: 200, Y: 0, W: 100, H: 100},
+	}
+	if r := heroRect(f, 0.5); r.Y+r.H/2 != 50 {
+		t.Fatalf("aligned flight bent: %v", r)
+	}
 }
