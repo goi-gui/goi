@@ -126,6 +126,29 @@ opt-in; `all` enables every one. File dialogs and `Notify` need no tag. See
 [Building](https://goi.kaanksc.com/guide/build/) for the SDL3 package names per
 platform, the tag table and the memory knobs.
 
+## Built with
+
+goi is small because these libraries do the heavy lifting. Thank you to their
+authors and maintainers, and to everyone who reports a bug or sends a patch
+upstream:
+
+| Library | Used for |
+| --- | --- |
+| [gogpu/wgpu](https://github.com/gogpu/wgpu), [gogpu/gputypes](https://github.com/gogpu/gputypes) | WebGPU rendering and GPU types |
+| [Zyko0/go-sdl3](https://github.com/Zyko0/go-sdl3), [ebitengine/purego](https://github.com/ebitengine/purego) | SDL3 window, input and platform bindings without cgo |
+| [go-text/typesetting](https://github.com/go-text/typesetting) | Shaping and laying out bidirectional text |
+| [golang.org/x/text](https://pkg.go.dev/golang.org/x/text), [golang.org/x/image](https://pkg.go.dev/golang.org/x/image) | Unicode data, font parsing and image formats |
+| [srwiley/oksvg](https://github.com/srwiley/oksvg), [srwiley/rasterx](https://github.com/srwiley/rasterx) | SVG parsing and rasterisation |
+| [yuin/goldmark](https://github.com/yuin/goldmark) | Markdown documents |
+| [alecthomas/chroma](https://github.com/alecthomas/chroma) | Code block highlighting |
+| [Broderick-Westrope/pele-go](https://github.com/Broderick-Westrope/pele-go), [tetratelabs/wazero](https://github.com/tetratelabs/wazero) | Mermaid diagrams in a WebAssembly runtime |
+| [kettek/apng](https://github.com/kettek/apng) | Animated PNG decoding |
+| [ncruces/zenity](https://github.com/ncruces/zenity), [godbus/dbus](https://github.com/godbus/dbus), [gen2brain/beeep](https://github.com/gen2brain/beeep) | Native file dialogs and desktop notifications |
+| [spf13/cobra](https://github.com/spf13/cobra), [charmbracelet/huh](https://github.com/charmbracelet/huh) | The `goi` command and its interactive prompts |
+| [fsnotify/fsnotify](https://github.com/fsnotify/fsnotify) | Hot reload |
+| [ksckaan1/logger](https://github.com/ksckaan1/logger) | Structured logging |
+| [gopkg.in/yaml.v3](https://pkg.go.dev/gopkg.in/yaml.v3) | Reading `goi.yaml` |
+
 ## Examples
 
 The [examples repository](https://github.com/goi-gui/examples) has a full
