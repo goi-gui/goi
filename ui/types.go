@@ -204,6 +204,7 @@ type (
 	MapTile          = tree.MapTile
 	Coord            = tree.Coord
 	Carousel         = tree.Carousel
+	CarouselItem     = tree.CarouselItem
 	Toolbar          = tree.Toolbar
 	AspectRatio      = tree.AspectRatio
 	GestureDetector  = tree.GestureDetector
