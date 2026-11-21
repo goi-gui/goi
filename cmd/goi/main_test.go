@@ -57,14 +57,14 @@ func TestInitProjectWritesTheScaffold(t *testing.T) {
 	if cfg.Name != "myapp" {
 		t.Fatalf("name = %q, want myapp", cfg.Name)
 	}
-	if len(cfg.BuildFlags) != 1 || cfg.BuildFlags[0] != "all" {
-		t.Fatalf("buildFlags = %v, want [all]", cfg.BuildFlags)
+	if len(cfg.BuildFlags) != 1 || cfg.BuildFlags[0] != "auto" {
+		t.Fatalf("buildFlags = %v, want [auto]", cfg.BuildFlags)
 	}
 	raw, err := os.ReadFile(filepath.Join(dir, "goi.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"name: myapp", "id: com.example.myapp", "runFlags: [all]", "buildFlags: [all]", "assets: assets", "entrypoint: cmd"} {
+	for _, want := range []string{"name: myapp", "id: com.example.myapp", "runFlags: [all]", "buildFlags: [auto]", "assets: assets", "entrypoint: cmd"} {
 		if !strings.Contains(string(raw), want) {
 			t.Errorf("goi.yaml lacks %q:\n%s", want, raw)
 		}

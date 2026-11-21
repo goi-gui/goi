@@ -133,8 +133,8 @@ func configSource(o initOptions) string {
 		"# Build tags passed to goi run. nofakecgo and CGO_ENABLED=0 are always\n" +
 		"# used; all turns on every optional feature.\n" +
 		"runFlags: [all]\n\n" +
-		"# Build tags passed to goi build.\n" +
-		"buildFlags: [all]\n\n" +
+		"# Build tags passed to goi build; auto adds only what the design uses.\n" +
+		"buildFlags: [auto]\n\n" +
 		"# Where LoadWindow finds the design files and their assets.\n" +
 		"assets: " + yamlScalar(o.Assets) + "\n\n" +
 		"# Directory goi run and goi build execute.\n" +
