@@ -51,3 +51,21 @@ func TestTerminalTakesKeyboard(t *testing.T) {
 		t.Fatalf("view = %q", got)
 	}
 }
+
+func TestTerminalDragSelectsAndCopies(t *testing.T) {
+	_, win, in := inputFixture(t, terminalUI, 480, 320)
+	term := MustByID[*Terminal](win, "term")
+	term.Fit(40, 10)
+	term.SetCellSize(10, 20)
+	term.FeedString("abc\r\ndef")
+	var clip string
+	in.setClipboard = func(s string) { clip = s }
+	b := absoluteRect(term)
+	in.MouseDown(b.X+5, b.Y+15, 0, false)
+	in.MouseMove(b.X+25, b.Y+35)
+	in.MouseUp(b.X+25, b.Y+35, 0)
+	in.key(tree.KeyC, tree.Mods{Ctrl: true, Shift: true})
+	if want := "abc\ndef"; clip != want {
+		t.Fatalf("clipboard = %q, want %q", clip, want)
+	}
+}

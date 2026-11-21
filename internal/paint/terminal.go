@@ -69,9 +69,11 @@ func (l *List) paintTerminal(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	if rows < 1 {
 		rows = 1
 	}
+	term.SetCellSize(cellW, cellH)
 	term.Fit(cols, rows)
 	view := term.View(rows)
 	textClip := intersect(clip, inner)
+	l.termSelection(term, inner, cellW, cellH, textClip)
 
 	for row, line := range view.Lines {
 		y := inner.Y + float64(row)*cellH
@@ -126,6 +128,39 @@ func (l *List) paintTerminal(c *tree.Component, r tree.Rect, clip tree.Rect) {
 				l.textIn(string(cell.R), st, bg, tree.Rect{X: x, Y: y, W: cellW, H: cellH}, AlignStart, textClip)
 			}
 		}
+	}
+}
+
+// termSelection paints the reader's cell range under the glyphs.
+func (l *List) termSelection(term *tree.Terminal, inner tree.Rect, cellW, cellH float64, clip tree.Rect) {
+	startRow, startCol, endRow, endCol, ok := term.Selection()
+	if !ok {
+		return
+	}
+	color := withAlpha(l.Theme.Colors.Primary, 0.24)
+	for row := startRow; row <= endRow; row++ {
+		if row < 0 || float64(row)*cellH >= inner.H {
+			continue
+		}
+		from, to := 0, int(inner.W/cellW)
+		if row == startRow {
+			from = startCol
+		}
+		if row == endRow {
+			to = endCol + 1
+		}
+		if from < 0 {
+			from = 0
+		}
+		if to <= from {
+			continue
+		}
+		l.fillRect(tree.Rect{
+			X: inner.X + float64(from)*cellW,
+			Y: inner.Y + float64(row)*cellH,
+			W: float64(to-from) * cellW,
+			H: cellH,
+		}, color, 0, 0, 0, clip)
 	}
 }
 

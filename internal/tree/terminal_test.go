@@ -1,6 +1,9 @@
 package tree
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestTerminalParsesTextAndSGR(t *testing.T) {
 	var term Terminal
@@ -64,5 +67,29 @@ func TestTerminalAlternateScreen(t *testing.T) {
 	term.FeedString("\x1b[?1049l")
 	if got := term.View(3).Lines[0][0].R; got != 'm' {
 		t.Fatalf("restored screen = %q", string(got))
+	}
+}
+
+func TestTerminalSelectionAndModes(t *testing.T) {
+	var term Terminal
+	var out strings.Builder
+	term.SetWriter(&out)
+	term.Fit(20, 3)
+	term.FeedString("one\r\ntwo")
+	term.SelectionStart(0, 0)
+	term.SelectionExtend(1, 2)
+	if got, want := term.SelectedText(3), "one\ntwo"; got != want {
+		t.Fatalf("selected = %q, want %q", got, want)
+	}
+	term.FeedString("\x1b[?2004h")
+	term.WritePaste("hi")
+	if !strings.Contains(out.String(), "\x1b[200~hi\x1b[201~") {
+		t.Fatalf("bracketed paste = %q", out.String())
+	}
+	out.Reset()
+	term.FeedString("\x1b[?1000h\x1b[?1006h")
+	term.WriteMouse(0, 1, 2, true, false)
+	if got := out.String(); got != "\x1b[<0;3;2M" {
+		t.Fatalf("SGR mouse = %q", got)
 	}
 }

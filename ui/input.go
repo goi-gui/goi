@@ -74,6 +74,14 @@ type interactor struct {
 	textClickX     float64
 	textClickY     float64
 	textClickNode  tree.Node
+	// A terminal drag selects cells; mouse reporting sends the event to the
+	// program instead. They never run at the same time.
+	termSel      *tree.Terminal
+	termSelOn    bool
+	termMouse    *tree.Terminal
+	termMouseBtn int
+	termMouseRow int
+	termMouseCol int
 
 	// Clipboard hooks; nil uses the platform clipboard.
 	getClipboard func() string
@@ -523,6 +531,21 @@ func (i *interactor) event(name string, fields ...any) {
 
 func (i *interactor) MouseMove(x, y float64) {
 	i.cursorX, i.cursorY = x, y
+	if i.termSelOn && i.termSel != nil {
+		if row, col, ok := i.terminalCellAt(i.termSel, x, y); ok {
+			i.termSel.SelectionExtend(row, col)
+		}
+		return
+	}
+	if i.termMouse != nil {
+		if mode := i.termMouse.MouseMode(); mode == 1002 || mode == 1003 {
+			if row, col, ok := i.terminalCellAt(i.termMouse, x, y); ok {
+				i.termMouseRow, i.termMouseCol = row, col
+			}
+			i.termMouse.WriteMouse(i.termMouseBtn, i.termMouseRow, i.termMouseCol, true, true)
+		}
+		return
+	}
 	if i.mapNode != nil {
 		if m, ok := i.mapNode.(*tree.Map); ok {
 			dx, dy := x-i.mapLastX, y-i.mapLastY
@@ -799,6 +822,24 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 		i.clickOutside(hit, x, y)
 	}
 	i.pressX, i.pressY = x, y
+	if term := terminalAt(hit); term != nil && button <= 2 {
+		i.setKbd(term)
+		if row, col, ok := i.terminalCellAt(term, x, y); ok {
+			if term.MouseReporting() {
+				term.WriteMouse(button, row, col, true, false)
+				i.termMouse, i.termMouseBtn = term, button
+				i.termMouseRow, i.termMouseCol = row, col
+				i.markDirty()
+				return
+			}
+			if button == 0 {
+				term.SelectionStart(row, col)
+				i.termSel, i.termSelOn = term, true
+				i.markDirty()
+				return
+			}
+		}
+	}
 	i.pressed = nil
 	i.dragging = false
 	i.scrolled = false
@@ -1015,6 +1056,22 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 
 func (i *interactor) MouseUp(x, y float64, button int) {
 	i.event("MouseUp", "x", x, "y", y, "button", button)
+	if i.termMouse != nil {
+		row, col := i.termMouseRow, i.termMouseCol
+		if r, c, ok := i.terminalCellAt(i.termMouse, x, y); ok {
+			row, col = r, c
+		}
+		i.termMouse.WriteMouse(i.termMouseBtn, row, col, false, false)
+		i.termMouse = nil
+		i.markDirty()
+		return
+	}
+	if i.termSelOn {
+		i.termSelOn = false
+		i.termSel = nil
+		i.markDirty()
+		return
+	}
 	if i.colorNode != nil {
 		n := i.colorNode
 		i.colorNode = nil
@@ -2189,6 +2246,16 @@ func (i *interactor) Scroll(dx, dy float64, shift bool) {
 	}
 	hit := i.hit(i.cursorX, i.cursorY)
 	if term := terminalAt(hit); term != nil && dy != 0 {
+		if term.MouseReporting() {
+			if row, col, ok := i.terminalCellAt(term, i.cursorX, i.cursorY); ok {
+				button := 65
+				if dy > 0 {
+					button = 64
+				}
+				term.WriteMouse(button, row, col, true, false)
+				return
+			}
+		}
 		if term.ScrollBy(int(dy) * 3) {
 			i.markDirty()
 			return
@@ -2484,6 +2551,33 @@ func (i *interactor) dragScroll(x, y float64) bool {
 	return true
 }
 
+// terminalCellAt maps a window point to a terminal cell.
+func (i *interactor) terminalCellAt(term *tree.Terminal, x, y float64) (row, col int, ok bool) {
+	cw, ch := term.CellSize()
+	if cw <= 0 || ch <= 0 {
+		return 0, 0, false
+	}
+	r := absoluteRect(term)
+	pad := term.Base().PaddingEdges()
+	x -= r.X + pad.Left
+	y -= r.Y + pad.Top
+	if x < 0 || y < 0 {
+		return 0, 0, false
+	}
+	grid := term.Grid()
+	col, row = int(x/cw), int(y/ch)
+	if col >= grid.Cols {
+		col = grid.Cols - 1
+	}
+	if row >= grid.Rows {
+		row = grid.Rows - 1
+	}
+	if col < 0 || row < 0 {
+		return 0, 0, false
+	}
+	return row, col, true
+}
+
 // terminalAt returns the terminal at or above n.
 func terminalAt(n tree.Node) *tree.Terminal {
 	for n != nil {
@@ -2689,6 +2783,18 @@ func (i *interactor) key(k tree.Key, mods tree.Mods) {
 	// A terminal owns the keyboard while it has focus: Tab, Escape and the
 	// control letters belong to the shell, not to focus traversal or copy.
 	if term, ok := i.kbd.(*tree.Terminal); ok && i.focus == nil {
+		if mods.Control() && mods.Shift {
+			switch k {
+			case tree.KeyC:
+				if text := term.SelectedText(term.Grid().Rows); text != "" {
+					i.putClipboard(text)
+				}
+				return
+			case tree.KeyV:
+				term.WritePaste(i.clipboardText())
+				return
+			}
+		}
 		if term.Key(k, mods) {
 			i.markDirty()
 			return

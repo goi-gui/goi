@@ -1,7 +1,9 @@
 package tree
 
 import (
+	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -34,7 +36,18 @@ type Terminal struct {
 	// platforms deliver a letter as both KeyA and Char, others only as KeyA.
 	lastKey   rune
 	lastKeyAt time.Time
+	// Cell size is written by the painter; input uses it to map a pointer to a
+	// cell. Selection is in view coordinates, so it stays on the rows the
+	// reader dragged over.
+	cellW, cellH float64
+	selA, selB   termPoint
+	selActive    bool
+	mouseMode    int
+	mouseSGR     bool
+	bracketed    bool
 }
+
+type termPoint struct{ row, col int }
 
 // TerminalSize is the character grid a terminal measured.
 type TerminalSize struct {
@@ -443,6 +456,7 @@ func (t *Terminal) Fit(cols, rows int) {
 		return
 	}
 	t.state.resize(cols, rows, t.maxBack())
+	t.selActive = false
 	if t.alt {
 		t.normal.resize(cols, rows, t.maxBack())
 	}
@@ -720,6 +734,16 @@ func (t *Terminal) setPrivateMode(params []int, on bool) {
 			}
 		case 7:
 			t.state.autowrap = on
+		case 1000, 1002, 1003:
+			if on {
+				t.mouseMode = n
+			} else if t.mouseMode == n {
+				t.mouseMode = 0
+			}
+		case 1006:
+			t.mouseSGR = on
+		case 2004:
+			t.bracketed = on
 		}
 	}
 }
@@ -1022,6 +1046,165 @@ func xterm256(n int) uint32 {
 	return rgb(level(r), level(g), level(b))
 }
 
+// SetCellSize records the painted cell metrics, so a pointer can find a cell.
+func (t *Terminal) SetCellSize(w, h float64) {
+	t.mu.Lock()
+	t.cellW, t.cellH = w, h
+	t.mu.Unlock()
+}
+
+// CellSize is the painted cell metrics.
+func (t *Terminal) CellSize() (float64, float64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.cellW, t.cellH
+}
+
+// SelectionStart clears the old range and anchors a new one.
+func (t *Terminal) SelectionStart(row, col int) {
+	t.mu.Lock()
+	t.selA = termPoint{row, col}
+	t.selB = t.selA
+	t.selActive = true
+	t.mu.Unlock()
+	t.MarkDirty(DirtyPaint)
+}
+
+// SelectionExtend moves the loose end of the range.
+func (t *Terminal) SelectionExtend(row, col int) {
+	t.mu.Lock()
+	if !t.selActive {
+		t.mu.Unlock()
+		return
+	}
+	t.selB = termPoint{row, col}
+	t.mu.Unlock()
+	t.MarkDirty(DirtyPaint)
+}
+
+// ClearSelection drops the range.
+func (t *Terminal) ClearSelection() {
+	t.mu.Lock()
+	t.selActive = false
+	t.mu.Unlock()
+	t.MarkDirty(DirtyPaint)
+}
+
+// Selection returns the normalised range in view coordinates.
+func (t *Terminal) Selection() (startRow, startCol, endRow, endCol int, ok bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if !t.selActive {
+		return 0, 0, 0, 0, false
+	}
+	a, b := t.selA, t.selB
+	if a.row > b.row || (a.row == b.row && a.col > b.col) {
+		a, b = b, a
+	}
+	return a.row, a.col, b.row, b.col, true
+}
+
+// SelectedText is the selected cells as plain text, one line per row.
+func (t *Terminal) SelectedText(rows int) string {
+	t.mu.Lock()
+	if !t.selActive {
+		t.mu.Unlock()
+		return ""
+	}
+	a, b := t.selA, t.selB
+	if a.row > b.row || (a.row == b.row && a.col > b.col) {
+		a, b = b, a
+	}
+	t.mu.Unlock()
+	view := t.View(rows)
+	var lines []string
+	for row := a.row; row <= b.row && row < len(view.Lines); row++ {
+		if row < 0 {
+			continue
+		}
+		from, to := 0, len(view.Lines[row])
+		if row == a.row {
+			from = termClamp(a.col, to)
+		}
+		if row == b.row {
+			to = termClamp(b.col+1, to)
+		}
+		var b strings.Builder
+		for _, cell := range view.Lines[row][from:to] {
+			if cell.R == 0 {
+				b.WriteByte(' ')
+				continue
+			}
+			b.WriteRune(cell.R)
+		}
+		lines = append(lines, strings.TrimRight(b.String(), " "))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// MouseReporting reports whether the running program asked for mouse events.
+func (t *Terminal) MouseReporting() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.mouseMode != 0
+}
+
+// MouseMode returns the enabled DEC mouse mode, 0 when off.
+func (t *Terminal) MouseMode() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.mouseMode
+}
+
+// WriteMouse sends one mouse event in the mode the program enabled.
+func (t *Terminal) WriteMouse(button, row, col int, press, motion bool) {
+	t.mu.Lock()
+	mode, sgr := t.mouseMode, t.mouseSGR
+	t.mu.Unlock()
+	if mode == 0 {
+		return
+	}
+	if motion && mode != 1003 && !press {
+		return
+	}
+	if row < 0 || col < 0 {
+		return
+	}
+	b := button
+	if motion {
+		b += 32
+	}
+	if sgr {
+		final := "M"
+		if !press {
+			final = "m"
+		}
+		t.WriteInput(fmt.Sprintf("\x1b[<%d;%d;%d%s", b, col+1, row+1, final))
+		return
+	}
+	// X10 reports a release as button 3.
+	if !press && !motion {
+		b = 3
+	}
+	if b+32 > 255 || row+33 > 255 || col+33 > 255 {
+		return
+	}
+	t.WriteInput("\x1b[M" + string([]byte{byte(32 + b), byte(32 + col + 1), byte(32 + row + 1)}))
+}
+
+// WritePaste sends pasted text, wrapped when the program enabled bracketed
+// paste.
+func (t *Terminal) WritePaste(s string) {
+	t.mu.Lock()
+	bracketed := t.bracketed
+	t.mu.Unlock()
+	if bracketed {
+		t.WriteInput("\x1b[200~" + s + "\x1b[201~")
+		return
+	}
+	t.WriteInput(s)
+}
+
 // Key sends one non-text key to the writer. It reports whether the terminal
 // consumed it. Text runes arrive through WriteInput from the input layer.
 func (t *Terminal) Key(k Key, m Mods) bool {
@@ -1080,4 +1263,14 @@ func (t *Terminal) Key(k Key, m Mods) bool {
 	}
 	t.WriteInput(out)
 	return true
+}
+
+func termClamp(v, max int) int {
+	if v < 0 {
+		return 0
+	}
+	if v > max {
+		return max
+	}
+	return v
 }
