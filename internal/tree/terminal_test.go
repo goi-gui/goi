@@ -93,3 +93,83 @@ func TestTerminalSelectionAndModes(t *testing.T) {
 		t.Fatalf("SGR mouse = %q", got)
 	}
 }
+
+func TestTerminalWideAndCombiningCells(t *testing.T) {
+	var term Terminal
+	term.Fit(10, 2)
+	term.FeedString("a\u0301世")
+	v := term.View(2)
+	if v.Lines[0][0].R != 'a' || v.Lines[0][0].Comb != "\u0301" {
+		t.Fatalf("base cell = %+v", v.Lines[0][0])
+	}
+	if v.Lines[0][1].R != '世' || !v.Lines[0][2].Cont {
+		t.Fatalf("wide cells = %+v %+v", v.Lines[0][1], v.Lines[0][2])
+	}
+	term.SelectionStart(0, 0)
+	term.SelectionExtend(0, 2)
+	if got, want := term.SelectedText(2), "a\u0301世"; got != want {
+		t.Fatalf("selected = %q, want %q", got, want)
+	}
+}
+
+func TestTerminalOSC8Link(t *testing.T) {
+	var term Terminal
+	term.Fit(20, 2)
+	term.FeedString("\x1b]8;;https://example.com\x1b\\hi\x1b]8;;\x1b\\")
+	if got := term.LinkAt(2, 0, 0); got != "https://example.com" {
+		t.Fatalf("link = %q", got)
+	}
+	if got := term.LinkAt(2, 0, 2); got != "" {
+		t.Fatalf("link after reset = %q", got)
+	}
+}
+
+func TestTerminalSixel(t *testing.T) {
+	var term Terminal
+	term.Fit(20, 5)
+	// Two solid sixel columns of six rows, red.
+	term.FeedString("\x1bPq#1;2;100;0;0#1~~\x1b\\")
+	v := term.View(5)
+	im := v.Lines[0][0].Image
+	if im == nil {
+		t.Fatal("no sixel image")
+	}
+	if im.W != 2 || im.H != 6 {
+		t.Fatalf("image = %dx%d", im.W, im.H)
+	}
+	if im.Pix[0] != 255 || im.Pix[1] != 0 || im.Pix[3] != 255 {
+		t.Fatalf("pixel = %v", im.Pix[:4])
+	}
+}
+
+func TestTerminalDECModes(t *testing.T) {
+	var term Terminal
+	var out strings.Builder
+	term.SetWriter(&out)
+	term.Fit(20, 6)
+
+	term.FeedString("\x1b[?1h")
+	term.Key(KeyUp, Mods{})
+	if got := out.String(); got != "\x1bOA" {
+		t.Fatalf("application cursor key = %q", got)
+	}
+
+	out.Reset()
+	term.FeedString("\x1b[2;4r\x1b[?6h\x1b[1;1H")
+	if row := term.View(6).CursorRow; row != 1 {
+		t.Fatalf("origin cursor row = %d, want 1", row)
+	}
+
+	term.FeedString("\x1b[?1004h")
+	term.WriteFocus(true)
+	if got := out.String(); got != "\x1b[I" {
+		t.Fatalf("focus report = %q", got)
+	}
+
+	out.Reset()
+	term.FeedString("\x1b[?1015h")
+	term.WriteMouse(0, 1, 2, true, false)
+	if got := out.String(); got != "\x1b[32;3;2M" {
+		t.Fatalf("urxvt mouse = %q", got)
+	}
+}

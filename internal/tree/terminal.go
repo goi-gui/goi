@@ -3,10 +3,14 @@ package tree
 import (
 	"fmt"
 	"io"
+	"math"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unicode/utf8"
+
+	"github.com/goi-gui/goi/internal/img"
 )
 
 // Terminal is a character-cell terminal with ANSI/VT100 colours, cursor
@@ -44,7 +48,11 @@ type Terminal struct {
 	selActive    bool
 	mouseMode    int
 	mouseSGR     bool
+	mouseUTF8    bool
+	mouseURXVT   bool
 	bracketed    bool
+	// link is the current OSC 8 target, written into every cell put draws.
+	link string
 }
 
 type termPoint struct{ row, col int }
@@ -197,21 +205,25 @@ func (t *Terminal) ScrollBy(n int) bool {
 // terminalState is one screen. A terminal keeps a main and an alternate one so
 // a full-screen program can restore the shell when it exits.
 type terminalState struct {
-	lines    []termLine
-	scroll   []termLine
-	rows     int
-	cols     int
-	row      int
-	col      int
-	savedR   int
-	savedC   int
-	top      int
-	bottom   int
-	wrap     bool
-	maxBack  int
-	altState bool
-	cursor   bool
-	autowrap bool
+	lines     []termLine
+	scroll    []termLine
+	rows      int
+	cols      int
+	row       int
+	col       int
+	savedR    int
+	savedC    int
+	top       int
+	bottom    int
+	wrap      bool
+	maxBack   int
+	altState  bool
+	cursor    bool
+	autowrap  bool
+	origin    bool
+	appCursor bool
+	blink     bool
+	focus     bool
 }
 
 type termLine []termCell
@@ -221,6 +233,17 @@ type termCell struct {
 	fg   uint32
 	bg   uint32
 	attr termAttr
+	// extra holds the rare per-cell data: combining marks, a hyperlink, the
+	// second half of a wide character, or a sixel bitmap. Keeping it behind a
+	// pointer keeps a scrollback line of plain text small.
+	extra *termCellExtra
+}
+
+type termCellExtra struct {
+	comb  string
+	link  string
+	cont  bool
+	image *img.Data
 }
 
 type termAttr uint8
@@ -359,9 +382,14 @@ func (s *terminalState) scrollDown(n int) {
 // (Kept beside the state so the parser does not need a second argument.)
 
 // TerminalCell is one painted character cell. Zero FG/BG means the terminal's
-// default colour.
+// default colour. Comb is attached to R, Cont marks the second half of a wide
+// character, and Image is a sixel bitmap anchored here.
 type TerminalCell struct {
 	R                 rune
+	Comb              string
+	Cont              bool
+	Image             *img.Data
+	Link              string
 	FG, BG            uint32
 	Bold, Faint       bool
 	Italic, Underline bool
@@ -371,11 +399,12 @@ type TerminalCell struct {
 
 // TerminalView is the visible grid plus the cursor, with scrollback applied.
 type TerminalView struct {
-	Lines      [][]TerminalCell
-	CursorRow  int
-	CursorCol  int
-	CursorOn   bool
-	Cols, Rows int
+	Lines       [][]TerminalCell
+	CursorRow   int
+	CursorCol   int
+	CursorOn    bool
+	CursorBlink bool
+	Cols, Rows  int
 }
 
 // View returns the rows a painter should draw.
@@ -385,7 +414,8 @@ func (t *Terminal) View(rows int) TerminalView {
 	if rows < 1 {
 		rows = t.state.rows
 	}
-	v := TerminalView{Rows: rows, Cols: t.state.cols, CursorRow: -1, CursorCol: -1, CursorOn: t.state.cursor}
+	v := TerminalView{Rows: rows, Cols: t.state.cols, CursorRow: -1, CursorCol: -1,
+		CursorOn: t.state.cursor, CursorBlink: t.state.blink}
 	total := len(t.state.scroll) + len(t.state.lines)
 	end := total - t.scroll
 	if t.scroll == 0 {
@@ -412,13 +442,17 @@ func (t *Terminal) View(rows int) TerminalView {
 					break
 				}
 				cell := src[c]
-				line[c] = TerminalCell{
+				tc := TerminalCell{
 					R: cell.r, FG: cell.fg, BG: cell.bg,
 					Bold: cell.attr&termBold != 0, Faint: cell.attr&termFaint != 0,
 					Italic: cell.attr&termItalic != 0, Underline: cell.attr&termUnderline != 0,
 					Reverse: cell.attr&termReverse != 0, Strike: cell.attr&termStrike != 0,
 					Hidden: cell.attr&termHidden != 0,
 				}
+				if ex := cell.extra; ex != nil {
+					tc.Comb, tc.Link, tc.Cont, tc.Image = ex.comb, ex.link, ex.cont, ex.image
+				}
+				line[c] = tc
 			}
 		}
 		v.Lines = append(v.Lines, line)
@@ -441,8 +475,7 @@ func (t *Terminal) maxBack() int {
 	return n
 }
 
-// Fit sets the character grid measured from the painted box. A design can pin
-// it with cols and rows; otherwise the painter measures the available space.
+// Fit sets the character grid measured from the painted box.
 func (t *Terminal) Fit(cols, rows int) {
 	if cols < 1 {
 		cols = 1
@@ -468,6 +501,244 @@ func (t *Terminal) Fit(cols, rows int) {
 	t.MarkDirty(DirtyPaint)
 }
 
+// handleDCS reads a complete device-control string. A sixel sequence is the
+// one it can draw; other DCS payloads are ignored.
+func (t *Terminal) handleDCS(s string) {
+	if i := strings.IndexByte(s, 'q'); i >= 0 {
+		t.putSixel(s[i+1:])
+	}
+}
+
+// maxSixelDim bounds a sixel bitmap: a malformed sequence must not ask for a
+// gigabyte of pixels.
+const maxSixelDim = 4096
+
+// putSixel decodes the payload of a sixel DCS into a bitmap and anchors it at
+// the cursor cell.
+func (t *Terminal) putSixel(data string) {
+	var rows [][]uint32
+	var maxW int
+	ensure := func(y, x int) bool {
+		if y < 0 || x < 0 || y >= maxSixelDim || x >= maxSixelDim {
+			return false
+		}
+		for len(rows) <= y {
+			rows = append(rows, nil)
+		}
+		if len(rows[y]) <= x {
+			rows[y] = append(rows[y], make([]uint32, x+1-len(rows[y]))...)
+		}
+		return true
+	}
+	var palette [256]uint32
+	var have [256]bool
+	color := 0
+	set := func(x, y int) {
+		if !ensure(y, x) {
+			return
+		}
+		c := palette[color]
+		if !have[color] {
+			c = xterm256(color)
+			palette[color], have[color] = c, true
+		}
+		rows[y][x] = c
+	}
+	x, y, repeat := 0, 0, 1
+	for i := 0; i < len(data); i++ {
+		ch := data[i]
+		switch {
+		case ch >= '?' && ch <= '~':
+			bits := ch - '?'
+			for r := 0; r < repeat; r++ {
+				for b := 0; b < 6; b++ {
+					if bits&(1<<b) != 0 {
+						set(x+r, y+b)
+					}
+				}
+			}
+			x += repeat
+			repeat = 1
+			if x > maxW {
+				maxW = x
+			}
+		case ch == '!':
+			n, next := sixelNumber(data, i+1)
+			if next > i+1 {
+				repeat = n
+				i = next - 1
+			}
+			if repeat < 1 {
+				repeat = 1
+			}
+		case ch == '#':
+			n, next := sixelNumber(data, i+1)
+			if n >= 0 && n < len(palette) {
+				color = n
+			}
+			if next < len(data) && data[next] == ';' {
+				var vals []int
+				j := next + 1
+				for len(vals) < 4 && j < len(data) && data[j] >= '0' && data[j] <= '9' {
+					v, end := sixelNumber(data, j)
+					vals = append(vals, v)
+					if end < len(data) && data[end] == ';' {
+						j = end + 1
+						continue
+					}
+					j = end
+					break
+				}
+				if len(vals) == 4 {
+					palette[color] = sixelColor(vals[0], vals[1], vals[2], vals[3])
+					have[color] = true
+				}
+				i = j - 1
+			} else {
+				i = next - 1
+			}
+		case ch == '$':
+			x = 0
+		case ch == '-':
+			x, y = 0, y+6
+		case ch == '"':
+			// Raster attributes: Pan;Pad;Ph;Pv. Ph/Pv declare the size, which
+			// keeps the bitmap honest when a band is short.
+			j := i + 1
+			var vals []int
+			for len(vals) < 4 && j < len(data) {
+				if data[j] == ';' {
+					j++
+					continue
+				}
+				if data[j] < '0' || data[j] > '9' {
+					break
+				}
+				v, end := sixelNumber(data, j)
+				vals = append(vals, v)
+				j = end
+			}
+			if len(vals) >= 4 {
+				if vals[2] > maxW && vals[2] <= maxSixelDim {
+					maxW = vals[2]
+				}
+				if vals[3] > 0 && vals[3] <= maxSixelDim {
+					for len(rows) < vals[3] {
+						rows = append(rows, nil)
+					}
+				}
+			}
+			i = j - 1
+		}
+	}
+	for len(rows) > 0 && len(rows[len(rows)-1]) == 0 {
+		rows = rows[:len(rows)-1]
+	}
+	if maxW == 0 {
+		for _, row := range rows {
+			if len(row) > maxW {
+				maxW = len(row)
+			}
+		}
+	}
+	if maxW == 0 || len(rows) == 0 {
+		return
+	}
+	h := len(rows)
+	pix := make([]byte, maxW*h*4)
+	for yy, row := range rows {
+		for xx, v := range row {
+			if v == 0 {
+				continue
+			}
+			o := (yy*maxW + xx) * 4
+			pix[o], pix[o+1], pix[o+2], pix[o+3] = byte(v>>24), byte(v>>16), byte(v>>8), byte(v)
+		}
+	}
+	t.placeImage(&img.Data{W: maxW, H: h, Pix: pix})
+}
+
+// placeImage anchors a bitmap at the cursor cell, where a sixel sequence put it.
+func (t *Terminal) placeImage(d *img.Data) {
+	s := &t.state
+	if s.col >= s.cols {
+		s.col = s.cols - 1
+	}
+	cell := s.cell(s.row, s.col)
+	cell.r = ' '
+	if cell.extra == nil {
+		cell.extra = &termCellExtra{}
+	}
+	cell.extra.image = d
+}
+
+func sixelNumber(s string, i int) (int, int) {
+	n := 0
+	start := i
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		n = n*10 + int(s[i]-'0')
+		i++
+	}
+	if i == start {
+		return 0, i
+	}
+	return n, i
+}
+
+// sixelColor turns a sixel colour spec into RGB: space 2 is 0..100 RGB, space
+// 1 is 0..360/0..100/0..100 HLS.
+func sixelColor(space, a, b, c int) uint32 {
+	if space == 1 {
+		return hsl(int(a)%360, clampPct(b), clampPct(c))
+	}
+	return rgb(clampPct(a)*255/100, clampPct(b)*255/100, clampPct(c)*255/100)
+}
+
+func clampPct(v int) int {
+	if v < 0 {
+		return 0
+	}
+	if v > 100 {
+		return 100
+	}
+	return v
+}
+
+// hsl converts a sixel HLS triple, with H in degrees and S/L in percent.
+func hsl(h, s, l int) uint32 {
+	hf := float64(h) / 360
+	sf, lf := float64(s)/100, float64(l)/100
+	var r, g, b float64
+	if sf == 0 {
+		r, g, b = lf, lf, lf
+	} else {
+		q := lf * (1 + sf)
+		if lf >= 0.5 {
+			q = lf + sf - lf*sf
+		}
+		p := 2*lf - q
+		conv := func(t float64) float64 {
+			if t < 0 {
+				t++
+			}
+			if t > 1 {
+				t--
+			}
+			switch {
+			case t < 1.0/6:
+				return p + (q-p)*6*t
+			case t < 0.5:
+				return q
+			case t < 2.0/3:
+				return p + (q-p)*(2.0/3-t)*6
+			}
+			return p
+		}
+		r, g, b = conv(hf+1.0/3), conv(hf), conv(hf-1.0/3)
+	}
+	return rgb(int(math.Round(r*255)), int(math.Round(g*255)), int(math.Round(b*255)))
+}
+
 // terminalParser is the byte state machine for escape sequences.
 type terminalParser struct {
 	state   termParseState
@@ -475,6 +746,9 @@ type terminalParser struct {
 	cur     int
 	hasCur  bool
 	private bool
+	// str accumulates an OSC or DCS payload, and kind says which kind it is.
+	str  []byte
+	kind byte
 }
 
 type termParseState uint8
@@ -494,6 +768,27 @@ func (p *terminalParser) reset() {
 	p.cur = 0
 	p.hasCur = false
 	p.private = false
+}
+
+// finishString hands a completed OSC or DCS payload to the terminal.
+// strLimit caps a string payload: a title OSC is small, but a sixel bitmap is
+// legitimately large, and neither may grow without bound.
+func (p *terminalParser) strLimit() int {
+	if p.kind == 'P' {
+		return 8 << 20
+	}
+	return 8 << 10
+}
+
+func (p *terminalParser) finishString(t *Terminal) {
+	switch p.kind {
+	case ']':
+		t.handleOSC(string(p.str))
+	case 'P':
+		t.handleDCS(string(p.str))
+	}
+	p.str = p.str[:0]
+	p.kind = 0
 }
 
 func (p *terminalParser) pushParam() {
@@ -566,9 +861,14 @@ func (t *Terminal) handleByte(b byte) {
 			p.params = p.params[:0]
 			p.cur, p.hasCur, p.private = 0, false, false
 		case ']':
-			p.state = termOSC
-		case 'P', 'X', '^', '_':
-			p.state = termOSC
+			p.state, p.kind = termOSC, ']'
+			p.str = p.str[:0]
+		case 'P':
+			p.state, p.kind = termOSC, 'P'
+			p.str = p.str[:0]
+		case 'X', '^', '_':
+			p.state, p.kind = termOSC, 'x'
+			p.str = p.str[:0]
 		case '7':
 			t.state.savedR, t.state.savedC = t.state.row, t.state.col
 			p.state = termGround
@@ -597,15 +897,20 @@ func (t *Terminal) handleByte(b byte) {
 	case termCharset:
 		p.state = termGround
 	case termOSC:
-		if b == 0x07 {
+		if b == 0x07 && p.kind == ']' {
+			p.finishString(t)
 			p.state = termGround
 		} else if b == 0x1b {
 			p.state = termOSCEsc
+		} else if len(p.str) < p.strLimit() {
+			p.str = append(p.str, b)
 		}
 	case termOSCEsc:
 		if b == '\\' {
+			p.finishString(t)
 			p.state = termGround
 		} else {
+			p.str = append(p.str, 0x1b, b)
 			p.state = termOSC
 		}
 	case termCSI:
@@ -671,9 +976,15 @@ func (t *Terminal) executeCSI(final byte) {
 		s.clampCursor()
 	case 'd':
 		s.row = p.param(0, 1) - 1
+		if s.origin {
+			s.row += s.top
+		}
 		s.clampCursor()
 	case 'H', 'f':
 		s.row = p.param(0, 1) - 1
+		if s.origin {
+			s.row += s.top
+		}
 		s.col = p.param(1, 1) - 1
 		s.clampCursor()
 	case 'J':
@@ -732,16 +1043,46 @@ func (t *Terminal) setPrivateMode(params []int, on bool) {
 			} else {
 				t.exitAlt()
 			}
+		case 1:
+			t.state.appCursor = on
+		case 6:
+			t.state.origin = on
+			if on {
+				t.state.row, t.state.col = t.state.top, 0
+			} else {
+				t.state.row, t.state.col = 0, 0
+			}
 		case 7:
 			t.state.autowrap = on
+		case 9:
+			if on {
+				t.mouseMode = n
+			} else if t.mouseMode == n {
+				t.mouseMode = 0
+			}
+		case 12:
+			t.state.blink = on
 		case 1000, 1002, 1003:
 			if on {
 				t.mouseMode = n
 			} else if t.mouseMode == n {
 				t.mouseMode = 0
 			}
+		case 1004:
+			t.state.focus = on
+		case 1005:
+			t.mouseUTF8 = on
 		case 1006:
 			t.mouseSGR = on
+		case 1015:
+			t.mouseURXVT = on
+		case 1048:
+			if on {
+				t.state.savedR, t.state.savedC = t.state.row, t.state.col
+			} else {
+				t.state.row, t.state.col = t.state.savedR, t.state.savedC
+				t.state.wrap = false
+			}
 		case 2004:
 			t.bracketed = on
 		}
@@ -749,11 +1090,15 @@ func (t *Terminal) setPrivateMode(params []int, on bool) {
 }
 
 func (s *terminalState) clampCursor() {
-	if s.row < 0 {
-		s.row = 0
+	low, high := 0, s.rows-1
+	if s.origin {
+		low, high = s.top, s.bottom
 	}
-	if s.row >= s.rows {
-		s.row = s.rows - 1
+	if s.row < low {
+		s.row = low
+	}
+	if s.row > high {
+		s.row = high
 	}
 	if s.col < 0 {
 		s.col = 0
@@ -783,8 +1128,19 @@ func (s *terminalState) reverseIndex() {
 }
 
 func (t *Terminal) put(r rune) {
+	if termRuneWidth(r) == 0 {
+		t.combine(r)
+		return
+	}
 	s := &t.state
 	if s.wrap {
+		s.lineFeed()
+		s.col = 0
+		s.wrap = false
+	}
+	wide := termRuneWidth(r) == 2
+	if wide && s.col == s.cols-1 {
+		// A wide character cannot straddle a line: wrap first.
 		s.lineFeed()
 		s.col = 0
 		s.wrap = false
@@ -793,13 +1149,100 @@ func (t *Terminal) put(r rune) {
 		s.col = 0
 		s.lineFeed()
 	}
-	cell := s.cell(s.row, s.col)
-	cell.r = r
-	cell.fg, cell.bg, cell.attr = t.fg, t.bg, t.attr
+	t.writeCell(s.cell(s.row, s.col), r)
 	s.col++
+	if wide && s.col < s.cols {
+		c := s.cell(s.row, s.col)
+		*c = termCell{fg: t.fg, bg: t.bg, attr: t.attr}
+		c.extra = &termCellExtra{cont: true, link: t.link}
+		s.col++
+	}
 	if s.col >= s.cols {
 		s.col = s.cols - 1
 		s.wrap = s.autowrap
+	}
+}
+
+// writeCell sets a base cell's glyph and the current pen.
+func (t *Terminal) writeCell(cell *termCell, r rune) {
+	*cell = termCell{r: r, fg: t.fg, bg: t.bg, attr: t.attr}
+	if t.link != "" {
+		cell.extra = &termCellExtra{link: t.link}
+	}
+}
+
+// combine attaches a zero-width mark to the character before the cursor.
+func (t *Terminal) combine(r rune) {
+	s := &t.state
+	col := s.col - 1
+	if s.wrap {
+		col = s.col
+	}
+	row := s.row
+	for col > 0 && s.cell(row, col).isCont() {
+		col--
+	}
+	if col < 0 || col >= s.cols {
+		return
+	}
+	cell := s.cell(row, col)
+	if cell.r == 0 && cell.extra == nil {
+		return
+	}
+	if cell.extra == nil {
+		cell.extra = &termCellExtra{}
+	}
+	cell.extra.comb += string(r)
+}
+
+func (c *termCell) isCont() bool { return c.extra != nil && c.extra.cont }
+
+// termRuneWidth is the number of cells a rune occupies: 0 for a combining
+// mark, 2 for an East Asian wide character, 1 otherwise.
+func termRuneWidth(r rune) int {
+	switch {
+	case r == 0 || r < 0x20 || (r >= 0x7f && r < 0xa0):
+		return 0
+	case unicode.Is(unicode.Mn, r) || unicode.Is(unicode.Me, r):
+		return 0
+	case r == 0x200B || r == 0x200C || r == 0x200D:
+		return 0
+	case r >= 0xFE00 && r <= 0xFE0F:
+		return 0
+	case r >= 0xE0100 && r <= 0xE01EF:
+		return 0
+	case isWideRune(r):
+		return 2
+	}
+	return 1
+}
+
+func isWideRune(r rune) bool {
+	if r < 0x1100 {
+		return false
+	}
+	return r <= 0x115F ||
+		r == 0x2329 || r == 0x232A ||
+		(r >= 0x2E80 && r <= 0xA4CF && r != 0x303F) ||
+		(r >= 0xAC00 && r <= 0xD7A3) ||
+		(r >= 0xF900 && r <= 0xFAFF) ||
+		(r >= 0xFE10 && r <= 0xFE19) ||
+		(r >= 0xFE30 && r <= 0xFE6F) ||
+		(r >= 0xFF00 && r <= 0xFF60) ||
+		(r >= 0xFFE0 && r <= 0xFFE6) ||
+		(r >= 0x1F300 && r <= 0x1FAFF) ||
+		(r >= 0x20000 && r <= 0x3FFFD)
+}
+
+// handleOSC reads a complete OSC payload. The only one the terminal acts on is
+// OSC 8, which sets the hyperlink target for following cells.
+func (t *Terminal) handleOSC(s string) {
+	if !strings.HasPrefix(s, "8;") {
+		return
+	}
+	rest := s[2:]
+	if i := strings.IndexByte(rest, ';'); i >= 0 {
+		t.link = rest[i+1:]
 	}
 }
 
@@ -894,6 +1337,9 @@ func (t *Terminal) resetScreen() {
 	t.state.cursor, t.state.autowrap = true, true
 	t.fg, t.bg, t.attr = 0, 0, 0
 	t.scroll = 0
+	t.link = ""
+	t.mouseMode, t.mouseSGR, t.mouseUTF8, t.mouseURXVT = 0, false, false, false
+	t.bracketed = false
 }
 
 // enterAlt switches to a clean alternate screen, keeping the shell's screen
@@ -1131,22 +1577,74 @@ func (t *Terminal) SelectedText(rows int) string {
 		}
 		var b strings.Builder
 		for _, cell := range view.Lines[row][from:to] {
+			if cell.Cont {
+				continue
+			}
 			if cell.R == 0 {
 				b.WriteByte(' ')
 				continue
 			}
 			b.WriteRune(cell.R)
+			b.WriteString(cell.Comb)
 		}
 		lines = append(lines, strings.TrimRight(b.String(), " "))
 	}
 	return strings.Join(lines, "\n")
 }
 
+// LinkAt returns the OSC 8 target at a view cell, or "". It reads the cell
+// directly so pointer motion does not allocate a whole view.
+func (t *Terminal) LinkAt(rows, row, col int) string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	total := len(t.state.scroll) + len(t.state.lines)
+	end := total
+	if t.scroll != 0 {
+		end = total - t.scroll
+	}
+	idx := end - rows + row
+	if idx < 0 || idx >= total {
+		return ""
+	}
+	var line termLine
+	if idx < len(t.state.scroll) {
+		line = t.state.scroll[idx]
+	} else if idx-len(t.state.scroll) < len(t.state.lines) {
+		line = t.state.lines[idx-len(t.state.scroll)]
+	}
+	if col < 0 || col >= len(line) {
+		return ""
+	}
+	cell := line[col]
+	if cell.isCont() && col > 0 {
+		cell = line[col-1]
+	}
+	if cell.extra == nil {
+		return ""
+	}
+	return cell.extra.link
+}
+
+// WriteFocus reports window focus when the program enabled mode 1004.
+func (t *Terminal) WriteFocus(focused bool) {
+	t.mu.Lock()
+	report := t.state.focus
+	t.mu.Unlock()
+	if !report {
+		return
+	}
+	if focused {
+		t.WriteInput("\x1b[I")
+	} else {
+		t.WriteInput("\x1b[O")
+	}
+}
+
 // MouseReporting reports whether the running program asked for mouse events.
 func (t *Terminal) MouseReporting() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return t.mouseMode != 0
+	return t.mouseMode != 0 || t.mouseUTF8 || t.mouseURXVT
 }
 
 // MouseMode returns the enabled DEC mouse mode, 0 when off.
@@ -1159,9 +1657,13 @@ func (t *Terminal) MouseMode() int {
 // WriteMouse sends one mouse event in the mode the program enabled.
 func (t *Terminal) WriteMouse(button, row, col int, press, motion bool) {
 	t.mu.Lock()
-	mode, sgr := t.mouseMode, t.mouseSGR
+	mode, sgr, utf8mode, urxvt := t.mouseMode, t.mouseSGR, t.mouseUTF8, t.mouseURXVT
 	t.mu.Unlock()
-	if mode == 0 {
+	// The UTF-8 and urxvt encodings also enable reporting on their own.
+	if mode == 0 && !utf8mode && !urxvt {
+		return
+	}
+	if mode == 9 && (!press || motion) {
 		return
 	}
 	if motion && mode != 1003 && !press {
@@ -1185,6 +1687,14 @@ func (t *Terminal) WriteMouse(button, row, col int, press, motion bool) {
 	// X10 reports a release as button 3.
 	if !press && !motion {
 		b = 3
+	}
+	if urxvt {
+		t.WriteInput(fmt.Sprintf("\x1b[%d;%d;%dM", 32+b, col+1, row+1))
+		return
+	}
+	if utf8mode {
+		t.WriteInput("\x1b[M" + string(rune(32+b)) + string(rune(32+col+1)) + string(rune(32+row+1)))
+		return
 	}
 	if b+32 > 255 || row+33 > 255 || col+33 > 255 {
 		return
@@ -1228,6 +1738,9 @@ func (t *Terminal) Key(k Key, m Mods) bool {
 		t.WriteInput(string(r))
 		return true
 	}
+	t.mu.Lock()
+	appCursor := t.state.appCursor
+	t.mu.Unlock()
 	var out string
 	switch k {
 	case KeyEnter:
@@ -1246,16 +1759,34 @@ func (t *Terminal) Key(k Key, m Mods) bool {
 		out = "\x1b[3~"
 	case KeyHome:
 		out = "\x1b[H"
+		if appCursor {
+			out = "\x1bOH"
+		}
 	case KeyEnd:
 		out = "\x1b[F"
+		if appCursor {
+			out = "\x1bOF"
+		}
 	case KeyUp:
 		out = "\x1b[A"
+		if appCursor {
+			out = "\x1bOA"
+		}
 	case KeyDown:
 		out = "\x1b[B"
+		if appCursor {
+			out = "\x1bOB"
+		}
 	case KeyRight:
 		out = "\x1b[C"
+		if appCursor {
+			out = "\x1bOC"
+		}
 	case KeyLeft:
 		out = "\x1b[D"
+		if appCursor {
+			out = "\x1bOD"
+		}
 	case KeySpace:
 		out = " "
 	default:

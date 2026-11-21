@@ -1,6 +1,9 @@
 package paint
 
 import (
+	"time"
+
+	"github.com/goi-gui/goi/internal/img"
 	"github.com/goi-gui/goi/internal/m3"
 	"github.com/goi-gui/goi/internal/text"
 	"github.com/goi-gui/goi/internal/tree"
@@ -82,7 +85,12 @@ func (l *List) paintTerminal(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		}
 		for col := 0; col < len(line); {
 			cell := line[col]
-			if cell.Hidden {
+			if cell.Image != nil {
+				l.termImage(cell.Image, inner.X+float64(col)*cellW, y, textClip)
+				col++
+				continue
+			}
+			if cell.Hidden || cell.Cont {
 				col++
 				continue
 			}
@@ -92,11 +100,16 @@ func (l *List) paintTerminal(c *tree.Component, r tree.Rect, clip tree.Rect) {
 			}
 			run := make([]rune, 0, end-col)
 			for i := col; i < end; i++ {
-				r := line[i].R
+				c := line[i]
+				if c.Cont {
+					continue
+				}
+				r := c.R
 				if r == 0 {
 					r = ' '
 				}
 				run = append(run, r)
+				run = append(run, []rune(c.Comb)...)
 			}
 			cellFG, cellBG := termColors(cell, fg, bg)
 			x := inner.X + float64(col)*cellW
@@ -111,23 +124,29 @@ func (l *List) paintTerminal(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		}
 	}
 
-	if view.CursorOn && view.CursorRow >= 0 && view.CursorRow < len(view.Lines) {
+	blinkOn := !view.CursorBlink || (l.Clock/(500*time.Millisecond))%2 == 0
+	if view.CursorBlink {
+		l.Animating = true
+	}
+	if view.CursorOn && blinkOn && view.CursorRow >= 0 && view.CursorRow < len(view.Lines) {
 		row, col := view.CursorRow, view.CursorCol
 		if col < 0 || col >= view.Cols {
 			col = view.Cols - 1
 		}
-		if row >= 0 && row < view.Rows {
-			x := inner.X + float64(col)*cellW
-			y := inner.Y + float64(row)*cellH
-			l.fillRect(tree.Rect{X: x, Y: y, W: cellW, H: cellH}, fg, 0, 0, 0, textClip)
-			cell := tree.TerminalCell{R: ' '}
-			if row < len(view.Lines) && col < len(view.Lines[row]) {
-				cell = view.Lines[row][col]
-			}
-			if cell.R != 0 && cell.R != ' ' {
-				l.textIn(string(cell.R), st, bg, tree.Rect{X: x, Y: y, W: cellW, H: cellH}, AlignStart, textClip)
-			}
+		cell := tree.TerminalCell{R: ' '}
+		if row < len(view.Lines) && col < len(view.Lines[row]) {
+			cell = view.Lines[row][col]
 		}
+		if cell.Cont && col > 0 {
+			col--
+			cell = view.Lines[row][col]
+		}
+		x := inner.X + float64(col)*cellW
+		y := inner.Y + float64(row)*cellH
+		if cell.R != 0 && cell.R != ' ' {
+			l.textIn(string(cell.R)+cell.Comb, st, bg, tree.Rect{X: x, Y: y, W: cellW, H: cellH}, AlignStart, textClip)
+		}
+		l.fillRect(tree.Rect{X: x, Y: y, W: cellW, H: cellH}, fg, 0, 0, 0, textClip)
 	}
 }
 
@@ -164,10 +183,25 @@ func (l *List) termSelection(term *tree.Terminal, inner tree.Rect, cellW, cellH 
 	}
 }
 
+// termImage draws a sixel bitmap at its anchor cell, in image pixels.
+func (l *List) termImage(d *img.Data, x, y float64, clip tree.Rect) {
+	if d == nil || d.W <= 0 || d.H <= 0 {
+		return
+	}
+	l.Ops = append(l.Ops, Op{
+		Kind:  Bitmap,
+		Rect:  [4]float32{float32(x), float32(y), float32(d.W), float32(d.H)},
+		Clip:  clipArr(clip),
+		Color: 0xFFFFFFFF,
+		Src:   d,
+		UV:    [4]float32{0, 0, 1, 1},
+	})
+}
+
 func sameTermCell(a, b tree.TerminalCell) bool {
 	return a.FG == b.FG && a.BG == b.BG && a.Bold == b.Bold && a.Faint == b.Faint &&
 		a.Italic == b.Italic && a.Underline == b.Underline && a.Reverse == b.Reverse &&
-		a.Strike == b.Strike && a.Hidden == b.Hidden
+		a.Strike == b.Strike && a.Hidden == b.Hidden && a.Link == b.Link
 }
 
 func termColors(cell tree.TerminalCell, fg, bg uint32) (uint32, uint32) {
@@ -208,5 +242,8 @@ func (l *List) termRun(s string, cell tree.TerminalCell, color uint32, x, y, w, 
 	}
 	if cell.Strike {
 		l.fillRect(tree.Rect{X: x, Y: y + h/2, W: w, H: 1}, color, 0, 0, 0, clip)
+	}
+	if cell.Link != "" {
+		l.fillRect(tree.Rect{X: x, Y: y + h - 2, W: w, H: 1}, l.Theme.Colors.Primary, 0, 0, 0, clip)
 	}
 }

@@ -69,3 +69,19 @@ func TestTerminalDragSelectsAndCopies(t *testing.T) {
 		t.Fatalf("clipboard = %q, want %q", clip, want)
 	}
 }
+
+func TestTerminalLinkClickOpens(t *testing.T) {
+	_, win, in := inputFixture(t, terminalUI, 480, 320)
+	term := MustByID[*Terminal](win, "term")
+	term.Fit(40, 10)
+	term.SetCellSize(10, 20)
+	term.FeedString("\x1b]8;;https://example.com\x1b\\hi\x1b]8;;\x1b\\")
+	var opened string
+	in.open = func(link string) error { opened = link; return nil }
+	b := absoluteRect(term)
+	in.MouseDown(b.X+5, b.Y+15, 0, false)
+	in.MouseUp(b.X+5, b.Y+15, 0)
+	if opened != "https://example.com" {
+		t.Fatalf("opened = %q", opened)
+	}
+}

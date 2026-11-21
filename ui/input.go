@@ -78,6 +78,7 @@ type interactor struct {
 	// program instead. They never run at the same time.
 	termSel      *tree.Terminal
 	termSelOn    bool
+	termSelMoved bool
 	termMouse    *tree.Terminal
 	termMouseBtn int
 	termMouseRow int
@@ -532,6 +533,7 @@ func (i *interactor) event(name string, fields ...any) {
 func (i *interactor) MouseMove(x, y float64) {
 	i.cursorX, i.cursorY = x, y
 	if i.termSelOn && i.termSel != nil {
+		i.termSelMoved = true
 		if row, col, ok := i.terminalCellAt(i.termSel, x, y); ok {
 			i.termSel.SelectionExtend(row, col)
 		}
@@ -791,6 +793,15 @@ func (i *interactor) pointerAt(hit tree.Node) {
 		i.pointer(platform.CursorCrosshair)
 		return
 	}
+	if term := terminalAt(hit); term != nil {
+		if row, col, ok := i.terminalCellAt(term, i.cursorX, i.cursorY); ok {
+			grid := term.Grid()
+			if term.LinkAt(grid.Rows, row, col) != "" {
+				i.pointer(platform.CursorPointer)
+				return
+			}
+		}
+	}
 	if selectableAt(hit) != nil {
 		i.pointer(platform.CursorText)
 		return
@@ -824,6 +835,7 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 	i.pressX, i.pressY = x, y
 	if term := terminalAt(hit); term != nil && button <= 2 {
 		i.setKbd(term)
+		i.termSelMoved = false
 		if row, col, ok := i.terminalCellAt(term, x, y); ok {
 			if term.MouseReporting() {
 				term.WriteMouse(button, row, col, true, false)
@@ -1067,8 +1079,17 @@ func (i *interactor) MouseUp(x, y float64, button int) {
 		return
 	}
 	if i.termSelOn {
+		term := i.termSel
 		i.termSelOn = false
 		i.termSel = nil
+		if button == 0 && !i.termSelMoved && term != nil {
+			if row, col, ok := i.terminalCellAt(term, x, y); ok {
+				grid := term.Grid()
+				if link := term.LinkAt(grid.Rows, row, col); link != "" {
+					i.openLink(link)
+				}
+			}
+		}
 		i.markDirty()
 		return
 	}
@@ -3107,6 +3128,9 @@ func (i *interactor) imeSync() {
 
 func (i *interactor) Focus(focused bool) {
 	i.event("Focus", "focused", focused)
+	if term, ok := i.kbd.(*tree.Terminal); ok {
+		term.WriteFocus(focused)
+	}
 	if !focused {
 		i.setFocus(nil)
 	}
