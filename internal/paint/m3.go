@@ -1320,7 +1320,7 @@ func (l *List) paintSlider(c *tree.Component, r tree.Rect, clip tree.Rect) {
 			iconOnInactive = withAlpha(col.OnSurface, m3.DisabledOpacity)
 			iconOnActive = iconOnInactive
 		}
-		place := func(name string, explicit uint32, leadingEnd bool) {
+		place := func(name string, leadingEnd bool) {
 			if name == "" {
 				return
 			}
@@ -1346,14 +1346,11 @@ func (l *List) paintSlider(c *tree.Component, r tree.Rect, clip tree.Rect) {
 			if onActive {
 				color = iconOnActive
 			}
-			if explicit != 0 {
-				color = disabledAlpha(c, explicit)
-			}
 			x, y := point(center)
 			l.iconIn(name, size, color, x, y, clip)
 		}
-		place(leading, c.LeadingIconColor.Get(), true)
-		place(trailing, c.TrailingIconColor.Get(), false)
+		place(leading, true)
+		place(trailing, false)
 	}
 
 	if showTip && !math.IsNaN(tipP) {

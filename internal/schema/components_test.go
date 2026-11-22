@@ -420,3 +420,14 @@ func TestNavigationBarNarrowsVariants(t *testing.T) {
 		t.Fatal("the bar accepted a style it does not paint")
 	}
 }
+
+// TestSliderIconsUseThemeColors keeps the end-icon colours out of the design:
+// they follow the track part the glyph sits on, not a per-slider override.
+func TestSliderIconsUseThemeColors(t *testing.T) {
+	for _, name := range []string{"leadingIconColor", "trailingIconColor"} {
+		src := fmt.Sprintf("Window { Slider { %s: #123456 } }", name)
+		if _, diag := validate(t, src); diag.Empty() {
+			t.Errorf("Slider accepted %s", name)
+		}
+	}
+}

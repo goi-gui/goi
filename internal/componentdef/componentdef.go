@@ -122,7 +122,7 @@ var props = map[string][]string{
 	"Checkbox":         {"label", "disabled", "checked"},
 	"RadioButton":      {"label", "disabled", "checked"},
 	"Switch":           {"label", "disabled", "checked", "icon", "iconOn", "iconOff", "filledIcon"},
-	"Slider":           {"variant", "orientation", "disabled", "value", "end", "center", "min", "max", "step", "showTooltip", "leadingIcon", "trailingIcon", "leadingIconColor", "trailingIconColor"},
+	"Slider":           {"variant", "orientation", "disabled", "value", "end", "center", "min", "max", "step", "showTooltip", "leadingIcon", "trailingIcon"},
 	"TextField":        {"label", "text", "placeholder", "supporting", "leadingIcon", "trailingIcon", "filledIcon", "filledLeadingIcon", "filledTrailingIcon", "variant", "color", "disabled", "type", "mask", "obscureText"},
 	"SearchBar":        {"label", "text", "placeholder", "trailingIcon", "filledIcon", "filledTrailingIcon", "disabled"},
 	"Tooltip":          {"text"},

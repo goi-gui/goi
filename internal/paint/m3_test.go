@@ -239,18 +239,6 @@ func TestSliderVerticalTrailingIconMovesIntoTheFill(t *testing.T) {
 	}
 }
 
-func TestSliderIconColorOverride(t *testing.T) {
-	const want = uint32(0x123456FF)
-	leading, _, _ := sliderIconParts(t, `Window { Slider {
-		value: 0.5 width: 320 height: 44
-		leadingIcon: "leading_icon" leadingIconColor: #123456
-		trailingIcon: "trailing_icon" trailingIconColor: #654321
-	} }`)
-	if leading.Color != want {
-		t.Fatalf("leading icon colour = %08x, want the design's %08x", leading.Color, want)
-	}
-}
-
 func TestCheckboxDrawsCheckWhenChecked(t *testing.T) {
 	l := m3list(t, `Window { Checkbox { checked: true } }`)
 	var check, box bool
