@@ -2698,3 +2698,12 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   clipping or scaling it. The choice is paint-only, so dragging never triggers
   a layout pass, and the icon changes its foreground role with the part it
   lands on.
+
+- **A hot path removes allocations before it removes work.** The parser reserves
+  its token slice from the source length, percentage width and height resolve
+  through a number writer that skips boxing and syntax literals, layout keeps
+  small child lists in stack buffers, a stable paint sort no longer builds a
+  reflection swapper, and the Hero map is cleared and reused per frame. Together
+  they take a gallery frame from 1.5 KB and 84 allocations to 225 B and 10,
+  without changing what any frame draws. The dev server streams the wasm marker
+  scan instead of reading a 40 MB module into memory.

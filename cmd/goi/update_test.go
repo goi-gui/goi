@@ -13,9 +13,9 @@ import (
 
 func TestToolsCommands(t *testing.T) {
 	installs := [][]string{
-		{"install", "github.com/goi-gui/goi/cmd/goi@latest"},
-		{"install", "github.com/goi-gui/goi/cmd/goipls@latest"},
-		{"install", "github.com/goi-gui/goi/cmd/goifmt@latest"},
+		{"install", "-ldflags", "-s -w", "github.com/goi-gui/goi/cmd/goi@latest"},
+		{"install", "-ldflags", "-s -w", "github.com/goi-gui/goi/cmd/goipls@latest"},
+		{"install", "-ldflags", "-s -w", "github.com/goi-gui/goi/cmd/goifmt@latest"},
 	}
 	for _, name := range []string{"setup", "update"} {
 		t.Run(name, func(t *testing.T) {
@@ -55,9 +55,9 @@ func TestToolsCommandsUpdateDependency(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertCalls(t, calls, [][]string{
-		{"install", "github.com/goi-gui/goi/cmd/goi@latest"},
-		{"install", "github.com/goi-gui/goi/cmd/goipls@latest"},
-		{"install", "github.com/goi-gui/goi/cmd/goifmt@latest"},
+		{"install", "-ldflags", "-s -w", "github.com/goi-gui/goi/cmd/goi@latest"},
+		{"install", "-ldflags", "-s -w", "github.com/goi-gui/goi/cmd/goipls@latest"},
+		{"install", "-ldflags", "-s -w", "github.com/goi-gui/goi/cmd/goifmt@latest"},
 		{"get", "-u", "github.com/goi-gui/goi@latest"},
 	})
 }

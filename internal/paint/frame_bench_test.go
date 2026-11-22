@@ -29,7 +29,7 @@ func (m realMeasurer) MeasureWeight(s string, size float64, weight int) (float64
 // module, so this skips when that checkout is not next to this one.
 func galleryTree(b *testing.B) *tree.Tree {
 	b.Helper()
-	src, err := os.ReadFile("../../../examples/gallery/ui/SurfacesPage.goi")
+	src, err := os.ReadFile("../../../examples/gallery/assets/ui/SurfacesPage.goi")
 	if err != nil {
 		b.Skipf("gallery design not available: %v", err)
 	}

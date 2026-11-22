@@ -422,7 +422,15 @@ func (e *Engine) linear(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH,
 		main, cross = availW, availH
 	}
 
-	sizes := make([]float64, len(kids))
+	// Most rows and columns have a few children; the inline buffer keeps their
+	// sizes off the heap without capping a large container.
+	var sizeBuf [16]float64
+	var sizes []float64
+	if len(kids) <= len(sizeBuf) {
+		sizes = sizeBuf[:len(kids)]
+	} else {
+		sizes = make([]float64, len(kids))
+	}
 	var totalFlex, used float64
 	for i, k := range kids {
 		mw, mh := e.natural(k, availW, availH)
@@ -620,11 +628,15 @@ func (e *Engine) wrap(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH, o
 		x, w, h  float64
 		run, idx int
 	}
-	items := make([]item, 0, len(kids))
-	// runs holds each run's height, runW its width and runN how many children
-	// it took, which is what the main-axis distribution needs.
-	var runs, runW []float64
-	var runN []int
+	// Most Wrap containers hold a handful of children. Keeping the working
+	// slices on the stack until they outgrow the inline capacity avoids one
+	// heap allocation per wrap per frame.
+	const inline = 16
+	var itemBuf [inline]item
+	items := itemBuf[:0]
+	var runBuf, runWBuf [inline]float64
+	var runNBuf [inline]int
+	runs, runW, runN := runBuf[:0], runWBuf[:0], runNBuf[:0]
 	x := 0.0
 	for _, k := range kids {
 		mw, mh := e.natural(k, availW, availH)
@@ -655,13 +667,12 @@ func (e *Engine) wrap(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH, o
 		x += mw + spacing
 	}
 
-	y := offsetY
-	runY := make([]float64, len(runs))
-	for i, h := range runs {
-		runY[i] = y
-		y += h + spacing
-	}
+	y, run := offsetY, 0
 	for _, it := range items {
+		for run < it.run {
+			y += runs[run] + spacing
+			run++
+		}
 		a := it.k.AlignSelf()
 		if a == "" {
 			a = align
@@ -674,7 +685,7 @@ func (e *Engine) wrap(b *tree.NodeBase, kids []*tree.NodeBase, availW, availH, o
 		// it or spread it out, the same set a Row offers.
 		lead, extra := distribute(mainAlign, availW-runW[it.run], runN[it.run])
 		me := it.k.MarginEdges()
-		yy := runY[it.run] + crossAlign(a, runs[it.run], h)
+		yy := y + crossAlign(a, runs[it.run], h)
 		xx := offsetX + lead + it.x + float64(it.idx)*extra + me.Left
 		it.k.SetBounds(tree.Rect{X: xx, Y: yy + me.Top, W: it.w, H: h})
 		e.children(it.k, it.w, h)

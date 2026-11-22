@@ -162,12 +162,8 @@ func (b *NodeBase) writeExpr(name string, v any) {
 	}
 	// A number written into a string property is formatted, so `text: data.count`
 	// reads naturally instead of silently doing nothing.
-	if f, ok := v.(float64); ok {
-		if cur, ok := b.PropValue(name); ok {
-			if _, isString := cur.(string); isString {
-				v = strconv.FormatFloat(f, 'f', -1, 64)
-			}
-		}
+	if f, ok := v.(float64); ok && b.PropIsString(name) {
+		v = strconv.FormatFloat(f, 'f', -1, 64)
 	}
 	// The unchanged case is the common one on a repaint, and building the
 	// literal would allocate, so check first.
@@ -181,6 +177,34 @@ func (b *NodeBase) writeExpr(name string, v any) {
 	if b.SetPropLiteral(name, lit) {
 		b.mark(b.PropDirty(name))
 	}
+}
+
+// writeNumber is writeExpr for a resolved number, without boxing it into an
+// interface or building a syntax literal. ResolveSize runs it for every percent
+// width and height during layout, so the common case stays allocation-free.
+func (b *NodeBase) writeNumber(name string, f float64) {
+	b.properties()
+	i, ok := b.byName[name]
+	if !ok {
+		return
+	}
+	p := &b.props[i]
+	if p.kind != propNumber {
+		b.writeExpr(name, f)
+		return
+	}
+	// A declared transition owns the write, exactly as it does in writeExpr.
+	if st, ok := b.transitionStateFor(name); ok {
+		b.startNumber(name, st, f)
+		return
+	}
+	c := p.cell.(*Prop[float64])
+	if c.val == f {
+		return
+	}
+	c.val = f
+	c.written = true
+	b.mark(p.Dirty)
 }
 
 // exprLiteral turns a resolved value back into the literal the property writer
@@ -459,10 +483,16 @@ func (b *NodeBase) ResolveSize(availW, availH float64) {
 		if scale <= 0 {
 			continue
 		}
+		// The common `width: 50%` needs no evaluator or boxed result: resolve
+		// it directly and write the number without a syntax literal.
+		if p, ok := spec.value.(*syntax.Percent); ok {
+			b.writeNumber(spec.name, p.Val/100*scale)
+			continue
+		}
 		c := evalCtx{tree: b.tree, sc: b.scope}
 		if v, ok := c.evalSpec(b, spec, scale); ok {
 			if f, ok := v.(float64); ok {
-				b.writeExpr(spec.name, f)
+				b.writeNumber(spec.name, f)
 			}
 		}
 	}

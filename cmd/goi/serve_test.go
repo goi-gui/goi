@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -59,6 +60,16 @@ func TestWasmSupportsHMR(t *testing.T) {
 	}
 	if wasmSupportsHMR(without) {
 		t.Fatal("a wasm without the marker was accepted")
+	}
+
+	// The marker may straddle the streaming buffer's boundary.
+	big := filepath.Join(t.TempDir(), "big.wasm")
+	body := append(bytes.Repeat([]byte{0}, 64<<10-5), []byte(webHMRMarker)...)
+	if err := os.WriteFile(big, body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !wasmSupportsHMR(big) {
+		t.Fatal("a marker across the buffer boundary was missed")
 	}
 }
 

@@ -67,7 +67,13 @@ func (t *Tree) BeginHeroFrame() {
 	if t == nil {
 		return
 	}
-	t.heroNow = map[string]heroSnapshot{}
+	// The map is reused across frames: clearing it is cheaper than allocating
+	// one on every paint, and most frames carry no Hero at all.
+	if t.heroNow == nil {
+		t.heroNow = map[string]heroSnapshot{}
+	} else {
+		clear(t.heroNow)
+	}
 }
 
 // EndHeroFrame remembers this frame's Heroes and drops flights whose
@@ -81,8 +87,8 @@ func (t *Tree) EndHeroFrame() {
 			delete(t.heroFlights, tag)
 		}
 	}
-	t.heroPrev = t.heroNow
-	t.heroNow = nil
+	// Keep both maps, so the next frame reuses the one this frame did not.
+	t.heroPrev, t.heroNow = t.heroNow, t.heroPrev
 }
 
 // HeroAt places one visible Hero in the frame. It starts a flight when the tag

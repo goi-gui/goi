@@ -68,7 +68,17 @@ type lexer struct {
 	comments []Comment
 }
 
-func newLexer(src []byte) *lexer { return &lexer{src: src} }
+func newLexer(src []byte) *lexer {
+	// A .goi file averages close to three bytes per token, so one reservation
+	// avoids the repeated slice growth that used to dominate parse allocations.
+	// The cap keeps a file that is mostly one long string from reserving a huge
+	// token slice it will never fill.
+	n := len(src)/3 + 8
+	if n > 256<<10 {
+		n = 256 << 10
+	}
+	return &lexer{src: src, toks: make([]token, 0, n)}
+}
 
 func (l *lexer) run() ([]token, Diagnostics) {
 	for {

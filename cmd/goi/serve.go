@@ -143,13 +143,35 @@ func (s *devServer) warnNoHMR() {
 }
 
 // wasmSupportsHMR searches the built module for the client's global. The
-// compiler keeps the string literal in the binary.
+// compiler keeps the string literal in the binary. It streams the file instead
+// of reading a 40 MB module into memory for a one-line answer.
 func wasmSupportsHMR(name string) bool {
-	body, err := os.ReadFile(name)
+	f, err := os.Open(name)
 	if err != nil {
 		return false
 	}
-	return bytes.Contains(body, []byte(webHMRMarker))
+	defer f.Close()
+	marker := []byte(webHMRMarker)
+	const chunk = 64 << 10
+	buf := make([]byte, chunk+len(marker)-1)
+	n := 0
+	for {
+		if n == len(buf) {
+			if bytes.Contains(buf, marker) {
+				return true
+			}
+			copy(buf[:len(marker)-1], buf[n-len(marker)+1:n])
+			n = len(marker) - 1
+		}
+		read, err := f.Read(buf[n:])
+		n += read
+		if bytes.Contains(buf[:n], marker) {
+			return true
+		}
+		if err != nil {
+			return false
+		}
+	}
 }
 
 // ServeHTTP serves the page, the wasm, wasm_exec.js and any static file the

@@ -2,7 +2,7 @@ package tree
 
 import (
 	"math"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 
@@ -942,9 +942,15 @@ func (b *NodeBase) PaintOrder() []*NodeBase {
 	if t, ok := b.Node().(*Table); ok {
 		return t.paintOrder()
 	}
+	// One child, or children that all share the same layer and floating flag,
+	// already paint in order: a stable sort would return the same slice.
+	if len(b.kids) <= 1 {
+		return b.kids
+	}
+	z, floats := b.kids[0].zIndex.Get(), b.kids[0].floats
 	ordered := false
-	for _, k := range b.kids {
-		if k.zIndex.Get() != 0 || k.floats {
+	for _, k := range b.kids[1:] {
+		if k.zIndex.Get() != z || k.floats != floats {
 			ordered = true
 			break
 		}
@@ -954,14 +960,20 @@ func (b *NodeBase) PaintOrder() []*NodeBase {
 	}
 	out := make([]*NodeBase, len(b.kids))
 	copy(out, b.kids)
-	sort.SliceStable(out, func(i, j int) bool {
-		if zi, zj := out[i].zIndex.Get(), out[j].zIndex.Get(); zi != zj {
-			return zi < zj
+	slices.SortStableFunc(out, func(a, b *NodeBase) int {
+		if za, zb := a.zIndex.Get(), b.zIndex.Get(); za != zb {
+			if za < zb {
+				return -1
+			}
+			return 1
 		}
-		if out[i].floats != out[j].floats {
-			return !out[i].floats
+		if a.floats != b.floats {
+			if !a.floats {
+				return -1
+			}
+			return 1
 		}
-		return false
+		return 0
 	})
 	return out
 }
@@ -1140,6 +1152,22 @@ func (b *NodeBase) PropValue(name string) (any, bool) {
 		return b.props[i].Get(), true
 	}
 	return nil, false
+}
+
+// PropIsString reports whether a property holds text. writeExpr uses it to
+// format a number written into a text property; reading the value through
+// PropValue would box a number for every expression on every layout.
+func (b *NodeBase) PropIsString(name string) bool {
+	b.properties()
+	i, ok := b.byName[name]
+	if !ok {
+		return false
+	}
+	switch b.props[i].kind {
+	case propString, propEnum, propScalar:
+		return true
+	}
+	return false
 }
 
 // SetPropBool writes a bool property by .goi name through its cell, so a runtime

@@ -29,7 +29,7 @@ func newToolsCmd(name string, goRun runFunc) *cobra.Command {
 			out := cmd.OutOrStdout()
 			for _, tool := range []string{"goi", "goipls", "goifmt"} {
 				fmt.Fprintln(out, "goi: installing", tool)
-				args := []string{"install", "github.com/goi-gui/goi/cmd/" + tool + "@latest"}
+				args := []string{"install", "-ldflags", "-s -w", "github.com/goi-gui/goi/cmd/" + tool + "@latest"}
 				if err := goRun(".", args, out, cmd.ErrOrStderr(), os.Environ()); err != nil {
 					return fmt.Errorf("install %s: %w", tool, err)
 				}
