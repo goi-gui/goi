@@ -1232,6 +1232,7 @@ func (l *List) paintVerticalSlider(c *tree.Component, r tree.Rect, clip tree.Rec
 	const (
 		inset     = 2.0 // half the handle, so it touches the bounds
 		handleH   = 4.0
+		gap       = 6.0
 		trackMaxW = 56.0
 		handleMax = 68.0
 	)
@@ -1281,8 +1282,10 @@ func (l *List) paintVerticalSlider(c *tree.Component, r tree.Rect, clip tree.Rec
 			Radius: radii, Color: color, Clip: clipArr(clip),
 		})
 	}
-	bar(track.Y, handleCY, inactive)
-	bar(handleCY, track.Bottom(), active)
+	capBottom := handleCY - handleH/2 - gap
+	fillTop := handleCY + handleH/2 + gap
+	bar(track.Y, capBottom, inactive)
+	bar(fillTop, track.Bottom(), active)
 
 	l.Ops = append(l.Ops, Op{
 		Kind: Fill, Shape: RoundedRect,
@@ -1298,11 +1301,11 @@ func (l *List) paintVerticalSlider(c *tree.Component, r tree.Rect, clip tree.Rec
 
 	if icon := c.Icon.Get(); icon != "" {
 		size := math.Min(28, math.Max(8, track.W-8))
-		const pad, gap = 8.0, 6.0
+		const pad = 8.0
 		iconCY := track.Y + pad + size/2
 		onFill := false
-		if handleCY-track.Y < size+2*pad {
-			iconCY = handleCY + handleH/2 + gap + size/2
+		if capBottom-track.Y < size+2*pad {
+			iconCY = fillTop + pad + size/2
 			onFill = true
 		}
 		if iconCY+size/2 > track.Bottom() {

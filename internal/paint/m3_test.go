@@ -183,6 +183,35 @@ func TestVerticalSliderIconMovesBelowTheHandle(t *testing.T) {
 	}
 }
 
+func TestVerticalSliderLeavesAGapAroundTheHandle(t *testing.T) {
+	const gap = 6.0
+	col := m3.Light().Colors
+	l := m3list(t, `Window { VerticalSlider { value: 0.5 min: 0 max: 1 width: 64 height: 280 } }`)
+	var handle, active, inactive [4]float32
+	for _, op := range l.Ops {
+		if op.Kind != Fill {
+			continue
+		}
+		switch {
+		case op.Color == col.Primary && op.Rect[2] == 64 && op.Rect[3] == 4:
+			handle = op.Rect
+		case op.Color == col.Primary && op.Rect[2] == 56:
+			active = op.Rect
+		case op.Color == col.SurfaceContainerHighest && op.Rect[2] == 56:
+			inactive = op.Rect
+		}
+	}
+	if handle[2] == 0 || active[2] == 0 || inactive[2] == 0 {
+		t.Fatalf("vertical slider parts missing:\n%s", l.Dump())
+	}
+	if active[1] < handle[1]+handle[3]+gap-0.01 {
+		t.Fatalf("active part starts at %v, want a %vdp gap below the handle at %v", active[1], gap, handle[1]+handle[3])
+	}
+	if inactive[1]+inactive[3] > handle[1]-gap+0.01 {
+		t.Fatalf("inactive part ends at %v, want a %vdp gap above the handle at %v", inactive[1]+inactive[3], gap, handle[1])
+	}
+}
+
 func TestCheckboxDrawsCheckWhenChecked(t *testing.T) {
 	l := m3list(t, `Window { Checkbox { checked: true } }`)
 	var check, box bool
