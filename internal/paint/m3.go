@@ -1264,22 +1264,28 @@ func (l *List) paintVerticalSlider(c *tree.Component, r tree.Rect, clip tree.Rec
 		iconOnFill = iconOnCap
 	}
 
-	rad := float32(math.Min(8, trackW/2))
+	// The design's radius rounds the track's own ends. An unset radius keeps
+	// the 8dp the volume shape draws with.
+	corner := [4]float64{8, 8, 8, 8}
+	if c.Base().RadiusSet() {
+		corner = c.Base().Radii()
+	}
 	bar := func(y0, y1 float64, color uint32) {
 		if y1-y0 <= 0 {
 			return
 		}
-		radii := [4]float32{}
+		box := tree.Rect{X: track.X, Y: y0, W: track.W, H: y1 - y0}
+		radii := [4]float64{}
 		if y0 <= track.Y+0.01 {
-			radii[0], radii[1] = rad, rad
+			radii[0], radii[1] = corner[0], corner[1]
 		}
 		if y1 >= track.Bottom()-0.01 {
-			radii[2], radii[3] = rad, rad
+			radii[2], radii[3] = corner[2], corner[3]
 		}
 		l.Ops = append(l.Ops, Op{
 			Kind: Fill, Shape: RoundedRect,
-			Rect:   rectArr(tree.Rect{X: track.X, Y: y0, W: track.W, H: y1 - y0}),
-			Radius: radii, Color: color, Clip: clipArr(clip),
+			Rect:   rectArr(box),
+			Radius: radiusArr(radii, box), Color: color, Clip: clipArr(clip),
 		})
 	}
 	capBottom := handleCY - handleH/2 - gap

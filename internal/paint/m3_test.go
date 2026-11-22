@@ -212,6 +212,37 @@ func TestVerticalSliderLeavesAGapAroundTheHandle(t *testing.T) {
 	}
 }
 
+func TestVerticalSliderUsesDesignRadius(t *testing.T) {
+	col := m3.Light().Colors
+	l := m3list(t, `Window { VerticalSlider { value: 0.5 width: 64 height: 280 radius: 16 } }`)
+	var active, inactive, handle [4]float32
+	for _, op := range l.Ops {
+		if op.Kind != Fill {
+			continue
+		}
+		switch {
+		case op.Color == col.Primary && op.Rect[2] == 64 && op.Rect[3] == 4:
+			handle = op.Radius
+		case op.Color == col.Primary && op.Rect[2] == 56:
+			active = op.Radius
+		case op.Color == col.SurfaceContainerHighest && op.Rect[2] == 56:
+			inactive = op.Radius
+		}
+	}
+	if inactive[0] != 16 || inactive[1] != 16 {
+		t.Fatalf("inactive top radii = %v, want the design's 16", inactive)
+	}
+	if active[2] != 16 || active[3] != 16 {
+		t.Fatalf("active bottom radii = %v, want the design's 16", active)
+	}
+	if inactive[2] != 0 || active[0] != 0 {
+		t.Fatalf("the seam picked up a radius: inactive %v active %v", inactive, active)
+	}
+	if handle[0] != 2 {
+		t.Fatalf("handle radius = %v, want its own pill", handle[0])
+	}
+}
+
 func TestCheckboxDrawsCheckWhenChecked(t *testing.T) {
 	l := m3list(t, `Window { Checkbox { checked: true } }`)
 	var check, box bool
