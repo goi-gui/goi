@@ -3245,7 +3245,7 @@ func (i *interactor) clickOutside(hit tree.Node, x, y float64) {
 	var targets []*tree.NodeBase
 	i.tree.WalkVisible(func(n tree.Node) {
 		b := n.Base()
-		if b.Outside.Len() == 0 || isDescendantOf(hit, n) {
+		if b.Outside.Len() == 0 || isDescendantOf(hit, n) || !b.PointerEventsEnabled() {
 			return
 		}
 		// A popover whose panel is hidden is not asking to be dismissed: the
@@ -3301,7 +3301,7 @@ func walkHit(b *tree.NodeBase, ox, oy float64, x, y float64, clip, scroll tree.R
 			return
 		}
 	}
-	if box.Contains(x, y) && clip.Contains(x, y) {
+	if b.PointerEventsEnabled() && box.Contains(x, y) && clip.Contains(x, y) {
 		*found = b.Node()
 	}
 }
@@ -3343,7 +3343,7 @@ func walkHitOffset(b *tree.NodeBase, ox, oy float64, bounds tree.Rect, x, y floa
 			return
 		}
 	}
-	if box.Contains(x, y) && clip.Contains(x, y) {
+	if b.PointerEventsEnabled() && box.Contains(x, y) && clip.Contains(x, y) {
 		*found = b.Node()
 	}
 }

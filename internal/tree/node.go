@@ -138,6 +138,9 @@ type NodeBase struct {
 	// cursor is the pointer shape over this node, named the way CSS names it.
 	// Empty means "auto": the framework's own affordance decides.
 	cursor Prop[string]
+	// pointerEvents is "auto" or "none", like CSS. Empty inherits the parent,
+	// so a subtree can be made transparent and one child can opt back in.
+	pointerEvents Prop[string]
 	// scrollbarHover and scrollbarShowUntil are runtime state driven by input,
 	// not properties: the bar's visibility is a fact about the pointer and the
 	// clock, not something a design declares.
@@ -896,6 +899,28 @@ func (b *NodeBase) SetFontFamily(name string) { b.fontFamily.Set(name) }
 
 // SetCursor changes the pointer shape over the node, using a CSS name.
 func (b *NodeBase) SetCursor(name string) { b.cursor.Set(name) }
+
+// PointerEvents returns the pointer-events value written on this node; ""
+// means it inherits from the parent.
+func (b *NodeBase) PointerEvents() string { return b.pointerEvents.Get() }
+
+// SetPointerEvents sets "auto" or "none", or "" to inherit again.
+func (b *NodeBase) SetPointerEvents(v string) { b.pointerEvents.Set(v) }
+
+// PointerEventsEnabled reports whether this node can be the target of a
+// pointer. It walks the nearest explicit auto/none, so a none parent hides its
+// subtree and an explicit auto child opts back in, as in CSS.
+func (b *NodeBase) PointerEventsEnabled() bool {
+	for n := b; n != nil; n = n.parent {
+		switch n.pointerEvents.Get() {
+		case "none":
+			return false
+		case "auto":
+			return true
+		}
+	}
+	return true
+}
 
 // ZIndex returns the node's paint order among its siblings.
 func (b *NodeBase) ZIndex() float64 { return b.zIndex.Get() }

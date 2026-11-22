@@ -210,6 +210,11 @@ var CursorValues = []string{
 	"zoom-in", "zoom-out",
 }
 
+// PointerEventsValues lists the values a design may write. The CSS initial
+// value is auto; an unwritten property inherits instead, so it has no default
+// string here.
+var PointerEventsValues = []string{"auto", "none"}
+
 var eventDefs = []EventDef{
 	{Name: "onClick", Type: TypeString},
 	// A press outside the element's subtree. It carries a ClickEvent, which no
@@ -342,6 +347,9 @@ var common = []Prop{
 	{Name: "zIndex", Type: TypeNumber, Dirty: DirtyPaint, Default: 0.0, Common: true},
 	// cursor is the pointer shape, named the way CSS names it.
 	{Name: "cursor", Type: TypeEnum, Dirty: DirtyPaint, Enum: CursorValues, Default: "", Common: true},
+	// pointerEvents makes an element transparent to the pointer; an empty
+	// value inherits, so an auto child can opt back in under a none parent.
+	{Name: "pointerEvents", Type: TypeEnum, Dirty: DirtyPaint, Enum: PointerEventsValues, Default: "", Common: true},
 	// rotate turns the element and everything under it, the way CSS rotate
 	// does. Layout ignores it, so the box keeps its place.
 	{Name: "rotate", Type: TypeRotate, Dirty: DirtyPaint, Common: true},

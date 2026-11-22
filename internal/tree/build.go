@@ -530,6 +530,7 @@ func newNode(name string) Node {
 			backdropBlur:      newProp(nil, "backdropBlur", DirtyPaint, BackdropBlur{}),
 			zIndex:            newProp(nil, "zIndex", DirtyPaint, 0.0),
 			cursor:            newProp(nil, "cursor", DirtyPaint, ""),
+			pointerEvents:     newProp(nil, "pointerEvents", DirtyPaint, ""),
 			width:             newProp(nil, "width", DirtyLayout, -1.0),
 			height:            newProp(nil, "height", DirtyLayout, -1.0),
 			minWidth:          newProp(nil, "minWidth", DirtyLayout, 0.0),
