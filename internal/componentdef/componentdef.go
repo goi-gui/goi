@@ -40,7 +40,6 @@ var Kinds = []Kind{
 	{"RadioButton", false},
 	{"Switch", false},
 	{"Slider", false},
-	{"VerticalSlider", false},
 	// Text input.
 	{"TextField", false},
 	{"SearchBar", false},
@@ -123,8 +122,7 @@ var props = map[string][]string{
 	"Checkbox":         {"label", "disabled", "checked"},
 	"RadioButton":      {"label", "disabled", "checked"},
 	"Switch":           {"label", "disabled", "checked", "icon", "iconOn", "iconOff", "filledIcon"},
-	"Slider":           {"variant", "disabled", "value", "end", "center", "min", "max", "step", "showTooltip"},
-	"VerticalSlider":   {"disabled", "value", "min", "max", "step", "icon"},
+	"Slider":           {"variant", "orientation", "disabled", "value", "end", "center", "min", "max", "step", "showTooltip", "leadingIcon", "trailingIcon", "leadingIconColor", "trailingIconColor"},
 	"TextField":        {"label", "text", "placeholder", "supporting", "leadingIcon", "trailingIcon", "filledIcon", "filledLeadingIcon", "filledTrailingIcon", "variant", "color", "disabled", "type", "mask", "obscureText"},
 	"SearchBar":        {"label", "text", "placeholder", "trailingIcon", "filledIcon", "filledTrailingIcon", "disabled"},
 	"Tooltip":          {"text"},
@@ -360,7 +358,7 @@ func TypeOf(name string) PropType {
 		"innerRadius", "startAngle", "thickness", "zoom",
 		"barRadius", "barGap", "barBorderThickness", "fontSize", "scrollback":
 		return Number
-	case "variant", "animation", "crossAxisAlign", "mainAxisAlign", "align", "selectable":
+	case "variant", "orientation", "animation", "crossAxisAlign", "mainAxisAlign", "align", "selectable":
 		return Enum
 	case "textColor", "gridColor", "color", "lineColor", "fillColor", "highlight", "barBorderColor",
 		"leadingIconColor", "trailingIconColor", "labelColor", "supportingColor",
@@ -407,6 +405,9 @@ func EnumValuesFor(kind, name string) []string {
 			return v
 		}
 	}
+	if name == "orientation" && kind == "Slider" {
+		return orientationValues
+	}
 	if name == "selectable" && kind == "Table" {
 		return tableSelectableValues
 	}
@@ -423,6 +424,7 @@ var (
 	crossAxisValues       = []string{"start", "center", "end", "stretch"}
 	mainAxisValues        = []string{"start", "center", "end", "spaceBetween", "spaceAround", "spaceEvenly"}
 	tableSelectableValues = []string{"none", "single", "multiple"}
+	orientationValues     = []string{"horizontal", "vertical"}
 	navAnimationValues    = []string{"slide", "fade", "none"}
 	variantUnion          = []string{
 		"filled", "tonal", "elevated", "outlined", "text", "plain", "standard",

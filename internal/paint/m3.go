@@ -402,8 +402,6 @@ func (l *List) paintComponent(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		l.paintSwitch(c, r, clip)
 	case "Slider":
 		l.paintSlider(c, r, clip)
-	case "VerticalSlider":
-		l.paintVerticalSlider(c, r, clip)
 	case "TextField":
 		l.paintTextField(c, r, clip)
 	case "SearchBar":
@@ -1073,20 +1071,130 @@ func (l *List) paintSwitch(c *tree.Component, r tree.Rect, clip tree.Rect) {
 }
 
 func (l *List) paintSlider(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	s, _ := c.Node().(*tree.Slider)
+	vertical := s != nil && s.Orientation.Get() == "vertical"
 	col := l.Theme.Colors
-	cy := r.Y + r.H/2
-	// Expressive XS slider: a 16dp full-rounded track split by a 6dp gap on
-	// each side of a 4x44dp handle. The handle narrows to 2dp while pressed or
-	// focused; the 4dp stop dot sits at the inactive end.
 	const (
-		inset      = 2.0 // half the handle, so the handle touches the bounds
-		trackH     = 16.0
-		handleW    = 2.0 // half the resting handle width
-		gap        = 6.0
-		stopSize   = 4.0
-		cornerFull = trackH / 2
+		inset       = 2.0 // half the handle, so the handle touches the bounds
+		handleMain  = 4.0
+		handleCross = 44.0
+		gap         = 6.0
+		stopSize    = 4.0
+		iconPad     = 6.0
+		iconMax     = 28.0
+		thinTrack   = 16.0
+		iconTrack   = 40.0
 	)
-	track := tree.Rect{X: r.X + inset, Y: cy - trackH/2, W: r.W - 2*inset, H: trackH}
+	leading, trailing := c.Icon.Get(), c.Trailing.Get()
+	hasIcon := leading != "" || trailing != ""
+	cross, main := r.H, r.W
+	if vertical {
+		cross, main = r.W, r.H
+	}
+	if cross <= 0 || main <= 2*inset {
+		return
+	}
+	trackCross := thinTrack
+	if hasIcon {
+		// The track grows only when there is a glyph to hold, so a slider
+		// without icons keeps the M3 XS shape.
+		trackCross = math.Min(iconTrack, cross)
+	}
+	trackMain := main - 2*inset
+	var track tree.Rect
+	if vertical {
+		track = tree.Rect{X: r.X + (r.W-trackCross)/2, Y: r.Y + inset, W: trackCross, H: trackMain}
+	} else {
+		track = tree.Rect{X: r.X + inset, Y: r.Y + (r.H-trackCross)/2, W: trackMain, H: trackCross}
+	}
+	crossCenter := track.Y + track.H/2
+	if vertical {
+		crossCenter = track.X + track.W/2
+	}
+	// pos maps a distance from the leading end (left or bottom) to the screen.
+	pos := func(p float64) float64 {
+		if vertical {
+			return track.Bottom() - p
+		}
+		return track.X + p
+	}
+	point := func(p float64) (float64, float64) {
+		if vertical {
+			return crossCenter, pos(p)
+		}
+		return pos(p), crossCenter
+	}
+
+	// The outer corners follow the track's shape. Without icons the track is a
+	// capsule; with icons it keeps a small radius, or the design's own.
+	outer := [4]float64{}
+	if c.Base().RadiusSet() {
+		outer = c.Base().Radii()
+	} else if !hasIcon {
+		rad := trackCross / 2
+		outer = [4]float64{rad, rad, rad, rad}
+	} else {
+		rad := math.Min(8, trackCross/2)
+		outer = [4]float64{rad, rad, rad, rad}
+	}
+	seam := [4]float64{2, 2, 2, 2}
+	active := col.Primary
+	inactive := col.SecondaryContainer
+	handle := col.Primary
+	stopColor := active
+	if c.Disabled.Get() {
+		active = withAlpha(col.OnSurface, m3.DisabledOpacity)
+		inactive = withAlpha(col.OnSurface, m3.DisabledContainerOpacity)
+		handle = withAlpha(col.OnSurface, m3.DisabledOpacity)
+		stopColor = active
+	}
+	bar := func(lo, hi float64, color uint32) {
+		if hi-lo <= 0 {
+			return
+		}
+		radii := seam
+		if lo <= 0.01 {
+			if vertical {
+				radii[2], radii[3] = outer[2], outer[3]
+			} else {
+				radii[0], radii[3] = outer[0], outer[3]
+			}
+		}
+		if hi >= trackMain-0.01 {
+			if vertical {
+				radii[0], radii[1] = outer[0], outer[1]
+			} else {
+				radii[1], radii[2] = outer[1], outer[2]
+			}
+		}
+		var box tree.Rect
+		if vertical {
+			box = tree.Rect{X: track.X, Y: pos(hi), W: track.W, H: pos(lo) - pos(hi)}
+		} else {
+			box = tree.Rect{X: pos(lo), Y: track.Y, W: pos(hi) - pos(lo), H: track.H}
+		}
+		l.Ops = append(l.Ops, Op{
+			Kind: Fill, Shape: RoundedRect,
+			Rect: rectArr(box), Radius: radiusArr(radii, box),
+			Color: color, Clip: clipArr(clip),
+		})
+	}
+	dot := func(leadingEnd bool) {
+		p := trackCross / 2
+		if !leadingEnd {
+			p = trackMain - p
+		}
+		x, y := point(p)
+		l.Ops = append(l.Ops, Op{
+			Kind: Fill, Shape: Circle,
+			Rect: [4]float32{
+				float32(x - stopSize/2), float32(y - stopSize/2),
+				stopSize, stopSize,
+			},
+			Color: stopColor, Clip: clipArr(clip),
+		})
+	}
+
 	lo, hi := c.Min.Get(), c.Max.Get()
 	fracOf := func(v float64) float64 {
 		if hi <= lo {
@@ -1096,92 +1204,66 @@ func (l *List) paintSlider(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	}
 	frac := fracOf(c.Value.Get())
 
-	active := col.Primary
-	inactive := col.SecondaryContainer
-	handle := col.Primary
-	stop := active
-	if c.Disabled.Get() {
-		active = withAlpha(col.OnSurface, m3.DisabledOpacity)
-		inactive = withAlpha(col.OnSurface, m3.DisabledContainerOpacity)
-		handle = withAlpha(col.OnSurface, m3.DisabledOpacity)
-		stop = active
-	}
-	xOf := func(f float64) float64 { return track.X + track.W*f }
-
-	// bar paints one track segment, rounding each end only where it meets the
-	// track's own end.
-	bar := func(x0, x1 float64, color uint32) {
-		if x1-x0 <= 0 {
-			return
-		}
-		radii := [4]float32{2, 2, 2, 2}
-		if x0 <= track.X+0.01 {
-			radii[0], radii[3] = cornerFull, cornerFull
-		}
-		if x1 >= track.Right()-0.01 {
-			radii[1], radii[2] = cornerFull, cornerFull
-		}
-		l.Ops = append(l.Ops, Op{
-			Kind: Fill, Shape: RoundedRect,
-			Rect:   [4]float32{float32(x0), float32(track.Y), float32(x1 - x0), float32(trackH)},
-			Radius: radii, Color: color, Clip: clipArr(clip),
-		})
-	}
-	dot := func(x float64) {
-		l.Ops = append(l.Ops, Op{
-			Kind: Fill, Shape: Circle,
-			Rect: [4]float32{
-				float32(x - stopSize/2), float32(cy - stopSize/2),
-				stopSize, stopSize,
-			},
-			Color: stop, Clip: clipArr(clip),
-		})
-	}
-	handleAt := func(cx float64, grabbed bool) {
-		hw := handleW * 2
+	handleAt := func(p float64, grabbed bool) {
+		thick := handleMain
 		if c.Focused || (c.Pressed && grabbed) {
-			hw = 2
+			thick = 2
 		}
+		x, y := point(p)
+		var box tree.Rect
+		if vertical {
+			box = tree.Rect{X: x - handleCross/2, Y: y - thick/2, W: handleCross, H: thick}
+		} else {
+			box = tree.Rect{X: x - thick/2, Y: y - handleCross/2, W: thick, H: handleCross}
+		}
+		rad := float32(thick / 2)
 		l.Ops = append(l.Ops, Op{
 			Kind: Fill, Shape: RoundedRect,
-			Rect:   [4]float32{float32(cx - hw/2), float32(cy - 22), float32(hw), 44},
-			Radius: [4]float32{float32(hw / 2), float32(hw / 2), float32(hw / 2), float32(hw / 2)},
-			Color:  handle, Clip: clipArr(clip),
+			Rect: rectArr(box), Radius: [4]float32{rad, rad, rad, rad},
+			Color: handle, Clip: clipArr(clip),
 		})
 	}
-	s, _ := c.Node().(*tree.Slider)
 	pressed := func(i int) bool { return s != nil && s.Grab == i }
 	// Every segment stops `gap` away from the handle edge, so the handle has
 	// clear space around it.
-	const edge = handleW + gap
+	const edge = handleMain/2 + gap
 
-	// The value indicator names the handle the pointer would move: the grabbed
-	// one while dragging, otherwise the one under the pointer.
+	// aStart/aEnd are the active segment in main-axis distance. iLeftEnd and
+	// iRightStart are the inactive segments at the two ends; the icons sit in
+	// those caps until a thumb leaves too little room, then move into the fill.
+	var aStart, aEnd, iLeftEnd, iRightStart float64
+	tipP, tipV := math.NaN(), 0.0
 	showTip := s != nil && s.ShowTooltip.Get() && !c.Disabled.Get() && (c.Hover || c.Pressed)
-	tipX, tipV := math.NaN(), 0.0
 
 	switch variant(c, "standard") {
 	case "range":
+		if s == nil {
+			return
+		}
 		loV, hiV := s.Range()
-		xa, xb := xOf(fracOf(loV)), xOf(fracOf(hiV))
-		bar(track.X, xa-edge, inactive)
-		bar(xa+edge, xb-edge, active)
-		bar(xb+edge, track.Right(), inactive)
-		dot(track.X + cornerFull)
-		dot(track.Right() - cornerFull)
-		handleAt(xa, pressed(0))
-		handleAt(xb, pressed(1))
+		a, b := fracOf(loV)*trackMain, fracOf(hiV)*trackMain
+		iLeftEnd, iRightStart = a-edge, b+edge
+		aStart, aEnd = a+edge, b-edge
+		bar(0, a-edge, inactive)
+		bar(a+edge, b-edge, active)
+		bar(b+edge, trackMain, inactive)
+		if leading == "" {
+			dot(true)
+		}
+		if trailing == "" {
+			dot(false)
+		}
+		handleAt(a, pressed(0))
+		handleAt(b, pressed(1))
 		if showTip {
-			// A drag owns the handle it took even when the pointer crosses the
-			// other one; only a plain hover asks which is nearer.
 			high := s.HoverGrab == 1
 			if c.Pressed {
 				high = s.Grab == 1
 			}
 			if high {
-				tipX, tipV = xb, hiV
+				tipP, tipV = b, hiV
 			} else {
-				tipX, tipV = xa, loV
+				tipP, tipV = a, loV
 			}
 		}
 
@@ -1190,162 +1272,129 @@ func (l *List) paintSlider(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		if s != nil && !math.IsNaN(s.Center.Get()) {
 			cf = fracOf(s.Center.Get())
 		}
-		xc, xh := xOf(cf), xOf(frac)
-		if xh > xc {
-			bar(xc, xh-edge, active)
-			bar(track.X, xc, inactive)
-			bar(xh+edge, track.Right(), inactive)
+		cP, hP := cf*trackMain, frac*trackMain
+		if hP > cP {
+			iLeftEnd, iRightStart = cP, hP+edge
+			aStart, aEnd = cP, hP-edge
+			bar(0, cP, inactive)
+			bar(aStart, aEnd, active)
+			bar(hP+edge, trackMain, inactive)
 		} else {
-			bar(xh+edge, xc, active)
-			bar(track.X, xh-edge, inactive)
-			bar(xc, track.Right(), inactive)
+			iLeftEnd, iRightStart = hP-edge, cP
+			aStart, aEnd = hP+edge, cP
+			bar(0, hP-edge, inactive)
+			bar(aStart, aEnd, active)
+			bar(cP, trackMain, inactive)
 		}
-		dot(track.X + cornerFull)
-		dot(track.Right() - cornerFull)
-		handleAt(xh, pressed(0))
+		if leading == "" {
+			dot(true)
+		}
+		if trailing == "" {
+			dot(false)
+		}
+		handleAt(hP, pressed(0))
 		if showTip {
-			tipX, tipV = xh, c.Value.Get()
+			tipP, tipV = hP, c.Value.Get()
 		}
 
 	default:
-		hx := xOf(frac)
-		bar(track.X, hx-edge, active)
-		bar(hx+edge, track.Right(), inactive)
-		dot(track.Right() - cornerFull)
-		handleAt(hx, pressed(0))
+		hP := frac * trackMain
+		iLeftEnd, iRightStart = 0, hP+edge
+		aStart, aEnd = 0, hP-edge
+		bar(0, aEnd, active)
+		bar(hP+edge, trackMain, inactive)
+		if trailing == "" {
+			dot(false)
+		}
+		handleAt(hP, pressed(0))
 		if showTip {
-			tipX, tipV = hx, c.Value.Get()
+			tipP, tipV = hP, c.Value.Get()
 		}
 	}
-	if showTip && !math.IsNaN(tipX) {
-		l.paintSliderTooltip(tipX, cy, tipV, clip)
+
+	if hasIcon {
+		size := math.Max(4, math.Min(iconMax, trackCross-2*iconPad))
+		iconOnInactive := col.OnSecondaryContainer
+		iconOnActive := col.OnPrimary
+		if c.Disabled.Get() {
+			iconOnInactive = withAlpha(col.OnSurface, m3.DisabledOpacity)
+			iconOnActive = iconOnInactive
+		}
+		place := func(name string, explicit uint32, leadingEnd bool) {
+			if name == "" {
+				return
+			}
+			var center float64
+			if leadingEnd {
+				if iLeftEnd >= size+2*iconPad {
+					center = iconPad + size/2
+				} else {
+					center = aStart + iconPad + size/2
+				}
+			} else {
+				if trackMain-iRightStart >= size+2*iconPad {
+					center = trackMain - iconPad - size/2
+				} else {
+					center = aEnd - iconPad - size/2
+				}
+			}
+			center = math.Max(size/2, math.Min(trackMain-size/2, center))
+			// A moved icon is on the fill only when there is a fill under it;
+			// at a standard slider's minimum the active interval is empty.
+			onActive := aEnd > aStart && center >= aStart && center <= aEnd
+			color := iconOnInactive
+			if onActive {
+				color = iconOnActive
+			}
+			if explicit != 0 {
+				color = disabledAlpha(c, explicit)
+			}
+			x, y := point(center)
+			l.iconIn(name, size, color, x, y, clip)
+		}
+		place(leading, c.LeadingIconColor.Get(), true)
+		place(trailing, c.TrailingIconColor.Get(), false)
+	}
+
+	if showTip && !math.IsNaN(tipP) {
+		x, y := point(tipP)
+		l.paintSliderTooltip(x, y, vertical, tipV, clip)
 	}
 }
 
-// paintVerticalSlider draws the volume-strip shape: a rounded vertical track
-// split by a thin horizontal handle, with the filled part below it. The optional
-// icon belongs to the unfilled cap above the handle. When the handle comes too
-// close to the top for the cap to hold it, the icon moves below the handle into
-// the filled part at the same size instead of being squeezed.
-func (l *List) paintVerticalSlider(c *tree.Component, r tree.Rect, clip tree.Rect) {
-	col := l.Theme.Colors
-	const (
-		inset     = 2.0 // half the handle, so it touches the bounds
-		handleH   = 4.0
-		gap       = 6.0
-		trackMaxW = 56.0
-		handleMax = 68.0
-	)
-	if r.W <= 0 || r.H <= 2*inset {
-		return
-	}
-	trackW := math.Min(r.W, trackMaxW)
-	handleW := math.Min(r.W, handleMax)
-	track := tree.Rect{
-		X: r.X + (r.W-trackW)/2,
-		Y: r.Y + inset,
-		W: trackW,
-		H: r.H - 2*inset,
-	}
-	lo, hi := c.Min.Get(), c.Max.Get()
-	frac := 0.0
-	if hi > lo {
-		frac = clamp01((c.Value.Get() - lo) / (hi - lo))
-	}
-	handleCY := track.Bottom() - frac*track.H
-
-	active, inactive, handle := col.Primary, col.SurfaceContainerHighest, col.Primary
-	iconOnCap, iconOnFill := col.OnSurfaceVariant, col.OnPrimary
-	if c.Disabled.Get() {
-		active = withAlpha(col.OnSurface, m3.DisabledOpacity)
-		handle = active
-		inactive = withAlpha(col.OnSurface, m3.DisabledContainerOpacity)
-		iconOnCap = withAlpha(col.OnSurface, m3.DisabledOpacity)
-		iconOnFill = iconOnCap
-	}
-
-	// The design's radius rounds the track's own ends. An unset radius keeps
-	// the 8dp the volume shape draws with.
-	corner := [4]float64{8, 8, 8, 8}
-	if c.Base().RadiusSet() {
-		corner = c.Base().Radii()
-	}
-	bar := func(y0, y1 float64, color uint32) {
-		if y1-y0 <= 0 {
-			return
-		}
-		box := tree.Rect{X: track.X, Y: y0, W: track.W, H: y1 - y0}
-		radii := [4]float64{}
-		if y0 <= track.Y+0.01 {
-			radii[0], radii[1] = corner[0], corner[1]
-		}
-		if y1 >= track.Bottom()-0.01 {
-			radii[2], radii[3] = corner[2], corner[3]
-		}
-		l.Ops = append(l.Ops, Op{
-			Kind: Fill, Shape: RoundedRect,
-			Rect:   rectArr(box),
-			Radius: radiusArr(radii, box), Color: color, Clip: clipArr(clip),
-		})
-	}
-	capBottom := handleCY - handleH/2 - gap
-	fillTop := handleCY + handleH/2 + gap
-	bar(track.Y, capBottom, inactive)
-	bar(fillTop, track.Bottom(), active)
-
-	l.Ops = append(l.Ops, Op{
-		Kind: Fill, Shape: RoundedRect,
-		Rect: rectArr(tree.Rect{
-			X: r.X + (r.W-handleW)/2,
-			Y: handleCY - handleH/2,
-			W: handleW,
-			H: handleH,
-		}),
-		Radius: [4]float32{handleH / 2, handleH / 2, handleH / 2, handleH / 2},
-		Color:  handle, Clip: clipArr(clip),
-	})
-
-	if icon := c.Icon.Get(); icon != "" {
-		size := math.Min(28, math.Max(8, track.W-8))
-		const pad = 8.0
-		iconCY := track.Y + pad + size/2
-		onFill := false
-		if capBottom-track.Y < size+2*pad {
-			iconCY = fillTop + pad + size/2
-			onFill = true
-		}
-		if iconCY+size/2 > track.Bottom() {
-			iconCY = track.Bottom() - size/2
-		}
-		if iconCY-size/2 < track.Y {
-			iconCY = track.Y + size/2
-		}
-		color := iconOnCap
-		if onFill {
-			color = iconOnFill
-		}
-		l.iconIn(icon, size, color, track.X+track.W/2, iconCY, clip)
-	}
-}
-
-// paintSliderTooltip draws the M3 value indicator: a rounded bubble above the
-// handle, kept inside the clip so a slider at the edge stays readable.
-func (l *List) paintSliderTooltip(cx, cy, v float64, clip tree.Rect) {
+// paintSliderTooltip draws the M3 value indicator: a rounded bubble above a
+// horizontal handle or beside a vertical one, kept inside the clip.
+func (l *List) paintSliderTooltip(cx, cy float64, vertical bool, v float64, clip tree.Rect) {
 	col := l.Theme.Colors
 	st := l.style("labelLarge")
-	const padX, h, gap = 12.0, 32.0, 6.0
+	const padX, h, gap, half = 12.0, 32.0, 6.0, 22.0
 	txt := sliderValueText(v)
 	w := math.Max(textWidth(l, txt, st)+padX*2, h)
-	x := cx - w/2
-	if lo := clip.X + 2; x < lo {
-		x = lo
+	var box tree.Rect
+	if vertical {
+		box = tree.Rect{X: cx + half + gap, Y: cy - h/2, W: w, H: h}
+		if box.Right() > clip.Right()-2 {
+			box.X = cx - half - gap - w
+		}
+		if box.X < clip.X+2 {
+			box.X = clip.X + 2
+		}
+		if box.Y < clip.Y+2 {
+			box.Y = clip.Y + 2
+		}
+		if box.Bottom() > clip.Bottom()-2 {
+			box.Y = clip.Bottom() - h - 2
+		}
+	} else {
+		x := cx - w/2
+		if lo := clip.X + 2; x < lo {
+			x = lo
+		}
+		if hi := clip.X + clip.W - w - 2; x > hi && hi > clip.X {
+			x = hi
+		}
+		box = tree.Rect{X: x, Y: cy - half - gap - h, W: w, H: h}
 	}
-	if hi := clip.X + clip.W - w - 2; x > hi && hi > clip.X {
-		x = hi
-	}
-	// The handle is 44dp tall and centred on the track, so the bubble clears
-	// its top by the same gap the segments leave around the handle.
-	box := tree.Rect{X: x, Y: cy - 22 - gap - h, W: w, H: h}
 	l.fillRect(box, col.InverseSurface, h/2, 0, 0, clip)
 	l.textIn(txt, st, col.InverseOnSurface, box, AlignCenter, clip)
 }

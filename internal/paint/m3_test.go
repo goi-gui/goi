@@ -1,6 +1,7 @@
 package paint
 
 import (
+	"fmt"
 	"math"
 	"testing"
 	"time"
@@ -137,109 +138,116 @@ func TestSliderHandleNarrowsWhenPressed(t *testing.T) {
 	t.Fatalf("no handle:\n%s", l.Dump())
 }
 
-func TestVerticalSliderIconMovesBelowTheHandle(t *testing.T) {
+func TestSliderVerticalOrientation(t *testing.T) {
 	col := m3.Light().Colors
-	find := func(src string) (icon, handle Op) {
-		l := m3list(t, src)
-		for _, op := range l.Ops {
-			if op.Kind == Text && op.Icon && op.Text == "music_note" {
-				icon = op
-			}
-			if op.Kind == Fill && op.Color == col.Primary && op.Rect[2] == 64 && op.Rect[3] == 4 {
-				handle = op
-			}
-		}
-		if icon.Text == "" || handle.Rect[2] == 0 {
-			t.Fatalf("vertical slider parts missing:\n%s", l.Dump())
-		}
-		return icon, handle
-	}
-
-	// Low value: the cap is tall enough, so the icon stays above the handle.
-	icon, handle := find(`Window { VerticalSlider {
-		value: 0.25 min: 0 max: 1 width: 64 height: 280 icon: music_note
-	} }`)
-	if icon.TextY >= handle.Rect[1] {
-		t.Fatalf("icon baseline %v is not above the handle %v", icon.TextY, handle.Rect[1])
-	}
-	if icon.Color != col.OnSurfaceVariant {
-		t.Fatalf("cap icon color = %08x, want OnSurfaceVariant", icon.Color)
-	}
-	lowSize := icon.FontSize
-
-	// Near the top: the cap cannot hold the icon, so it moves into the filled
-	// part below the handle and keeps its size.
-	icon, handle = find(`Window { VerticalSlider {
-		value: 0.96 min: 0 max: 1 width: 64 height: 280 icon: music_note
-	} }`)
-	if icon.TextY <= handle.Rect[1]+handle.Rect[3] {
-		t.Fatalf("icon baseline %v did not move below the handle %v", icon.TextY, handle.Rect[1])
-	}
-	if icon.Color != col.OnPrimary {
-		t.Fatalf("filled icon color = %08x, want OnPrimary", icon.Color)
-	}
-	if icon.FontSize != lowSize {
-		t.Fatalf("icon size changed with the move: %v -> %v", lowSize, icon.FontSize)
-	}
-}
-
-func TestVerticalSliderLeavesAGapAroundTheHandle(t *testing.T) {
-	const gap = 6.0
-	col := m3.Light().Colors
-	l := m3list(t, `Window { VerticalSlider { value: 0.5 min: 0 max: 1 width: 64 height: 280 } }`)
-	var handle, active, inactive [4]float32
-	for _, op := range l.Ops {
-		if op.Kind != Fill {
-			continue
-		}
-		switch {
-		case op.Color == col.Primary && op.Rect[2] == 64 && op.Rect[3] == 4:
-			handle = op.Rect
-		case op.Color == col.Primary && op.Rect[2] == 56:
-			active = op.Rect
-		case op.Color == col.SurfaceContainerHighest && op.Rect[2] == 56:
-			inactive = op.Rect
-		}
-	}
-	if handle[2] == 0 || active[2] == 0 || inactive[2] == 0 {
-		t.Fatalf("vertical slider parts missing:\n%s", l.Dump())
-	}
-	if active[1] < handle[1]+handle[3]+gap-0.01 {
-		t.Fatalf("active part starts at %v, want a %vdp gap below the handle at %v", active[1], gap, handle[1]+handle[3])
-	}
-	if inactive[1]+inactive[3] > handle[1]-gap+0.01 {
-		t.Fatalf("inactive part ends at %v, want a %vdp gap above the handle at %v", inactive[1]+inactive[3], gap, handle[1])
-	}
-}
-
-func TestVerticalSliderUsesDesignRadius(t *testing.T) {
-	col := m3.Light().Colors
-	l := m3list(t, `Window { VerticalSlider { value: 0.5 width: 64 height: 280 radius: 16 } }`)
+	l := m3list(t, `Window { Slider { orientation: vertical value: 0.4 width: 44 height: 200 } }`)
 	var active, inactive, handle [4]float32
 	for _, op := range l.Ops {
 		if op.Kind != Fill {
 			continue
 		}
 		switch {
-		case op.Color == col.Primary && op.Rect[2] == 64 && op.Rect[3] == 4:
-			handle = op.Radius
-		case op.Color == col.Primary && op.Rect[2] == 56:
-			active = op.Radius
-		case op.Color == col.SurfaceContainerHighest && op.Rect[2] == 56:
-			inactive = op.Radius
+		case op.Color == col.Primary && op.Rect[2] == 44 && op.Rect[3] == 4:
+			handle = op.Rect
+		case op.Color == col.Primary && op.Rect[2] == 16:
+			active = op.Rect
+		case op.Color == col.SecondaryContainer && op.Rect[2] == 16:
+			inactive = op.Rect
 		}
 	}
-	if inactive[0] != 16 || inactive[1] != 16 {
-		t.Fatalf("inactive top radii = %v, want the design's 16", inactive)
+	if handle[2] == 0 || active[2] == 0 || inactive[2] == 0 {
+		t.Fatalf("vertical slider parts missing:\n%s", l.Dump())
 	}
-	if active[2] != 16 || active[3] != 16 {
-		t.Fatalf("active bottom radii = %v, want the design's 16", active)
+	if handle[2] != 44 || handle[3] != 4 {
+		t.Fatalf("vertical handle = %v, want 44x4", handle)
 	}
-	if inactive[2] != 0 || active[0] != 0 {
-		t.Fatalf("the seam picked up a radius: inactive %v active %v", inactive, active)
+	if active[1] < handle[1]+handle[3]+6-0.01 {
+		t.Fatalf("active fill starts at %v, want a gap below the handle at %v", active[1], handle[1]+handle[3])
 	}
-	if handle[0] != 2 {
-		t.Fatalf("handle radius = %v, want its own pill", handle[0])
+	if inactive[1]+inactive[3] > handle[1]-6+0.01 {
+		t.Fatalf("inactive cap ends at %v, want a gap above the handle at %v", inactive[1]+inactive[3], handle[1])
+	}
+}
+
+// sliderIconParts returns the two icon ops and the fill handle.
+func sliderIconParts(t *testing.T, src string) (leading, trailing, handle Op) {
+	t.Helper()
+	l := m3list(t, src)
+	for _, op := range l.Ops {
+		if op.Kind == Text && op.Icon {
+			switch op.Text {
+			case "leading_icon":
+				leading = op
+			case "trailing_icon":
+				trailing = op
+			}
+		}
+		if op.Kind == Fill && op.Color == m3.Light().Colors.Primary &&
+			(op.Rect[2] == 4 && op.Rect[3] == 44 || op.Rect[2] == 44 && op.Rect[3] == 4) {
+			handle = op
+		}
+	}
+	if leading.Text == "" || trailing.Text == "" || handle.Rect[2] == 0 {
+		t.Fatalf("slider parts missing:\n%s", l.Dump())
+	}
+	return leading, trailing, handle
+}
+
+func TestSliderHorizontalTrailingIconMovesIntoTheFill(t *testing.T) {
+	col := m3.Light().Colors
+	src := func(value float64) string {
+		return fmt.Sprintf(`Window { Slider {
+			value: %v min: 0 max: 1 width: 320 height: 44
+			leadingIcon: "leading_icon" trailingIcon: "trailing_icon"
+		} }`, value)
+	}
+	_, low, lowHandle := sliderIconParts(t, src(0.1))
+	_, high, highHandle := sliderIconParts(t, src(0.9))
+
+	if low.Rect[0] <= lowHandle.Rect[0]+lowHandle.Rect[2] {
+		t.Fatalf("trailing icon at %v is not in the end cap right of the handle %v", low.Rect, lowHandle)
+	}
+	if high.Rect[0]+high.Rect[2] >= highHandle.Rect[0] {
+		t.Fatalf("trailing icon at %v did not move left of the handle %v", high.Rect, highHandle)
+	}
+	if low.FontSize != high.FontSize {
+		t.Fatalf("icon size changed with the move: %v -> %v", low.FontSize, high.FontSize)
+	}
+	if low.Color != col.OnSecondaryContainer || high.Color != col.OnPrimary {
+		t.Fatalf("icon colours = %08x/%08x, want inactive/active roles", low.Color, high.Color)
+	}
+}
+
+func TestSliderVerticalTrailingIconMovesIntoTheFill(t *testing.T) {
+	src := func(value float64) string {
+		return fmt.Sprintf(`Window { Slider {
+			orientation: vertical value: %v min: 0 max: 1 width: 44 height: 200
+			leadingIcon: "leading_icon" trailingIcon: "trailing_icon"
+		} }`, value)
+	}
+	_, low, lowHandle := sliderIconParts(t, src(0.1))
+	_, high, highHandle := sliderIconParts(t, src(0.9))
+
+	if low.Rect[1]+low.Rect[3] > lowHandle.Rect[1] {
+		t.Fatalf("trailing icon at %v is not above the handle %v", low.Rect, lowHandle)
+	}
+	if high.Rect[1] < highHandle.Rect[1]+highHandle.Rect[3] {
+		t.Fatalf("trailing icon at %v did not move below the handle %v", high.Rect, highHandle)
+	}
+	if low.FontSize != high.FontSize {
+		t.Fatalf("icon size changed with the move: %v -> %v", low.FontSize, high.FontSize)
+	}
+}
+
+func TestSliderIconColorOverride(t *testing.T) {
+	const want = uint32(0x123456FF)
+	leading, _, _ := sliderIconParts(t, `Window { Slider {
+		value: 0.5 width: 320 height: 44
+		leadingIcon: "leading_icon" leadingIconColor: #123456
+		trailingIcon: "trailing_icon" trailingIconColor: #654321
+	} }`)
+	if leading.Color != want {
+		t.Fatalf("leading icon colour = %08x, want the design's %08x", leading.Color, want)
 	}
 }
 

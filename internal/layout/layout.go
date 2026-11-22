@@ -1545,6 +1545,9 @@ func (e *Engine) componentOf(b *tree.NodeBase) (*m3.ComponentView, bool) {
 		CrossAlign:  c.CrossAlign.Get(),
 		MainAlign:   c.MainAlign.Get(),
 	}
+	if s, ok := b.Node().(*tree.Slider); ok {
+		cv.Orientation = s.Orientation.Get()
+	}
 	return cv, true
 }
 

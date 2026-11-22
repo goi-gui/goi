@@ -1203,13 +1203,13 @@ func TestSliderArrowKeys(t *testing.T) {
 	}
 }
 
-// TestVerticalSliderDragUsesY covers the other axis: a press near the top sets
+// TestSliderVerticalDragUsesY covers the other axis: a press near the top sets
 // a high value and a drag down lowers it.
-func TestVerticalSliderDragUsesY(t *testing.T) {
+func TestSliderVerticalDragUsesY(t *testing.T) {
 	_, win, in := inputFixture(t, `Window { Column {
-		VerticalSlider { id: v value: 0.5 min: 0 max: 1 width: 64 height: 280 }
+		Slider { id: v orientation: vertical value: 0.5 min: 0 max: 1 width: 44 height: 240 }
 	} }`, 480, 320)
-	v := MustByID[*VerticalSlider](win, "v")
+	v := MustByID[*Slider](win, "v")
 	var changes []float64
 	v.OnChangeValue(func(value float64) { changes = append(changes, value) })
 
@@ -1233,6 +1233,32 @@ func TestVerticalSliderDragUsesY(t *testing.T) {
 	in.key(tree.KeyUp, tree.Mods{})
 	if got := v.Value.Get(); got <= before {
 		t.Fatalf("up arrow = %v, want it above %v", got, before)
+	}
+}
+
+// TestSliderVerticalRangeDragTakesNearestHandle checks the range handles on the
+// vertical axis too.
+func TestSliderVerticalRangeDragTakesNearestHandle(t *testing.T) {
+	_, win, in := inputFixture(t, `Window { Column {
+		Slider { id: r orientation: vertical variant: range value: 2 end: 7 min: 0 max: 10 width: 44 height: 240 }
+	} }`, 480, 320)
+	s := MustByID[*Slider](win, "r")
+
+	press := func(frac float64) {
+		r := absoluteRect(s)
+		y := r.Bottom() - 2 - (r.H-4)*frac
+		in.MouseDown(r.X+r.W/2, y, 0, false)
+		in.MouseUp(r.X+r.W/2, y, 0)
+	}
+	// 0.9 is nearer the high handle (near the top).
+	press(0.9)
+	if lo, hi := s.Range(); lo != 2 || hi != 9 {
+		t.Fatalf("range = %v..%v, want 2..9", lo, hi)
+	}
+	// 0.3 is nearer the low one.
+	press(0.3)
+	if lo, hi := s.Range(); math.Abs(lo-3) > 1e-9 || hi != 9 {
+		t.Fatalf("range = %v..%v, want 3..9", lo, hi)
 	}
 }
 
@@ -1274,7 +1300,7 @@ func TestSliderRangeDragTakesNearestHandle(t *testing.T) {
 	}
 	// 0.3 is nearer the low one.
 	press(0.3)
-	if lo, hi := s.Range(); lo != 3 || hi != 9 {
+	if lo, hi := s.Range(); math.Abs(lo-3) > 1e-9 || hi != 9 {
 		t.Fatalf("range = %v..%v, want 3..9", lo, hi)
 	}
 	// Dragging the low handle past the high one stops at it.

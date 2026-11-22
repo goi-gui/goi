@@ -2691,13 +2691,14 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   dependency has none, so design edits fall back to a rebuild and a page reload
   with a warning instead of silently doing nothing.
 
-- **A VerticalSlider's icon belongs to the unfilled cap and moves into the fill
-  when the cap gets short.** The cap above the handle shrinks as the value rises.
+- **A Slider's end icons live in the unfilled caps and move into the fill when
+  a handle gets close.** The cap at each end shrinks as its handle approaches.
   Once it can no longer hold the glyph plus its padding, paint moves the icon
-  just below the handle into the filled part at the same size, instead of
-  clipping or scaling it. The choice is paint-only, so dragging never triggers
-  a layout pass, and the icon changes its foreground role with the part it
-  lands on.
+  just inside the filled part at the same size, instead of clipping or scaling
+  it. `orientation: vertical` reuses the same geometry on the Y axis, and a
+  range slider gives each handle its own end icon. The choice is paint-only, so
+  dragging never triggers a layout pass, and the icon changes its foreground
+  role with the part it lands on.
 
 - **A hot path removes allocations before it removes work.** The parser reserves
   its token slice from the source length, percentage width and height resolve

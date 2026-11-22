@@ -405,7 +405,9 @@ func (c *Switch) namedProps() []NamedProp { return c.props("Switch") }
 // handle, and `variant: centered` fills from Center instead of the minimum.
 type Slider struct {
 	Component
-	End Prop[float64]
+	// Orientation is "horizontal" (the default) or "vertical".
+	Orientation Prop[string]
+	End         Prop[float64]
 	// Center is NaN when unset, which means the midpoint of min and max.
 	Center Prop[float64]
 	// Grab is the handle the pointer took: 0 is Value, 1 is End. Paint uses it
@@ -424,7 +426,9 @@ type Slider struct {
 func (*Slider) Kind() string { return "Slider" }
 
 func (c *Slider) namedProps() []NamedProp {
-	return append(c.propsExcept("Slider", "end", "center", "showTooltip"),
+	return append(c.propsExcept("Slider", "orientation", "end", "center", "showTooltip"),
+		EnumProp(&c.NodeBase, "orientation", DirtyLayout, &c.Orientation,
+			componentdef.EnumValuesFor("Slider", "orientation")),
 		NumberProp(&c.NodeBase, "end", DirtyPaint, &c.End),
 		NumberProp(&c.NodeBase, "center", DirtyPaint, &c.Center),
 		BoolProp(&c.NodeBase, "showTooltip", DirtyPaint, &c.ShowTooltip),
@@ -456,18 +460,6 @@ func (c *Slider) SetRange(a, b float64) {
 // OnRange subscribes to a range slider's changes, with both values, low first.
 func (c *Slider) OnRange(fn func(lo, hi float64)) (off func()) {
 	return c.RangeEvent.On(func(v [2]float64) { fn(v[0], v[1]) })
-}
-
-// VerticalSlider picks a value along a vertical track, the shape a volume
-// control takes. Its optional icon sits in the unfilled cap above the handle;
-// when the handle rises too close to the top for the icon, paint moves the icon
-// just below the handle into the filled part at the same size.
-type VerticalSlider struct{ Component }
-
-// Kind implements Node.
-func (*VerticalSlider) Kind() string { return "VerticalSlider" }
-func (c *VerticalSlider) namedProps() []NamedProp {
-	return c.props("VerticalSlider")
 }
 
 // TextField is a filled or outlined text input. LeadingNode and TrailingNode

@@ -147,9 +147,10 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 	case "Switch":
 		return Metrics{W: withLabel(52, 8, labelWidth(m, kind, label)), H: 32}
 	case "Slider":
+		if c.Orientation == "vertical" {
+			return Metrics{W: 44, H: 200}
+		}
 		return Metrics{W: 200, H: 44}
-	case "VerticalSlider":
-		return Metrics{W: 64, H: 280}
 	case "TextField":
 		_ = text
 		// Supporting text is drawn under the box, so the field asks for its
@@ -309,7 +310,7 @@ type ComponentView struct {
 	Disabled, Checked, Selected, Expanded bool
 	Value, Min, Max, Step                 float64
 	Spacing                               float64
-	CrossAlign, MainAlign                 string
+	CrossAlign, MainAlign, Orientation    string
 }
 
 // strokeOr is a stroke width with the component's own fallback.

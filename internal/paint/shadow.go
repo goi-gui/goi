@@ -77,10 +77,6 @@ func (l *List) shapeRadius(b *tree.NodeBase, r tree.Rect) float64 {
 	}
 	pill := minf(r.W, r.H) / 2
 	switch b.Node().Kind() {
-	case "VerticalSlider":
-		// The box is tall, so a pill radius would be half its width and would
-		// not follow the track's own corners.
-		return m3.ShapeSmall
 	case "Button", "IconButton", "FAB", "Chip", "Badge", "Switch", "Slider",
 		"SearchBar", "Tabs", "Tab", "NavigationItem":
 		return pill
