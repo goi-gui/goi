@@ -58,6 +58,26 @@ func labelWidth(m Measurer, kind, s string) float64 {
 	return w
 }
 
+// styledLabelWidth measures a label whose role, size or weight the design
+// overrode, as a Button's text properties can.
+func styledLabelWidth(m Measurer, kind, s, role string, fontSize, weight float64) float64 {
+	if m == nil || s == "" {
+		return 0
+	}
+	st := labelStyle(kind)
+	if role != "" {
+		st = RoleStyle(role)
+	}
+	if fontSize > 0 {
+		st.Size = fontSize
+	}
+	if weight > 0 {
+		st.Weight = int(weight)
+	}
+	w, _ := m(s, st.Size, st.Weight)
+	return w
+}
+
 // MetricsFor computes the intrinsic size and content inset of a component.
 // A nil measurer falls back to an estimate, which keeps headless tests stable.
 func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
@@ -82,12 +102,27 @@ func MetricsFor(kind string, c *ComponentView, m Measurer) Metrics {
 
 	switch kind {
 	case "Button":
-		lw := labelWidth(m, kind, label)
+		lw := styledLabelWidth(m, kind, label, c.LabelRole, c.LabelFontSize, c.LabelWeight)
 		pad := 24.0
 		if c.Variant == "text" {
 			pad = 12
 		}
-		return Metrics{W: withIcon(lw) + pad*2, H: 40}
+		w := lw + pad*2
+		if c.Icon != "" {
+			size := c.LeadingIconSize
+			if size <= 0 {
+				size = 18
+			}
+			w += size + iconGap
+		}
+		if c.Trailing != "" {
+			size := c.TrailingIconSize
+			if size <= 0 {
+				size = 18
+			}
+			w += size + iconGap
+		}
+		return Metrics{W: w, H: 40}
 	case "IconButton":
 		return Metrics{W: 40, H: 40}
 	case "FAB":
@@ -311,6 +346,9 @@ type ComponentView struct {
 	Value, Min, Max, Step                 float64
 	Spacing                               float64
 	CrossAlign, MainAlign, Orientation    string
+	LabelRole                             string
+	LabelFontSize, LabelWeight            float64
+	LeadingIconSize, TrailingIconSize     float64
 }
 
 // strokeOr is a stroke width with the component's own fallback.

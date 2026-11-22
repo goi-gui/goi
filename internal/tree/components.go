@@ -305,17 +305,54 @@ func propsFor(kind string) []string { return componentdef.Props(kind) }
 // Button is a filled, tonal, elevated, outlined or text button.
 type Button struct {
 	Component
-	// Color overrides the label's colour, and the icon's beside it. Zero keeps
-	// the variant's own foreground.
+	// Color overrides the label's colour, and the icons' colour when they do
+	// not name their own. Zero keeps the variant's own foreground.
 	Color Prop[uint32]
+	// LeadingIconSize and TrailingIconSize are the glyph boxes; 0 is the 18dp
+	// button default.
+	LeadingIconSize  Prop[float64]
+	TrailingIconSize Prop[float64]
+	// LeadingNode and TrailingNode hold the bodies built from $leading and
+	// $trailing. An explicit icon wins over its slot.
+	LeadingNode  Node
+	TrailingNode Node
+	// LabelText carries the label's type styling. It is not a child: paint
+	// feeds the label and its resolved colour through the ordinary Text painter,
+	// so every text property behaves as it does on a Text.
+	LabelText *Text
 }
 
 // Kind implements Node.
 func (*Button) Kind() string { return "Button" }
 func (c *Button) namedProps() []NamedProp {
-	return append(c.propsExcept("Button", "color"),
-		ColorProp(&c.NodeBase, "color", DirtyPaint, &c.Color))
+	b := &c.NodeBase
+	lt := c.LabelText
+	return append(c.propsExcept("Button",
+		"color", "leadingIconSize", "trailingIconSize",
+		"role", "fontSize", "weight", "fontWeight", "fontStyle", "align",
+		"wrap", "truncate", "maxLines", "decoration", "decorationStyle",
+		"decorationThickness", "decorationColor"),
+		ColorProp(b, "color", DirtyPaint, &c.Color),
+		NumberProp(b, "leadingIconSize", DirtyLayout, &c.LeadingIconSize),
+		NumberProp(b, "trailingIconSize", DirtyLayout, &c.TrailingIconSize),
+		EnumProp(b, "role", DirtyLayout, &lt.Role, textRoles),
+		NumberProp(b, "fontSize", DirtyLayout, &lt.FontSize),
+		NumberProp(b, "weight", DirtyLayout, &lt.Weight),
+		NumberProp(b, "fontWeight", DirtyLayout, &lt.Weight),
+		EnumProp(b, "fontStyle", DirtyPaint, &lt.FontStyle, FontStyleValues),
+		EnumProp(b, "align", DirtyPaint, &lt.Align, AlignValues),
+		BoolProp(b, "wrap", DirtyLayout, &lt.Wrap),
+		BoolProp(b, "truncate", DirtyLayout, &lt.Truncate),
+		NumberProp(b, "maxLines", DirtyLayout, &lt.MaxLines),
+		StringProp(b, "decoration", &lt.Decoration),
+		EnumProp(b, "decorationStyle", DirtyPaint, &lt.DecorationStyle, DecorationStyleValues),
+		NumberProp(b, "decorationThickness", DirtyPaint, &lt.DecorationThickness),
+		ColorProp(b, "decorationColor", DirtyPaint, &lt.DecorationColor),
+	)
 }
+
+// slotNodes exposes the button's leading and trailing bodies to the builder.
+func (c *Button) slotNodes() (*Node, *Node) { return &c.LeadingNode, &c.TrailingNode }
 
 // IconButton is a button that shows only an icon.
 type IconButton struct {

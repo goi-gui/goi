@@ -26,7 +26,7 @@ var Kinds = []Kind{
 	{"Point", true},
 	{"Path", false},
 	// Actions.
-	{"Button", false},
+	{"Button", true},
 	{"IconButton", false},
 	{"FAB", false},
 	{"FABMenu", true},
@@ -109,7 +109,7 @@ func Lookup(name string) (Kind, bool) {
 
 // props is the property list per kind, beyond the common box properties.
 var props = map[string][]string{
-	"Button":           {"label", "leadingIcon", "filledIcon", "filledLeadingIcon", "variant", "color", "disabled"},
+	"Button":           {"label", "leadingIcon", "trailingIcon", "filledIcon", "filledLeadingIcon", "filledTrailingIcon", "leadingIconColor", "trailingIconColor", "leadingIconSize", "trailingIconSize", "variant", "color", "disabled", "role", "fontSize", "weight", "fontWeight", "fontStyle", "align", "wrap", "truncate", "maxLines", "decoration", "decorationStyle", "decorationThickness", "decorationColor"},
 	"Icon":             {"icon", "filledIcon", "color"},
 	"IconButton":       {"icon", "filledIcon", "variant", "disabled", "selected", "iconColor"},
 	"FAB":              {"label", "icon", "filledIcon", "variant", "disabled"},
@@ -274,6 +274,7 @@ var defaults = map[string]any{
 // means different things elsewhere: a Slider's `center` is a number, a Map's is
 // a position string, and neither can take the other's default.
 var kindDefaults = map[string]map[string]any{
+	"Button":     {"fontSize": 0.0},
 	"Slider":     {"center": math.NaN()},
 	"Tabs":       {"variant": "secondary"},
 	"Popover":    {"align": "start"},
@@ -284,6 +285,7 @@ var kindDefaults = map[string]map[string]any{
 // slot is written `$popover { … }`, the way a fragment writes a named slot, but
 // it belongs to the component and needs no caller above it.
 var slots = map[string][]string{
+	"Button":    {"leading", "trailing"},
 	"Popover":   {"popover"},
 	"ListItem":  {"leading", "trailing"},
 	"TextField": {"leading", "trailing"},
@@ -347,7 +349,7 @@ func TypeOfFor(kind, name string) PropType {
 // TypeOf returns the literal type of a component property.
 func TypeOf(name string) PropType {
 	switch name {
-	case "disabled", "checked", "selected", "expanded", "showCopy", "showTooltip", "animated", "obscureText",
+	case "disabled", "checked", "selected", "expanded", "showCopy", "showTooltip", "animated", "obscureText", "wrap", "truncate",
 		"filledIcon", "filledLeadingIcon", "filledTrailingIcon",
 		"sortable", "numeric", "striped", "showHeader", "stickyHeader", "sortAscending",
 		"grid", "axis", "legend", "values", "stacked", "horizontal", "smooth", "points",
@@ -356,14 +358,16 @@ func TypeOf(name string) PropType {
 	case "value", "end", "center", "min", "max", "step", "spacing", "gap", "size", "hourFormat", "separatorSize",
 		"rowHeight", "headerHeight", "sortColumn", "selectedRow",
 		"innerRadius", "startAngle", "thickness", "zoom",
-		"barRadius", "barGap", "barBorderThickness", "fontSize", "scrollback":
+		"barRadius", "barGap", "barBorderThickness", "fontSize", "scrollback",
+		"leadingIconSize", "trailingIconSize", "weight", "fontWeight", "decorationThickness", "maxLines":
 		return Number
-	case "variant", "orientation", "animation", "crossAxisAlign", "mainAxisAlign", "align", "selectable":
+	case "variant", "orientation", "animation", "crossAxisAlign", "mainAxisAlign", "align", "selectable",
+		"role", "fontStyle", "decorationStyle":
 		return Enum
 	case "textColor", "gridColor", "color", "lineColor", "fillColor", "highlight", "barBorderColor",
 		"leadingIconColor", "trailingIconColor", "labelColor", "supportingColor",
 		"selectedLabelColor", "selectedIconColor", "selectedContainerColor", "selectionColor",
-		"separatorColor", "iconColor", "foreground":
+		"separatorColor", "iconColor", "foreground", "decorationColor":
 		return Color
 	case "categories", "bbox", "data", "coordinate", "coordinates":
 		return List
@@ -425,6 +429,15 @@ var (
 	mainAxisValues        = []string{"start", "center", "end", "spaceBetween", "spaceAround", "spaceEvenly"}
 	tableSelectableValues = []string{"none", "single", "multiple"}
 	orientationValues     = []string{"horizontal", "vertical"}
+	textRoleValues        = []string{
+		"displayLarge", "displayMedium", "displaySmall",
+		"headlineLarge", "headlineMedium", "headlineSmall",
+		"titleLarge", "titleMedium", "titleSmall",
+		"bodyLarge", "bodyMedium", "bodySmall",
+		"labelLarge", "labelMedium", "labelSmall",
+	}
+	fontStyleValues       = []string{"normal", "italic"}
+	decorationStyleValues = []string{"solid", "wavy", "dotted", "double", "dashed"}
 	navAnimationValues    = []string{"slide", "fade", "none"}
 	variantUnion          = []string{
 		"filled", "tonal", "elevated", "outlined", "text", "plain", "standard",
@@ -444,6 +457,12 @@ func EnumValues(name string) []string {
 		return mainAxisValues
 	case "animation":
 		return navAnimationValues
+	case "role":
+		return textRoleValues
+	case "fontStyle":
+		return fontStyleValues
+	case "decorationStyle":
+		return decorationStyleValues
 	}
 	return variantUnion
 }

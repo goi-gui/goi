@@ -74,6 +74,108 @@ func TestButtonVariants(t *testing.T) {
 	}
 }
 
+func TestButtonLabelUsesTextProperties(t *testing.T) {
+	l := m3list(t, `Window { Button {
+		label: "Styled" role: titleSmall fontSize: 30 weight: 700
+		fontStyle: italic align: end color: #123456
+		width: 320 height: 56
+	} }`)
+	for _, op := range l.Ops {
+		if op.Kind == Text && op.Text == "Styled" {
+			if op.FontSize != 30 || op.Weight != 700 {
+				t.Fatalf("label size/weight = %v/%v, want 30/700", op.FontSize, op.Weight)
+			}
+			if !op.Italic || op.Align != AlignEnd {
+				t.Fatalf("label italic/align = %v/%v, want italic/end", op.Italic, op.Align)
+			}
+			if op.Color != 0x123456FF {
+				t.Fatalf("label color = %08x", op.Color)
+			}
+			return
+		}
+	}
+	t.Fatalf("no styled label:\n%s", l.Dump())
+}
+
+func TestButtonEndIcons(t *testing.T) {
+	l := m3list(t, `Window { Button {
+		label: "Icons" width: 360 height: 56
+		leadingIcon: "leading_icon" trailingIcon: "trailing_icon"
+		leadingIconColor: #123456 trailingIconColor: #654321
+		leadingIconSize: 24 trailingIconSize: 30
+		filledTrailingIcon: true
+	} }`)
+	var lead, trail bool
+	for _, op := range l.Ops {
+		if op.Kind != Text || !op.Icon {
+			continue
+		}
+		switch op.Text {
+		case "leading_icon":
+			lead = op.FontSize == 24 && op.Color == 0x123456FF && !op.FilledIcon
+		case "trailing_icon":
+			trail = op.FontSize == 30 && op.Color == 0x654321FF && op.FilledIcon
+		}
+	}
+	if !lead || !trail {
+		t.Fatalf("end icons: lead=%v trail=%v\n%s", lead, trail, l.Dump())
+	}
+}
+
+func TestButtonChildrenReplaceLabel(t *testing.T) {
+	l := m3list(t, `Window { Button {
+		label: "Label" width: 320 height: 56
+		Text { text: "Child" }
+	} }`)
+	var label, child bool
+	for _, op := range l.Ops {
+		if op.Kind != Text {
+			continue
+		}
+		if op.Text == "Label" {
+			label = true
+		}
+		if op.Text == "Child" {
+			child = true
+		}
+	}
+	if label || !child {
+		t.Fatalf("children/label: label=%v child=%v\n%s", label, child, l.Dump())
+	}
+}
+
+func TestButtonIconWinsOverSlot(t *testing.T) {
+	l := m3list(t, `Window { Button {
+		label: "Label" width: 360 height: 56
+		leadingIcon: leading_icon
+		$leading { Text { text: "LEAD" } }
+		$trailing { Text { text: "TRAIL" } }
+		Text { text: "BODY" }
+	} }`)
+	var icon, lead, trail, body, label bool
+	for _, op := range l.Ops {
+		if op.Kind != Text {
+			continue
+		}
+		switch op.Text {
+		case "leading_icon":
+			icon = true
+		case "LEAD":
+			lead = true
+		case "TRAIL":
+			trail = true
+		case "BODY":
+			body = true
+		case "Label":
+			label = true
+		}
+	}
+	if !icon || lead || !trail || !body || label {
+		t.Fatalf("icon/slot precedence: icon=%v lead=%v trail=%v body=%v label=%v\n%s",
+			icon, lead, trail, body, label, l.Dump())
+	}
+}
+
 func TestSliderDrawsExpressiveTrack(t *testing.T) {
 	l := m3list(t, `Window { Slider { value: 0.5 min: 0 max: 1 width: 200 } }`)
 	col := m3.Light().Colors

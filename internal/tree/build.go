@@ -413,7 +413,7 @@ func (t *Tree) buildSlot(el *syntax.Element, parent *NodeBase, hooks *Hooks) (No
 			a.floats = true
 		}
 		return n, nil
-	case *TextField, *ListItem, *SearchBar:
+	case *TextField, *ListItem, *SearchBar, *Button:
 		// A row and a field centre whatever they are given in the icon square,
 		// the way the icon it replaces is centred.
 		wrap.Members = append([]syntax.Member{
@@ -703,9 +703,16 @@ func newNode(name string) Node {
 func newM3Component(name string) Node {
 	switch name {
 	case "Button":
+		label := newNode("Text").(*Text)
+		label.Role.Set("labelLarge")
+		label.FontSize.Set(0)
+		label.Align.Set("center")
 		return &Button{
-			Component: newComponent(),
-			Color:     newProp(nil, "color", DirtyPaint, uint32(0)),
+			Component:        newComponent(),
+			Color:            newProp(nil, "color", DirtyPaint, uint32(0)),
+			LeadingIconSize:  newProp(nil, "leadingIconSize", DirtyLayout, 0.0),
+			TrailingIconSize: newProp(nil, "trailingIconSize", DirtyLayout, 0.0),
+			LabelText:        label,
 		}
 	case "IconButton":
 		return &IconButton{

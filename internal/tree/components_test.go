@@ -65,6 +65,10 @@ func paired(a, b string) bool {
 		return b == "gap"
 	case "size":
 		return b == "width" || b == "height"
+	case "weight":
+		return b == "fontWeight"
+	case "fontWeight":
+		return b == "weight"
 	}
 	return false
 }

@@ -569,21 +569,99 @@ func (l *List) paintButton(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		l.tint(c, r, radii32(radii), fg, clip)
 	}
 
-	labelW := r.W
-	if c.Icon.Get() != "" {
-		labelW -= 26
+	btn, _ := c.Node().(*tree.Button)
+	const (
+		side = 16.0
+		gap  = 8.0
+		slot = 24.0
+	)
+	pe, be := c.PaddingEdges(), c.BorderEdges()
+	left, right := r.X+pe.Left+be.Left, r.Right()-pe.Right-be.Right
+	top, bottom := r.Y+pe.Top+be.Top, r.Bottom()-pe.Bottom-be.Bottom
+	innerH := bottom - top
+	if innerH < 0 {
+		innerH = 0
 	}
-	box := tree.Rect{X: r.X, Y: r.Y, W: labelW, H: r.H}
+	glyph := func(size float64) float64 {
+		if size <= 0 {
+			return 18
+		}
+		return size
+	}
+	leadSize, trailSize := 0.0, 0.0
+	if btn != nil {
+		if c.Icon.Get() != "" {
+			leadSize = glyph(btn.LeadingIconSize.Get())
+		} else if btn.LeadingNode != nil && btn.LeadingNode.Base().Visible() {
+			leadSize = math.Min(slot, r.H)
+		}
+		if c.Trailing.Get() != "" {
+			trailSize = glyph(btn.TrailingIconSize.Get())
+		} else if btn.TrailingNode != nil && btn.TrailingNode.Base().Visible() {
+			trailSize = math.Min(slot, r.H)
+		}
+	}
+	leadZone, trailZone := 0.0, 0.0
+	if leadSize > 0 {
+		leadZone = leadSize + gap
+	}
+	if trailSize > 0 {
+		trailZone = trailSize + gap
+	}
 	if c.Icon.Get() != "" {
-		// Icon then label, as one centred pair.
-		labelWidth := textWidth(l, c.Label.Get(), l.style("labelLarge")) + 8 + 18
-		start := r.X + (r.W-labelWidth)/2
-		l.leadingIconIn(c.Icon.Get(), 18, disabledAlpha(c, fg), start+9, r.Y+r.H/2, clip)
-		l.textIn(c.Label.Get(), l.style("labelLarge"), disabledAlpha(c, fg),
-			tree.Rect{X: start + 18 + 8, Y: r.Y, W: labelWidth - 26, H: r.H}, AlignStart, clip)
+		color := fg
+		if v := c.LeadingIconColor.Get(); v != 0 {
+			color = v
+		}
+		l.leadingIconIn(c.Icon.Get(), leadSize, disabledAlpha(c, color),
+			left+side+leadSize/2, top+innerH/2, clip)
+	}
+	if c.Trailing.Get() != "" {
+		color := fg
+		if v := c.TrailingIconColor.Get(); v != 0 {
+			color = v
+		}
+		l.trailingIconIn(c.Trailing.Get(), trailSize, disabledAlpha(c, color),
+			right-side-trailSize/2, top+innerH/2, clip)
+	}
+
+	// Default children replace the label. They are laid out by buttonChildren;
+	// paint only has to keep the label out of their way.
+	if btn == nil || buttonHasContent(btn) {
 		return
 	}
-	l.textIn(c.Label.Get(), l.style("labelLarge"), disabledAlpha(c, fg), box, AlignCenter, clip)
+	content := tree.Rect{X: left, Y: top, W: right - left, H: innerH}
+	if leadZone > 0 || trailZone > 0 {
+		content = tree.Rect{
+			X: left + side + leadZone,
+			Y: top,
+			W: right - left - 2*side - leadZone - trailZone,
+			H: innerH,
+		}
+		content.W = maxf(content.W, 0)
+	}
+	label := btn.LabelText
+	label.Text.Set(c.Label.Get())
+	label.Color.Set(disabledAlpha(c, fg))
+	l.paintText(label, content, clip)
+}
+
+// buttonHasContent reports whether the button's default children are present,
+// which make the label property fall back to being ignored.
+func buttonHasContent(b *tree.Button) bool {
+	for _, k := range b.Kids() {
+		if !k.Visible() {
+			continue
+		}
+		if b.LeadingNode != nil && k == b.LeadingNode.Base() {
+			continue
+		}
+		if b.TrailingNode != nil && k == b.TrailingNode.Base() {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 func (l *List) paintIconButton(c *tree.Component, r tree.Rect, clip tree.Rect) {

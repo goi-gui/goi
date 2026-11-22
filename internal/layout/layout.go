@@ -181,6 +181,8 @@ func (e *Engine) children(b *tree.NodeBase, w, h float64) {
 			e.textFieldSlots(b, kids, cw, ch, insetL, insetT)
 		case "SearchBar":
 			e.searchBarSlots(b, kids, cw, ch, insetL, insetT)
+		case "Button":
+			e.buttonChildren(b, kids, cw, ch, insetL, insetT)
 		case "ButtonGroup", "Row", "Toolbar", "Breadcrumb":
 			e.linear(b, kids, cw, ch, insetL, true, insetT)
 		case "Carousel":
@@ -390,6 +392,123 @@ func (e *Engine) searchBarSlots(b *tree.NodeBase, kids []*tree.NodeBase, w, h, i
 	place(sb.LeadingNode, 8)
 	if sb.Trailing.Get() == "" {
 		place(sb.TrailingNode, w-48)
+	}
+}
+
+// buttonChildren places a button's end slots and centres the default children
+// between them. An explicit leading or trailing icon wins over its slot, which
+// keeps no bounds while the icon is set. The children are one horizontal run,
+// centred as a group; a design that needs another arrangement wraps them in a
+// Row or Column of its own.
+func (e *Engine) buttonChildren(b *tree.NodeBase, kids []*tree.NodeBase, w, h, insetL, insetT float64) {
+	btn, ok := b.Node().(*tree.Button)
+	if !ok || btn.LabelText == nil {
+		e.linear(b, kids, w, h, insetL, false, insetT)
+		return
+	}
+	const (
+		side = 16.0
+		gap  = 8.0
+		slot = 24.0
+	)
+	if btn.LeadingNode != nil {
+		btn.LeadingNode.Base().SetVisible(btn.Icon.Get() == "")
+	}
+	if btn.TrailingNode != nil {
+		btn.TrailingNode.Base().SetVisible(btn.Trailing.Get() == "")
+	}
+
+	iconSize := func(v float64) float64 {
+		if v <= 0 {
+			return 18
+		}
+		return v
+	}
+	leadSize, trailSize := 0.0, 0.0
+	if btn.Icon.Get() != "" {
+		leadSize = iconSize(btn.LeadingIconSize.Get())
+	} else if btn.LeadingNode != nil {
+		leadSize = minf(slot, h)
+	}
+	if btn.Trailing.Get() != "" {
+		trailSize = iconSize(btn.TrailingIconSize.Get())
+	} else if btn.TrailingNode != nil {
+		trailSize = minf(slot, h)
+	}
+	leadZone, trailZone := 0.0, 0.0
+	if leadSize > 0 {
+		leadZone = leadSize + gap
+	}
+	if trailSize > 0 {
+		trailZone = trailSize + gap
+	}
+
+	// Slots only take bounds when they are the visible side; the icon is drawn
+	// by paint and the slot must not paint over it.
+	if btn.Icon.Get() == "" && btn.LeadingNode != nil && leadSize > 0 {
+		n := btn.LeadingNode
+		n.Base().SetBounds(tree.Rect{X: insetL + side, Y: insetT + (h-leadSize)/2, W: leadSize, H: leadSize})
+		e.children(n.Base(), leadSize, leadSize)
+	}
+	if btn.Trailing.Get() == "" && btn.TrailingNode != nil && trailSize > 0 {
+		n := btn.TrailingNode
+		n.Base().SetBounds(tree.Rect{X: insetL + w - side - trailSize, Y: insetT + (h-trailSize)/2, W: trailSize, H: trailSize})
+		e.children(n.Base(), trailSize, trailSize)
+	}
+
+	var content []*tree.NodeBase
+	for _, k := range kids {
+		if btn.LeadingNode != nil && k == btn.LeadingNode.Base() {
+			continue
+		}
+		if btn.TrailingNode != nil && k == btn.TrailingNode.Base() {
+			continue
+		}
+		content = append(content, k)
+	}
+	if len(content) == 0 {
+		return
+	}
+	contentX, contentW := insetL, w
+	if leadZone > 0 || trailZone > 0 {
+		contentX = insetL + side + leadZone
+		contentW = w - 2*side - leadZone - trailZone
+		contentW = maxf(contentW, 0)
+	}
+
+	type item struct {
+		k    *tree.NodeBase
+		w, h float64
+	}
+	items := make([]item, 0, len(content))
+	total, tallest := 0.0, 0.0
+	for _, k := range content {
+		cw, ch := e.natural(k, contentW, h)
+		if v := k.Width(); v >= 0 {
+			cw = v
+		}
+		if v := k.Height(); v >= 0 {
+			ch = v
+		}
+		cw = minf(cw, contentW)
+		if ch > tallest {
+			tallest = ch
+		}
+		total += cw
+		items = append(items, item{k: k, w: cw, h: ch})
+	}
+	if len(items) > 1 {
+		total += gap * float64(len(items)-1)
+	}
+	x := contentX + (contentW-total)/2
+	if x < contentX {
+		x = contentX
+	}
+	y := insetT + (h-tallest)/2
+	for _, it := range items {
+		it.k.SetBounds(tree.Rect{X: x, Y: y + (tallest-it.h)/2, W: it.w, H: it.h})
+		e.children(it.k, it.w, it.h)
+		x += it.w + gap
 	}
 }
 
@@ -1547,6 +1666,14 @@ func (e *Engine) componentOf(b *tree.NodeBase) (*m3.ComponentView, bool) {
 	}
 	if s, ok := b.Node().(*tree.Slider); ok {
 		cv.Orientation = s.Orientation.Get()
+	}
+	if btn, ok := b.Node().(*tree.Button); ok && btn.LabelText != nil {
+		lt := btn.LabelText
+		cv.LabelRole = lt.Role.Get()
+		cv.LabelFontSize = lt.FontSize.Get()
+		cv.LabelWeight = lt.Weight.Get()
+		cv.LeadingIconSize = btn.LeadingIconSize.Get()
+		cv.TrailingIconSize = btn.TrailingIconSize.Get()
 	}
 	return cv, true
 }

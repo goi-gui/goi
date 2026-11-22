@@ -1262,6 +1262,26 @@ func TestSliderVerticalRangeDragTakesNearestHandle(t *testing.T) {
 	}
 }
 
+// TestButtonChildStillClicksTheButton covers content children: a press on the
+// Text a design puts inside a Button belongs to the Button.
+func TestButtonChildStillClicksTheButton(t *testing.T) {
+	_, win, in := inputFixture(t, `Window { Button {
+		id: b width: 220 height: 56
+		Text { id: child text: "Child" }
+	} }`, 480, 320)
+	btn := MustByID[*Button](win, "b")
+	child := MustByID[*Text](win, "child")
+	clicks := 0
+	btn.OnClick(func(ClickEvent) { clicks++ })
+
+	r := absoluteRect(child)
+	in.MouseDown(r.X+r.W/2, r.Y+r.H/2, 0, false)
+	in.MouseUp(r.X+r.W/2, r.Y+r.H/2, 0)
+	if clicks != 1 {
+		t.Fatalf("clicking the child fired the button %d times, want 1", clicks)
+	}
+}
+
 // TestZIndexDrivesHitOrder keeps input consistent with paint: the node drawn on
 // top is the one a press finds.
 func TestZIndexDrivesHitOrder(t *testing.T) {
