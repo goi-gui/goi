@@ -162,7 +162,7 @@ func (b *NodeBase) writeExpr(name string, v any) {
 	}
 	// A number written into a string property is formatted, so `text: data.count`
 	// reads naturally instead of silently doing nothing.
-	if f, ok := v.(float64); ok && b.PropIsString(name) {
+	if f, ok := v.(float64); ok && b.propIsString(name) {
 		v = strconv.FormatFloat(f, 'f', -1, 64)
 	}
 	// The unchanged case is the common one on a repaint, and building the

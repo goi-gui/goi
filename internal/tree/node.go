@@ -1154,10 +1154,10 @@ func (b *NodeBase) PropValue(name string) (any, bool) {
 	return nil, false
 }
 
-// PropIsString reports whether a property holds text. writeExpr uses it to
+// propIsString reports whether a property holds text. writeExpr uses it to
 // format a number written into a text property; reading the value through
 // PropValue would box a number for every expression on every layout.
-func (b *NodeBase) PropIsString(name string) bool {
+func (b *NodeBase) propIsString(name string) bool {
 	b.properties()
 	i, ok := b.byName[name]
 	if !ok {
