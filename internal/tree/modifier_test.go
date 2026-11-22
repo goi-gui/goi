@@ -1,6 +1,9 @@
 package tree
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 func buildModifier(t *testing.T, src string) *Tree {
 	t.Helper()
@@ -189,6 +192,45 @@ func TestButtonStateUsesVariantColour(t *testing.T) {
 	}
 	if got := b.Background(); got != 0x112233FF {
 		t.Fatalf("restored background = %08x, want the variant colour", got)
+	}
+}
+
+// TestStateCoversRotateScaleAndShadow pins the properties whose values are not
+// plain literals: a state arm parses and restores them like the property itself.
+func TestStateCoversRotateScaleAndShadow(t *testing.T) {
+	tr := buildModifier(t, `Window {
+		Rectangle {
+			id:     box
+			width:  20
+			height: 20
+			rotate: state { hover: 45deg }
+			scale:  state { hover: 2 }
+			shadow: state { hover: 2 3 5 #112233 }
+		}
+	}`)
+	box := tr.ids["box"].Base()
+	tr.ApplyExpressions()
+	if !box.Rotation().IsZero() || !box.Scaling().IsIdentity() || len(box.Shadow()) != 0 {
+		t.Fatalf("rest = %+v %+v %+v", box.Rotation(), box.Scaling(), box.Shadow())
+	}
+
+	box.SetStateHover(true)
+	tr.ApplyExpressions()
+	if got := box.Rotation(); got.Angle != 45*math.Pi/180 {
+		t.Fatalf("hover rotation = %+v", got)
+	}
+	if got := box.Scaling(); got.X != 2 || got.Y != 2 {
+		t.Fatalf("hover scale = %+v", got)
+	}
+	if got := box.Shadow(); len(got) != 1 || got[0].X != 2 || got[0].Y != 3 ||
+		got[0].Blur != 5 || got[0].Color != 0x112233FF {
+		t.Fatalf("hover shadow = %+v", got)
+	}
+
+	box.SetStateHover(false)
+	tr.ApplyExpressions()
+	if !box.Rotation().IsZero() || !box.Scaling().IsIdentity() || len(box.Shadow()) != 0 {
+		t.Fatalf("restored = %+v %+v %+v", box.Rotation(), box.Scaling(), box.Shadow())
 	}
 }
 

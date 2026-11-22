@@ -1,6 +1,7 @@
 package tree
 
 import (
+	"math"
 	"strings"
 	"time"
 
@@ -313,6 +314,28 @@ func valueLiteral(v any) syntax.Value {
 		return &syntax.Color{RGBA: x}
 	case time.Duration:
 		return &syntax.Duration{Val: x}
+	case Rotation:
+		return &syntax.Rotate{Angle: x.Angle * 180 / math.Pi, Axis: axisName(x.Axis), Vector: x.Axis}
+	case Scale:
+		return &syntax.Scale{X: x.X, Y: x.Y, Z: x.Z}
+	case []ShadowLayer:
+		sh := &syntax.Shadow{}
+		for _, l := range x {
+			sl := syntax.ShadowLayer{X: l.X, Y: l.Y, Blur: l.Blur, Spread: l.Spread, Inset: l.Inset}
+			switch {
+			case l.Role != "":
+				sl.Color = roleValue(l.Role)
+			case l.Color != 0:
+				sl.Color = &syntax.Color{RGBA: l.Color}
+			}
+			sh.Layers = append(sh.Layers, sl)
+		}
+		return sh
+	case BackdropBlur:
+		if x.Gradient != nil {
+			return nil
+		}
+		return &syntax.Number{Val: x.Radius}
 	}
 	return nil
 }
@@ -343,6 +366,28 @@ func literalMatches(cur any, v syntax.Value) bool {
 		if c, ok := cur.(uint32); ok {
 			rgba, ok := csscolor.Parse(x.Val)
 			return ok && rgba == c
+		}
+	case *syntax.Rotate:
+		c, ok := cur.(Rotation)
+		if !ok {
+			return false
+		}
+		r := rotationOf(x)
+		return c == r || (c.IsZero() && r.IsZero())
+	case *syntax.Scale:
+		c, ok := cur.(Scale)
+		return ok && c == scaleOf(x)
+	case *syntax.Shadow:
+		c, ok := cur.([]ShadowLayer)
+		return ok && shadowEqual(c, shadowLayers(x))
+	}
+	if c, ok := cur.(BackdropBlur); ok {
+		switch x := v.(type) {
+		case *syntax.Number:
+			return sameBackdropBlur(c, BackdropBlur{Radius: x.Val})
+		case *syntax.String:
+			g, ok := csscolor.ParseValueGradient(x.Val)
+			return ok && sameBackdropBlur(c, BackdropBlur{Radius: g.Max(), Gradient: g})
 		}
 	}
 	return false

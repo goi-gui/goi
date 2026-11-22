@@ -83,6 +83,9 @@ type parser struct {
 	// caseDepth is non-zero inside a switch arm's member list, where `case` and
 	// `default` end the arm instead of starting a member.
 	caseDepth int
+	// propName is the property whose value is being parsed, so a modifier arm
+	// uses the same literal grammar as the property itself.
+	propName string
 }
 
 func (p *parser) peek() token  { return p.toks[min(p.i, len(p.toks)-1)] }
@@ -571,6 +574,9 @@ func (p *parser) parseBlockBody() ([]Member, Pos, bool) {
 // `200% 50% 200%`. A percentage becomes its factor, and one value scales both
 // axes, so `2` is `2 2`.
 func (p *parser) parseScale() (Value, bool) {
+	if p.peek().kind == tokLBrace {
+		return p.parseMapValue(p.parseScale)
+	}
 	if t := p.peek(); t.kind == tokIdent && t.text == "none" {
 		p.next()
 		return &Scale{At: t.pos, X: 1, Y: 1, Z: 1}, true
@@ -880,30 +886,10 @@ func (p *parser) parseProperty() (*Property, bool) {
 	prop := &Property{Name: name.text, NameAt: name.pos}
 	p.next() // ':'
 
-	var v Value
-	var ok bool
-	switch name.text {
-	case "shadow", "subtitleShadow":
-		v, ok = p.parseShadowValue()
-	case "fontWeight", "subtitleFontWeight":
-		v, ok = p.parseFontWeight()
-	case "decoration":
-		v, ok = p.parseDecorationValue()
-	case "cursor":
-		v, ok = p.parseCursorValue()
-	case "rotate":
-		v, ok = p.parseRotate()
-	case "scale":
-		v, ok = p.parseScale()
-	case "transition":
-		v, ok = p.parseTransition()
-	case "crossfadeSrc", "duration":
-		v, ok = p.parseDurationValue()
-	case "themeTransition":
-		v, ok = p.parseThemeTransition()
-	default:
-		v, ok = p.parseValue()
-	}
+	prev := p.propName
+	p.propName = name.text
+	v, ok := p.parsePropValue(name.text)
+	p.propName = prev
 	if !ok {
 		p.sync()
 		return nil, false
@@ -916,6 +902,36 @@ func (p *parser) parseProperty() (*Property, bool) {
 		p.next()
 	}
 	return prop, true
+}
+
+// parsePropValue reads a value for the property named name. Most properties
+// take an ordinary value; the ones with their own grammar keep it inside a
+// modifier too, so `rotate: state { hover: 45deg }` parses like `rotate: 45deg`.
+func (p *parser) parsePropValue(name string) (Value, bool) {
+	if v, found, ok := p.parseModifierAhead(); found {
+		return v, ok
+	}
+	switch name {
+	case "shadow", "subtitleShadow":
+		return p.parseShadowValue()
+	case "fontWeight", "subtitleFontWeight":
+		return p.parseFontWeight()
+	case "decoration":
+		return p.parseDecorationValue()
+	case "cursor":
+		return p.parseCursorValue()
+	case "rotate":
+		return p.parseRotate()
+	case "scale":
+		return p.parseScale()
+	case "transition":
+		return p.parseTransition()
+	case "crossfadeSrc", "duration":
+		return p.parseDurationValue()
+	case "themeTransition":
+		return p.parseThemeTransition()
+	}
+	return p.parseValue()
 }
 
 // timingFunctions are the CSS timing-function keywords a transition accepts.
@@ -1009,6 +1025,9 @@ func (p *parser) timingFunction() (string, bool) {
 
 // parseThemeTransition reads `none` or a transition name and its duration.
 func (p *parser) parseThemeTransition() (Value, bool) {
+	if p.peek().kind == tokLBrace {
+		return p.parseMapValue(p.parseThemeTransition)
+	}
 	t := p.peek()
 	if t.kind == tokIdent && t.text == "none" {
 		p.next()
@@ -1029,6 +1048,9 @@ func (p *parser) parseThemeTransition() (Value, bool) {
 // parseDurationValue reads a duration property. A bare zero is the "off"
 // spelling; every other value needs its ms or s unit.
 func (p *parser) parseDurationValue() (Value, bool) {
+	if p.peek().kind == tokLBrace {
+		return p.parseMapValue(p.parseDurationValue)
+	}
 	t := p.peek()
 	if t.kind == tokNumber && t.num == 0 && (p.peek2().kind != tokIdent || p.peek2().pos != t.end) {
 		p.next()
@@ -1069,6 +1091,9 @@ func (p *parser) parseDuration() (time.Duration, bool) {
 // parseRotate reads a CSS rotate: `none`, `90deg`, `x 90deg` or `1 1 1 90deg`.
 // The angle may use deg, rad, turn or grad; the result is always degrees.
 func (p *parser) parseRotate() (Value, bool) {
+	if p.peek().kind == tokLBrace {
+		return p.parseMapValue(p.parseRotate)
+	}
 	if t := p.peek(); t.kind == tokIdent && t.text == "none" {
 		p.next()
 		return &Rotate{At: t.pos}, true
@@ -1153,6 +1178,9 @@ func (p *parser) sameLine(pos Pos) bool {
 
 // parseShadowValue reads a shadow list, or `none` for no shadow at all.
 func (p *parser) parseShadowValue() (Value, bool) {
+	if p.peek().kind == tokLBrace {
+		return p.parseMapValue(p.parseShadowValue)
+	}
 	if t := p.peek(); t.kind == tokIdent && t.text == "none" {
 		p.next()
 		return &Shadow{At: t.pos}, true
@@ -1404,18 +1432,8 @@ func (p *parser) parseValue() (Value, bool) {
 		// produce two diagnostics for one typo.
 		return nil, false
 	}
-	// A modifier is a keyword-led block, not an expression: `responsive { … }`,
-	// `conditional { … }` and `state { … }` are values with their own member
-	// syntax.
-	if t.kind == tokIdent && p.peek2().kind == tokLBrace {
-		switch t.text {
-		case "responsive":
-			return p.parseModifier(ModifierResponsive)
-		case "conditional":
-			return p.parseModifier(ModifierConditional)
-		case "state":
-			return p.parseModifier(ModifierState)
-		}
+	if v, found, ok := p.parseModifierAhead(); found {
+		return v, ok
 	}
 	// An unquoted gradient is a value, not a call: its stops hold colours and
 	// percentages that the expression grammar does not take. Capture the raw
@@ -1428,6 +1446,27 @@ func (p *parser) parseValue() (Value, bool) {
 	// the operators and a conditional on top. Starting a bare identifier here
 	// is what lets `i+1` work inside a call's arguments.
 	return p.parseExpr()
+}
+
+// parseModifierAhead parses a modifier when the next tokens are one: a
+// keyword-led block, not an expression, with its own member syntax. found is
+// false when the value is an ordinary one.
+func (p *parser) parseModifierAhead() (v Value, found, ok bool) {
+	t := p.peek()
+	if t.kind != tokIdent || p.peek2().kind != tokLBrace {
+		return nil, false, false
+	}
+	switch t.text {
+	case "responsive":
+		v, ok = p.parseModifier(ModifierResponsive)
+	case "conditional":
+		v, ok = p.parseModifier(ModifierConditional)
+	case "state":
+		v, ok = p.parseModifier(ModifierState)
+	default:
+		return nil, false, false
+	}
+	return v, true, ok
 }
 
 // rawGradientAhead reports whether the next tokens spell an unquoted
@@ -1501,7 +1540,7 @@ func (p *parser) parseModifier(kind ModifierKind) (Value, bool) {
 				return nil, false
 			}
 			p.next()
-			v, ok := p.parseValue()
+			v, ok := p.parsePropValue(p.propName)
 			if !ok {
 				return nil, false
 			}
@@ -1513,7 +1552,7 @@ func (p *parser) parseModifier(kind ModifierKind) (Value, bool) {
 			if p.peek().kind == tokIdent && p.peek().text == "default" && p.peek2().kind == tokColon {
 				kw := p.next()
 				p.next()
-				v, ok := p.parseValue()
+				v, ok := p.parsePropValue(p.propName)
 				if !ok {
 					return nil, false
 				}
@@ -1532,7 +1571,7 @@ func (p *parser) parseModifier(kind ModifierKind) (Value, bool) {
 				return nil, false
 			}
 			p.next()
-			v, ok := p.parseValue()
+			v, ok := p.parsePropValue(p.propName)
 			if !ok {
 				return nil, false
 			}

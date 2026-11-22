@@ -1456,6 +1456,37 @@ func TestParseStateModifier(t *testing.T) {
 	}
 }
 
+// TestParseStateModifierPropertyValues covers properties with their own value
+// grammar: an arm parses like the property itself, not as an expression.
+func TestParseStateModifierPropertyValues(t *testing.T) {
+	f, diag := Parse([]byte(`Window {
+		Rectangle {
+			rotate: state { hover: x 45deg }
+			scale:  state { hover: 200% 50% }
+			shadow: state { hover: 2 2 5 #000000 }
+			duration: state { hover: 250ms }
+		}
+	}`))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	rect := f.Root.Children()[0]
+	for prop, want := range map[string]func(Value) bool{
+		"rotate": func(v Value) bool { r, ok := v.(*Rotate); return ok && r.Axis == "x" && r.Angle == 45 },
+		"scale":  func(v Value) bool { sc, ok := v.(*Scale); return ok && sc.X == 2 && sc.Y == 0.5 },
+		"shadow": func(v Value) bool { sh, ok := v.(*Shadow); return ok && len(sh.Layers) == 1 && sh.Layers[0].Blur == 5 },
+		"duration": func(v Value) bool {
+			d, ok := v.(*Duration)
+			return ok && d.Val == 250*time.Millisecond
+		},
+	} {
+		m, ok := rect.Prop(prop).Value.(*Modifier)
+		if !ok || len(m.Entries) != 1 || !want(m.Entries[0].Value) {
+			t.Errorf("%s = %#v", prop, rect.Prop(prop).Value)
+		}
+	}
+}
+
 // TestParseConditionalDefault covers the reversed conditional form: the
 // condition leads, and `default` is the fallback without one.
 func TestParseConditionalDefault(t *testing.T) {
