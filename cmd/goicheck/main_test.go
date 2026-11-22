@@ -17,6 +17,12 @@ func TestCollapsedFindsEmptyContainers(t *testing.T) {
 			Column { id: empty }
 			Text { id: fine text: "ok" }
 			Rectangle { id: hidden width: 10 height: 10 visible: false }
+			Column {
+				id:      faded
+				height:  0
+				opacity: 0
+				Text { text: "collapsed panel" }
+			}
 		}
 	}`), nil)
 	if !diag.Empty() {

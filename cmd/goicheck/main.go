@@ -199,11 +199,13 @@ func name(n tree.Node) string {
 
 // shown reports whether a node and every ancestor are visible.
 func shown(b *tree.NodeBase) bool {
-	if !b.Visible() {
+	// A fully transparent node and its subtree draw nothing, so a panel
+	// collapsed with opacity and height is not a zero-size mistake.
+	if !b.Visible() || b.Opacity() == 0 {
 		return false
 	}
 	for p := b.Parent(); p != nil; p = p.Base().Parent() {
-		if !p.Base().Visible() {
+		if !p.Base().Visible() || p.Base().Opacity() == 0 {
 			return false
 		}
 	}
