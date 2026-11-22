@@ -51,6 +51,10 @@ type NodeBase struct {
 	kids   []*NodeBase
 
 	bounds Rect
+	// autoW and autoH are the sizes layout last gave a node whose width or
+	// height is auto (-1), so a transition can start from or return to the
+	// size on screen instead of the -1 sentinel.
+	autoW, autoH float64
 
 	// Scroll offsets are runtime state, clamped against the content extent when
 	// read, so stale values after a relayout cannot scroll past the end.
@@ -289,7 +293,15 @@ func (b *NodeBase) Kids() []*NodeBase { return b.kids }
 func (b *NodeBase) Bounds() Rect { return b.bounds }
 
 // SetBounds is used by the layout engine.
-func (b *NodeBase) SetBounds(r Rect) { b.bounds = r }
+func (b *NodeBase) SetBounds(r Rect) {
+	b.bounds = r
+	if b.width.Get() < 0 {
+		b.autoW = r.W
+	}
+	if b.height.Get() < 0 {
+		b.autoH = r.H
+	}
+}
 
 // Visible reports whether the node takes part in layout and hit-testing.
 func (b *NodeBase) Visible() bool { return b.visible.Get() }

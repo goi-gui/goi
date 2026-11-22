@@ -1132,3 +1132,60 @@ func TestHeroHugsItsChild(t *testing.T) {
 	want(t, bounds(t, tr, "pic"), 0, 0, 200, 80)
 	want(t, bounds(t, tr, "next"), 0, 80, 200, 80)
 }
+
+// TestAutoSizeTransitionStartsFromTheRenderedSize is the hover-width case: a
+// state block without `default` leaves width auto, so the transition has to
+// start from the width layout gave the button, not from the -1 sentinel.
+func TestAutoSizeTransitionStartsFromTheRenderedSize(t *testing.T) {
+	tr := build(t, `Window {
+		Row {
+			Button {
+				id:         b
+				label:      "selam"
+				width:      state { hover: 300 }
+				transition: width 100ms
+			}
+		}
+	}`)
+	e := New(nil)
+	e.Layout(tr.Root, 640, 480)
+	n, ok := tr.ByID("b")
+	if !ok {
+		t.Fatal("no button")
+	}
+	btn := n.(*tree.Button)
+	base := btn.Base()
+	rest := base.Bounds().W
+	if rest <= 0 || rest >= 300 {
+		t.Fatalf("resting width = %v", rest)
+	}
+
+	btn.Hover = true
+	tr.ApplyExpressions()
+	e.Layout(tr.Root, 640, 480)
+	tr.AdvanceTransitions(0.05)
+	if w := base.Width(); w <= rest || w >= 300 {
+		t.Fatalf("halfway width = %v, want between %v and 300", w, rest)
+	}
+	tr.AdvanceTransitions(0.06)
+	e.Layout(tr.Root, 640, 480)
+	if w := base.Bounds().W; w != 300 {
+		t.Fatalf("hover width = %v, want 300", w)
+	}
+
+	btn.Hover = false
+	tr.ApplyExpressions()
+	e.Layout(tr.Root, 640, 480)
+	tr.AdvanceTransitions(0.05)
+	if w := base.Width(); w < rest || w >= 300 {
+		t.Fatalf("returning width = %v, want between %v and 300", w, rest)
+	}
+	tr.AdvanceTransitions(0.06)
+	e.Layout(tr.Root, 640, 480)
+	if w := base.Width(); w != -1 {
+		t.Fatalf("restored cell = %v, want auto (-1)", w)
+	}
+	if w := base.Bounds().W; w != rest {
+		t.Fatalf("restored width = %v, want %v", w, rest)
+	}
+}

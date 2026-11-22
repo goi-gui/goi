@@ -34,10 +34,13 @@ type transitionState struct {
 	toShadow    []ShadowLayer
 	active      bool
 	initialized bool
-	color       bool
-	rot         bool
-	scale       bool
-	shadow      bool
+	// autoTo is a width or height transition heading back to auto: to holds
+	// the size it was last laid out at, and the end writes -1 again.
+	autoTo bool
+	color  bool
+	rot    bool
+	scale  bool
+	shadow bool
 }
 
 // setTransitions reads a `transition:` value. Every named property must exist;
@@ -347,6 +350,16 @@ func (b *NodeBase) applySizeTransition(v syntax.Value) bool {
 }
 
 func (b *NodeBase) startNumber(name string, st *transitionState, to float64) {
+	// Width and height have no cell value when they are auto, so a transition
+	// starts from and returns to the size layout last gave them.
+	if v, ok := b.autoSize(name); ok {
+		if to < 0 {
+			st.autoTo = true
+			to = v
+		} else {
+			st.autoTo = false
+		}
+	}
 	if !st.initialized {
 		if b.tree != nil && b.tree.building {
 			b.writeRawNumber(name, to)
@@ -364,12 +377,30 @@ func (b *NodeBase) startNumber(name string, st *transitionState, to float64) {
 		return
 	}
 	from, _ := b.PropValue(name)
-	st.from = from.(float64)
+	f := from.(float64)
+	if f < 0 {
+		if v, ok := b.autoSize(name); ok {
+			f = v
+		}
+	}
+	st.from = f
 	st.to = to
 	st.elapsed = 0
 	st.active = true
 	b.listTransition()
 	b.mark(b.PropDirty(name))
+}
+
+// autoSize reports the size layout gave an auto width or height. The bool says
+// whether name is one of the two.
+func (b *NodeBase) autoSize(name string) (float64, bool) {
+	switch name {
+	case "width":
+		return b.autoW, true
+	case "height":
+		return b.autoH, true
+	}
+	return 0, false
 }
 
 func (b *NodeBase) startColor(name string, st *transitionState, to uint32, clearRole bool) {
@@ -617,6 +648,11 @@ func (t *Tree) AdvanceTransitions(dt float64) bool {
 					b.writeRawScale(name, st.toScale)
 				case st.shadow:
 					b.writeRawShadow(st.toShadow)
+				}
+				// Back to auto: the cell holds -1 again so the node follows its
+				// content and the parent instead of the old pixel size.
+				if st.autoTo {
+					b.writeRawNumber(name, -1)
 				}
 			}
 			b.mark(b.PropDirty(name))
