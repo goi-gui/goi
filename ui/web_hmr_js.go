@@ -23,7 +23,7 @@ var hmrFuncs []js.Func
 // marker. A normal static page has no marker, so a production build never opens
 // a connection.
 func (a *App) startWebReload() {
-	if a == nil || !a.opts.HotReload {
+	if a == nil || !defaultHotReload {
 		return
 	}
 	global := js.Global()

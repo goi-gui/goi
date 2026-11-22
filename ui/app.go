@@ -15,46 +15,6 @@ import (
 	"github.com/goi-gui/goi/internal/tree"
 )
 
-// Options configure LoadWindow.
-type Options struct {
-	// Assets loads the design from fsys instead of the ui directory in
-	// goi.yaml. Use it for a design embedded in the binary, such as a wasm
-	// build; hot reload needs a directory and is skipped with it.
-	Assets    fs.FS
-	HotReload bool
-	Width     int // used only when the .goi file has no width
-	Height    int
-	// Canvas names the DOM element a browser build draws into, by id. A page
-	// with several canvases runs one app per canvas, and each app names its
-	// own. An empty id takes the page's first canvas, creating one if the page
-	// has none; a desktop build ignores it.
-	Canvas string
-}
-
-// Option mutates Options.
-type Option func(*Options)
-
-// WithHotReload reloads the .goi file when it changes on disk. It is on by
-// default for a directory design; a build registered with RegisterAssets has no
-// directory to watch, so it is skipped. This option overrides either default.
-func WithHotReload(on bool) Option { return func(o *Options) { o.HotReload = on } }
-
-// WithAssets loads the design from fsys instead of the ui directory in
-// goi.yaml. It is for an embedded design, usually a wasm build where there is
-// no disk to read. Hot reload needs a directory, so it is skipped.
-func WithAssets(fsys fs.FS) Option { return func(o *Options) { o.Assets = fsys } }
-
-// WithSize sets the fallback client size for files that do not declare one.
-func WithSize(w, h int) Option { return func(o *Options) { o.Width, o.Height = w, h } }
-
-// WithCanvas names the element a browser build draws into, by id:
-//
-//	app.LoadWindow("app.goi", ui.WithCanvas("hero"))
-//
-// A page can hold several canvases and run one app per canvas. Without it the
-// app takes the page's first canvas, which is what a single-canvas page wants.
-func WithCanvas(id string) Option { return func(o *Options) { o.Canvas = id } }
-
 // App owns the UI goroutine, the posted-function queue and every window's
 // state. It is safe to call Post from any goroutine.
 type App struct {
@@ -68,7 +28,6 @@ type App struct {
 	// all reach them the way they reach an asset.
 	picked     map[string][]byte
 	path       string
-	opts       Options
 	driver     driver
 	quitOnce   sync.Once
 	needsFrame bool
@@ -245,18 +204,12 @@ func newHeadlessApp() *App { return &App{vsync: true, debugUI: debugUI()} }
 // inside that directory, slash-separated; a design may import fragments next to
 // it, so it is usually a directory rather than one file.
 //
-// Hot reload is on by default and watches every directory in the design. Call
-// Bind afterwards. WithAssets loads an embedded design instead.
-func (a *App) LoadWindow(entry string, opts ...Option) (*Window, error) {
+// RegisterAssets supplies an embedded design instead. Hot reload is on by
+// default and watches every directory in the design; build with the
+// `nohotreload` tag to turn it off. Call Bind afterwards.
+func (a *App) LoadWindow(entry string) (*Window, error) {
 	start := time.Now()
-	o := Options{Width: 480, Height: 320, HotReload: defaultHotReload}
-	for _, fn := range opts {
-		fn(&o)
-	}
-	assets := o.Assets
-	if assets == nil {
-		assets = registeredAssets()
-	}
+	assets := registeredAssets()
 	if assets == nil {
 		dir, err := designDir()
 		if err != nil {
@@ -286,7 +239,7 @@ func (a *App) LoadWindow(entry string, opts ...Option) (*Window, error) {
 	tr.SetFallbackLanguage(a.fallbackLanguage)
 
 	w := &Window{tree: tr, app: a, title: tr.Root.Title.Get()}
-	w.width, w.height = o.Width, o.Height
+	w.width, w.height = 480, 320
 	if v, ok := tr.Root.PropValue("width"); ok {
 		if f, ok := v.(float64); ok && f > 0 {
 			w.width = int(f)
@@ -297,7 +250,7 @@ func (a *App) LoadWindow(entry string, opts ...Option) (*Window, error) {
 			w.height = int(f)
 		}
 	}
-	a.win, a.assets, a.path, a.opts = w, assets, name, o
+	a.win, a.assets, a.path = w, assets, name
 	w.noteMissingFonts(tr)
 	a.themes = map[string]*Theme{"light": m3.Light(), "dark": m3.Dark()}
 	// Images resolve against the container above, so this runs after it is set.
@@ -308,7 +261,7 @@ func (a *App) LoadWindow(entry string, opts ...Option) (*Window, error) {
 	}
 	logg().Debug(logCtx, "ui: window loaded", "file", name, "took", time.Since(start).String())
 	// An embedded design has no directory to watch; reload needs the disk.
-	if _, ok := watchRoot(assets); o.HotReload && ok {
+	if _, ok := watchRoot(assets); defaultHotReload && ok {
 		if err := a.enableWatcher(b); err != nil {
 			logg().Error(logCtx, "ui: hot reload unavailable", "error", err)
 			return nil, err

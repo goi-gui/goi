@@ -2510,7 +2510,7 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   always reads a directory, so `goi run` needs no extra wiring. `goi.yaml` stays
   optional: without it the entry is resolved from the working directory, which
   keeps single-file examples simple. An embedded design is the one case with no
-  directory to watch, so `WithAssets` takes the `fs.FS` and hot reload is
+  directory to watch, so `RegisterAssets` supplies the `fs.FS` and hot reload is
   skipped. The CLI's `buildFlags` default to `all` in the same spirit: a new
   project starts with every feature and opts down with `[]`.
 
@@ -2519,13 +2519,22 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   flips `defaultHotReload` in `ui` to false; the source is otherwise the same
   `cmd/main.go` that `goi run` launches. A runtime switch would have shipped the
   watcher and its file descriptors anyway, and a separate release entry point
-  would have split development and production. `WithHotReload(true)` still
-  overrides the tag for someone who wants it. The executable name comes from
+  would have split development and production. The tag is the only switch now:
+  `LoadWindow` takes no options. The executable name comes from
   `name` in `goi.yaml` because that is the project's name, not a flag repeated on
   every build; `GOOS` and `GOARCH` keep their Go meaning. `goi init` asks for the
   name, id and module with huh only when a flag left them empty, so the bare
   command is friendly and the flagged one is scriptable; `ui` defaults to `ui`
   because a path has an obvious default and does not need a prompt.
+
+- **LoadWindow takes only the entry; configuration is not an option list.** The
+  old `WithSize`, `WithAssets`, `WithHotReload` and `WithCanvas` closures made a
+  simple load carry a variadic API and two ways to set most of it. The design's
+  `width`/`height` now size the window (480×320 when it has none), embedded
+  assets go through `RegisterAssets`, `nohotreload` turns the watcher off, and a
+  browser app takes the first canvas the page has not already claimed. Canvas
+  order is app order, which is all a page with several apps needs without a
+  per-window id.
 
 - **The CLI is a cobra command tree.** `init`, `run` and `build` are separate
   commands with their own flags, help text and shell completion, so the manual

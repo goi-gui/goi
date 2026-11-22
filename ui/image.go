@@ -40,7 +40,7 @@ func capDecoded(d *img.Data) *img.Data {
 
 // assetScheme marks a src that lives in the design's asset container: the
 // directory LoadWindow read the design from, or an embedded FS passed with
-// WithAssets.
+// RegisterAssets.
 const assetScheme = "goi://"
 
 // isRemoteSrc reports whether src is an absolute http(s) URL rather than a local

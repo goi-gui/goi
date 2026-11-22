@@ -85,24 +85,24 @@ func Init() error { return nil }
 // Terminate is a no-op.
 func Terminate() {}
 
-// New takes over the canvas the page named, or the first one, or creates one
-// when the page has none, and starts the frame pump.
-func New(title string, width, height int, decorated bool, id string) (*Window, error) {
+// New takes over the first canvas the page has not already claimed, or creates
+// one when every canvas belongs to another app, and starts the frame pump. A
+// page with several apps can order its canvases to match the order the apps
+// load; no id has to be passed to the framework.
+func New(title string, width, height int, decorated bool) (*Window, error) {
 	doc := js.Global().Get("document")
 	var canvas js.Value
-	if id != "" {
-		canvas = doc.Call("getElementById", id)
-		if canvas.IsNull() || canvas.IsUndefined() {
-			canvas = doc.Call("createElement", "canvas")
-			canvas.Set("id", id)
-			doc.Get("body").Call("appendChild", canvas)
+	all := doc.Call("querySelectorAll", "canvas")
+	for i := 0; i < all.Length(); i++ {
+		c := all.Index(i)
+		if !c.Call("hasAttribute", "data-raw-handle").Bool() {
+			canvas = c
+			break
 		}
-	} else {
-		canvas = doc.Call("querySelector", "canvas")
-		if canvas.IsNull() || canvas.IsUndefined() {
-			canvas = doc.Call("createElement", "canvas")
-			doc.Get("body").Call("appendChild", canvas)
-		}
+	}
+	if canvas.IsNull() || canvas.IsUndefined() {
+		canvas = doc.Call("createElement", "canvas")
+		doc.Get("body").Call("appendChild", canvas)
 	}
 	if gpu := js.Global().Get("navigator").Get("gpu"); gpu.IsUndefined() || gpu.IsNull() {
 		// A page on a browser without WebGPU gets a sentence instead of a blank
@@ -763,6 +763,7 @@ func (p *Window) Destroy() {
 		js.Global().Call("cancelAnimationFrame", p.raf)
 		p.raf.Release()
 	}
+	p.canvas.Call("removeAttribute", "data-raw-handle")
 	p.input = nil
 }
 
