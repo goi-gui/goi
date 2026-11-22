@@ -40,6 +40,7 @@ var Kinds = []Kind{
 	{"RadioButton", false},
 	{"Switch", false},
 	{"Slider", false},
+	{"VerticalSlider", false},
 	// Text input.
 	{"TextField", false},
 	{"SearchBar", false},
@@ -123,6 +124,7 @@ var props = map[string][]string{
 	"RadioButton":      {"label", "disabled", "checked"},
 	"Switch":           {"label", "disabled", "checked", "icon", "iconOn", "iconOff", "filledIcon"},
 	"Slider":           {"variant", "disabled", "value", "end", "center", "min", "max", "step", "showTooltip"},
+	"VerticalSlider":   {"disabled", "value", "min", "max", "step", "icon"},
 	"TextField":        {"label", "text", "placeholder", "supporting", "leadingIcon", "trailingIcon", "filledIcon", "filledLeadingIcon", "filledTrailingIcon", "variant", "color", "disabled", "type", "mask", "obscureText"},
 	"SearchBar":        {"label", "text", "placeholder", "trailingIcon", "filledIcon", "filledTrailingIcon", "disabled"},
 	"Tooltip":          {"text"},

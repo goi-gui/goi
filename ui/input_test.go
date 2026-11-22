@@ -1203,6 +1203,39 @@ func TestSliderArrowKeys(t *testing.T) {
 	}
 }
 
+// TestVerticalSliderDragUsesY covers the other axis: a press near the top sets
+// a high value and a drag down lowers it.
+func TestVerticalSliderDragUsesY(t *testing.T) {
+	_, win, in := inputFixture(t, `Window { Column {
+		VerticalSlider { id: v value: 0.5 min: 0 max: 1 width: 64 height: 280 }
+	} }`, 480, 320)
+	v := MustByID[*VerticalSlider](win, "v")
+	var changes []float64
+	v.OnChangeValue(func(value float64) { changes = append(changes, value) })
+
+	r := absoluteRect(v)
+	x := r.X + r.W/2
+	in.MouseDown(x, r.Y+2, 0, false)
+	if got := v.Value.Get(); got < 0.9 {
+		t.Fatalf("press near the top = %v, want near 1", got)
+	}
+	in.MouseMove(x, r.Bottom()-2)
+	if got := v.Value.Get(); got > 0.1 {
+		t.Fatalf("drag near the bottom = %v, want near 0", got)
+	}
+	in.MouseUp(x, r.Bottom()-2, 0)
+	if len(changes) < 2 {
+		t.Fatalf("change events = %v, want the press and the drag", changes)
+	}
+
+	in.setKbd(v.Base().Node())
+	before := v.Value.Get()
+	in.key(tree.KeyUp, tree.Mods{})
+	if got := v.Value.Get(); got <= before {
+		t.Fatalf("up arrow = %v, want it above %v", got, before)
+	}
+}
+
 // TestZIndexDrivesHitOrder keeps input consistent with paint: the node drawn on
 // top is the one a press finds.
 func TestZIndexDrivesHitOrder(t *testing.T) {

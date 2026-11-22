@@ -314,7 +314,7 @@ func comp(n tree.Node) *tree.Component {
 func interactive(n tree.Node) bool {
 	switch n.Kind() {
 	case "Button", "IconButton", "FAB", "FABMenu", "SplitButton", "SegmentedButton",
-		"Chip", "Checkbox", "RadioButton", "Switch", "Slider", "TextField",
+		"Chip", "Checkbox", "RadioButton", "Switch", "Slider", "VerticalSlider", "TextField",
 		"SearchBar", "ListItem", "MenuItem", "Tab", "Card", "NavigationItem",
 		"DatePicker", "TimePicker", "ColorPicker", "Terminal",
 		"LineChart", "AreaChart", "BarChart", "PieChart", "ScatterChart", "RadarChart",
@@ -920,7 +920,7 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 	field := fieldAt(hit)
 	// A press in a scroll area can become a drag; a slider keeps the pointer,
 	// and so does a text field, where the drag selects text.
-	if hit != nil && hit.Kind() != "Slider" && field == nil {
+	if hit != nil && !isSlider(hit) && field == nil {
 		i.scrollNode = scrollableAt(hit)
 	}
 
@@ -1043,7 +1043,7 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 		if c := comp(hit); c != nil {
 			c.Pressed = true
 			c.Base().MarkDirty(tree.DirtyPaint)
-			if hit.Kind() == "Slider" {
+			if isSlider(hit) {
 				i.dragging = true
 				i.grabSlider(hit, x)
 				i.drag(x, y)
@@ -1138,7 +1138,7 @@ func (i *interactor) MouseUp(x, y float64, button int) {
 	}
 
 	hit := i.hit(x, y)
-	if target.Kind() == "Slider" {
+	if isSlider(target) {
 		i.markDirty()
 		return
 	}
@@ -2845,7 +2845,7 @@ func (i *interactor) key(k tree.Key, mods tree.Mods) {
 	if i.focus == nil && i.kbd != nil {
 		// A slider takes arrow keys while it holds keyboard focus; that is the
 		// M3 behaviour and the reason it is focusable at all.
-		if i.kbd.Kind() == "Slider" && i.sliderKey(i.kbd, k, mods) {
+		if isSlider(i.kbd) && i.sliderKey(i.kbd, k, mods) {
 			return
 		}
 		if i.kbd.Kind() == "TimePicker" && i.pickerKey(i.kbd, k, mods) {
@@ -3714,12 +3714,15 @@ func (i *interactor) applyEdit(f *tree.Component, s string, caret int) {
 // drag updates a slider from the pointer position. In range mode it moves the
 // handle the press took, clamped so the two cannot cross.
 func (i *interactor) drag(x, y float64) {
-	if i.pressed == nil || i.pressed.Kind() != "Slider" {
+	if i.pressed == nil || !isSlider(i.pressed) {
 		return
 	}
 	c := comp(i.pressed)
-	_ = y
-	frac := sliderFrac(absoluteRect(i.pressed), x)
+	box := absoluteRect(i.pressed)
+	frac := sliderFrac(box, x)
+	if i.pressed.Kind() == "VerticalSlider" {
+		frac = verticalSliderFrac(box, y)
+	}
 	lo, hi := c.Min.Get(), c.Max.Get()
 	v := lo + frac*(hi-lo)
 	if step := c.Step.Get(); step > 0 {
@@ -3786,6 +3789,31 @@ func (i *interactor) grabSlider(n tree.Node, x float64) {
 	}
 	s.Grab = sliderHandleAt(s, x)
 	s.HoverGrab = s.Grab
+}
+
+// isSlider reports whether n is either slider kind, which share the drag and
+// keyboard handling but differ in axis.
+func isSlider(n tree.Node) bool {
+	if n == nil {
+		return false
+	}
+	switch n.Kind() {
+	case "Slider", "VerticalSlider":
+		return true
+	}
+	return false
+}
+
+// verticalSliderFrac turns a y position into a 0..1 fraction, 1 at the top,
+// matching paintVerticalSlider's inset.
+func verticalSliderFrac(box tree.Rect, y float64) float64 {
+	inset := 2.0 // half the 4dp handle
+	trackH := box.H - 2*inset
+	if trackH <= 0 {
+		return 0
+	}
+	frac := 1 - (y-box.Y-inset)/trackH
+	return math.Max(0, math.Min(1, frac))
 }
 
 // sliderFrac turns an x position into a 0..1 track fraction.

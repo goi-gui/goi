@@ -402,6 +402,8 @@ func (l *List) paintComponent(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		l.paintSwitch(c, r, clip)
 	case "Slider":
 		l.paintSlider(c, r, clip)
+	case "VerticalSlider":
+		l.paintVerticalSlider(c, r, clip)
 	case "TextField":
 		l.paintTextField(c, r, clip)
 	case "SearchBar":
@@ -1217,6 +1219,103 @@ func (l *List) paintSlider(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	}
 	if showTip && !math.IsNaN(tipX) {
 		l.paintSliderTooltip(tipX, cy, tipV, clip)
+	}
+}
+
+// paintVerticalSlider draws the volume-strip shape: a rounded vertical track
+// split by a thin horizontal handle, with the filled part below it. The optional
+// icon belongs to the unfilled cap above the handle. When the handle comes too
+// close to the top for the cap to hold it, the icon moves below the handle into
+// the filled part at the same size instead of being squeezed.
+func (l *List) paintVerticalSlider(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	col := l.Theme.Colors
+	const (
+		inset     = 2.0 // half the handle, so it touches the bounds
+		handleH   = 4.0
+		trackMaxW = 56.0
+		handleMax = 68.0
+	)
+	if r.W <= 0 || r.H <= 2*inset {
+		return
+	}
+	trackW := math.Min(r.W, trackMaxW)
+	handleW := math.Min(r.W, handleMax)
+	track := tree.Rect{
+		X: r.X + (r.W-trackW)/2,
+		Y: r.Y + inset,
+		W: trackW,
+		H: r.H - 2*inset,
+	}
+	lo, hi := c.Min.Get(), c.Max.Get()
+	frac := 0.0
+	if hi > lo {
+		frac = clamp01((c.Value.Get() - lo) / (hi - lo))
+	}
+	handleCY := track.Bottom() - frac*track.H
+
+	active, inactive, handle := col.Primary, col.SurfaceContainerHighest, col.Primary
+	iconOnCap, iconOnFill := col.OnSurfaceVariant, col.OnPrimary
+	if c.Disabled.Get() {
+		active = withAlpha(col.OnSurface, m3.DisabledOpacity)
+		handle = active
+		inactive = withAlpha(col.OnSurface, m3.DisabledContainerOpacity)
+		iconOnCap = withAlpha(col.OnSurface, m3.DisabledOpacity)
+		iconOnFill = iconOnCap
+	}
+
+	rad := float32(math.Min(8, trackW/2))
+	bar := func(y0, y1 float64, color uint32) {
+		if y1-y0 <= 0 {
+			return
+		}
+		radii := [4]float32{}
+		if y0 <= track.Y+0.01 {
+			radii[0], radii[1] = rad, rad
+		}
+		if y1 >= track.Bottom()-0.01 {
+			radii[2], radii[3] = rad, rad
+		}
+		l.Ops = append(l.Ops, Op{
+			Kind: Fill, Shape: RoundedRect,
+			Rect:   rectArr(tree.Rect{X: track.X, Y: y0, W: track.W, H: y1 - y0}),
+			Radius: radii, Color: color, Clip: clipArr(clip),
+		})
+	}
+	bar(track.Y, handleCY, inactive)
+	bar(handleCY, track.Bottom(), active)
+
+	l.Ops = append(l.Ops, Op{
+		Kind: Fill, Shape: RoundedRect,
+		Rect: rectArr(tree.Rect{
+			X: r.X + (r.W-handleW)/2,
+			Y: handleCY - handleH/2,
+			W: handleW,
+			H: handleH,
+		}),
+		Radius: [4]float32{handleH / 2, handleH / 2, handleH / 2, handleH / 2},
+		Color:  handle, Clip: clipArr(clip),
+	})
+
+	if icon := c.Icon.Get(); icon != "" {
+		size := math.Min(28, math.Max(8, track.W-8))
+		const pad, gap = 8.0, 6.0
+		iconCY := track.Y + pad + size/2
+		onFill := false
+		if handleCY-track.Y < size+2*pad {
+			iconCY = handleCY + handleH/2 + gap + size/2
+			onFill = true
+		}
+		if iconCY+size/2 > track.Bottom() {
+			iconCY = track.Bottom() - size/2
+		}
+		if iconCY-size/2 < track.Y {
+			iconCY = track.Y + size/2
+		}
+		color := iconOnCap
+		if onFill {
+			color = iconOnFill
+		}
+		l.iconIn(icon, size, color, track.X+track.W/2, iconCY, clip)
 	}
 }
 

@@ -2690,3 +2690,11 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   client's readiness global in the built wasm: a project on an older goi
   dependency has none, so design edits fall back to a rebuild and a page reload
   with a warning instead of silently doing nothing.
+
+- **A VerticalSlider's icon belongs to the unfilled cap and moves into the fill
+  when the cap gets short.** The cap above the handle shrinks as the value rises.
+  Once it can no longer hold the glyph plus its padding, paint moves the icon
+  just below the handle into the filled part at the same size, instead of
+  clipping or scaling it. The choice is paint-only, so dragging never triggers
+  a layout pass, and the icon changes its foreground role with the part it
+  lands on.

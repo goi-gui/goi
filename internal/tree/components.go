@@ -458,6 +458,18 @@ func (c *Slider) OnRange(fn func(lo, hi float64)) (off func()) {
 	return c.RangeEvent.On(func(v [2]float64) { fn(v[0], v[1]) })
 }
 
+// VerticalSlider picks a value along a vertical track, the shape a volume
+// control takes. Its optional icon sits in the unfilled cap above the handle;
+// when the handle rises too close to the top for the icon, paint moves the icon
+// just below the handle into the filled part at the same size.
+type VerticalSlider struct{ Component }
+
+// Kind implements Node.
+func (*VerticalSlider) Kind() string { return "VerticalSlider" }
+func (c *VerticalSlider) namedProps() []NamedProp {
+	return c.props("VerticalSlider")
+}
+
 // TextField is a filled or outlined text input. LeadingNode and TrailingNode
 // hold the bodies built from its $leading and $trailing slots; an explicit
 // leadingIcon or trailingIcon wins over the slot, the way a list row works.

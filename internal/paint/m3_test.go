@@ -137,6 +137,52 @@ func TestSliderHandleNarrowsWhenPressed(t *testing.T) {
 	t.Fatalf("no handle:\n%s", l.Dump())
 }
 
+func TestVerticalSliderIconMovesBelowTheHandle(t *testing.T) {
+	col := m3.Light().Colors
+	find := func(src string) (icon, handle Op) {
+		l := m3list(t, src)
+		for _, op := range l.Ops {
+			if op.Kind == Text && op.Icon && op.Text == "music_note" {
+				icon = op
+			}
+			if op.Kind == Fill && op.Color == col.Primary && op.Rect[2] == 64 && op.Rect[3] == 4 {
+				handle = op
+			}
+		}
+		if icon.Text == "" || handle.Rect[2] == 0 {
+			t.Fatalf("vertical slider parts missing:\n%s", l.Dump())
+		}
+		return icon, handle
+	}
+
+	// Low value: the cap is tall enough, so the icon stays above the handle.
+	icon, handle := find(`Window { VerticalSlider {
+		value: 0.25 min: 0 max: 1 width: 64 height: 280 icon: music_note
+	} }`)
+	if icon.TextY >= handle.Rect[1] {
+		t.Fatalf("icon baseline %v is not above the handle %v", icon.TextY, handle.Rect[1])
+	}
+	if icon.Color != col.OnSurfaceVariant {
+		t.Fatalf("cap icon color = %08x, want OnSurfaceVariant", icon.Color)
+	}
+	lowSize := icon.FontSize
+
+	// Near the top: the cap cannot hold the icon, so it moves into the filled
+	// part below the handle and keeps its size.
+	icon, handle = find(`Window { VerticalSlider {
+		value: 0.96 min: 0 max: 1 width: 64 height: 280 icon: music_note
+	} }`)
+	if icon.TextY <= handle.Rect[1]+handle.Rect[3] {
+		t.Fatalf("icon baseline %v did not move below the handle %v", icon.TextY, handle.Rect[1])
+	}
+	if icon.Color != col.OnPrimary {
+		t.Fatalf("filled icon color = %08x, want OnPrimary", icon.Color)
+	}
+	if icon.FontSize != lowSize {
+		t.Fatalf("icon size changed with the move: %v -> %v", lowSize, icon.FontSize)
+	}
+}
+
 func TestCheckboxDrawsCheckWhenChecked(t *testing.T) {
 	l := m3list(t, `Window { Checkbox { checked: true } }`)
 	var check, box bool

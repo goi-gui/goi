@@ -739,6 +739,8 @@ func newM3Component(name string) Node {
 			Center:      newProp(nil, "center", DirtyPaint, math.NaN()),
 			ShowTooltip: newProp(nil, "showTooltip", DirtyPaint, false),
 		}
+	case "VerticalSlider":
+		return &VerticalSlider{Component: newComponent()}
 	case "TextField":
 		ti := &TextField{
 			Component: newComponent(),
