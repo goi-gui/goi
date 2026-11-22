@@ -2361,6 +2361,19 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   nothing while plain elements kept drawing. `scale: 0` is still expressible
   because the flag says the factors were written. Regression test:
   `TestUnscaledComponentsStayUnscaled`.
+- **Text rasterizes at the density it is drawn at.** A glyph is a bitmap in the
+  atlas, so a scaled element used to sample a 1x glyph at 2x and a turned one at
+  an angle, and both read as blurred text. The renderer now asks the atlas for a
+  face sized by the op's own scale, which puts a scaled label back on one texel
+  per device pixel. A turn has no integer density: a quarter turn keeps the
+  device density and the vertex shader snaps the pivot to the device grid, so the
+  grid-aligned quad lands on the grid again; any other angle rasterizes at twice
+  the device density and lets the sampler do the antialiasing. Text quads also no
+  longer take the one-pixel growth that gives a shape's coverage fade room, and
+  their UV follows the unpadded local position: stretching the glyph by that pixel
+  was a second, smaller blur, and the same fix stops a transformed image from
+  stretching. Ordinary axis-aligned text is unchanged. The figures are bounded at
+  four times the device density so a huge zoom cannot fill the atlas.
 - **A drag locks its axis.** A hand that pulls a carousel sideways also moves a
   few pixels vertically, and the scroll chain handed those to the page below: the
   carousel moved as asked and the page drifted up or down with it. The wheel has

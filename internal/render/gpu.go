@@ -71,8 +71,7 @@ struct VSOut {
 	@location(6) pos2: vec2f,
 	@location(7) params: vec4f,
 	@location(8) misc: vec4f,
-	@location(9) uv: vec2f,
-	@location(10) clipbox: vec4f,
+	@location(9) clipbox: vec4f,
 }
 
 @vertex
@@ -87,7 +86,7 @@ fn vs_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
 	// edge needs somewhere to land, and a fragment outside the quad never runs.
 	// So every segment of a curve keeps its soft edge instead of a staircase.
 	var pad = 0.0;
-	if (inst.rot.x != 0.0 || inst.scale.z != 0.0) { pad = 1.0; }
+	if ((inst.rot.x != 0.0 || inst.scale.z != 0.0) && inst.params.x != 4.0) { pad = 1.0; }
 	let grow = inst.rect.zw + vec2f(2.0 * pad);
 	let origin = inst.rect.xy - vec2f(pad);
 	let p = origin + c * grow;
@@ -103,13 +102,16 @@ fn vs_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
 	out.params = inst.params;
 	out.misc = inst.misc;
 	out.clipbox = inst.clipbox;
-	out.uv = mix(inst.params.zw, inst.misc.xy, c);
 	// A transformed op turns and stretches its quad about the pivot in window
 	// space. Local coordinates stay untransformed, so a distance field is
 	// evaluated in the element's own frame and the shape stretches with the
 	// quad, which is what a CSS scale does to corners and glyphs too.
 	if (inst.rot.x != 0.0 || inst.scale.z != 0.0) {
-		let pivot = inst.rot.yz;
+		// Snap the pivot to the device grid: a quarter turn of a grid-aligned
+		// quad then lands on the grid again, which keeps rotated text on its
+		// texels instead of between them.
+		let dpr = max(viewport.size.z, 1.0);
+		let pivot = vec2f(round(inst.rot.y * dpr) / dpr, round(inst.rot.z * dpr) / dpr);
 		var d = p - pivot;
 		if (inst.scale.z != 0.0) {
 			d = vec2f(d.x * inst.scale.x, d.y * inst.scale.y);
@@ -435,7 +437,11 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 		let d = sd_round_rect(in.local, in.size, r);
 		let cov = 1.0 - smoothstep(-aa, aa, d);
 		if (cov <= 0.0) { discard; }
-		var c = textureSampleLevel(images, imgSamp, in.uv, 0.0);
+		// The quad grows by a pixel under a transform so the coverage fade has
+		// somewhere to land, but the picture must not stretch with it: local
+		// is the unpadded position, so the texels keep their own size.
+		let uv = mix(in.params.zw, in.misc.xy, clamp(in.local / in.size, vec2f(0.0), vec2f(1.0)));
+		var c = textureSampleLevel(images, imgSamp, uv, 0.0);
 		if (c.a <= 0.0) { discard; }
 		// A dark scheme over a light raster service asks for the tile's colours
 		// reversed; the alpha is the tile's own, so the map keeps its shape.
@@ -446,7 +452,10 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 	if (kind > 3.5) {
 		// Glyph: the atlas holds one coverage value per texel. A text shadow is
 		// a separately blurred entry in the same atlas, so this stays one sample.
-		let a = textureSampleLevel(atlas, samp, in.uv, 0.0).r;
+		// The padded quad must not stretch the glyph, so the UV follows the
+		// unpadded local position; the clamp keeps the ring inside the slot.
+		let uv = mix(in.params.zw, in.misc.xy, clamp(in.local / in.size, vec2f(0.0), vec2f(1.0)));
+		let a = textureSampleLevel(atlas, samp, uv, 0.0).r;
 		return vec4f(in.color.rgb, in.color.a * a);
 	}
 

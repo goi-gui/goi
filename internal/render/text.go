@@ -169,13 +169,10 @@ func (t *textRenderer) shapeOp(op paint.Op, atlas *text.Atlas) (int, int) {
 	}
 	lib := t.gpu.textLib
 
-	// Rasterize at the device resolution, then snap each glyph quad to the
-	// physical pixel grid. Without the snap, a centred run lands on a half
-	// pixel and the linear sampler smears every stem across two columns.
-	scale := float64(t.gpu.scale)
-	if scale <= 0 {
-		scale = 1
-	}
+	// Rasterize at the resolution the op is drawn at, then snap each glyph
+	// quad to the physical pixel grid. Without the snap, a centred run lands on
+	// a half pixel and the linear sampler smears every stem across two columns.
+	scale := glyphDensity(op, float64(t.gpu.scale))
 	var face *text.Face
 	switch {
 	case op.Icon && op.FilledIcon:
@@ -213,7 +210,7 @@ func (t *textRenderer) shapeOp(op paint.Op, atlas *text.Atlas) (int, int) {
 	case paint.AlignEnd:
 		penX += boxW - runW
 	}
-	penY := math.Round(float64(op.TextY) * scale)
+	penY := float64(op.TextY)
 	col := rgba(op.Color)
 	clip := clipVec(op.Clip)
 	clipBox := clipVec(op.ClipBox)
@@ -222,14 +219,14 @@ func (t *textRenderer) shapeOp(op paint.Op, atlas *text.Atlas) (int, int) {
 	before := len(t.emoji)
 	for _, run := range runs {
 		if run.Face.IsEmoji() {
-			penX = t.placeEmoji(run, penX, penY, scale, op, clip, clipBox)
+			penX = t.placeEmoji(run, penX, penY, scale, float64(t.gpu.scale), op, clip, clipBox)
 			continue
 		}
 		for _, gl := range run.Output.Glyphs {
 			gid := uint16(gl.GlyphID)
 			if slot, ok := atlas.Slot(run.Face, gid); ok {
 				placed = append(placed, placedGlyph{
-					rect: glyphRect(penX, penY, scale, slot),
+					rect: glyphRect(penX, penY, scale, float64(t.gpu.scale), slot),
 					slot: slot.Rect,
 					gid:  gid,
 					pen:  penX,
@@ -257,7 +254,7 @@ func (t *textRenderer) shapeOp(op paint.Op, atlas *text.Atlas) (int, int) {
 				if !ok {
 					continue
 				}
-				rect = glyphRect(p.pen, penY, scale, ss)
+				rect = glyphRect(p.pen, penY, scale, float64(t.gpu.scale), ss)
 				slot = ss.Rect
 			}
 			rect[0] += float32(sh.X)
@@ -293,12 +290,12 @@ func (t *textRenderer) shapeOp(op paint.Op, atlas *text.Atlas) (int, int) {
 // placeEmoji appends the colour quads for one emoji run and returns the pen
 // position after it. A glyph with no colour bitmap is skipped rather than
 // drawn as a box.
-func (t *textRenderer) placeEmoji(run text.ShapedRun, penX, penY, scale float64, op paint.Op, clip, clipBox [4]float32) float64 {
+func (t *textRenderer) placeEmoji(run text.ShapedRun, penX, penY, scale, device float64, op paint.Op, clip, clipBox [4]float32) float64 {
 	for _, gl := range run.Output.Glyphs {
 		gid := uint16(gl.GlyphID)
 		if e, ok := t.colorGlyph(run.Face, gid); ok {
-			x := math.Round(penX*scale) / scale
-			y := (penY + float64(e.off.Y)) / scale
+			x := deviceRound(penX+float64(e.off.X)/scale, device)
+			y := deviceRound(penY+float64(e.off.Y)/scale, device)
 			t.emoji = append(t.emoji, emojiQuad{
 				rect: [4]float32{
 					float32(x), float32(y),
@@ -342,15 +339,58 @@ func glyphRot(op paint.Op) [4]float32 {
 	return [4]float32{op.Rotate, op.PivotX, op.PivotY, 0}
 }
 
-// glyphRect is the quad a slot covers, given the run's pen position. The x is
-// snapped to the physical pixel grid so a centred run does not smear a stem
-// across two columns; the slot's own offset already carries any blur growth.
-func glyphRect(penX, penY, scale float64, slot text.GlyphSlot) [4]float32 {
-	x := math.Round((penX+float64(slot.Offset.X)/scale)*scale) / scale
-	y := (penY + float64(slot.Offset.Y)) / scale
-	w := float64(slot.Rect.Dx()) / scale
-	h := float64(slot.Rect.Dy()) / scale
+// glyphRect is the quad a slot covers, given the run's pen position. The slot is
+// in raster pixels, so its offset and size are divided by the density and the
+// position is snapped to the device grid: a centred run must not smear a stem
+// across two columns, and a glyph rasterized at another density must still land
+// on the same pixels.
+func glyphRect(penX, penY, raster, device float64, slot text.GlyphSlot) [4]float32 {
+	x := deviceRound(penX+float64(slot.Offset.X)/raster, device)
+	y := deviceRound(penY+float64(slot.Offset.Y)/raster, device)
+	w := float64(slot.Rect.Dx()) / raster
+	h := float64(slot.Rect.Dy()) / raster
 	return [4]float32{float32(x), float32(y), float32(w), float32(h)}
+}
+
+// deviceRound snaps a logical position to the device pixel grid.
+func deviceRound(v, device float64) float64 {
+	if device <= 0 {
+		return v
+	}
+	return math.Round(v*device) / device
+}
+
+// glyphDensity is the resolution a text op rasterizes its glyphs at: the device
+// scale times the op's own scale, so a scaled element is not a magnified bitmap,
+// and extra samples for a turn, whose quad samples the atlas off its pixel grid.
+// A quarter turn needs none: the vertex shader snaps its pivot, so a grid-aligned
+// glyph lands on the grid again.
+func glyphDensity(op paint.Op, device float64) float64 {
+	if device <= 0 {
+		device = 1
+	}
+	d := device
+	if op.Scale[2] != 0 {
+		if s := math.Max(math.Abs(float64(op.Scale[0])), math.Abs(float64(op.Scale[1]))); s > 1 {
+			d *= s
+		}
+	}
+	if op.Rotate != 0 && !quarterTurn(op.Rotate) {
+		d *= 2
+	}
+	if cap := device * 4; d > cap {
+		d = cap
+	}
+	if d < device {
+		d = device
+	}
+	return d
+}
+
+// quarterTurn reports a rotation that maps the pixel grid onto itself.
+func quarterTurn(angle float32) bool {
+	q := float64(angle) * 2 / math.Pi
+	return math.Abs(q-math.Round(q)) < 1e-3
 }
 
 // emit appends the quads prepared for op i, in display-list order.
