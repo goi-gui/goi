@@ -102,6 +102,12 @@ func main() {
 		line := fmt.Sprintf("%s: ok (%d nodes, %d ids, %d files)", file, len(tr.All()), tr.IDs(), len(b.Files))
 		if *checkLayout || *ops {
 			w, h := parseSize(*size)
+			// The frame loop records the client size and resolves responsive
+			// values and expressions before layout; a design reading
+			// `window.height` would otherwise lay out at zero.
+			tr.SetViewport(w, h)
+			tr.ApplyBreakpoints(w)
+			tr.ApplyExpressions()
 			layout.New(measurer).Layout(tr.Root, w, h)
 			if bad := collapsed(tr); len(bad) > 0 {
 				for _, id := range bad {
