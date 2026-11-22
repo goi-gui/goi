@@ -35,6 +35,9 @@ func (a *App) startWebReload() {
 	if ctor.Type() != js.TypeFunction {
 		return
 	}
+	// The served page and goi serve look for this: a build from before the
+	// feature never sets it, which is why the page can say what is missing.
+	global.Set("__GOI_HMR_READY__", true)
 	stream := ctor.New(url.String())
 	onMessage := js.FuncOf(func(_ js.Value, args []js.Value) any {
 		if len(args) == 0 {

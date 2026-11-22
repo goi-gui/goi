@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,12 +19,17 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/goi-gui/goi/internal/i18n"
 	"github.com/spf13/cobra"
 )
+
+// webHMRMarker is the global ui/web_hmr_js.go sets once its client is running.
+// A build without that string in the wasm predates browser hot reload.
+const webHMRMarker = "__GOI_HMR_READY__"
 
 // hmrMessage is one event on the development stream. ui/web_hmr_js.go decodes
 // the same shape in the browser; keep the two in step.
@@ -91,6 +97,10 @@ func serveProject(dir string, goRun runFunc, stdout, stderr io.Writer, host stri
 		featureKey: flags.FeatureKey,
 		builds:     make(chan struct{}, 1),
 	}
+	s.live.Store(wasmSupportsHMR(out))
+	if !s.live.Load() {
+		s.warnNoHMR()
+	}
 	go s.buildLoop()
 	go func() {
 		if err := s.watch(); err != nil {
@@ -121,6 +131,25 @@ type devServer struct {
 	mu         sync.Mutex
 	featureKey string
 	builds     chan struct{}
+	// live is true when the built wasm carries the browser hot-reload client.
+	// An older goi dependency has none, so design edits fall back to a rebuild.
+	live atomic.Bool
+}
+
+func (s *devServer) warnNoHMR() {
+	fmt.Fprintln(s.stderr, "goi: warning: this wasm was built with a goi version that predates browser hot reload")
+	fmt.Fprintln(s.stderr, "goi: warning: update github.com/goi-gui/goi in the project, then run goi serve again")
+	fmt.Fprintln(s.stderr, "goi: warning: design edits will rebuild the wasm and reload the page until then")
+}
+
+// wasmSupportsHMR searches the built module for the client's global. The
+// compiler keeps the string literal in the binary.
+func wasmSupportsHMR(name string) bool {
+	body, err := os.ReadFile(name)
+	if err != nil {
+		return false
+	}
+	return bytes.Contains(body, []byte(webHMRMarker))
 }
 
 // ServeHTTP serves the page, the wasm, wasm_exec.js and any static file the
@@ -172,8 +201,17 @@ func serveDevFile(w http.ResponseWriter, r *http.Request, base, rel string) bool
 }
 
 // hmrMarker tells the wasm to follow the stream. A static page has no marker,
-// so a production build never opens a connection.
-const hmrMarker = `<script>window.__GOI_HMR__="/__goi/hmr";</script>`
+// so a production build never opens a connection. The timeout catches a wasm
+// whose goi dependency predates the feature: it never sets READY, and the
+// developer gets a console line instead of a silent no-op.
+const hmrMarker = `<script>
+window.__GOI_HMR__="/__goi/hmr";
+setTimeout(function () {
+	if (!window.__GOI_HMR_READY__) {
+		console.error("goi: this page has no hot-reload client; the wasm's github.com/goi-gui/goi dependency predates browser hot reload.");
+	}
+}, 8000);
+</script>`
 
 func injectHMR(page []byte) []byte {
 	s := string(page)
@@ -324,7 +362,14 @@ func (s *devServer) watch() error {
 			}
 			switch {
 			case s.isDesignFile(ev.Name):
-				reset(assets, 100*time.Millisecond)
+				if s.live.Load() {
+					reset(assets, 100*time.Millisecond)
+					break
+				}
+				// No client in the wasm: keep the stream snapshot current for a
+				// later dependency update, but show the edit by rebuilding.
+				s.refreshSnapshot()
+				reset(build, 250*time.Millisecond)
 			case s.isAsset(ev.Name), s.isSource(ev.Name):
 				reset(build, 250*time.Millisecond)
 			case strings.EqualFold(filepath.Ext(ev.Name), ".html"):
@@ -358,6 +403,10 @@ func (s *devServer) publishDesign() {
 		}
 		return
 	}
+	s.refreshSnapshot()
+}
+
+func (s *devServer) refreshSnapshot() {
 	files, err := designSnapshot(s.assetsDir)
 	if err != nil {
 		fmt.Fprintln(s.stderr, "goi: design:", err)
@@ -373,13 +422,23 @@ func (s *devServer) buildLoop() {
 }
 
 func (s *devServer) rebuild() {
-	if _, err := buildProject(s.projectDir, "js", "wasm", s.goRun, s.stdout, s.stderr); err != nil {
+	out, err := buildProject(s.projectDir, "js", "wasm", s.goRun, s.stdout, s.stderr)
+	if err != nil {
 		fmt.Fprintln(s.stderr, "goi: build failed:", err)
 		s.hub.broadcast(hmrMessage{Type: "error", Message: "build failed; see the goi serve terminal"})
 		return
 	}
 	if flags, ok := s.resolvedFlags(); ok {
 		s.setFeatureKey(flags.FeatureKey)
+	}
+	// A go.mod change can bring in a goi version that has the client, so a
+	// rebuild may turn the stream on without a restart.
+	if live := wasmSupportsHMR(out); live != s.live.Swap(live) {
+		if live {
+			fmt.Fprintln(s.stdout, "goi: hot reload on")
+		} else {
+			s.warnNoHMR()
+		}
 	}
 	s.hub.broadcast(hmrMessage{Type: "reload"})
 }

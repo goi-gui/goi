@@ -2686,4 +2686,7 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   A Go or binary-asset change rebuilds the wasm and reloads the page, because
   code cannot be replaced inside a running module. The stream is opt-in: the
   dev server injects a marker into the page, and a `goi build` page has none, so
-  a shipped app never opens the connection.
+  a shipped app never opens the connection. The server also looks for the
+  client's readiness global in the built wasm: a project on an older goi
+  dependency has none, so design edits fall back to a rebuild and a page reload
+  with a warning instead of silently doing nothing.

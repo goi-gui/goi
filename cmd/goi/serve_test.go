@@ -45,6 +45,23 @@ func TestDesignSnapshotCarriesDesignAndCatalogs(t *testing.T) {
 	}
 }
 
+func TestWasmSupportsHMR(t *testing.T) {
+	with := filepath.Join(t.TempDir(), "with.wasm")
+	if err := os.WriteFile(with, []byte("prefix "+webHMRMarker+" suffix"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !wasmSupportsHMR(with) {
+		t.Fatal("a wasm carrying the marker was not recognised")
+	}
+	without := filepath.Join(t.TempDir(), "without.wasm")
+	if err := os.WriteFile(without, []byte("old build"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if wasmSupportsHMR(without) {
+		t.Fatal("a wasm without the marker was accepted")
+	}
+}
+
 func TestInjectHMR(t *testing.T) {
 	page := injectHMR([]byte("<html><body>hi</body></html>"))
 	if !strings.Contains(string(page), hmrMarker) {
