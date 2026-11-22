@@ -1,6 +1,7 @@
 package tree
 
 import (
+	"strings"
 	"time"
 
 	"github.com/goi-gui/goi/internal/csscolor"
@@ -18,6 +19,10 @@ type modifierProp struct {
 	// applied is the block value last written, so re-evaluating an unchanged
 	// expression is a no-op.
 	applied syntax.Value
+	// componentDefault is true when an unwritten colour property should fall
+	// back to the component's own variant colour (a Button's filled background
+	// is theme.primary even though the cell starts at zero).
+	componentDefault bool
 }
 
 // setResponsive registers the older `{ base: 8, md: 16 }` brace map, which is
@@ -42,6 +47,11 @@ func (b *NodeBase) setModifier(name string, m *syntax.Modifier) bool {
 		return false
 	}
 	mp := modifierProp{name: name, root: m, fallback: valueLiteral(b.props[i].Get())}
+	if role := b.colorRoleFor(name); role != "" {
+		mp.fallback = roleValue(role)
+	} else if b.props[i].kind == propColor && !b.props[i].Written() {
+		mp.componentDefault = true
+	}
 	for j := range b.modifiers {
 		if b.modifiers[j].name == name {
 			b.modifiers[j] = mp
@@ -87,7 +97,7 @@ func (b *NodeBase) applyModifiers(width float64) {
 		mp := &b.modifiers[i]
 		v := b.resolveModifier(mp.root, width)
 		if v == nil {
-			v = mp.fallback
+			v = b.modifierFallback(mp)
 		}
 		if v == nil {
 			continue
@@ -186,6 +196,34 @@ func (b *NodeBase) resolveModifier(v syntax.Value, width float64) syntax.Value {
 	return nil
 }
 
+// modifierFallback is the value a block writes when none of its arms matches.
+// A colour property that the design never wrote can borrow the component's own
+// variant colour, so `background: state { hover: red }` starts from the filled
+// Button's primary rather than transparent.
+func (b *NodeBase) modifierFallback(mp *modifierProp) syntax.Value {
+	if mp.componentDefault {
+		if d, ok := b.node.(interface{ ModifierColorRole(string) string }); ok {
+			if role := d.ModifierColorRole(mp.name); role != "" {
+				return roleValue(role)
+			}
+		}
+	}
+	return mp.fallback
+}
+
+// roleValue turns a stored role string back into the reference a colour
+// property writes.
+func roleValue(role string) syntax.Value {
+	ns, prop, ok := strings.Cut(role, ":")
+	if !ok {
+		return nil
+	}
+	if ns == "custom" {
+		ns = "customColor"
+	}
+	return &syntax.Ref{ID: ns, Prop: prop}
+}
+
 // stateOn reports whether one state key is active on this node.
 func (b *NodeBase) stateOn(name string) bool {
 	c := componentOf(b)
@@ -231,7 +269,11 @@ func componentOf(b *NodeBase) *Component {
 // state does not mark the node dirty every frame.
 func (b *NodeBase) modifierCurrent(mp *modifierProp, v syntax.Value) bool {
 	if r, ok := v.(*syntax.Ref); ok && (r.ID == "theme" || r.ID == "customColor") {
-		return b.colorRoleFor(mp.name) == r.ID+":"+r.Prop
+		key := r.ID + ":" + r.Prop
+		if r.ID == "customColor" {
+			key = "custom:" + r.Prop
+		}
+		return b.colorRoleFor(mp.name) == key
 	}
 	if isExpression(v) || b.isLoopVar(v) {
 		return mp.applied == v

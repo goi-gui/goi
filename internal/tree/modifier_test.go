@@ -144,6 +144,54 @@ Window {
 	}
 }
 
+// TestButtonStateUsesVariantColour is the hover case: a state block without a
+// default starts from the Button's variant colour, not from transparent.
+func TestButtonStateUsesVariantColour(t *testing.T) {
+	tr := buildModifier(t, `Window {
+		Button {
+			id:          b
+			label:       "x"
+			background:  state { hover: #FF0000 }
+			transition:  background 100ms
+		}
+	}`)
+	btn := tr.ids["b"].(*Button)
+	b := btn.Base()
+	resolve := func(role string) (uint32, bool) {
+		if role == "theme:primary" {
+			return 0x112233FF, true
+		}
+		return 0, false
+	}
+	tr.ApplyExpressions()
+	tr.ResolveColors(resolve)
+	if got := b.colorRoleFor("background"); got != "theme:primary" {
+		t.Fatalf("resting background role = %q, want theme:primary", got)
+	}
+	if got := b.Background(); got != 0x112233FF {
+		t.Fatalf("resting background = %08x, want the variant colour", got)
+	}
+
+	btn.Hover = true
+	tr.ApplyExpressions()
+	tr.ResolveColors(resolve)
+	tr.AdvanceTransitions(0.2)
+	if got := b.Background(); got != 0xFF0000FF {
+		t.Fatalf("hover background = %08x, want red", got)
+	}
+
+	btn.Hover = false
+	tr.ApplyExpressions()
+	tr.ResolveColors(resolve)
+	tr.AdvanceTransitions(0.2)
+	if got := b.colorRoleFor("background"); got != "theme:primary" {
+		t.Fatalf("restored background role = %q, want theme:primary", got)
+	}
+	if got := b.Background(); got != 0x112233FF {
+		t.Fatalf("restored background = %08x, want the variant colour", got)
+	}
+}
+
 // TestLoopVariableColor is the shopping swatch: a colour column from the bridge
 // is a value, not an enum word, so `background: c` has to become an expression.
 func TestLoopVariableColor(t *testing.T) {

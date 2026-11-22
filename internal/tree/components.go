@@ -354,6 +354,35 @@ func (c *Button) namedProps() []NamedProp {
 // slotNodes exposes the button's leading and trailing bodies to the builder.
 func (c *Button) slotNodes() (*Node, *Node) { return &c.LeadingNode, &c.TrailingNode }
 
+// ModifierColorRole is the variant colour a state or conditional modifier falls
+// back to when the design did not write the colour and gave no default arm.
+func (c *Button) ModifierColorRole(name string) string {
+	variant := c.Variant.Get()
+	if variant == "" {
+		variant = "filled"
+	}
+	switch name {
+	case "background":
+		switch variant {
+		case "filled":
+			return "theme:primary"
+		case "tonal":
+			return "theme:secondaryContainer"
+		case "elevated":
+			return "theme:surfaceContainerLow"
+		}
+	case "color":
+		switch variant {
+		case "filled":
+			return "theme:onPrimary"
+		case "tonal":
+			return "theme:onSecondaryContainer"
+		}
+		return "theme:primary"
+	}
+	return ""
+}
+
 // IconButton is a button that shows only an icon.
 type IconButton struct {
 	Component
