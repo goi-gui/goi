@@ -4,14 +4,16 @@
 //
 //	goi init --name myapp --id com.example.myapp --module example.com/myapp
 //	goi run
+//	goi serve
 //	goi build
 //
 // init prompts for the values a flag did not give, then writes a module, a
 // cmd/main.go, a goi.yaml and an assets/ui/Main.goi holding the hello example:
 // the goi logo above a greeting. run
 // runs the entrypoint package with hot reload on, reading the build flags from
-// goi.yaml. build writes dist/<os>-<arch>/<name> from that package with hot
-// reload off. Both always add nofakecgo and set CGO_ENABLED=0.
+// goi.yaml. serve builds the browser target and streams design edits into the
+// open page. build writes dist/<os>-<arch>/<name> from that package with hot
+// reload off. All three always add nofakecgo and set CGO_ENABLED=0.
 package main
 
 import (
@@ -180,7 +182,7 @@ func newRootCmd(goCmd commandRunner, goRun runFunc) *cobra.Command {
 	}
 	root.SetOut(os.Stdout)
 	root.SetErr(os.Stderr)
-	root.AddCommand(newInitCmd(goCmd), newRunCmd(goRun), newBuildCmd(goRun), newSetupCmd(goRun), newUpdateCmd(goRun), newDoctorCmd(), newVersionCmd())
+	root.AddCommand(newInitCmd(goCmd), newRunCmd(goRun), newServeCmd(goRun), newBuildCmd(goRun), newSetupCmd(goRun), newUpdateCmd(goRun), newDoctorCmd(), newVersionCmd())
 	return root
 }
 

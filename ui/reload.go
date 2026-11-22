@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -31,6 +32,46 @@ func (a *App) reload(changed string) {
 			a.reportError(err)
 		}
 	})
+}
+
+// applyLiveAssets installs a snapshot a development server pushed and reloads
+// what the changed paths reach. The wrapper sits over the embedded build, so
+// everything the snapshot does not mention still comes from the wasm.
+//
+// A catalog edit re-reads only the translations; any other path rebuilds the
+// tree, which is the same swap the native watcher uses and therefore keeps the
+// Go app state that lives outside Bind.
+func (a *App) applyLiveAssets(files map[string][]byte) {
+	if a.assets == nil {
+		return
+	}
+	live, ok := a.assets.(*liveAssets)
+	if !ok {
+		live = newLiveAssets(a.assets)
+		a.assets = live
+	}
+	changed := live.update(files)
+	if len(changed) == 0 {
+		return
+	}
+	catalogChanged, treeChanged := false, false
+	for _, name := range changed {
+		if path.Dir(name) == i18n.Dir && strings.HasSuffix(name, ".json") {
+			catalogChanged = true
+			continue
+		}
+		treeChanged = true
+	}
+	if catalogChanged {
+		if err := a.reloadCatalog(); err != nil {
+			a.reportError(err)
+		}
+	}
+	if treeChanged {
+		if err := a.reloadNow(); err != nil {
+			a.reportError(err)
+		}
+	}
 }
 
 // reloadCatalog re-reads the i18n folder and swaps it into the live tree. The
@@ -116,6 +157,11 @@ func (a *App) swapTree(tr *tree.Tree) {
 
 	w.tree = tr
 	tr.SetI18n(a.catalog)
+	// The desktop language is read once, so the new tree needs it too: an app
+	// that never called SetLanguage still translates through it.
+	if old != nil {
+		tr.SetSystemLanguage(old.SystemLanguage())
+	}
 	tr.SetLanguage(a.language)
 	tr.SetFallbackLanguage(a.fallbackLanguage)
 	w.title = tr.Root.Title.Get()

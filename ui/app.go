@@ -314,6 +314,9 @@ func (a *App) LoadWindow(entry string, opts ...Option) (*Window, error) {
 			return nil, err
 		}
 	}
+	// A browser build has no directory either. When goi serve injected the
+	// marker, the stream from it supplies the same reload path.
+	a.startWebReload()
 	return w, nil
 }
 

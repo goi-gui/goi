@@ -55,8 +55,9 @@ goi run
 
 `goi setup` installs the CLI, the language server and the formatter. `goi init`
 writes the module, `cmd/main.go`, `goi.yaml` and the design under `assets/`.
-`goi run` starts it with hot reload on. The [CLI guide](https://goi.kaanksc.com/guide/cli/)
-covers the flags, build tags and project layout.
+`goi run` starts it with hot reload on; `goi serve` does the same for the browser
+build. The [CLI guide](https://goi.kaanksc.com/guide/cli/) covers the flags,
+build tags and project layout.
 
 ## A design file
 

@@ -2674,3 +2674,16 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   beeep wrappers are pure Go and add little to the binary, so they are now part
   of every desktop build. `goi` removes an old `dialog` entry from runFlags and
   buildFlags instead of failing on it; the browser still has a stub.
+
+- **Browser hot reload is an asset overlay fed by `goi serve`, not a second
+  loader.** The wasm still embeds the design, because a browser has no
+  synchronous file system to read a directory from. `goi serve` watches the
+  project, pushes a full snapshot of the `.goi` files and i18n catalogs over
+  Server-Sent Events, and the page installs it as an `fs.FS` over the embedded
+  files. The existing reload path then runs unchanged, which is why Go state
+  outside `Bind`, focus, field contents and scroll survive. SSE is enough for
+  the one-way push and needs neither a dependency nor a WebSocket handshake.
+  A Go or binary-asset change rebuilds the wasm and reloads the page, because
+  code cannot be replaced inside a running module. The stream is opt-in: the
+  dev server injects a marker into the page, and a `goi build` page has none, so
+  a shipped app never opens the connection.
