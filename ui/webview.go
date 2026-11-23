@@ -86,7 +86,7 @@ func (a *App) syncWebviews(pw *platform.Window) {
 			entry.focus = func() { a.focusWebview(entry) }
 			view, err := platform.NewWebview(pw,
 				func(msg string) { wv.DeliverMessage(msg) },
-				func() { a.focusedWebview = entry },
+				func() { a.focusWebview(entry) },
 			)
 			if err != nil {
 				wv.LoadErr = err

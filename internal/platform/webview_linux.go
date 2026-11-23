@@ -387,7 +387,7 @@ type linuxWebview struct {
 	win, view, manager uintptr
 	surface, sub       uintptr
 	x, y, w, h         float64
-	iw                 float64
+	iw, ih             float64
 	focusedOnce        bool
 	visible            bool
 	message            func(string)
@@ -525,7 +525,6 @@ func NewWebview(parent *Window, onMessage func(string), onFocus func()) (Webview
 			return 0
 		})
 	}
-	w.clearInput()
 	liveViews = append(liveViews, w)
 	if onFocus != nil {
 		w.focusID = registerFocus(onFocus)
@@ -559,7 +558,7 @@ func (w *linuxWebview) SetBounds(x, y, width, height float64) {
 	if !w.visible || width <= 0 || height <= 0 {
 		if w.iw != 0 {
 			w.clearInput()
-			w.iw = 0
+			w.iw, w.ih = 0, 0
 		}
 		if w.sub != 0 {
 			wlMarshal(0, w.sub, 1, 0, 0, 0, uint64(0xffffe000), uint64(0xffffe000))

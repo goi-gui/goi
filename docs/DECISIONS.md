@@ -2781,33 +2781,25 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   creates a roleless GTK surface with
   `gdk_wayland_window_set_use_custom_surface`, and attaches it as a
   `wl_subsurface` of the SDL window. A texture-copy path would lose native
-  input and cost a frame per scroll. The subsurface is input-transparent, so
-  SDL keeps the pointer and goi owns focus, hit-testing and hover. Pointer
-  events are queued with `gdk_event_put` on the view's own `GdkWindow`: a
-  fabricated event handed to `gtk_main_do_event` stops at the frame, because
-  GTK does not hit-test down to the child widget, while the queued event
-  carries the view's window and lands on the engine. The keyboard cannot come
-  from the compositor — Wayland grants it per toplevel, and a subsurface is not
-  one — so goi forwards navigation keys and committed text as key events.
-  GTK enables its own input method when the view takes focus, and on the shared
-  Wayland connection that takes text-input focus from SDL, which silently stops
-  committed text; focusing a view therefore stops and restarts SDL's text input,
-  and the click path does it after the press and after the release. GTK's own
-  input method is kept off the Wayland protocol entirely with
-  `GTK_IM_MODULE=gtk-im-context-simple` before GTK starts, so it cannot take the
-  focus back; goi forwards every key itself and needs no input method there. Synthetic key events
-  carry the X11 hardware keycode of the key, because the engine identifies an
-  editing key (Backspace, Delete, the arrows) by that code: without it the page
-  sees the keydown but performs no edit. Pointer events pass the Shift state
-  through, so a shift-click extends a selection.
-  Wayland also never tells the GTK window it is focused, so goi queues a
-  `GDK_FOCUS_CHANGE` in on window focus; without it the engine draws no caret
-  and no focus ring. Native popups a page opens (a `<select>` menu, a date
-  picker) are separate GTK windows and may not show over the view.
-  The cost is the accepted limit: the view is always above the GPU layer and
-  cannot follow a clip, rotation, scale or partial opacity. The GTK/WebKitGTK
-  libraries are loaded through purego at run time and the backend is behind the
-  `webview` feature tag, so a design without a WebView never pays for them.
+  input and cost a frame per scroll. The view's input region is its own box, so
+  the compositor delivers the pointer to WebKit: hover, clicks, the wheel, the
+  cursor and text selection are the engine's own. goi learns that a click landed
+  in the view from GTK's button-press signal and marks the view as the keyboard
+  target there; that is also where SDL's text input is turned on, because a
+  subsurface never gets the keyboard and committed text has to come through
+  SDL. Keys are forwarded as synthetic key events carrying the X11 keycode of
+  the key, which is how the engine recognises Backspace, Delete and the arrows.
+  GTK's own input method is kept off the Wayland text-input protocol
+  (`GTK_IM_MODULE=gtk-im-context-simple`) since on the shared connection it
+  would take the text input focus from SDL and committed text would stop. A
+  compositor that instead leaves the pointer with SDL is still handled: goi
+  queues complete `GdkEvent`s on the view's `GdkWindow` with `gdk_event_put`
+  (`gtk_main_do_event` would stop at the frame, because GTK does not hit-test
+  down to the child widget). The cost is the accepted limit: the view is always
+  above the GPU layer and cannot follow a clip, rotation, scale or partial
+  opacity. The GTK/WebKitGTK libraries are loaded through purego at run time and
+  the backend is behind the `webview` feature tag, so a design without a WebView
+  never pays for them.
   Windows hosts WebView2 as a child window of the SDL window and macOS adds a
   WKWebView subview, so neither needs synthetic input; both reach their engine
   through the same purego rule: the WebView2 runtime is located without
