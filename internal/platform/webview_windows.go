@@ -415,6 +415,21 @@ type winWebview struct {
 
 var putZoom func(unsafe.Pointer, float64) uintptr
 
+// userDataDir is one WebView2 profile for the process, not one per view: the
+// profile is megabytes, and a hot reload would leave a copy behind each time.
+var (
+	userDataOnce sync.Once
+	userDataPath string
+	userDataErr  error
+)
+
+func userDataDir() (string, error) {
+	userDataOnce.Do(func() {
+		userDataPath, userDataErr = os.MkdirTemp("", "goi-webview-")
+	})
+	return userDataPath, userDataErr
+}
+
 // NewWebview creates the environment and a controller parented to the SDL
 // window. WebView2 builds its object graph asynchronously, so this pumps the
 // thread's Win32 queue until the controller arrives.
@@ -446,7 +461,7 @@ func NewWebview(parent *Window, onMessage func(string), _ func()) (Webview, erro
 }
 
 func (w *winWebview) create() error {
-	userData, err := os.MkdirTemp("", "goi-webview-")
+	userData, err := userDataDir()
 	if err != nil {
 		return err
 	}
