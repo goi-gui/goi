@@ -19,7 +19,7 @@ var (
 )
 
 func loadMetal() {
-	lib, err := purego.Dlopen("libSDL3.dylib", purego.RTLD_NOW)
+	lib, err := purego.Dlopen(sdlLibraryPath(), purego.RTLD_NOW)
 	if err != nil {
 		return
 	}
