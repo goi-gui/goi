@@ -2774,3 +2774,19 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   they take a gallery frame from 1.5 KB and 84 allocations to 225 B and 10,
   without changing what any frame draws. The dev server streams the wasm marker
   scan instead of reading a 40 MB module into memory.
+
+- **A WebView is a native Wayland subsurface, not a texture.** A web engine
+  cannot be re-rendered by the GPU layer, so the Linux backend imports GTK's
+  `wl_display` into SDL (`SDL_PROP_GLOBAL_VIDEO_WAYLAND_WL_DISPLAY_POINTER`),
+  creates a roleless GTK surface with
+  `gdk_wayland_window_set_use_custom_surface`, and attaches it as a
+  `wl_subsurface` of the SDL window. A texture-copy path would lose native
+  input and cost a frame per scroll. The surface is input-transparent, so SDL
+  keeps the pointer and keyboard; goi forwards pointer events and committed
+  text as synthetic `GdkEvent`s, which keeps focus tracking in one place.
+  The cost is the accepted limit: the view is always above the GPU layer and
+  cannot follow a clip, rotation, scale or partial opacity. The GTK/WebKitGTK
+  libraries are loaded through purego at run time and the backend is behind the
+  `webview` feature tag, so a design without a WebView never pays for them.
+  Windows (WebView2) and macOS (WKWebView) use the same child-view idea and
+  remain to be implemented.

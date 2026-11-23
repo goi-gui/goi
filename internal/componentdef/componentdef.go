@@ -20,6 +20,7 @@ var Kinds = []Kind{
 	{"Icon", false},
 	{"Code", false},
 	{"Terminal", false},
+	{"WebView", false},
 	{"Markdown", false},
 	{"Map", true},
 	{"Geom", false},
@@ -162,6 +163,7 @@ var props = map[string][]string{
 	"TextArea":         {"label", "text", "placeholder", "supporting", "variant", "disabled"},
 	"Code":             {"text", "language", "variant", "showCopy"},
 	"Terminal":         {"fontSize", "scrollback", "foreground"},
+	"WebView":          {"src", "html", "baseURL", "userAgent", "zoom", "devtools"},
 	"Markdown":         {"text"},
 	"Mermaid":          {"data"},
 	"Map":              {"tiles", "attribution", "center", "zoom", "bbox", "reverseTileColors", "disablePan", "disableZoom"},
@@ -275,6 +277,7 @@ var defaults = map[string]any{
 // a position string, and neither can take the other's default.
 var kindDefaults = map[string]map[string]any{
 	"Button":     {"fontSize": 0.0},
+	"WebView":    {"zoom": 1.0},
 	"Slider":     {"center": math.NaN()},
 	"Tabs":       {"variant": "secondary"},
 	"Popover":    {"align": "start"},
@@ -349,7 +352,7 @@ func TypeOfFor(kind, name string) PropType {
 // TypeOf returns the literal type of a component property.
 func TypeOf(name string) PropType {
 	switch name {
-	case "disabled", "checked", "selected", "expanded", "showCopy", "showTooltip", "animated", "obscureText", "wrap", "truncate",
+	case "disabled", "checked", "selected", "expanded", "showCopy", "showTooltip", "animated", "obscureText", "wrap", "truncate", "devtools",
 		"filledIcon", "filledLeadingIcon", "filledTrailingIcon",
 		"sortable", "numeric", "striped", "showHeader", "stickyHeader", "sortAscending",
 		"grid", "axis", "legend", "values", "stacked", "horizontal", "smooth", "points",

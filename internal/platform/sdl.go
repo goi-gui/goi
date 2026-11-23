@@ -31,7 +31,21 @@ func sdlInit() error {
 	if wantWaylandDriver(os.Getenv) {
 		_ = sdl.SetHint(sdl.HINT_VIDEO_DRIVER, "wayland")
 	}
-	return sdl.Init(sdl.INIT_VIDEO)
+	// Video starts later, after the design is known: a WebView imports GTK's
+	// wl_display before SDL connects, and a design without one starts SDL's own.
+	return sdl.Init(sdl.INIT_EVENTS)
+}
+
+// videoStarted reports whether SDL's video subsystem is up. A WebView has to
+// import GTK's wl_display before that, so a view added later cannot share it.
+var videoStarted bool
+
+func sdlStartVideo() error {
+	if err := sdl.InitSubSystem(sdl.INIT_VIDEO); err != nil {
+		return err
+	}
+	videoStarted = true
+	return nil
 }
 
 func sdlQuit() { sdl.Quit() }

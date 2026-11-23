@@ -197,6 +197,7 @@ type (
 	ClipRRect        = tree.ClipRRect
 	Code             = tree.Code
 	Terminal         = tree.Terminal
+	WebView          = tree.WebView
 	TerminalSize     = tree.TerminalSize
 	TerminalExit     = tree.TerminalExit
 	TerminalCell     = tree.TerminalCell

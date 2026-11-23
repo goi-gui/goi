@@ -23,8 +23,8 @@ const (
 // allFeatures is what `all` turns on. The dialog and notification APIs are
 // always available now, so there is no tag to add for them.
 var (
-	autoFeatures = []string{"emoji", "svg", "mermaid", "markdown", "code", "net", "terminal"}
-	allFeatures  = []string{"emoji", "svg", "mermaid", "markdown", "code", "net", "terminal"}
+	autoFeatures = []string{"emoji", "svg", "mermaid", "markdown", "code", "net", "terminal", "webview"}
+	allFeatures  = []string{"emoji", "svg", "mermaid", "markdown", "code", "net", "terminal", "webview"}
 )
 
 // resolvedFlags is the result of reading one flag list. Tags go to the go
@@ -169,6 +169,8 @@ func scanFeatures(assetsDir string) ([]string, error) {
 				found["net"] = true
 			case "Terminal":
 				found["terminal"] = true
+			case "WebView":
+				found["webview"] = true
 			}
 		})
 		return nil

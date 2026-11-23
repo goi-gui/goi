@@ -531,7 +531,14 @@ func (i *interactor) event(name string, fields ...any) {
 }
 
 func (i *interactor) MouseMove(x, y float64) {
+	// The wheel has no position of its own, so it uses the last one seen.
 	i.cursorX, i.cursorY = x, y
+	if e := i.app.webviewAt(x, y); e != nil {
+		if r, ok := i.app.webviewFrame(e.node); ok {
+			e.view.ForwardPointer(platform.PointerMove, x-r.X, y-r.Y, 0, 0, 0)
+		}
+		return
+	}
 	if i.termSelOn && i.termSel != nil {
 		i.termSelMoved = true
 		if row, col, ok := i.terminalCellAt(i.termSel, x, y); ok {
@@ -826,6 +833,18 @@ func (i *interactor) pointerAt(hit tree.Node) {
 }
 
 func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
+	if e := i.app.webviewAt(x, y); e != nil {
+		if r, ok := i.app.webviewFrame(e.node); ok {
+			i.app.focusedWebview = e
+			i.app.pressWebview = e
+			e.view.ForwardPointer(platform.PointerDown, x-r.X, y-r.Y, button, 0, 0)
+			return
+		}
+	}
+	if i.app.focusedWebview != nil {
+		// A press outside the native view returns the keyboard to the design.
+		i.app.blurWebview()
+	}
 	i.event("MouseDown", "x", x, "y", y, "button", button, "shift", shift)
 	i.cursorX, i.cursorY = x, y
 	hit := i.hit(x, y)
@@ -1067,6 +1086,13 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 }
 
 func (i *interactor) MouseUp(x, y float64, button int) {
+	if e := i.app.pressWebview; e != nil {
+		if r, ok := i.app.webviewFrame(e.node); ok {
+			e.view.ForwardPointer(platform.PointerUp, x-r.X, y-r.Y, button, 0, 0)
+		}
+		i.app.pressWebview = nil
+		return
+	}
 	i.event("MouseUp", "x", x, "y", y, "button", button)
 	if i.termMouse != nil {
 		row, col := i.termMouseRow, i.termMouseCol
@@ -2232,6 +2258,12 @@ const scrollStep = 48
 // next one up when it has no room left. A short TextArea or a list at its end
 // must not swallow the wheel, or the pointer looks stuck over that component.
 func (i *interactor) Scroll(dx, dy float64, shift bool) {
+	if e := i.app.webviewAt(i.cursorX, i.cursorY); e != nil {
+		if r, ok := i.app.webviewFrame(e.node); ok {
+			e.view.ForwardPointer(platform.PointerScroll, i.cursorX-r.X, i.cursorY-r.Y, 0, dx, dy)
+		}
+		return
+	}
 	i.event("Scroll", "dx", dx, "dy", dy, "shift", shift)
 	precise := preciseWheel(dx) || preciseWheel(dy)
 	if !precise {
@@ -2792,6 +2824,14 @@ func (i *interactor) MouseLeave() {
 }
 
 func (i *interactor) Key(k platform.Key, mods platform.Mods) {
+	if e := i.app.focusedWebview; e != nil {
+		// Printable characters arrive through Char; a navigation or modifier
+		// key has to reach the page directly.
+		if mods.Ctrl || mods.Alt || mods.Super || webviewNavKey(k) {
+			e.view.ForwardKey(k, mods)
+		}
+		return
+	}
 	i.event("Key", "key", int(k), "shift", mods.Shift, "ctrl", mods.Ctrl, "alt", mods.Alt, "super", mods.Super)
 	i.key(toTreeKey(k), tree.Mods{Shift: mods.Shift, Ctrl: mods.Ctrl, Alt: mods.Alt, Super: mods.Super})
 }
@@ -2942,6 +2982,10 @@ func (i *interactor) key(k tree.Key, mods tree.Mods) {
 // Char inserts committed text at the caret. IME commits arrive here as runes,
 // so a composed run is inserted over the selection like typed text.
 func (i *interactor) Char(r rune) {
+	if e := i.app.focusedWebview; e != nil {
+		e.view.ForwardText(r)
+		return
+	}
 	i.event("Char", "rune", string(r))
 	if term, ok := i.kbd.(*tree.Terminal); ok {
 		if r >= 32 {
@@ -2981,6 +3025,12 @@ func (i *interactor) Preedit(text string, caret int) {
 
 // CommitText replaces the composition with finished text, over any selection.
 func (i *interactor) CommitText(text string) {
+	if e := i.app.focusedWebview; e != nil {
+		for _, r := range text {
+			e.view.ForwardText(r)
+		}
+		return
+	}
 	i.event("CommitText", "text", text)
 	if term, ok := i.kbd.(*tree.Terminal); ok {
 		term.WriteText(text)
@@ -4498,4 +4548,17 @@ func minf(a, b float64) float64 {
 		return a
 	}
 	return b
+}
+
+// webviewNavKey reports a key that edits or moves in the page rather than
+// producing a character. Printable keys arrive through Char and must not be
+// forwarded twice.
+func webviewNavKey(k platform.Key) bool {
+	switch k {
+	case platform.KeyBackspace, platform.KeyDelete, platform.KeyLeft, platform.KeyRight,
+		platform.KeyUp, platform.KeyDown, platform.KeyHome, platform.KeyEnd,
+		platform.KeyEnter, platform.KeyTab, platform.KeyEscape:
+		return true
+	}
+	return false
 }

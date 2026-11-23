@@ -50,6 +50,17 @@ func (a *App) initPlatform() error {
 
 // initWindow creates the native window, the renderer and the input handler.
 func (a *App) initWindow(w *Window) error {
+	// A WebView needs GTK's Wayland display before SDL starts its video
+	// subsystem, so the two libraries share one wl_display. A design without one
+	// never loads GTK or WebKitGTK.
+	if treeHasWebview(w.tree) {
+		if err := platform.InitWebview(); err != nil {
+			a.reportError(fmt.Errorf("ui: web view: %w", err))
+		}
+	}
+	if err := platform.StartVideo(); err != nil {
+		return fmt.Errorf("ui: start video: %w", err)
+	}
 	// A custom title bar means the platform draws no decorations of its own.
 	pw, err := platform.New(w.title, w.width, w.height, w.tree.Root.TitleBar.Get() != "custom")
 	if err != nil {
@@ -155,6 +166,7 @@ func (d *gpuDriver) run(frame func()) error {
 			return nil
 		}
 		d.win.PollEvents()
+		platform.PumpWebviews()
 		start := time.Now()
 		frame()
 		// Only block when there is nothing left to draw: that is what keeps an
@@ -162,9 +174,13 @@ func (d *gpuDriver) run(frame func()) error {
 		// frame, so the loop wakes once per frame the clip actually shows
 		// rather than once per display refresh.
 		if !d.app.needsFrame {
-			if w := d.app.animWait; w > 0 {
-				d.win.WaitEventsTimeout(w)
-			} else {
+			switch {
+			case d.app.animWait > 0:
+				d.win.WaitEventsTimeout(d.app.animWait)
+			case d.app.hasWebviews:
+				// WebKit renders on GTK's loop, which this goroutine advances.
+				d.win.WaitEventsTimeout(16 * time.Millisecond)
+			default:
 				d.win.WaitEvents()
 			}
 			d.frameAt = time.Time{}
@@ -209,6 +225,7 @@ func (d *gpuDriver) close() {
 		d.app.watcher.Close()
 		d.app.watcher = nil
 	}
+	d.app.closeWebviews()
 	if d.gpu != nil {
 		d.gpu.Release()
 		d.gpu = nil
@@ -347,6 +364,11 @@ func (a *App) frame() {
 		a.win.tree.ApplyAutoScroll()
 		// A relayout moves children, so everything must be repainted.
 		markAll(root.Base(), tree.DirtyPaint)
+	}
+	// A native web view follows its node's laid-out box. The sync runs before
+	// the display list is built, so the placeholder and the view agree.
+	if a.hasWebviews || treeHasWebview(a.win.tree) {
+		a.syncWebviews(d.win)
 	}
 	// A map's viewport is its laid-out box, which a bbox fits against, and the
 	// tiles it needs follow the camera. This runs before the display list is

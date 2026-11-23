@@ -486,6 +486,8 @@ func (l *List) paintComponent(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		l.paintCode(c, r, clip)
 	case "Terminal":
 		l.paintTerminal(c, r, clip)
+	case "WebView":
+		l.paintWebView(c, r, clip)
 	case "Mermaid":
 		l.paintMermaid(c, r, clip)
 	case "Carousel":
@@ -3159,4 +3161,18 @@ func (l *List) fill(r tree.Rect, color uint32, shape Shape, clip tree.Rect) {
 	l.Ops = append(l.Ops, Op{
 		Kind: Fill, Shape: shape, Rect: rectArr(r), Color: color, Clip: clipArr(clip),
 	})
+}
+
+// paintWebView draws the box the native view will cover. The view itself is a
+// platform surface above the GPU layer; headless checks and the frames before
+// the view is ready see this placeholder.
+func (l *List) paintWebView(c *tree.Component, r tree.Rect, clip tree.Rect) {
+	if r.W <= 0 || r.H <= 0 {
+		return
+	}
+	if c.Base().Background() == 0 && c.Base().Gradient("background") == nil {
+		rad := l.shapeRadius(c.Base(), r)
+		l.fillShape(r, l.Theme.Colors.SurfaceContainer, nil, componentRadii(c.Base(), rad), 0, 0, clip)
+	}
+	l.paintBox(c.Base(), r, clip)
 }

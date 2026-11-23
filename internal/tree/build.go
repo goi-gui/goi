@@ -894,6 +894,12 @@ func newM3Component(name string) Node {
 			Scrollback: newProp(nil, "scrollback", DirtyPaint, 1000.0),
 			Foreground: newProp(nil, "foreground", DirtyPaint, uint32(0)),
 		}
+	case "WebView":
+		return &WebView{
+			Component: newComponent(),
+			Zoom:      newProp(nil, "zoom", DirtyPaint, 1.0),
+			Devtools:  newProp(nil, "devtools", DirtyPaint, false),
+		}
 	case "Markdown":
 		return &Markdown{Component: newComponent()}
 	case "Mermaid":

@@ -147,6 +147,18 @@ type App struct {
 	// the running players, one per playing node.
 	hasMedia bool
 	media    []*mediaPlayer
+	// webviews are the native browser views, one per WebView node. A view is a
+	// platform surface above the GPU layer; focusedWebview receives the keyboard
+	// while the pointer last pressed inside one.
+	webviews       []*webviewEntry
+	hasWebviews    bool
+	focusedWebview *webviewEntry
+	// webviewDir is the temp directory embedded pages are extracted to, so
+	// relative CSS, scripts and images resolve through file://.
+	webviewDir string
+	// pressWebview is the view that received the last pointer down, so its
+	// release is not lost when the pointer moved a little.
+	pressWebview *webviewEntry
 	// decoders is the ffmpeg side of playback: the probe cache and the temp
 	// files it reads. A browser has no decoder of its own to feed, so the struct
 	// is empty there.
