@@ -3,6 +3,7 @@ package media
 import (
 	"os"
 	"os/exec"
+	"slices"
 	"testing"
 	"time"
 )
@@ -40,7 +41,7 @@ func TestProbeAndDecode(t *testing.T) {
 		t.Fatalf("duration = %v", info.Duration)
 	}
 
-	v, err := OpenVideo(path, 80, 44, 0, false, false)
+	v, err := OpenVideo(path, 80, 44, 0, false, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,6 +76,34 @@ func TestProbeAndDecode(t *testing.T) {
 		t.Fatalf("decoded %d frames of a one second, 10 fps clip", count)
 	}
 	_ = os.Remove(path)
+}
+
+// TestLiveVideoIsPacedNotBursty pins the live input pacing. An HLS playlist
+// publishes a segment at a time, so without "-re" ffmpeg decodes the whole
+// backlog as fast as the network allows and fills the byte-capped queue in a
+// fraction of a second; the picture then freezes until the next refresh while
+// the sound keeps real time. A file must not be paced: the buffer is what keeps
+// a recorded film smooth.
+func TestLiveVideoIsPacedNotBursty(t *testing.T) {
+	src := "https://example.com/live.m3u8"
+	args := videoArgs(src, 640, 360, 0, false, true, true)
+	input, paced := slices.Index(args, "-i"), slices.Index(args, "-re")
+	if paced < 0 || input < 0 || paced > input {
+		t.Fatalf("-re is not an input option for a live feed: %v", args)
+	}
+	if start := slices.Index(args, "-live_start_index"); start < 0 || start > input {
+		t.Fatalf("-live_start_index is not an input option: %v", args)
+	}
+	// A live source without HLS (behind dropped) is still paced, just not at a
+	// segment index.
+	plain := videoArgs("rtsp://example.com/live", 640, 360, 0, false, false, true)
+	if slices.Index(plain, "-re") < 0 {
+		t.Fatalf("a live non-HLS source was not paced: %v", plain)
+	}
+	file := videoArgs("/tmp/clip.mp4", 640, 360, 0, false, false, false)
+	if slices.Index(file, "-re") >= 0 {
+		t.Fatalf("a recorded file was paced: %v", file)
+	}
 }
 
 func TestPCMDecodes(t *testing.T) {

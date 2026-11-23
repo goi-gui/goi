@@ -540,7 +540,7 @@ func (p *mediaPlayer) pumpVideo() {
 // decodeVideo runs one decoder to its end and reports whether the player was
 // closed while it ran, plus how many frames it produced.
 func (p *mediaPlayer) decodeVideo() (stopped bool, frames int) {
-	dec, err := media.OpenVideo(p.src, p.frame.W, p.frame.H, p.opened, p.hw, p.behind)
+	dec, err := media.OpenVideo(p.src, p.frame.W, p.frame.H, p.opened, p.hw, p.behind, p.live)
 	if err != nil {
 		if !p.hw {
 			p.fail(err)
@@ -1219,10 +1219,7 @@ func (p *mediaPlayer) waitingForReserve() bool {
 	if p.frames == nil {
 		return false
 	}
-	want := int(reserveSeconds / p.framePeriod().Seconds())
-	if limit := cap(p.frames) / 2; want > limit {
-		want = limit
-	}
+	want := p.liveTargetFrames()
 	if want < 1 || len(p.frames) >= want {
 		return false
 	}
@@ -1230,6 +1227,27 @@ func (p *mediaPlayer) waitingForReserve() bool {
 	stalled := !p.lastFrameAt.IsZero() && time.Since(p.lastFrameAt) > 2*time.Second
 	p.mu.Unlock()
 	return !stalled
+}
+
+// liveTargetFrames is the queue depth the live clock steers to. The cushion is
+// named in seconds, but the live buffer is a byte budget and a 720p RGBA frame
+// is 3.7 MB: 32 MB holds well under a second of picture, not the three seconds
+// the reserve names. A target left in seconds then sits above the whole queue,
+// every depth reads as "behind", and the trim pins the period to its slow end —
+// the picture lags the sound at 2/3 speed. Half the queue leaves room for a
+// segment burst and for the clock to correct in both directions.
+func (p *mediaPlayer) liveTargetFrames() int {
+	if p.frames == nil {
+		return 0
+	}
+	target := int(reserveSeconds / p.framePeriod().Seconds())
+	if limit := cap(p.frames) / 2; target > limit {
+		target = limit
+	}
+	if target < 1 {
+		target = 1
+	}
+	return target
 }
 
 // livePeriod is the frame period a live feed is paced at. The container's rate
@@ -1252,11 +1270,11 @@ func (p *mediaPlayer) livePeriod() time.Duration {
 	// starting point (this stream claims 25 and delivers 23.5), and the trim
 	// settles a little above it with the queue a little below target, without
 	// either drifting.
-	target := reserveSeconds / p.framePeriod().Seconds()
+	target := p.liveTargetFrames()
 	if target < 1 {
-		target = 1
+		return period
 	}
-	trim := min(max(1+0.8*(target-float64(len(p.frames)))/target, 0.85), 1.5)
+	trim := min(max(1+0.8*(float64(target)-float64(len(p.frames)))/float64(target), 0.85), 1.5)
 	return time.Duration(float64(period) * trim)
 }
 
@@ -1305,7 +1323,7 @@ func (p *mediaPlayer) nextFrameBuf() ([]byte, bool) {
 	// edge rather than drift away with. Shedding it in eighths of the excess, one
 	// take at a time, is a one-frame skip here and there instead of a jump of a
 	// second when the queue hits a threshold.
-	target := int(reserveSeconds / p.framePeriod().Seconds())
+	target := p.liveTargetFrames()
 	if n := len(p.frames); n > target+8 {
 		drop := (n - target + 7) / 8
 		for i := 0; i < drop; i++ {

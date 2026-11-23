@@ -241,8 +241,13 @@ type Video struct {
 // the beginning. hw asks ffmpeg for hardware decoding; the caller falls back by
 // opening again without it, because a machine, a driver or a codec may refuse.
 // behind asks an HLS feed to start a few segments back from the live edge, which
-// is what gives the player a backlog to play through.
-func OpenVideo(src string, w, h int, offset time.Duration, hw, behind bool) (*Video, error) {
+// is what gives the player a backlog to play through. live paces a network
+// source at its native rate instead of reading ahead: an HLS playlist publishes
+// a whole segment at a time, and without this ffmpeg decodes the backlog as fast
+// as the network allows, fills the small byte-capped queue in a fraction of a
+// second, and then has nowhere to put the next segment — the picture freezes
+// between playlist refreshes while the sound keeps real time.
+func OpenVideo(src string, w, h int, offset time.Duration, hw, behind, live bool) (*Video, error) {
 	bin, err := FFmpeg()
 	if err != nil {
 		return nil, err
@@ -252,10 +257,32 @@ func OpenVideo(src string, w, h int, offset time.Duration, hw, behind bool) (*Vi
 	}
 	w &^= 1 // yuv420 wants even dimensions; rgba does not care, but the scaler does
 	h &^= 1
+	args := videoArgs(src, w, h, offset, hw, behind, live)
+	cmd := exec.Command(bin, args...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("media: %w", err)
+	}
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("media: %w", err)
+	}
+	return &Video{cmd: cmd, out: stdout, W: w, H: h, FrameBytes: w * h * 4, stderr: &stderr}, nil
+}
+
+// videoArgs builds the ffmpeg command line for one video decoder.
+func videoArgs(src string, w, h int, offset time.Duration, hw, behind, live bool) []string {
 	args := []string{"-nostdin", "-hide_banner", "-loglevel", "error"}
 	// A network source that drops should reconnect itself: without this a dead
 	// socket freezes the picture until the player is reopened.
 	args = append(args, netArgs(src)...)
+	if live && IsURL(src) {
+		// Pacing an HLS input at its native rate keeps the decoder from using
+		// the whole buffer on one playlist burst. The player still starts behind
+		// the live edge, so there is a segment in hand when playback begins.
+		args = append(args, "-re")
+	}
 	if behind && IsHLS(src) {
 		// Without this ffmpeg stays pinned to the live edge and can only deliver
 		// what the playlist has published, so the picture is always one segment
@@ -271,24 +298,13 @@ func OpenVideo(src string, w, h int, offset time.Duration, hw, behind bool) (*Vi
 	if offset > 0 {
 		args = append(args, "-ss", strconv.FormatFloat(offset.Seconds(), 'f', 3, 64))
 	}
-	args = append(args,
+	return append(args,
 		"-i", src,
 		"-an",
 		"-vf", fmt.Sprintf("scale=%d:%d", w, h),
 		"-f", "rawvideo", "-pix_fmt", "rgba",
 		"pipe:1",
 	)
-	cmd := exec.Command(bin, args...)
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, fmt.Errorf("media: %w", err)
-	}
-	var stderr strings.Builder
-	cmd.Stderr = &stderr
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("media: %w", err)
-	}
-	return &Video{cmd: cmd, out: stdout, W: w, H: h, FrameBytes: w * h * 4, stderr: &stderr}, nil
 }
 
 // Info returns the stream properties a previous Probe found.

@@ -118,6 +118,33 @@ func TestLivePaceFollowsTheQueue(t *testing.T) {
 	}
 }
 
+// TestLivePaceFitsTheByteCappedQueue is the regression guard for a live picture
+// that runs slower than its sound. The cushion is written in seconds, but the
+// live buffer is a byte budget: a 720p RGBA frame is 3.7 MB, so 32 MB holds only
+// a few frames instead of the three seconds the target asks for. A target left
+// above the whole queue reads every depth as "behind" and pins the period to its
+// slow end, which is 1.5x per frame while the audio device keeps real time.
+func TestLivePaceFitsTheByteCappedQueue(t *testing.T) {
+	p := &mediaPlayer{info: mediaInfoFor(25), live: true, buffer: liveDefaultBuffer, budget: 8 * 100}
+	p.openFrames(100)
+	if got := cap(p.frames); got != 8 {
+		t.Fatalf("byte budget sized the queue at %d frames, want 8", got)
+	}
+	for len(p.frames) < cap(p.frames) {
+		p.frames <- make([]byte, 1)
+	}
+	base := p.framePeriod()
+	if got := p.livePeriod(); got >= base {
+		t.Fatalf("a full, byte-capped queue paced at %v, want faster than %v", got, base)
+	}
+	for len(p.frames) > p.liveTargetFrames() {
+		<-p.frames
+	}
+	if got := p.livePeriod(); got != base {
+		t.Fatalf("the queue at its target paced at %v, want %v", got, base)
+	}
+}
+
 // TestLiveFeedUsesALiveBuffer checks the default depth: a live feed's segments
 // arrive with gaps, so the file default of 1.5s is too shallow to play through
 // them.
