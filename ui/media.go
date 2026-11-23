@@ -61,6 +61,10 @@ const (
 	// decoder is reopened; short enough to be a blink, long enough not to spin
 	// on a server that is refusing the connection.
 	liveRetry = time.Second
+	// audioGateWait bounds how long the sound waits for a picture that never
+	// arrives, so a stream the probe called video but decodes no frame is still
+	// heard instead of staying silent.
+	audioGateWait = 5 * time.Second
 )
 
 // mediaPlayer is one running decoder for one node.
@@ -80,6 +84,12 @@ type mediaPlayer struct {
 	// audio is the playback device; nil when the file has no sound or the
 	// machine has none.
 	audio *platform.AudioStream
+	// gated holds the device paused until the first picture is ready, so a
+	// decoder that opens faster than the other cannot start playback ahead.
+	gated bool
+	// audioDead is set when the pump stops without leaving sound, so a gate
+	// waiting for it does not wait forever.
+	audioDead bool
 	// audioStop ends the audio pump alone, which is what a track switch needs:
 	// the picture keeps playing while the sound is reopened elsewhere.
 	audioStop chan struct{}
@@ -384,6 +394,19 @@ func (a *App) startPlayer(n tree.Node) (*mediaPlayer, error) {
 	if info.HasAudio && !m.Muted.Get() {
 		// A machine with no sound card returns nil, and the video still plays.
 		p.audio = platform.OpenAudio(audioRate, audioChannels)
+		if p.audio != nil && info.HasVideo {
+			if _, isVideo := n.(*tree.Video); isVideo {
+				// Hold the sound until the first frame is ready. Opening two
+				// decoders takes a different time on every stream and protocol,
+				// and without the gate whichever one wins starts ahead: audio
+				// first while the picture is still decoding, or the picture
+				// first while the sound is still connecting. The device queues
+				// while paused, so the picture and the first sample start
+				// together and from the same position.
+				p.audio.Pause()
+				p.gated = true
+			}
+		}
 	}
 
 	a.media = append(a.media, p)
@@ -482,6 +505,31 @@ func (p *mediaPlayer) buffered() int {
 	return len(p.frames)
 }
 
+// audioReady reports whether a gated player has sound to start with. A player
+// with no sound, or one whose pump stopped without queuing any, lets the
+// picture start alone instead of waiting on a decoder that will never deliver.
+func (p *mediaPlayer) audioReady() bool {
+	if !p.gated || p.audio == nil {
+		return true
+	}
+	p.mu.Lock()
+	dead := p.audioDead
+	p.mu.Unlock()
+	return dead || p.audio.Queued() > 0
+}
+
+// startPicture releases the sound held for the first frame, so both begin at
+// the same moment and from the same position.
+func (p *mediaPlayer) startPicture() {
+	if !p.gated {
+		return
+	}
+	p.gated = false
+	if p.audio != nil {
+		p.audio.Resume()
+	}
+}
+
 // start launches the two pumps: video frames into the queue, audio into the
 // device.
 func (p *mediaPlayer) start() {
@@ -497,6 +545,9 @@ func (p *mediaPlayer) startAudio(at time.Duration) {
 		return
 	}
 	p.audioStop = make(chan struct{})
+	p.mu.Lock()
+	p.audioDead = false
+	p.mu.Unlock()
 	p.audioWG.Add(1)
 	go p.pumpAudio(at, p.track)
 }
@@ -606,6 +657,11 @@ func (p *mediaPlayer) pumpAudio(at time.Duration, track int) {
 	if p.audio == nil {
 		return
 	}
+	defer func() {
+		p.mu.Lock()
+		p.audioDead = true
+		p.mu.Unlock()
+	}()
 	for {
 		if stopped := p.decodeAudio(at, track); stopped || !p.live {
 			return
@@ -779,7 +835,7 @@ func (a *App) playMedia(n tree.Node) {
 		return
 	}
 	m.Playing, m.Paused, m.Ended = true, false, false
-	if p.audio != nil {
+	if p.audio != nil && !p.gated {
 		p.audio.Resume()
 	}
 	m.Playback.Emit(true)
@@ -1012,6 +1068,16 @@ func (a *App) tickMedia(dt float64) (bool, time.Duration) {
 		if !m.Playing || m.Paused {
 			continue
 		}
+		if p.gated && time.Since(p.startAt) > audioGateWait {
+			p.mu.Lock()
+			noFrame := p.lastFrameAt.IsZero()
+			p.mu.Unlock()
+			if noFrame {
+				// The decoder never delivered a frame; let the sound play
+				// rather than keep the device paused forever.
+				p.startPicture()
+			}
+		}
 		if m.Scrubbing {
 			// The pointer owns the position until it lets go.
 			continue
@@ -1049,7 +1115,7 @@ func (a *App) tickMedia(dt float64) (bool, time.Duration) {
 				now := time.Now()
 				period := p.livePeriod()
 				if p.nextFrame.IsZero() {
-					if p.waitingForReserve() {
+					if p.waitingForReserve() || !p.audioReady() {
 						if wait == 0 || wait > frameRetry {
 							wait = frameRetry
 						}
@@ -1059,6 +1125,7 @@ func (a *App) tickMedia(dt float64) (bool, time.Duration) {
 						v.Data.Gen++
 						m.Buffering = false
 						p.shown = true
+						p.startPicture()
 						v.Base().MarkDirty(tree.DirtyPaint)
 						changed = true
 						p.nextFrame = now.Add(period)
@@ -1104,6 +1171,14 @@ func (a *App) tickMedia(dt float64) (bool, time.Duration) {
 				}
 				continue
 			}
+			if p.nextFrame.IsZero() && !p.audioReady() {
+				// The first frame waits for the sound, so a fast decoder does
+				// not show the picture while the audio is still connecting.
+				if wait == 0 || wait > frameRetry {
+					wait = frameRetry
+				}
+				continue
+			}
 			if p.nextFrame.IsZero() {
 				// The first frame is shown as soon as one exists, which is what
 				// makes a stall recover without a waiting period.
@@ -1111,6 +1186,7 @@ func (a *App) tickMedia(dt float64) (bool, time.Duration) {
 					v.Data.Gen++
 					m.Buffering = false
 					p.shown = true
+					p.startPicture()
 					v.Base().MarkDirty(tree.DirtyPaint)
 					changed = true
 					p.nextFrame = now.Add(period)

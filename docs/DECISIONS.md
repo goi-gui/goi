@@ -2198,6 +2198,17 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   three-second reserve is capped at half the byte budget, because at 720p the
   32 MB live buffer holds well under a second. Without that cap every depth read
   as "behind" and the picture played at 1.5x the frame period, two-thirds speed.
+- **The first frame and the first sample start together.** Audio and video are two
+  ffmpeg processes, and the one that opens first used to play first: the sound ran
+  while the picture was still decoding on some streams, and the picture showed
+  while the sound was still connecting on others, so every channel had its own
+  constant offset in either direction. The device now opens paused for a video
+  with sound; the audio pump queues into it, and the first frame waits for the
+  queue to hold at least one chunk. Showing that frame resumes the device, so both
+  read from the same starting position at the same moment. The device queues while
+  paused, so the lead it needs is still there when playback starts. A feed whose
+  pump stops, or a video the probe called video but that delivers no frame for
+  five seconds, releases the sound alone rather than staying silent.
 - **The atlases and the per-node tables start where the app is, not where it
   could end up.** The image atlas began at 2048² (16 MB of pixels plus the GPU
   copy) even in an app with no pictures; it now starts at 512² and grows, the
