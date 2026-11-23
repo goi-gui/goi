@@ -77,6 +77,11 @@ func (a *App) syncWebviews(pw *platform.Window) {
 		seen[wv] = true
 		e := a.webviewFor(wv)
 		if e == nil {
+			// A failed creation is not retried every frame: the node lasts
+			// until a reload replaces it, and the error would repeat forever.
+			if a.webviewFailed[wv] {
+				return
+			}
 			entry := &webviewEntry{node: wv, zoom: 1}
 			entry.focus = func() { a.focusWebview(entry) }
 			view, err := platform.NewWebview(pw,
@@ -85,6 +90,11 @@ func (a *App) syncWebviews(pw *platform.Window) {
 			)
 			if err != nil {
 				wv.LoadErr = err
+				if a.webviewFailed == nil {
+					a.webviewFailed = map[*tree.WebView]bool{}
+				}
+				a.webviewFailed[wv] = true
+				a.reportError(fmt.Errorf("ui: web view: %w", err))
 				return
 			}
 			wv.LoadErr = nil
@@ -286,6 +296,7 @@ func (a *App) closeWebviews() {
 	}
 	a.webviews = nil
 	a.hasWebviews = false
+	a.webviewFailed = nil
 	a.blurWebview()
 	a.pressWebview = nil
 	if a.webviewDir != "" {

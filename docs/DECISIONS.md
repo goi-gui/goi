@@ -2788,5 +2788,9 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   cannot follow a clip, rotation, scale or partial opacity. The GTK/WebKitGTK
   libraries are loaded through purego at run time and the backend is behind the
   `webview` feature tag, so a design without a WebView never pays for them.
-  Windows (WebView2) and macOS (WKWebView) use the same child-view idea and
-  remain to be implemented.
+  Windows hosts WebView2 as a child window of the SDL window and macOS adds a
+  WKWebView subview, so neither needs synthetic input; both reach their engine
+  through the same purego rule: the WebView2 runtime is located without
+  shipping a loader DLL, and WKWebView is called through `objc_msgSend` with
+  one typed Go signature per argument shape. Both backends cross-compile and
+  are documented as unverified on hardware yet.

@@ -14,4 +14,4 @@ func NewWebview(parent *Window, onMessage func(string), onFocus func()) (Webview
 }
 
 // PumpWebviews has no loop of its own in a page.
-func PumpWebviews() {}
+func PumpWebviews() bool { return false }

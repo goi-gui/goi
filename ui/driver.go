@@ -166,7 +166,7 @@ func (d *gpuDriver) run(frame func()) error {
 			return nil
 		}
 		d.win.PollEvents()
-		platform.PumpWebviews()
+		pumpWebviews := platform.PumpWebviews()
 		start := time.Now()
 		frame()
 		// Only block when there is nothing left to draw: that is what keeps an
@@ -177,7 +177,7 @@ func (d *gpuDriver) run(frame func()) error {
 			switch {
 			case d.app.animWait > 0:
 				d.win.WaitEventsTimeout(d.app.animWait)
-			case d.app.hasWebviews:
+			case d.app.hasWebviews && pumpWebviews:
 				// WebKit renders on GTK's loop, which this goroutine advances.
 				d.win.WaitEventsTimeout(16 * time.Millisecond)
 			default:

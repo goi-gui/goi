@@ -151,6 +151,7 @@ type App struct {
 	// platform surface above the GPU layer; focusedWebview receives the keyboard
 	// while the pointer last pressed inside one.
 	webviews       []*webviewEntry
+	webviewFailed  map[*tree.WebView]bool
 	hasWebviews    bool
 	focusedWebview *webviewEntry
 	// webviewDir is the temp directory embedded pages are extracted to, so

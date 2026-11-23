@@ -306,13 +306,15 @@ func cstr(s string) *byte {
 
 // PumpWebviews advances GTK's event loop. It runs on the UI goroutine, where
 // GTK was initialized.
-func PumpWebviews() {
+func PumpWebviews() bool {
 	if !webviewOK {
-		return
+		return false
 	}
 	for gtkEventsPending() != 0 {
 		gtkMainIteration()
 	}
+	// GTK renders on its own loop, so an idle app must still wake it.
+	return true
 }
 
 type linuxWebview struct {
