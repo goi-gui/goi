@@ -69,7 +69,12 @@ const (
 	// this long. A segment fetch can hang on the network, and the audio and
 	// video decoders are separate connections: without this the sound keeps
 	// playing while the picture stays frozen for good.
-	decoderStallTimeout = 5 * time.Second
+	//
+	// It has to outlast a healthy HLS gap. Segments can be ten seconds long and
+	// the playlist refreshes on the same order, so a five-second deadline killed
+	// decoders that were merely waiting for the next segment and restarted them
+	// behind the live edge. Twenty seconds covers the common target durations.
+	decoderStallTimeout = 20 * time.Second
 )
 
 // mediaPlayer is one running decoder for one node.

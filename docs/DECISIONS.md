@@ -2213,10 +2213,22 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   separate connections, so a video segment fetch can hang without closing the
   socket while the audio keeps playing: the picture froze for minutes with an
   empty frame queue and the pump blocked in a read that had no deadline. A live
-  decoder now sets a five-second read deadline before each read. A read that
+  decoder now sets a twenty-second read deadline before each read. A read that
   produces nothing fails with a stalled error, the pump reopens the decoder after
-  its usual second, and the picture resumes. The deadline is per read, so a
-  healthy feed — even one segment at a time — never trips it.
+  its usual second, and the picture resumes. The deadline is per read and has to
+  outlast a healthy HLS gap: segments can be ten seconds long, and a five-second
+  deadline killed decoders that were merely waiting for the next segment,
+  restarting them behind the live edge. Twenty seconds covers the common target
+  durations.
+- **A stalled HTTP fetch is ffmpeg's job before it is the player's.** The
+  decoder hung on segment requests that kept the socket open without sending
+  data: `-reconnect` never fired, the frame queue drained and the picture froze
+  until the five-second process deadline killed the decoder. HTTP(S) inputs now
+  run with `-http_persistent 0`, so a server that drops keep-alive cannot wedge a
+  reused connection, and `-rw_timeout 10s`, so an idle read fails inside ffmpeg
+  where its reconnect options handle it. The process deadline stays as a
+  backstop, but on a ten-second-segment feed the player now rides a network dip
+  without restarting behind the live edge.
 - **The atlases and the per-node tables start where the app is, not where it
   could end up.** The image atlas began at 2048² (16 MB of pixels plus the GPU
   copy) even in an app with no pictures; it now starts at 512² and grows, the

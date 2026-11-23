@@ -86,6 +86,16 @@ func netArgs(src string) []string {
 	}
 }
 
+// httpArgs adds the HTTP options that make a segment fetch fail instead of
+// hanging: a read timeout, and one connection per request so a server that
+// drops keep-alive cannot wedge the decoder.
+func httpArgs(src string) []string {
+	if !strings.HasPrefix(src, "http://") && !strings.HasPrefix(src, "https://") {
+		return nil
+	}
+	return []string{"-http_persistent", "0", "-rw_timeout", "10000000"}
+}
+
 var (
 	lookOnce sync.Once
 	ffmpegAt string
@@ -280,6 +290,7 @@ func videoArgs(src string, w, h int, offset time.Duration, hw, behind, live bool
 	// A network source that drops should reconnect itself: without this a dead
 	// socket freezes the picture until the player is reopened.
 	args = append(args, netArgs(src)...)
+	args = append(args, httpArgs(src)...)
 	if live && IsURL(src) {
 		// Pacing an HLS input at its native rate keeps the decoder from using
 		// the whole buffer on one playlist burst. The player still starts behind
@@ -403,6 +414,7 @@ func OpenPCM(src string, rate, channels int, offset time.Duration, track int) (*
 		channels = 2
 	}
 	args := []string{"-nostdin", "-hide_banner", "-loglevel", "error"}
+	args = append(args, httpArgs(src)...)
 	if offset > 0 {
 		args = append(args, "-ss", strconv.FormatFloat(offset.Seconds(), 'f', 3, 64))
 	}
