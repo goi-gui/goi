@@ -37,7 +37,9 @@ type Webview interface {
 	SetDevtools(bool)
 	ForwardKey(k Key, mods Mods)
 	ForwardText(r rune)
-	ForwardPointer(kind PointerKind, x, y float64, button int, dx, dy float64)
+	// shift is the modifier state of the event, so a shift-click extends a
+	// selection in the page the way it does in a browser.
+	ForwardPointer(kind PointerKind, x, y float64, button int, dx, dy float64, shift bool)
 	Focus()
 	Destroy()
 }

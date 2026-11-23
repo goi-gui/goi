@@ -749,7 +749,7 @@ func (w *winWebview) ForwardText(rune) {}
 
 // ForwardPointer is not needed for the same reason: WebView2 receives the
 // pointer through the child window.
-func (w *winWebview) ForwardPointer(PointerKind, float64, float64, int, float64, float64) {}
+func (w *winWebview) ForwardPointer(PointerKind, float64, float64, int, float64, float64, bool) {}
 
 func (w *winWebview) Focus() {
 	if w.ctrl != nil {

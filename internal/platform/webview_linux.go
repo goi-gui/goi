@@ -316,8 +316,6 @@ func cstr(s string) *byte {
 	return &b[0]
 }
 
-// PumpWebviews advances GTK's event loop. It runs on the UI goroutine, where
-// GTK was initialized.
 // liveViews lets a window focus change reach every open view.
 var liveViews []*linuxWebview
 
@@ -330,6 +328,8 @@ func SetWebviewFocus(focused bool) {
 	}
 }
 
+// PumpWebviews advances GTK's event loop. It runs on the UI goroutine, where
+// GTK was initialized.
 func PumpWebviews() bool {
 	if !webviewOK {
 		return false
@@ -672,6 +672,7 @@ func (w *linuxWebview) sendKey(keyval uint32, press bool, mods Mods) {
 	*(*unsafe.Pointer)(unsafe.Add(ev, 8)) = gdkwin // GdkWindow*
 	*(*uint32)(unsafe.Add(ev, 24)) = gdkMods(mods)
 	*(*uint32)(unsafe.Add(ev, 28)) = keyval
+	*(*uint16)(unsafe.Add(ev, 48)) = hwKeycode(keyval)
 	if seat := gdkDisplayGetDefaultSeat(gdkDisplay); seat != 0 {
 		if dev := gdkSeatGetPointer(seat); dev != 0 {
 			gdkEventSetDevice(ev, dev)
@@ -708,7 +709,52 @@ func gdkKeyval(k Key) uint32 {
 	case KeySpace:
 		return 0x20
 	}
+	if k >= KeyA && k <= KeyZ {
+		return uint32('a' + (k - KeyA))
+	}
 	return 0
+}
+
+// hwKeycode is the X11 keycode (evdev + 8) for a keyval. The engine uses it to
+// recognise editing keys; a synthetic event without one reaches the page's
+// keydown but performs no edit.
+func hwKeycode(keyval uint32) uint16 {
+	switch keyval {
+	case 0xff08:
+		return 22 // BackSpace
+	case 0xffff:
+		return 119 // Delete
+	case 0xff51:
+		return 113 // Left
+	case 0xff53:
+		return 114 // Right
+	case 0xff52:
+		return 111 // Up
+	case 0xff54:
+		return 116 // Down
+	case 0xff50:
+		return 110 // Home
+	case 0xff57:
+		return 115 // End
+	case 0xff0d:
+		return 36 // Return
+	case 0xff09:
+		return 23 // Tab
+	case 0xff1b:
+		return 9 // Escape
+	case 0x20:
+		return 65 // space
+	}
+	if keyval >= 'a' && keyval <= 'z' {
+		return letterKeycode[keyval-'a']
+	}
+	return 0
+}
+
+// letterKeycode is the X11 keycode of each Latin letter on a QWERTY layout.
+var letterKeycode = [26]uint16{
+	38, 56, 54, 40, 26, 41, 42, 43, 31, 44, 45, 46, 58,
+	57, 32, 33, 24, 27, 39, 28, 30, 55, 25, 53, 29, 52,
 }
 
 func gdkMods(m Mods) uint32 {
@@ -733,7 +779,7 @@ func gdkMods(m Mods) uint32 {
 // to gtk_main_do_event would stop at the frame, because GTK does not hit-test
 // down from there. gdk_event_put with the view's window has the engine's widget
 // as its event widget, which is what a real event carries.
-func (w *linuxWebview) ForwardPointer(kind PointerKind, x, y float64, button int, dx, dy float64) {
+func (w *linuxWebview) ForwardPointer(kind PointerKind, x, y float64, button int, dx, dy float64, shift bool) {
 	win := gtkWidgetGetWindow(w.view)
 	if win == nil {
 		return
@@ -762,22 +808,26 @@ func (w *linuxWebview) ForwardPointer(kind PointerKind, x, y float64, button int
 	*(*uint32)(unsafe.Add(ev, 20)) = 0          // time
 	*(*float64)(unsafe.Add(ev, 24)) = x
 	*(*float64)(unsafe.Add(ev, 32)) = y
+	state := uint32(0)
+	if shift {
+		state |= 1 // GDK_SHIFT_MASK
+	}
 	switch kind {
 	case PointerDown, PointerUp:
-		*(*uint32)(unsafe.Add(ev, 48)) = 0
+		*(*uint32)(unsafe.Add(ev, 48)) = state
 		*(*uint32)(unsafe.Add(ev, 52)) = uint32(button)
 		*(*float64)(unsafe.Add(ev, 64)) = xr
 		*(*float64)(unsafe.Add(ev, 72)) = yr
 	case PointerScroll:
-		*(*uint32)(unsafe.Add(ev, 40)) = 0
+		*(*uint32)(unsafe.Add(ev, 40)) = state
 		*(*int32)(unsafe.Add(ev, 44)) = 4 // GDK_SCROLL_SMOOTH
 		*(*float64)(unsafe.Add(ev, 56)) = xr
 		*(*float64)(unsafe.Add(ev, 64)) = yr
 		*(*float64)(unsafe.Add(ev, 72)) = dx * 50
 		*(*float64)(unsafe.Add(ev, 80)) = dy * 50
 	default:
-		*(*uint32)(unsafe.Add(ev, 48)) = 0 // state
-		*(*int16)(unsafe.Add(ev, 52)) = 0  // not a hint: the hint query would return the real pointer
+		*(*uint32)(unsafe.Add(ev, 48)) = state
+		*(*int16)(unsafe.Add(ev, 52)) = 0 // not a hint: the hint query would return the real pointer
 		*(*float64)(unsafe.Add(ev, 64)) = xr
 		*(*float64)(unsafe.Add(ev, 72)) = yr
 	}

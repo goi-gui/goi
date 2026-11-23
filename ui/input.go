@@ -535,7 +535,7 @@ func (i *interactor) MouseMove(x, y float64) {
 	i.cursorX, i.cursorY = x, y
 	if e := i.app.webviewAt(x, y); e != nil {
 		if r, ok := i.app.webviewFrame(e.node); ok {
-			e.view.ForwardPointer(platform.PointerMove, x-r.X, y-r.Y, 0, 0, 0)
+			e.view.ForwardPointer(platform.PointerMove, x-r.X, y-r.Y, 0, 0, 0, false)
 		}
 		return
 	}
@@ -839,7 +839,7 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 			// directly would leave committed text undelivered.
 			i.app.focusWebview(e)
 			i.app.pressWebview = e
-			e.view.ForwardPointer(platform.PointerDown, x-r.X, y-r.Y, button, 0, 0)
+			e.view.ForwardPointer(platform.PointerDown, x-r.X, y-r.Y, button, 0, 0, shift)
 			// The press focuses the field in the page; ask for text input again
 			// in case GTK took it during that focus change.
 			i.app.reassertTextInput()
@@ -1093,7 +1093,7 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 func (i *interactor) MouseUp(x, y float64, button int) {
 	if e := i.app.pressWebview; e != nil {
 		if r, ok := i.app.webviewFrame(e.node); ok {
-			e.view.ForwardPointer(platform.PointerUp, x-r.X, y-r.Y, button, 0, 0)
+			e.view.ForwardPointer(platform.PointerUp, x-r.X, y-r.Y, button, 0, 0, false)
 		}
 		i.app.pressWebview = nil
 		return
@@ -2265,7 +2265,7 @@ const scrollStep = 48
 func (i *interactor) Scroll(dx, dy float64, shift bool) {
 	if e := i.app.webviewAt(i.cursorX, i.cursorY); e != nil {
 		if r, ok := i.app.webviewFrame(e.node); ok {
-			e.view.ForwardPointer(platform.PointerScroll, i.cursorX-r.X, i.cursorY-r.Y, 0, dx, dy)
+			e.view.ForwardPointer(platform.PointerScroll, i.cursorX-r.X, i.cursorY-r.Y, 0, dx, dy, shift)
 		}
 		return
 	}

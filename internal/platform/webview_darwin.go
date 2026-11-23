@@ -405,7 +405,7 @@ func (w *darwinWebview) ForwardKey(Key, Mods) {}
 
 func (w *darwinWebview) ForwardText(rune) {}
 
-func (w *darwinWebview) ForwardPointer(PointerKind, float64, float64, int, float64, float64) {}
+func (w *darwinWebview) ForwardPointer(PointerKind, float64, float64, int, float64, float64, bool) {}
 
 func (w *darwinWebview) Destroy() {
 	if w.closed {
