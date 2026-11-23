@@ -4,6 +4,7 @@ package platform
 
 import (
 	"fmt"
+	"os"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -226,6 +227,12 @@ func initLinuxWebview() error {
 		return fmt.Errorf("%w: Wayland protocol interfaces", ErrWebviewUnavailable)
 	}
 
+	// GTK's Wayland input method would take the text input focus from SDL on
+	// the shared connection, which stops committed text. The simple context
+	// keeps GTK off that protocol; goi forwards keys itself.
+	if os.Getenv("GTK_IM_MODULE") == "" {
+		os.Setenv("GTK_IM_MODULE", "gtk-im-context-simple")
+	}
 	argc := int32(1)
 	arg0 := []byte("goi\x00")
 	argv := []*byte{&arg0[0], nil}
@@ -367,6 +374,11 @@ func sendFocus(win unsafe.Pointer, in bool) {
 	*(*unsafe.Pointer)(unsafe.Add(ev, 8)) = win
 	*(*byte)(unsafe.Add(ev, 16)) = 1
 	*(*int16)(unsafe.Add(ev, 18)) = v
+	if seat := gdkDisplayGetDefaultSeat(gdkDisplay); seat != 0 {
+		if dev := gdkSeatGetPointer(seat); dev != 0 {
+			gdkEventSetDevice(ev, dev)
+		}
+	}
 	gdkEventPut(ev)
 	gdkEventFree(ev)
 }

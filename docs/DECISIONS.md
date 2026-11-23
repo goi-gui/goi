@@ -2792,7 +2792,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   GTK enables its own input method when the view takes focus, and on the shared
   Wayland connection that takes text-input focus from SDL, which silently stops
   committed text; focusing a view therefore stops and restarts SDL's text input,
-  and the click path does it again after the press lands. Synthetic key events
+  and the click path does it after the press and after the release. GTK's own
+  input method is kept off the Wayland protocol entirely with
+  `GTK_IM_MODULE=gtk-im-context-simple` before GTK starts, so it cannot take the
+  focus back; goi forwards every key itself and needs no input method there. Synthetic key events
   carry the X11 hardware keycode of the key, because the engine identifies an
   editing key (Backspace, Delete, the arrows) by that code: without it the page
   sees the keydown but performs no edit. Pointer events pass the Shift state

@@ -1095,6 +1095,9 @@ func (i *interactor) MouseUp(x, y float64, button int) {
 		if r, ok := i.app.webviewFrame(e.node); ok {
 			e.view.ForwardPointer(platform.PointerUp, x-r.X, y-r.Y, button, 0, 0, false)
 		}
+		// The engine focuses the clicked field between the press and the
+		// release, and asking for text input again after it keeps it here.
+		i.app.reassertTextInput()
 		i.app.pressWebview = nil
 		return
 	}
@@ -2830,8 +2833,7 @@ func (i *interactor) MouseLeave() {
 
 func (i *interactor) Key(k platform.Key, mods platform.Mods) {
 	if e := i.app.focusedWebview; e != nil {
-		// Printable characters arrive through Char; a navigation or modifier
-		// key has to reach the page directly.
+		// A navigation or modifier key has to reach the page directly.
 		if mods.Ctrl || mods.Alt || mods.Super || webviewNavKey(k) {
 			e.view.ForwardKey(k, mods)
 		}
