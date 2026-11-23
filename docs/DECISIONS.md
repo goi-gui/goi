@@ -2781,14 +2781,18 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   creates a roleless GTK surface with
   `gdk_wayland_window_set_use_custom_surface`, and attaches it as a
   `wl_subsurface` of the SDL window. A texture-copy path would lose native
-  input and cost a frame per scroll. The subsurface owns the pointer inside
-  its box (its input region is that box), so WebKit gets real enter, motion,
-  button and scroll events from the compositor; a synthetic `GdkEvent` never
-  reaches the view widget, because `gtk_main_do_event` does not hit-test down
-  to it. The keyboard is the one thing a subsurface cannot get — Wayland
-  grants keyboard focus per toplevel — so goi forwards navigation keys and
-  committed text as synthetic key events, and marks the view as the keyboard
-  target when a click lands in it.
+  input and cost a frame per scroll. The subsurface is input-transparent, so
+  SDL keeps the pointer and goi owns focus, hit-testing and hover. Pointer
+  events are queued with `gdk_event_put` on the view's own `GdkWindow`: a
+  fabricated event handed to `gtk_main_do_event` stops at the frame, because
+  GTK does not hit-test down to the child widget, while the queued event
+  carries the view's window and lands on the engine. The keyboard cannot come
+  from the compositor — Wayland grants it per toplevel, and a subsurface is not
+  one — so goi forwards navigation keys and committed text as key events.
+  Wayland also never tells the GTK window it is focused, so goi queues a
+  `GDK_FOCUS_CHANGE` in on window focus; without it the engine draws no caret
+  and no focus ring. Native popups a page opens (a `<select>` menu, a date
+  picker) are separate GTK windows and may not show over the view.
   The cost is the accepted limit: the view is always above the GPU layer and
   cannot follow a clip, rotation, scale or partial opacity. The GTK/WebKitGTK
   libraries are loaded through purego at run time and the backend is behind the

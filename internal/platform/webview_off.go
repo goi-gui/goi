@@ -13,3 +13,6 @@ func NewWebview(parent *Window, onMessage func(string), onFocus func()) (Webview
 
 // PumpWebviews has no toolkit loop to advance.
 func PumpWebviews() bool { return false }
+
+// SetWebviewFocus is a no-op: this platform lets the engine take focus itself.
+func SetWebviewFocus(bool) {}

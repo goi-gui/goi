@@ -41,12 +41,15 @@ var (
 	gtkWidgetGetWindow             func(uintptr) unsafe.Pointer
 	gtkWidgetDestroy               func(uintptr)
 	gtkContainerAdd                func(uintptr, uintptr)
+	gtkWidgetEvent                 func(uintptr, unsafe.Pointer) int32
 	gtkWidgetAddEvents             func(uintptr, int32)
 	gtkEventsPending               func() int32
 	gtkMainIteration               func() int32
 	gtkMainIterationDo             func(int32) int32
 	gdkDisplayGetDefault           func() uintptr
 	gdkSeatGetPointer              func(uintptr) uintptr
+	gdkEventPut                    func(unsafe.Pointer)
+	gdkWindowGetOrigin             func(unsafe.Pointer, *int32, *int32) int32
 	gdkDisplayGetDefaultSeat       func(uintptr) uintptr
 	gdkWaylandDisplayGetWlDisplay  func(uintptr) unsafe.Pointer
 	gdkWaylandDisplayGetCompositor func(uintptr) uintptr
@@ -167,6 +170,7 @@ func initLinuxWebview() error {
 	purego.RegisterLibFunc(&gtkWidgetGetWindow, gtkLib, "gtk_widget_get_window")
 	purego.RegisterLibFunc(&gtkWidgetDestroy, gtkLib, "gtk_widget_destroy")
 	purego.RegisterLibFunc(&gtkContainerAdd, gtkLib, "gtk_container_add")
+	purego.RegisterLibFunc(&gtkWidgetEvent, gtkLib, "gtk_widget_event")
 	purego.RegisterLibFunc(&gtkWidgetAddEvents, gtkLib, "gtk_widget_add_events")
 	purego.RegisterLibFunc(&gtkEventsPending, gtkLib, "gtk_events_pending")
 	purego.RegisterLibFunc(&gtkMainIteration, gtkLib, "gtk_main_iteration")
@@ -182,6 +186,8 @@ func initLinuxWebview() error {
 	purego.RegisterLibFunc(&gdkUnicodeToKeyval, gdkLib, "gdk_unicode_to_keyval")
 	purego.RegisterLibFunc(&gdkDisplayGetDefaultSeat, gdkLib, "gdk_display_get_default_seat")
 	purego.RegisterLibFunc(&gdkSeatGetPointer, gdkLib, "gdk_seat_get_pointer")
+	purego.RegisterLibFunc(&gdkEventPut, gdkLib, "gdk_event_put")
+	purego.RegisterLibFunc(&gdkWindowGetOrigin, gdkLib, "gdk_window_get_origin")
 	purego.RegisterLibFunc(&gtkMainDoEvent, gtkLib, "gtk_main_do_event")
 	purego.RegisterLibFunc(&gSignalConnectData, gobjectLib, "g_signal_connect_data")
 	purego.RegisterLibFunc(&gObjectRef, gobjectLib, "g_object_ref")
@@ -312,6 +318,18 @@ func cstr(s string) *byte {
 
 // PumpWebviews advances GTK's event loop. It runs on the UI goroutine, where
 // GTK was initialized.
+// liveViews lets a window focus change reach every open view.
+var liveViews []*linuxWebview
+
+// SetWebviewFocus tells the GTK windows whether the app has focus. Wayland
+// gives the keyboard to the SDL toplevel, so without this the engine would
+// treat its window as inactive and draw no caret or focus ring.
+func SetWebviewFocus(focused bool) {
+	for _, w := range liveViews {
+		w.focusIn(focused)
+	}
+}
+
 func PumpWebviews() bool {
 	if !webviewOK {
 		return false
@@ -330,11 +348,35 @@ func PumpWebviews() bool {
 	return true
 }
 
+// sendFocus tells the GTK window whether the app has focus. Wayland gives the
+// keyboard to the SDL toplevel, so the garden's window would otherwise stay
+// "inactive" and the engine would draw no caret and no focus rings.
+func sendFocus(win unsafe.Pointer, in bool) {
+	if win == nil {
+		return
+	}
+	ev := gdkEventNew(12) // GDK_FOCUS_CHANGE
+	if ev == nil {
+		return
+	}
+	var v int16
+	if in {
+		v = 1
+	}
+	gObjectRef(win)
+	*(*unsafe.Pointer)(unsafe.Add(ev, 8)) = win
+	*(*byte)(unsafe.Add(ev, 16)) = 1
+	*(*int16)(unsafe.Add(ev, 18)) = v
+	gdkEventPut(ev)
+	gdkEventFree(ev)
+}
+
 type linuxWebview struct {
 	win, view, manager uintptr
 	surface, sub       uintptr
 	x, y, w, h         float64
-	iw, ih             float64
+	iw                 float64
+	focusedOnce        bool
 	visible            bool
 	message            func(string)
 	focus              func()
@@ -471,6 +513,8 @@ func NewWebview(parent *Window, onMessage func(string), onFocus func()) (Webview
 			return 0
 		})
 	}
+	w.clearInput()
+	liveViews = append(liveViews, w)
 	if onFocus != nil {
 		w.focusID = registerFocus(onFocus)
 		// A click anywhere in the view's window is a click in the page; the
@@ -481,23 +525,6 @@ func NewWebview(parent *Window, onMessage func(string), onFocus func()) (Webview
 	gtkWidgetShowAll(win)
 	gtkWindowSetFocus(win, w.view)
 	return w, nil
-}
-
-// setInput makes the view own the pointer inside its box, so WebKit gets real
-// enter/motion/button/scroll events through GTK instead of synthetic ones.
-func (w *linuxWebview) setInput(width, height float64) {
-	if w.surface == 0 {
-		return
-	}
-	region := wlMarshal(wlRegionInterface, wlCompositor, 1, wlRegionInterface, 1, 0, 0)
-	if region == 0 {
-		return
-	}
-	wlMarshal(0, region, 1, 0, 0, 0,
-		uint64(uint32(0)), uint64(uint32(0)), uint64(uint32(width)), uint64(uint32(height)))
-	wlMarshal(0, w.surface, 5, 0, 0, 0, uint64(region))
-	wlMarshal(0, region, 0, 0, 0, 1)
-	wlMarshal(0, w.surface, 6, 0, 0, 0)
 }
 
 // clearInput makes the view input-transparent, for a hidden view and for the
@@ -520,7 +547,7 @@ func (w *linuxWebview) SetBounds(x, y, width, height float64) {
 	if !w.visible || width <= 0 || height <= 0 {
 		if w.iw != 0 {
 			w.clearInput()
-			w.iw, w.ih = 0, 0
+			w.iw = 0
 		}
 		if w.sub != 0 {
 			wlMarshal(0, w.sub, 1, 0, 0, 0, uint64(0xffffe000), uint64(0xffffe000))
@@ -531,9 +558,15 @@ func (w *linuxWebview) SetBounds(x, y, width, height float64) {
 		wlMarshal(0, w.sub, 1, 0, 0, 0, uint64(uint32(int32(x))), uint64(uint32(int32(y))))
 	}
 	gtkWindowResize(w.win, int32(width), int32(height))
-	if w.iw != width || w.ih != height {
-		w.setInput(width, height)
-		w.iw, w.ih = width, height
+	if !w.focusedOnce {
+		// The SDL toplevel holds the Wayland keyboard focus, so the engine's
+		// window has to be told that the app is focused once it is mapped.
+		w.focusedOnce = true
+		w.focusIn(true)
+	}
+	if w.iw != 0 {
+		w.clearInput()
+		w.iw = 0
 	}
 }
 
@@ -695,16 +728,80 @@ func gdkMods(m Mods) uint32 {
 	return s
 }
 
-// ForwardPointer is not used on Linux: the subsurface owns the pointer inside
-// its box, so WebKit gets real enter, motion, button and scroll events. goi
-// keeps the keyboard only, because a subsurface cannot take keyboard focus.
-func (w *linuxWebview) ForwardPointer(PointerKind, float64, float64, int, float64, float64) {}
+// ForwardPointer queues a pointer event on the view's own GdkWindow. The
+// subsurface is input-transparent, so SDL keeps the pointer; a GdkEvent handed
+// to gtk_main_do_event would stop at the frame, because GTK does not hit-test
+// down from there. gdk_event_put with the view's window has the engine's widget
+// as its event widget, which is what a real event carries.
+func (w *linuxWebview) ForwardPointer(kind PointerKind, x, y float64, button int, dx, dy float64) {
+	win := gtkWidgetGetWindow(w.view)
+	if win == nil {
+		return
+	}
+	var typ int32
+	switch kind {
+	case PointerDown:
+		typ = 4 // GDK_BUTTON_PRESS
+	case PointerUp:
+		typ = 7 // GDK_BUTTON_RELEASE
+	case PointerScroll:
+		typ = 31 // GDK_SCROLL
+	default:
+		typ = 3 // GDK_MOTION_NOTIFY
+	}
+	ev := gdkEventNew(typ)
+	if ev == nil {
+		return
+	}
+	var ox, oy int32
+	gdkWindowGetOrigin(win, &ox, &oy)
+	xr, yr := float64(ox)+x, float64(oy)+y
+	gObjectRef(win)
+	*(*unsafe.Pointer)(unsafe.Add(ev, 8)) = win // GdkWindow*
+	*(*byte)(unsafe.Add(ev, 16)) = 1            // send_event
+	*(*uint32)(unsafe.Add(ev, 20)) = 0          // time
+	*(*float64)(unsafe.Add(ev, 24)) = x
+	*(*float64)(unsafe.Add(ev, 32)) = y
+	switch kind {
+	case PointerDown, PointerUp:
+		*(*uint32)(unsafe.Add(ev, 48)) = 0
+		*(*uint32)(unsafe.Add(ev, 52)) = uint32(button)
+		*(*float64)(unsafe.Add(ev, 64)) = xr
+		*(*float64)(unsafe.Add(ev, 72)) = yr
+	case PointerScroll:
+		*(*uint32)(unsafe.Add(ev, 40)) = 0
+		*(*int32)(unsafe.Add(ev, 44)) = 4 // GDK_SCROLL_SMOOTH
+		*(*float64)(unsafe.Add(ev, 56)) = xr
+		*(*float64)(unsafe.Add(ev, 64)) = yr
+		*(*float64)(unsafe.Add(ev, 72)) = dx * 50
+		*(*float64)(unsafe.Add(ev, 80)) = dy * 50
+	default:
+		*(*uint32)(unsafe.Add(ev, 48)) = 0 // state
+		*(*int16)(unsafe.Add(ev, 52)) = 0  // not a hint: the hint query would return the real pointer
+		*(*float64)(unsafe.Add(ev, 64)) = xr
+		*(*float64)(unsafe.Add(ev, 72)) = yr
+	}
+	if seat := gdkDisplayGetDefaultSeat(gdkDisplay); seat != 0 {
+		if dev := gdkSeatGetPointer(seat); dev != 0 {
+			gdkEventSetDevice(ev, dev)
+		}
+	}
+	gdkEventPut(ev)
+	gdkEventFree(ev)
+}
 
 // Focus gives the web view GTK's keyboard focus, so forwarded keys reach the
 // page and its focused form control.
 func (w *linuxWebview) Focus() {
 	if w.win != 0 && w.view != 0 {
 		gtkWindowSetFocus(w.win, w.view)
+	}
+}
+
+// focusIn forwards the app's focus state to the GTK window.
+func (w *linuxWebview) focusIn(in bool) {
+	if w.win != 0 {
+		sendFocus(gtkWidgetGetWindow(w.win), in)
 	}
 }
 
@@ -720,6 +817,12 @@ func (w *linuxWebview) Destroy() {
 	if w.sub != 0 {
 		wlMarshal(0, w.sub, 0, 0, 0, 1)
 		w.sub = 0
+	}
+	for i, v := range liveViews {
+		if v == w {
+			liveViews = append(liveViews[:i], liveViews[i+1:]...)
+			break
+		}
 	}
 	if w.win != 0 {
 		gtkWidgetDestroy(w.win)

@@ -3178,6 +3178,7 @@ func (i *interactor) imeSync() {
 
 func (i *interactor) Focus(focused bool) {
 	i.event("Focus", "focused", focused)
+	platform.SetWebviewFocus(focused)
 	if term, ok := i.kbd.(*tree.Terminal); ok {
 		term.WriteFocus(focused)
 	}

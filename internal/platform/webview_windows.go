@@ -770,3 +770,6 @@ func (w *winWebview) Destroy() {
 	}
 	w.ctrl, w.core, w.env = nil, nil, nil
 }
+
+// SetWebviewFocus is a no-op: this platform lets the engine take focus itself.
+func SetWebviewFocus(bool) {}

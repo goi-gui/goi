@@ -429,3 +429,6 @@ func (w *darwinWebview) Destroy() {
 	}
 	w.view, w.config, w.uc, w.handler = 0, 0, 0, 0
 }
+
+// SetWebviewFocus is a no-op: this platform lets the engine take focus itself.
+func SetWebviewFocus(bool) {}
