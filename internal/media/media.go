@@ -235,6 +235,9 @@ type Video struct {
 	info       Info
 	stderr     *strings.Builder
 	closeOnce  sync.Once
+	// readTimeout bounds a read that is stuck on the network; a live pump sets
+	// it so a decoder waiting forever for a segment can be reopened.
+	readTimeout time.Duration
 }
 
 // OpenVideo starts decoding src at w by h, from offset. A zero offset starts at
@@ -314,17 +317,38 @@ func (v *Video) Info() Info { return v.info }
 // frame rate next to the decoder.
 func (v *Video) SetInfo(i Info) { v.info = i }
 
+// SetReadTimeout makes a read that produces nothing fail after d, so a live
+// pump can reopen a decoder stuck on a segment fetch. Zero keeps reads
+// unbounded, which is what a file wants.
+func (v *Video) SetReadTimeout(d time.Duration) { v.readTimeout = d }
+
+// setReadDeadline arms a read timeout on a decoder pipe. The pipe from
+// exec.StdoutPipe is pollable, so a stalled read returns os.ErrDeadlineExceeded
+// instead of blocking the pump forever.
+func setReadDeadline(r io.Reader, d time.Duration) {
+	if d <= 0 {
+		return
+	}
+	if x, ok := r.(interface{ SetReadDeadline(time.Time) error }); ok {
+		_ = x.SetReadDeadline(time.Now().Add(d))
+	}
+}
+
 // Read fills p with one frame. It returns io.EOF at the end of the file and
 // io.ErrUnexpectedEOF when the decoder stopped in the middle of a frame.
 func (v *Video) Read(p []byte) (int, error) {
 	if len(p) < v.FrameBytes {
 		return 0, fmt.Errorf("media: frame buffer is %d bytes, want %d", len(p), v.FrameBytes)
 	}
+	setReadDeadline(v.out, v.readTimeout)
 	n, err := io.ReadFull(v.out, p[:v.FrameBytes])
 	if err == io.EOF {
 		return 0, io.EOF
 	}
 	if err != nil {
+		if errors.Is(err, os.ErrDeadlineExceeded) {
+			return n, fmt.Errorf("media: decoder stalled: %w", err)
+		}
 		// A killed process is a seek or a stop, not a decode failure.
 		if msg := strings.TrimSpace(v.stderr.String()); msg != "" {
 			return n, fmt.Errorf("media: %s", firstLine(msg))
@@ -360,6 +384,8 @@ type PCM struct {
 	Channels  int
 	stderr    *strings.Builder
 	closeOnce sync.Once
+	// readTimeout is the live pump's stall bound, like Video's.
+	readTimeout time.Duration
 }
 
 // OpenPCM starts decoding the audio of src at rate and channels, from offset.
@@ -408,10 +434,17 @@ func OpenPCM(src string, rate, channels int, offset time.Duration, track int) (*
 		Rate: rate, Channels: channels, stderr: &stderr}, nil
 }
 
+// SetReadTimeout makes a read that produces nothing fail after d, so a live
+// pump can reopen a sound decoder stuck on a segment fetch.
+func (p *PCM) SetReadTimeout(d time.Duration) { p.readTimeout = d }
+
 // Read fills b with samples. It blocks until the buffer is full, so a caller
 // always hands the audio device whole chunks; the end of the file comes back as
 // a short read.
-func (p *PCM) Read(b []byte) (int, error) { return io.ReadFull(p.buf, b) }
+func (p *PCM) Read(b []byte) (int, error) {
+	setReadDeadline(p.out, p.readTimeout)
+	return io.ReadFull(p.buf, b)
+}
 
 // Close stops the decoder and reaps the process.
 func (p *PCM) Close() error {

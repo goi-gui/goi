@@ -2209,6 +2209,14 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   paused, so the lead it needs is still there when playback starts. A feed whose
   pump stops, or a video the probe called video but that delivers no frame for
   five seconds, releases the sound alone rather than staying silent.
+- **A live decoder that stops delivering is reopened.** The video and audio are
+  separate connections, so a video segment fetch can hang without closing the
+  socket while the audio keeps playing: the picture froze for minutes with an
+  empty frame queue and the pump blocked in a read that had no deadline. A live
+  decoder now sets a five-second read deadline before each read. A read that
+  produces nothing fails with a stalled error, the pump reopens the decoder after
+  its usual second, and the picture resumes. The deadline is per read, so a
+  healthy feed — even one segment at a time — never trips it.
 - **The atlases and the per-node tables start where the app is, not where it
   could end up.** The image atlas began at 2048² (16 MB of pixels plus the GPU
   copy) even in an app with no pictures; it now starts at 512² and grows, the

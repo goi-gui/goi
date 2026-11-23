@@ -65,6 +65,11 @@ const (
 	// arrives, so a stream the probe called video but decodes no frame is still
 	// heard instead of staying silent.
 	audioGateWait = 5 * time.Second
+	// decoderStallTimeout reopens a live decoder that has produced nothing for
+	// this long. A segment fetch can hang on the network, and the audio and
+	// video decoders are separate connections: without this the sound keeps
+	// playing while the picture stays frozen for good.
+	decoderStallTimeout = 5 * time.Second
 )
 
 // mediaPlayer is one running decoder for one node.
@@ -600,6 +605,9 @@ func (p *mediaPlayer) decodeVideo() (stopped bool, frames int) {
 		return false, 0
 	}
 	defer dec.Close()
+	if p.live {
+		dec.SetReadTimeout(decoderStallTimeout)
+	}
 	for {
 		// Take a free buffer; a full queue blocks here, which is the
 		// backpressure that keeps memory flat.
@@ -684,6 +692,9 @@ func (p *mediaPlayer) decodeAudio(at time.Duration, track int) (stopped bool) {
 		return true // a silent file is not a failure
 	}
 	defer dec.Close()
+	if p.live {
+		dec.SetReadTimeout(decoderStallTimeout)
+	}
 	chunk := make([]byte, 16*1024)
 	leadBytes := p.audioLead()
 	for {
