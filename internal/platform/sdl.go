@@ -19,7 +19,7 @@ var sdlOnce sync.Once
 func loadSDL() error {
 	var err error
 	sdlOnce.Do(func() {
-		err = sdl.LoadLibrary(sdl.Path())
+		err = sdl.LoadLibrary(sdlLibraryPath())
 	})
 	return err
 }

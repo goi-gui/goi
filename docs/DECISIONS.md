@@ -2207,7 +2207,11 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   goffi use purego's copy. The `sdl_shim.c` event union and its C translation are
   gone too: the purego path maps SDL's event union directly. The clipboard can be
   reached before a window exists (a test, or a copy before the first frame), so
-  it loads the library on demand and no-ops when the machine has no SDL.
+  it loads the library on demand and no-ops when the machine has no SDL. The
+  loader does not search every install prefix (macOS never looks in
+  `/opt/homebrew/lib`), so `platform` resolves the absolute library path through
+  the same directories `goi doctor` checks, plus `GOI_SDL3_PATH`; the bare
+  soname stays the last resort.
 - **A slot is declared bare, and only an instance put braces on it.** Both forms
   used to mean "declare": `$children` and `$children {}`. That made one shape
   serve two purposes, and the loader had to guess whether an empty body was a
