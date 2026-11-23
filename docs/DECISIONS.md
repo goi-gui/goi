@@ -2189,6 +2189,15 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   that needs more than the budget would reload every frame. The image, map-tile
   and rasterized-SVG caches each have their own budget, and the video player's
   frame queue is 16 MB (32 live) instead of 64/96, configurable on the app.
+- **A live picture is paced by its input, not by the whole playlist.** An HLS
+  playlist publishes a segment at a time, so ffmpeg read the whole backlog as
+  fast as the network allowed, filled the byte-capped queue in a fraction of a
+  second and then froze until the next refresh while the sound kept real time.
+  A live network source now gets `-re`, which paces the decoder at the stream's
+  own rate. The queue-depth clock also targets the queue it actually has: the
+  three-second reserve is capped at half the byte budget, because at 720p the
+  32 MB live buffer holds well under a second. Without that cap every depth read
+  as "behind" and the picture played at 1.5x the frame period, two-thirds speed.
 - **The atlases and the per-node tables start where the app is, not where it
   could end up.** The image atlas began at 2048² (16 MB of pixels plus the GPU
   copy) even in an app with no pictures; it now starts at 512² and grows, the
