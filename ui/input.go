@@ -835,9 +835,14 @@ func (i *interactor) pointerAt(hit tree.Node) {
 func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 	if e := i.app.webviewAt(x, y); e != nil {
 		if r, ok := i.app.webviewFrame(e.node); ok {
-			i.app.focusedWebview = e
+			// focusWebview also turns SDL's text input on; assigning the field
+			// directly would leave committed text undelivered.
+			i.app.focusWebview(e)
 			i.app.pressWebview = e
 			e.view.ForwardPointer(platform.PointerDown, x-r.X, y-r.Y, button, 0, 0)
+			// The press focuses the field in the page; ask for text input again
+			// in case GTK took it during that focus change.
+			i.app.reassertTextInput()
 			return
 		}
 	}

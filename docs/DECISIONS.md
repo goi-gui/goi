@@ -2789,6 +2789,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   carries the view's window and lands on the engine. The keyboard cannot come
   from the compositor — Wayland grants it per toplevel, and a subsurface is not
   one — so goi forwards navigation keys and committed text as key events.
+  GTK enables its own input method when the view takes focus, and on the shared
+  Wayland connection that takes text-input focus from SDL, which silently stops
+  committed text; focusing a view therefore stops and restarts SDL's text input,
+  and the click path does it again after the press lands.
   Wayland also never tells the GTK window it is focused, so goi queues a
   `GDK_FOCUS_CHANGE` in on window focus; without it the engine draws no caret
   and no focus ring. Native popups a page opens (a `<select>` menu, a date

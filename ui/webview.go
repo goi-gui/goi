@@ -175,11 +175,16 @@ func (a *App) syncWebviewProps(e *webviewEntry) {
 // while its text input is active, so the view turns it on with a small caret
 // area the platform ignores for a native page.
 func (a *App) focusWebview(e *webviewEntry) {
-	if a.focusedWebview == e {
-		return
-	}
 	a.focusedWebview = e
+	a.reassertTextInput()
+}
+
+// reassertTextInput asks SDL for text input again. GTK enables its own input
+// method when the view takes focus, and on the shared Wayland connection that
+// takes the text input focus from SDL, so committed text would stop arriving.
+func (a *App) reassertTextInput() {
 	if d, ok := a.driver.(*gpuDriver); ok && d.win != nil {
+		d.win.SetTextInput(false, 0, 0, 0, 0)
 		d.win.SetTextInput(true, 0, 0, 1, 1)
 	}
 }
