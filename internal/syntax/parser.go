@@ -86,7 +86,20 @@ type parser struct {
 	// propName is the property whose value is being parsed, so a modifier arm
 	// uses the same literal grammar as the property itself.
 	propName string
+	// depth counts nested bodies and deep stops the parse once the nesting is
+	// past maxNesting: the reader is recursive, and a pathological file would
+	// otherwise exhaust the stack with no diagnostic at all.
+	depth int
+	// valueDepth does the same for values: parentheses, lists, maps and
+	// conditional expressions nest recursively too.
+	valueDepth int
+	deep       bool
 }
+
+// maxNesting bounds how deeply elements and blocks may nest. Real designs stay
+// far below it; the limit exists so a generated or hostile file gets a
+// diagnostic instead of a stack overflow.
+const maxNesting = 1000
 
 func (p *parser) peek() token  { return p.toks[min(p.i, len(p.toks)-1)] }
 func (p *parser) peek2() token { return p.toks[min(p.i+1, len(p.toks)-1)] }
@@ -470,8 +483,27 @@ type memberList struct {
 	closed bool
 }
 
+// enterBody counts one nested body and reports whether it may be read. It
+// bounds element, block and switch-arm nesting: past it p.deep stops the parse
+// instead of growing the stack until the process dies.
+func (p *parser) enterBody(t token) bool {
+	if p.depth >= maxNesting {
+		if !p.deep {
+			p.deep = true
+			p.errorf(t, fmt.Sprintf("elements are nested too deeply (limit %d)", maxNesting))
+		}
+		return false
+	}
+	p.depth++
+	return true
+}
+
 // parseMembers reads members until the body's '}'.
 func (p *parser) parseMembers() memberList {
+	if !p.enterBody(p.peek()) {
+		return memberList{}
+	}
+	defer func() { p.depth-- }()
 	// An element or an if/for body is a body of its own: a `case` in there is
 	// not the end of an enclosing switch arm.
 	saved := p.caseDepth
@@ -486,6 +518,11 @@ func (p *parser) parseMembers() memberList {
 func (p *parser) parseMemberList() memberList {
 	var out memberList
 	for {
+		if p.deep {
+			// The nesting limit was hit: unwind every enclosing body instead of
+			// parsing the same tokens again at each level.
+			return out
+		}
 		t := p.peek()
 		switch t.kind {
 		case tokEOF:
@@ -757,6 +794,9 @@ func (p *parser) parseSwitchBlock() *Block {
 	p.next()
 
 	for {
+		if p.deep {
+			return blk
+		}
 		t := p.peek()
 		switch {
 		case t.kind == tokRBrace:
@@ -819,6 +859,10 @@ func (p *parser) parseSwitchBlock() *Block {
 // parseArm reads one case arm's members, up to the next `case`, `default` or the
 // switch's closing '}'.
 func (p *parser) parseArm() memberList {
+	if !p.enterBody(p.peek()) {
+		return memberList{}
+	}
+	defer func() { p.depth-- }()
 	p.caseDepth++
 	ml := p.parseMemberList()
 	p.caseDepth--
@@ -1421,6 +1465,10 @@ func (p *parser) shadowNumber() (float64, bool) {
 
 func (p *parser) parseValue() (Value, bool) {
 	t := p.peek()
+	if !p.enterValue(t) {
+		return nil, false
+	}
+	defer func() { p.valueDepth-- }()
 	switch t.kind {
 	case tokLBrace:
 		return p.parseMap()
@@ -1799,11 +1847,30 @@ func startsValue(t token) bool {
 	return false
 }
 
+// enterValue counts one nested value and reports whether it may be read. A file
+// can nest parentheses, lists or maps as deeply as elements, and the value
+// parser is recursive too.
+func (p *parser) enterValue(t token) bool {
+	if p.valueDepth >= maxNesting {
+		if !p.deep {
+			p.deep = true
+			p.errorf(t, fmt.Sprintf("values are nested too deeply (limit %d)", maxNesting))
+		}
+		return false
+	}
+	p.valueDepth++
+	return true
+}
+
 // parseTerm parses one literal, reference, percentage or a parenthesised
 // expression. A bare identifier is a reference when a '.' follows it and an
 // identifier value otherwise, so `app.theme == dark` needs no quotes.
 func (p *parser) parseTerm() (Value, bool) {
 	t := p.peek()
+	if !p.enterValue(t) {
+		return nil, false
+	}
+	defer func() { p.valueDepth-- }()
 	switch t.kind {
 	case tokNumber:
 		p.next()
@@ -1973,7 +2040,12 @@ func (p *parser) parseMap() (Value, bool) {
 // property with its own literal form passes a parser that knows it, so
 // `fontWeight: { md: bold }` keeps the keyword inside the map.
 func (p *parser) parseMapValue(value func() (Value, bool)) (Value, bool) {
-	open := p.next()
+	open := p.peek()
+	if !p.enterValue(open) {
+		return nil, false
+	}
+	defer func() { p.valueDepth-- }()
+	p.next()
 	m := &Map{At: open.pos}
 	for {
 		t := p.peek()

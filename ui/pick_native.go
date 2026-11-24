@@ -11,14 +11,16 @@ import (
 // result back on it, which is the same shape the browser needs.
 func (a *App) chooseFiles(fn func([]string), opts []DialogOption) {
 	go func() {
+		// OnError may touch nodes, so it has to run on the UI goroutine.
+		fail := func(err error) { a.Post(func() { a.reportError(err) }) }
 		if err := dialogsReady(); err != nil {
-			a.reportError(err)
+			fail(err)
 			return
 		}
 		paths, err := OpenFiles(opts...)
 		if err != nil {
 			if err != ErrDialogCanceled {
-				a.reportError(err)
+				fail(err)
 			}
 			return
 		}
@@ -26,7 +28,7 @@ func (a *App) chooseFiles(fn func([]string), opts []DialogOption) {
 		for i, p := range paths {
 			b, err := os.ReadFile(p)
 			if err != nil {
-				a.reportError(fmt.Errorf("ui: read %s: %w", p, err))
+				fail(fmt.Errorf("ui: read %s: %w", p, err))
 				continue
 			}
 			files = append(files, a.putPicked(i, p, b))

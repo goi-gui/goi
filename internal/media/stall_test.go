@@ -18,7 +18,7 @@ func TestLiveReadTimesOut(t *testing.T) {
 	defer r.Close()
 	defer w.Close()
 
-	v := &Video{out: r, FrameBytes: 4, stderr: &strings.Builder{}, readTimeout: 100 * time.Millisecond}
+	v := &Video{out: r, FrameBytes: 4, stderr: &stderrTail{}, readTimeout: 100 * time.Millisecond}
 	start := time.Now()
 	if _, err := v.Read(make([]byte, 4)); err == nil {
 		t.Fatal("an empty pipe read did not time out")

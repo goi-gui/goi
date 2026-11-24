@@ -108,6 +108,9 @@ func serveProject(dir string, goRun runFunc, stdout, stderr io.Writer, host stri
 		}
 	}()
 
+	if ip := net.ParseIP(host); host != "localhost" && (ip == nil || !ip.IsLoopback()) {
+		fmt.Fprintf(stderr, "goi: warning: listening on %s exposes this project to the network, and goi serve has no authentication\n", host)
+	}
 	ln, err := net.Listen("tcp", net.JoinHostPort(host, strconv.Itoa(port)))
 	if err != nil {
 		return err
@@ -187,10 +190,30 @@ func (s *devServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rel := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
-	if serveDevFile(w, r, s.wasmDir, rel) || serveDevFile(w, r, s.projectDir, rel) {
+	if serveDevFile(w, r, s.wasmDir, rel) || servePageAsset(w, r, s.projectDir, rel) {
 		return
 	}
 	http.NotFound(w, r)
+}
+
+// pageAssetExts are the project-root files a served page may reference. The
+// root is also where the sources live, so anything outside this set (go.mod,
+// goi.yaml, the .go files) stays private even when --host opens the port.
+var pageAssetExts = map[string]bool{
+	".html": true, ".css": true, ".js": true, ".mjs": true, ".map": true,
+	".json": true, ".wasm": true, ".webmanifest": true, ".txt": true,
+	".svg": true, ".png": true, ".jpg": true, ".jpeg": true, ".gif": true,
+	".webp": true, ".avif": true, ".ico": true, ".woff": true, ".woff2": true,
+	".ttf": true, ".otf": true, ".mp3": true, ".mp4": true, ".webm": true,
+	".wav": true, ".ogg": true,
+}
+
+// servePageAsset serves one file the page itself may reference.
+func servePageAsset(w http.ResponseWriter, r *http.Request, base, rel string) bool {
+	if !pageAssetExts[strings.ToLower(path.Ext(rel))] {
+		return false
+	}
+	return serveDevFile(w, r, base, rel)
 }
 
 // serveIndex reads the project's page on every request, so editing the HTML

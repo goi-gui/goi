@@ -2810,3 +2810,22 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   shipping a loader DLL, and WKWebView is called through `objc_msgSend` with
   one typed Go signature per argument shape. Both backends cross-compile and
   are documented as unverified on hardware yet.
+
+- **The parser bounds its recursion at 1000 nested bodies and values.** Elements,
+  blocks, switch arms, parentheses, lists and maps are all read recursively, and
+  a generated or hostile `.goi` file could otherwise exhaust the stack, which Go
+  cannot recover from — `goicheck` died with `fatal error: stack overflow` on an
+  11 MB file of nested `Column {`. The limit lives in one counter per parse and
+  produces a normal `nested too deeply` diagnostic; past it the parse unwinds
+  instead of reading the remaining tokens again at every level. A real design
+  stays far below the limit. Diagnostic formatting also indexes lines once per
+  file now, since the unwinding leaves a diagnostic per trailing token and
+  rescanning the source for each was quadratic.
+
+- **`goi serve` exposes only page assets from the project root.** The root is
+  also where `go.mod`, `goi.yaml` and the Go sources live, so serving it
+  wholesale handed them out to anyone who could reach the port; `--host 0.0.0.0`
+  made that the whole network. Only common web-asset extensions are served from
+  the root (the wasm directory stays unrestricted), and a non-loopback `--host`
+  prints a warning. Design files and catalogs still reach the page through the
+  HMR snapshot, not through a file request.

@@ -127,3 +127,33 @@ func TestDevServerServesPageAndWasm(t *testing.T) {
 		t.Fatalf("missing file status = %d", res.StatusCode)
 	}
 }
+
+func TestDevServerKeepsProjectSourcesPrivate(t *testing.T) {
+	dir := t.TempDir()
+	writeServeFile(t, dir, "app.wasm", "wasm")
+	writeServeFile(t, dir, "style.css", "body {}")
+	writeServeFile(t, dir, "go.mod", "module app")
+	writeServeFile(t, dir, "goi.yaml", "name: app")
+	writeServeFile(t, dir, "cmd/main.go", "package main")
+	s := &devServer{projectDir: dir, wasmDir: t.TempDir(), wasmName: "app.wasm", hub: newSSEHub()}
+	srv := httptest.NewServer(s)
+	defer srv.Close()
+
+	get := func(name string) int {
+		t.Helper()
+		res, err := http.Get(srv.URL + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res.StatusCode
+	}
+	if got := get("/style.css"); got != http.StatusOK {
+		t.Fatalf("page asset status = %d, want 200", got)
+	}
+	for _, name := range []string{"/go.mod", "/goi.yaml", "/cmd/main.go"} {
+		if got := get(name); got != http.StatusNotFound {
+			t.Fatalf("%s status = %d, want 404", name, got)
+		}
+	}
+}

@@ -2085,3 +2085,17 @@ Window {
 		}
 	}
 }
+
+func TestResetPointerStateDropsOldTree(t *testing.T) {
+	_, win, in := inputFixture(t, inputUI, 480, 320)
+	n := MustByID[*Button](win, "btn")
+	in.hover, in.pressed, in.scrollNode = n, n, n
+	in.textField, in.textSel, in.termMouse = comp(n), n, nil
+	in.dragging, in.selecting, in.scrolled = true, true, true
+	in.resetPointerState()
+	if in.hover != nil || in.pressed != nil || in.scrollNode != nil ||
+		in.textField != nil || in.textSel != nil ||
+		in.dragging || in.selecting || in.scrolled {
+		t.Fatal("pointer state survived a reset")
+	}
+}

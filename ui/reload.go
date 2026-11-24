@@ -169,11 +169,9 @@ func (a *App) swapTree(tr *tree.Tree) {
 	w.title = tr.Root.Title.Get()
 	if d, ok := a.driver.(*gpuDriver); ok {
 		d.input.tree = tr
-		d.input.focus = nil
-		d.input.kbd = nil
-		d.input.textSel = nil
-		// The old detectors are gone, so no leave event should fire on them.
-		d.input.mouseNodes = nil
+		// A drag, selection or gesture may span the reload; the nodes it holds
+		// belong to the old tree.
+		d.input.resetPointerState()
 		if focusID != "" {
 			if n, ok := tr.ByID(focusID); ok {
 				if k := n.Kind(); k == "TextField" || k == "SearchBar" {

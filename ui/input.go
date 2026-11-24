@@ -226,6 +226,36 @@ func (i *interactor) stopGestureTimer() {
 	}
 }
 
+// resetPointerState drops every node the pointer holds, and the timers closure
+// over those nodes. A hot reload replaces the tree, so a drag that spans it
+// must not keep writing to the nodes it started on.
+func (i *interactor) resetPointerState() {
+	i.stopGestureTimer()
+	if i.hideTimer != nil {
+		i.hideTimer.Stop()
+		i.hideTimer = nil
+	}
+	i.hover, i.pressed = nil, nil
+	i.mouseNodes = nil
+	i.focus, i.kbd = nil, nil
+	i.textSel = nil
+	i.ripples = nil
+	i.scrollNode, i.scrollbar, i.hoverScroll = nil, nil, nil
+	i.dragAxis = tree.AxisNone
+	i.flingNode, i.snapNode = nil, nil
+	i.flingV = 0
+	i.gesture, i.gestureNode, i.lastGesture = nil, nil, nil
+	i.seekNode = nil
+	i.pickNode, i.pickField = nil, 0
+	i.colorNode, i.colorMode = nil, 0
+	i.mapNode = nil
+	i.textField, i.lastField, i.textClickNode = nil, nil, nil
+	i.termSel, i.termMouse = nil, nil
+	i.termSelOn, i.termSelMoved = false, false
+	i.dragging, i.selecting, i.scrolled = false, false, false
+	i.gestureDown, i.gesturePanned, i.gestureLong = false, false, false
+}
+
 // fireLongPress runs on the UI goroutine once the pointer has rested on the
 // detector for half a second without becoming a pan.
 func (i *interactor) fireLongPress(g *tree.GestureDetector) {

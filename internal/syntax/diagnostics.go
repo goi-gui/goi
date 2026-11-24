@@ -36,6 +36,9 @@ func (ds Diagnostics) Format(name string, src []byte) string {
 // without a location rather than pointing at the wrong file.
 func (ds Diagnostics) FormatFiles(defName string, defSrc []byte, files map[string][]byte) string {
 	var b strings.Builder
+	// The line index is built once per file: a file with many errors would
+	// otherwise rescan the whole source for every diagnostic.
+	indexes := make(map[string]lineIndex, len(files)+1)
 	for i, d := range ds {
 		if i > 0 {
 			b.WriteByte('\n')
@@ -48,7 +51,11 @@ func (ds Diagnostics) FormatFiles(defName string, defSrc []byte, files map[strin
 				name, src = d.Src, nil
 			}
 		}
-		lines := lineStarts(src)
+		lines, ok := indexes[name]
+		if !ok {
+			lines = lineStarts(src)
+			indexes[name] = lines
+		}
 		if name != "" {
 			line, col := lines.locate(d.Pos)
 			fmt.Fprintf(&b, "%s:%d:%d: %s", name, line, col, d.Message)

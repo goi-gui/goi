@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -167,5 +168,22 @@ func TestLiveDetection(t *testing.T) {
 		if (Info{}).IsLive(src) {
 			t.Errorf("a file with no duration is live: %q", src)
 		}
+	}
+}
+
+func TestStderrTailKeepsTheEnd(t *testing.T) {
+	var tail stderrTail
+	line := "No such file or directory\n"
+	for i := 0; i < 10000; i++ {
+		if _, err := tail.Write([]byte(line)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := tail.String()
+	if len(got) > stderrTailBytes {
+		t.Fatalf("tail kept %d bytes, want at most %d", len(got), stderrTailBytes)
+	}
+	if !strings.HasSuffix(got, line) {
+		t.Fatalf("tail lost the last line: %q", got[max(0, len(got)-40):])
 	}
 }

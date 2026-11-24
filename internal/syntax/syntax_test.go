@@ -1507,3 +1507,38 @@ func TestParseConditionalDefault(t *testing.T) {
 		t.Fatalf("default = %+v", m.Entries[1])
 	}
 }
+
+func TestDeepNestingReportsDiagnostic(t *testing.T) {
+	n := maxNesting + 500
+	src := "Window {\n" + strings.Repeat("Column {\n", n) + strings.Repeat("}\n", n+1)
+	// Parse still returns the part it managed to read, so only the diagnostic
+	// says the file was refused.
+	_, diag := Parse([]byte(src))
+	if diag.Empty() {
+		t.Fatal("no diagnostic for a design past the nesting limit")
+	}
+	if !strings.Contains(diag[0].Message, "nested too deeply") {
+		t.Fatalf("diagnostic = %q, want a nesting message", diag[0].Message)
+	}
+	// Formatting must not rescan the source once per diagnostic: the guard
+	// leaves a diagnostic for every token of the rest of the file.
+	if out := diag.Format("deep.goi", []byte(src)); !strings.Contains(out, "nested too deeply") {
+		t.Fatalf("formatted diagnostics lost the message: %.200s", out)
+	}
+}
+
+func TestDeepValueNestingReportsDiagnostic(t *testing.T) {
+	// Parentheses, lists and maps recurse as well, so the guard covers values.
+	n := maxNesting + 500
+	for name, expr := range map[string]string{
+		"parens": strings.Repeat("(", n) + "1" + strings.Repeat(")", n),
+		"lists":  strings.Repeat("[", n) + "1" + strings.Repeat("]", n),
+		"maps":   strings.Repeat("{a: ", n) + "1" + strings.Repeat("}", n),
+	} {
+		src := "Window {\n\tText {\n\t\tpadding: " + expr + "\n\t}\n}"
+		_, diag := Parse([]byte(src))
+		if diag.Empty() || !strings.Contains(diag[0].Message, "nested too deeply") {
+			t.Fatalf("%s: diagnostics = %v, want a nesting message", name, diag)
+		}
+	}
+}

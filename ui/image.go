@@ -301,11 +301,14 @@ func (a *App) evictImages() {
 	// A picture an element is showing cannot be dropped, or a page that needs
 	// more than the budget would reload every frame. Only unused ones leave; the
 	// visible set may sit above the budget until it scrolls away.
+	// The in-use set is built once: walking the tree per candidate would scan
+	// it hundreds of times in one sweep when most pictures are still shown.
+	inUse := a.imageSrcsInUse()
 	tries := 0
 	for a.imageBytes > budget && len(a.imageOrder) > 0 && tries < len(a.imageOrder) {
 		src := a.imageOrder[0]
 		a.imageOrder = a.imageOrder[1:]
-		if a.imageInUse(src) {
+		if inUse[src] {
 			a.imageOrder = append(a.imageOrder, src)
 			tries++
 			continue
@@ -325,21 +328,18 @@ func (a *App) evictImages() {
 	}
 }
 
-// imageInUse reports whether an Image element still shows src.
-func (a *App) imageInUse(src string) bool {
+// imageSrcsInUse lists the srcs an Image element is still showing.
+func (a *App) imageSrcsInUse() map[string]bool {
+	inUse := make(map[string]bool)
 	if a.win == nil || a.win.tree == nil {
-		return false
+		return inUse
 	}
-	found := false
 	a.win.tree.Walk(func(n tree.Node) {
-		if found {
-			return
-		}
-		if im, ok := n.(*tree.Image); ok && im.RenderedSrc == src {
-			found = true
+		if im, ok := n.(*tree.Image); ok && im.RenderedSrc != "" {
+			inUse[im.RenderedSrc] = true
 		}
 	})
-	return found
+	return inUse
 }
 
 // invalidateImage clears the nodes that show src, so the memory is really

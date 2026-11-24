@@ -135,6 +135,35 @@ const (
 	streamProbeLimit = 30 * time.Second
 )
 
+// stderrTailBytes is how much of ffmpeg's error output a decoder keeps. The
+// message is on the last line, and a faulty live stream writes one per segment:
+// keeping all of it would grow for as long as the stream is open.
+const stderrTailBytes = 4 << 10
+
+// stderrTail is a writer that keeps only its last stderrTailBytes. ffmpeg
+// writes from its own goroutine while a read may ask for the message, so the
+// buffer is guarded.
+type stderrTail struct {
+	mu  sync.Mutex
+	buf []byte
+}
+
+func (t *stderrTail) Write(p []byte) (int, error) {
+	t.mu.Lock()
+	t.buf = append(t.buf, p...)
+	if extra := len(t.buf) - stderrTailBytes; extra > 0 {
+		t.buf = append(t.buf[:0], t.buf[extra:]...)
+	}
+	t.mu.Unlock()
+	return len(p), nil
+}
+
+func (t *stderrTail) String() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return string(t.buf)
+}
+
 var (
 	durationRe = regexp.MustCompile(`Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)`)
 	videoRe    = regexp.MustCompile(`Stream #\d+:\d+(?:\[[^\]]*\])?.*?: Video: .*?(\d{2,5})x(\d{2,5})`)
@@ -243,7 +272,7 @@ type Video struct {
 	W, H       int
 	FrameBytes int
 	info       Info
-	stderr     *strings.Builder
+	stderr     *stderrTail
 	closeOnce  sync.Once
 	// readTimeout bounds a read that is stuck on the network; a live pump sets
 	// it so a decoder waiting forever for a segment can be reopened.
@@ -276,12 +305,12 @@ func OpenVideo(src string, w, h int, offset time.Duration, hw, behind, live bool
 	if err != nil {
 		return nil, fmt.Errorf("media: %w", err)
 	}
-	var stderr strings.Builder
-	cmd.Stderr = &stderr
+	stderr := &stderrTail{}
+	cmd.Stderr = stderr
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("media: %w", err)
 	}
-	return &Video{cmd: cmd, out: stdout, W: w, H: h, FrameBytes: w * h * 4, stderr: &stderr}, nil
+	return &Video{cmd: cmd, out: stdout, W: w, H: h, FrameBytes: w * h * 4, stderr: stderr}, nil
 }
 
 // videoArgs builds the ffmpeg command line for one video decoder.
@@ -393,7 +422,7 @@ type PCM struct {
 	buf       *bufio.Reader
 	Rate      int
 	Channels  int
-	stderr    *strings.Builder
+	stderr    *stderrTail
 	closeOnce sync.Once
 	// readTimeout is the live pump's stall bound, like Video's.
 	readTimeout time.Duration
@@ -437,13 +466,13 @@ func OpenPCM(src string, rate, channels int, offset time.Duration, track int) (*
 	if err != nil {
 		return nil, fmt.Errorf("media: %w", err)
 	}
-	var stderr strings.Builder
-	cmd.Stderr = &stderr
+	stderr := &stderrTail{}
+	cmd.Stderr = stderr
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("media: %w", err)
 	}
 	return &PCM{cmd: cmd, out: stdout, buf: bufio.NewReaderSize(stdout, 64*1024),
-		Rate: rate, Channels: channels, stderr: &stderr}, nil
+		Rate: rate, Channels: channels, stderr: stderr}, nil
 }
 
 // SetReadTimeout makes a read that produces nothing fail after d, so a live
