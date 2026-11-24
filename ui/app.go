@@ -150,10 +150,10 @@ type App struct {
 	// webviews are the native browser views, one per WebView node. A view is a
 	// platform surface above the GPU layer; focusedWebview receives the keyboard
 	// while the pointer last pressed inside one.
-	webviews       []*webviewEntry
-	webviewFailed  map[*tree.WebView]bool
-	hasWebviews    bool
-	focusedWebview *webviewEntry
+	webviews        []*webviewEntry
+	webviewFailedAt map[*tree.WebView]time.Time
+	hasWebviews     bool
+	focusedWebview  *webviewEntry
 	// webviewDir is the temp directory embedded pages are extracted to, so
 	// relative CSS, scripts and images resolve through file://.
 	webviewDir string

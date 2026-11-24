@@ -44,7 +44,6 @@ var (
 	gtkWidgetGetWindow             func(uintptr) unsafe.Pointer
 	gtkWidgetDestroy               func(uintptr)
 	gtkContainerAdd                func(uintptr, uintptr)
-	gtkContainerRemove             func(uintptr, uintptr)
 	gtkOverlayNew                  func() uintptr
 	gtkOverlayAddOverlay           func(uintptr, uintptr)
 	gtkBoxNew                      func(int32, int32) uintptr
@@ -65,6 +64,7 @@ var (
 	gtkWidgetSetMarginStart        func(uintptr, int32)
 	gtkWidgetSetMarginTop          func(uintptr, int32)
 	gtkWidgetSetSizeRequest        func(uintptr, int32, int32)
+	gtkWidgetGetPreferredSize      func(uintptr, uintptr, uintptr)
 	gtkWidgetEvent                 func(uintptr, unsafe.Pointer) int32
 	gtkWidgetAddEvents             func(uintptr, int32)
 	gtkEventsPending               func() int32
@@ -95,6 +95,7 @@ var (
 	webkitWebViewLoadURI           func(uintptr, *byte)
 	webkitWebViewLoadHTML          func(uintptr, *byte, *byte)
 	webkitWebViewReload            func(uintptr)
+	webkitWebViewIsLoading         func(uintptr) int32
 	webkitWebViewCanGoBack         func(uintptr) int32
 	webkitWebViewGoBack            func(uintptr)
 	webkitWebViewCanGoForward      func(uintptr) int32
@@ -211,7 +212,6 @@ func initLinuxWebview() error {
 	purego.RegisterLibFunc(&gtkWidgetGetWindow, gtkLib, "gtk_widget_get_window")
 	purego.RegisterLibFunc(&gtkWidgetDestroy, gtkLib, "gtk_widget_destroy")
 	purego.RegisterLibFunc(&gtkContainerAdd, gtkLib, "gtk_container_add")
-	purego.RegisterLibFunc(&gtkContainerRemove, gtkLib, "gtk_container_remove")
 	purego.RegisterLibFunc(&gtkOverlayNew, gtkLib, "gtk_overlay_new")
 	purego.RegisterLibFunc(&gtkOverlayAddOverlay, gtkLib, "gtk_overlay_add_overlay")
 	purego.RegisterLibFunc(&gtkBoxNew, gtkLib, "gtk_box_new")
@@ -231,6 +231,7 @@ func initLinuxWebview() error {
 	purego.RegisterLibFunc(&gtkWidgetSetMarginStart, gtkLib, "gtk_widget_set_margin_start")
 	purego.RegisterLibFunc(&gtkWidgetSetMarginTop, gtkLib, "gtk_widget_set_margin_top")
 	purego.RegisterLibFunc(&gtkWidgetSetSizeRequest, gtkLib, "gtk_widget_set_size_request")
+	purego.RegisterLibFunc(&gtkWidgetGetPreferredSize, gtkLib, "gtk_widget_get_preferred_size")
 	purego.RegisterLibFunc(&gtkWidgetEvent, gtkLib, "gtk_widget_event")
 	purego.RegisterLibFunc(&gtkWidgetAddEvents, gtkLib, "gtk_widget_add_events")
 	purego.RegisterLibFunc(&gtkEventsPending, gtkLib, "gtk_events_pending")
@@ -260,6 +261,7 @@ func initLinuxWebview() error {
 	purego.RegisterLibFunc(&webkitWebViewLoadURI, webkitLib, "webkit_web_view_load_uri")
 	purego.RegisterLibFunc(&webkitWebViewLoadHTML, webkitLib, "webkit_web_view_load_html")
 	purego.RegisterLibFunc(&webkitWebViewReload, webkitLib, "webkit_web_view_reload")
+	purego.RegisterLibFunc(&webkitWebViewIsLoading, webkitLib, "webkit_web_view_is_loading")
 	purego.RegisterLibFunc(&webkitWebViewCanGoBack, webkitLib, "webkit_web_view_can_go_back")
 	purego.RegisterLibFunc(&webkitWebViewGoBack, webkitLib, "webkit_web_view_go_back")
 	purego.RegisterLibFunc(&webkitWebViewCanGoForward, webkitLib, "webkit_web_view_can_go_forward")
@@ -387,7 +389,7 @@ func goString(p unsafe.Pointer) string {
 		return ""
 	}
 	var b []byte
-	for i := 0; i < 1<<20; i++ {
+	for i := 0; i < 1<<16; i++ {
 		c := *(*byte)(unsafe.Add(p, i))
 		if c == 0 {
 			break
@@ -412,6 +414,17 @@ func SetWebviewFocus(focused bool) {
 	for _, w := range liveViews {
 		w.focusIn(focused)
 	}
+}
+
+// WebviewsLoading reports whether a page is still loading. The loop then wakes
+// often; a settled page only needs a slow poll, which keeps an idle app cheap.
+func WebviewsLoading() bool {
+	for _, w := range liveViews {
+		if w.view != 0 && webkitWebViewIsLoading(w.view) != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // PumpWebviews advances GTK's event loop. It runs on the UI goroutine, where
@@ -467,6 +480,7 @@ type linuxWebview struct {
 	surface, sub       uintptr
 	x, y, w, h         float64
 	iw, ih             float64
+	rw, rh             float64
 	focusedOnce        bool
 	visible            bool
 	message            func(string)
@@ -595,19 +609,19 @@ func NewWebview(parent *Window, onMessage func(string), onFocus func()) (Webview
 	gtkWidgetRealize(win)
 	gdkwin := gtkWidgetGetWindow(win)
 	if gdkwin == nil {
-		gtkWidgetDestroy(win)
+		w.Destroy()
 		return nil, fmt.Errorf("%w: gtk_widget_get_window", ErrWebviewUnavailable)
 	}
 	gdkWaylandWindowSetCustom(gdkwin)
 	w.surface = gdkWaylandWindowGetWlSurface(gdkwin)
 	if w.surface == 0 {
-		gtkWidgetDestroy(win)
+		w.Destroy()
 		return nil, fmt.Errorf("%w: the GTK window has no wl_surface", ErrWebviewUnavailable)
 	}
 	w.sub = wlMarshal(wlSubcompositorIface, wlSubcompositor, 1, wlSubsurfaceInterface, 1, 0,
 		0, uint64(w.surface), uint64(handle))
 	if w.sub == 0 {
-		gtkWidgetDestroy(win)
+		w.Destroy()
 		return nil, fmt.Errorf("%w: wl_subcompositor_get_subsurface", ErrWebviewUnavailable)
 	}
 	wlMarshal(0, w.sub, 1, 0, 0, 0, uint64(uint32(0)), uint64(uint32(0)))
@@ -641,6 +655,23 @@ func NewWebview(parent *Window, onMessage func(string), onFocus func()) (Webview
 	return w, nil
 }
 
+// setInput gives the view the pointer inside its box, so the compositor sends
+// hover, clicks and the wheel to WebKit directly.
+func (w *linuxWebview) setInput(width, height float64) {
+	if w.surface == 0 {
+		return
+	}
+	region := wlMarshal(wlRegionInterface, wlCompositor, 1, wlRegionInterface, 1, 0, 0)
+	if region == 0 {
+		return
+	}
+	wlMarshal(0, region, 1, 0, 0, 0,
+		uint64(uint32(0)), uint64(uint32(0)), uint64(uint32(width)), uint64(uint32(height)))
+	wlMarshal(0, w.surface, 5, 0, 0, 0, uint64(region))
+	wlMarshal(0, region, 0, 0, 0, 1)
+	wlMarshal(0, w.surface, 6, 0, 0, 0)
+}
+
 // clearInput makes the view input-transparent, for a hidden view and for the
 // gap between the SDL surface and its subsurface.
 func (w *linuxWebview) clearInput() {
@@ -671,16 +702,19 @@ func (w *linuxWebview) SetBounds(x, y, width, height float64) {
 	if w.sub != 0 {
 		wlMarshal(0, w.sub, 1, 0, 0, 0, uint64(uint32(int32(x))), uint64(uint32(int32(y))))
 	}
-	gtkWindowResize(w.win, int32(width), int32(height))
 	if !w.focusedOnce {
 		// The SDL toplevel holds the Wayland keyboard focus, so the engine's
 		// window has to be told that the app is focused once it is mapped.
 		w.focusedOnce = true
 		w.focusIn(true)
 	}
-	if w.iw != 0 {
-		w.clearInput()
-		w.iw = 0
+	if w.rw != width || w.rh != height {
+		w.rw, w.rh = width, height
+		gtkWindowResize(w.win, int32(width), int32(height))
+	}
+	if w.iw != width || w.ih != height {
+		w.iw, w.ih = width, height
+		w.setInput(width, height)
 	}
 }
 
@@ -1039,6 +1073,42 @@ func styleMenus() {
 	}
 }
 
+// menuPlace puts a menu box at (x, y) inside the view, pulled back so it never
+// runs past the right or bottom edge and gets cut off.
+func menuPlace(w *linuxWebview, box uintptr, x, y, width int32) {
+	var min, natural struct{ W, H int32 }
+	gtkWidgetGetPreferredSize(box, uintptr(unsafe.Pointer(&min)), uintptr(unsafe.Pointer(&natural)))
+	height := natural.H
+	if height <= 0 {
+		height = 120
+	}
+	if width <= 0 {
+		width = natural.W
+	}
+	maxX := int32(w.w) - width
+	maxY := int32(w.h) - height
+	x = min32(x, maxX)
+	y = min32(y, maxY)
+	if x < 0 {
+		x = 0
+	}
+	if y < 0 {
+		y = 0
+	}
+	gtkWidgetSetHalign(box, 1) // GTK_ALIGN_START
+	gtkWidgetSetValign(box, 1)
+	gtkWidgetSetMarginStart(box, x)
+	gtkWidgetSetMarginTop(box, y)
+	gtkWidgetSetSizeRequest(box, width, -1)
+}
+
+func min32(a, b int32) int32 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 // menuRow makes one flat, left-aligned row in a menu box.
 func menuRow(box uintptr, label string) uintptr {
 	btn := gtkButtonNewWithLabel(cstr(label))
@@ -1099,11 +1169,7 @@ func showContextMenu(view, menu uintptr, event unsafe.Pointer, hit uintptr) int3
 		x = int32(*(*float64)(unsafe.Add(event, 24)))
 		y = int32(*(*float64)(unsafe.Add(event, 32)))
 	}
-	gtkWidgetSetHalign(box, 1)
-	gtkWidgetSetValign(box, 1)
-	gtkWidgetSetMarginStart(box, x)
-	gtkWidgetSetMarginTop(box, y)
-	gtkWidgetSetSizeRequest(box, 220, -1)
+	menuPlace(w, box, x, y, 220)
 	gtkOverlayAddOverlay(w.overlay, box)
 	gtkWidgetShowAll(box)
 	w.menuBox, w.menuAt = box, time.Now().UnixNano()
@@ -1218,14 +1284,10 @@ func showOptionMenu(view, menu uintptr, rect unsafe.Pointer) int32 {
 		y = *(*int32)(unsafe.Add(rect, 4))
 		width = *(*int32)(unsafe.Add(rect, 8))
 	}
-	gtkWidgetSetHalign(box, 1) // GTK_ALIGN_START
-	gtkWidgetSetValign(box, 1)
-	gtkWidgetSetMarginStart(box, x)
-	gtkWidgetSetMarginTop(box, y)
 	if width < 160 {
 		width = 160
 	}
-	gtkWidgetSetSizeRequest(box, width, -1)
+	menuPlace(w, box, x, y, width)
 	gtkOverlayAddOverlay(w.overlay, box)
 	gtkWidgetShowAll(box)
 	w.menu, w.menuBox, w.menuAt = menu, box, time.Now().UnixNano()
@@ -1234,8 +1296,9 @@ func showOptionMenu(view, menu uintptr, rect unsafe.Pointer) int32 {
 
 // closeMenu removes the option list, if one is open.
 func (w *linuxWebview) closeMenu() {
-	if w.menuBox != 0 && w.overlay != 0 {
-		gtkContainerRemove(w.overlay, w.menuBox)
+	if w.menuBox != 0 {
+		// destroy unparents on its own; removing first can drop the last
+		// reference and leave this pointer dangling.
 		gtkWidgetDestroy(w.menuBox)
 	}
 	w.menu, w.menuBox, w.menuItems, w.ctxItems, w.ctxButtons = 0, 0, nil, nil, nil

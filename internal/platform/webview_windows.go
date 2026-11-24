@@ -4,9 +4,11 @@ package platform
 
 import (
 	"fmt"
+	htmlpkg "html"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -239,6 +241,10 @@ var (
 	sleepMS          func(uint32)
 	coInitializeEx   func(uintptr, uint32) int32
 	coTaskMemFree    func(unsafe.Pointer)
+	advapi32         syscall.Handle
+	regOpenKeyExW    func(uintptr, *uint16, uint32, uint32, *uintptr) int32
+	regQueryValueExW func(uintptr, *uint16, uint32, *uint32, *byte, *uint32) int32
+	regCloseKey      func(uintptr) int32
 )
 
 type msg [64]byte
@@ -257,6 +263,11 @@ func initWin32() error {
 			winErr = fmt.Errorf("%w: kernel32: %v", ErrWebviewUnavailable, err)
 			return
 		}
+		advapi32, err = syscall.LoadLibrary("advapi32.dll")
+		if err != nil {
+			winErr = fmt.Errorf("%w: advapi32: %v", ErrWebviewUnavailable, err)
+			return
+		}
 		ole32, err := syscall.LoadLibrary("ole32.dll")
 		if err != nil {
 			winErr = fmt.Errorf("%w: ole32: %v", ErrWebviewUnavailable, err)
@@ -273,6 +284,9 @@ func initWin32() error {
 		bind(&sleepMS, kernel32, "Sleep")
 		bind(&coInitializeEx, ole32, "CoInitializeEx")
 		bind(&coTaskMemFree, ole32, "CoTaskMemFree")
+		bind(&regOpenKeyExW, advapi32, "RegOpenKeyExW")
+		bind(&regQueryValueExW, advapi32, "RegQueryValueExW")
+		bind(&regCloseKey, advapi32, "RegCloseKey")
 	})
 	return winErr
 }
@@ -326,6 +340,12 @@ func runtimeDLL() (string, error) {
 			roots = append(roots, filepath.Join(dir, "Microsoft", "EdgeWebView", "Application"))
 		}
 	}
+	if dir, ok := webviewRuntimeKey(); ok {
+		dll := filepath.Join(dir, "EBWebView", arch, "EmbeddedBrowserWebView.dll")
+		if _, err := os.Stat(dll); err == nil {
+			return dll, nil
+		}
+	}
 	for _, root := range roots {
 		// Any installed version works: the base API has been stable since the
 		// first evergreen release.
@@ -366,6 +386,48 @@ func createEnvironment(userData string, handler uintptr) error {
 	// IUnknown *options, handler)
 	hr, _, _ := purego.SyscallN(fn, 1, 0, arg, 0, handler)
 	return hresult("CreateWebViewEnvironmentWithOptionsInternal", hr)
+}
+
+// webviewRuntimeKey reads the runtime's install folder from the registry, so a
+// runtime installed outside the default roots is still found.
+func webviewRuntimeKey() (string, bool) {
+	const key = `SOFTWARE\Microsoft\EdgeUpdate\ClientState\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}`
+	for _, root := range []uintptr{0x80000002 /* HKLM */, 0x80000001 /* HKCU */} {
+		if v, ok := regString(root, key, "EBWebView"); ok && v != "" {
+			return v, true
+		}
+	}
+	return "", false
+}
+
+func regString(root uintptr, subkey, name string) (string, bool) {
+	if advapi32 == 0 {
+		return "", false
+	}
+	sub := utf16Ptr(subkey)
+	var hkey uintptr
+	if regOpenKeyExW(root, &sub[0], 0, 0x20019|0x0200 /* KEY_READ | KEY_WOW64_32KEY */, &hkey) != 0 {
+		return "", false
+	}
+	defer regCloseKey(hkey)
+	key := utf16Ptr(name)
+	var size uint32
+	if regQueryValueExW(hkey, &key[0], 0, nil, nil, &size) != 0 || size == 0 {
+		return "", false
+	}
+	buf := make([]byte, size)
+	if regQueryValueExW(hkey, &key[0], 0, nil, &buf[0], &size) != 0 {
+		return "", false
+	}
+	u16 := make([]uint16, 0, size/2)
+	for i := 0; i+1 < len(buf); i += 2 {
+		c := uint16(buf[i]) | uint16(buf[i+1])<<8
+		if c == 0 {
+			break
+		}
+		u16 = append(u16, c)
+	}
+	return string(utf16.Decode(u16)), true
 }
 
 func hresult(what string, hr uintptr) error {
@@ -414,6 +476,10 @@ type winWebview struct {
 }
 
 var putZoom func(unsafe.Pointer, float64) uintptr
+
+// openViews counts the live controllers; the profile is removed when the last
+// one closes, so cookies and cache do not stay in the temporary folder.
+var openViews int
 
 // userDataDir is one WebView2 profile for the process, not one per view: the
 // profile is megabytes, and a hot reload would leave a copy behind each time.
@@ -501,6 +567,7 @@ func (w *winWebview) create() error {
 	if hr := w.ctrl.getCore(&w.core); hr < 0 || w.core == nil {
 		return fmt.Errorf("web view: WebView2 core failed (HRESULT 0x%08X)", uint32(hr))
 	}
+	openViews++
 	w.core.addRef()
 	if w.message != nil {
 		w.core.addWebMessageReceived(newHandler(func(_ uintptr, args unsafe.Pointer) uintptr {
@@ -682,11 +749,35 @@ func (w *winWebview) LoadHTML(html, base string) {
 		return
 	}
 	// NavigateToString has no base URL, so a relative link needs a <base> tag.
+	// It goes inside the head (or after the doctype), never before it: a tag
+	// in front of <!doctype> drops the page into quirks mode.
 	// shortcut: markup that puts its own <base> first wins, as it should.
-	if base != "" {
-		html = `<base href="` + base + `">` + html
+	w.core.navigateToString(withBase(html, base))
+}
+
+// withBase inserts the base element where it belongs and escapes it.
+func withBase(markup, base string) string {
+	if base == "" {
+		return markup
 	}
-	w.core.navigateToString(html)
+	tag := `<base href="` + htmlpkg.EscapeString(base) + `">`
+	lower := strings.ToLower(markup)
+	if i := strings.Index(lower, "</head>"); i >= 0 {
+		return markup[:i] + tag + markup[i:]
+	}
+	if i := strings.Index(lower, "<head"); i >= 0 {
+		if j := strings.IndexByte(markup[i:], '>'); j >= 0 {
+			k := i + j + 1
+			return markup[:k] + tag + markup[k:]
+		}
+	}
+	if i := strings.Index(lower, "<!doctype"); i >= 0 {
+		if j := strings.IndexByte(markup[i:], '>'); j >= 0 {
+			k := i + j + 1
+			return markup[:k] + tag + markup[k:]
+		}
+	}
+	return tag + markup
 }
 
 func (w *winWebview) Reload() {
@@ -769,7 +860,19 @@ func (w *winWebview) Destroy() {
 		w.core.release()
 	}
 	w.ctrl, w.core, w.env = nil, nil, nil
+	openViews--
+	if openViews <= 0 {
+		openViews = 0
+		if dir, err := userDataDir(); err == nil {
+			_ = os.RemoveAll(dir) // files the runtime still holds are left behind
+			userDataOnce = sync.Once{}
+			userDataPath = ""
+		}
+	}
 }
 
 // SetWebviewFocus is a no-op: this platform lets the engine take focus itself.
 func SetWebviewFocus(bool) {}
+
+// WebviewsLoading is false: this platform does not poll its engine.
+func WebviewsLoading() bool { return false }

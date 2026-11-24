@@ -3175,4 +3175,14 @@ func (l *List) paintWebView(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		l.fillShape(r, l.Theme.Colors.SurfaceContainer, nil, componentRadii(c.Base(), rad), 0, 0, clip)
 	}
 	l.paintBox(c.Base(), r, clip)
+	// The placeholder says why the view is missing; the error also reaches
+	// App.OnError, but a silent box tells the user nothing.
+	if wv, ok := c.Node().(*tree.WebView); ok && wv.LoadErr != nil && wv.Hint != nil {
+		wv.Hint.Text.Set("WebView: " + wv.LoadErr.Error())
+		wv.Hint.Color.Set(l.Theme.Colors.OnSurfaceVariant)
+		box := tree.Rect{X: r.X + 14, Y: r.Y + 14, W: r.W - 28, H: r.H - 28}
+		if box.W > 0 && box.H > 0 {
+			l.paintText(wv.Hint, box, clip)
+		}
+	}
 }

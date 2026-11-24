@@ -46,3 +46,17 @@ func TestWebviewWindowsVtableSlots(t *testing.T) {
 		t.Errorf("ICoreWebView2 has %d slots, want 62", got)
 	}
 }
+
+func TestWithBase(t *testing.T) {
+	cases := []struct{ name, markup, base, want string }{
+		{"empty base", "<p>x</p>", "", "<p>x</p>"},
+		{"head", "<html><head></head><body>x</body></html>", "https://e.com/", `<html><head><base href="https://e.com/"></head><body>x</body></html>`},
+		{"doctype first", "<!doctype html><html><body>x</body></html>", "https://e.com/", `<!doctype html><base href="https://e.com/"><html><body>x</body></html>`},
+		{"escaped", "<p>x</p>", `https://e.com/?a="b"&c`, `<base href="https://e.com/?a=&#34;b&#34;&amp;c"><p>x</p>`},
+	}
+	for _, tc := range cases {
+		if got := withBase(tc.markup, tc.base); got != tc.want {
+			t.Errorf("%s: withBase = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}

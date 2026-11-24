@@ -2799,7 +2799,11 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   above the GPU layer and cannot follow a clip, rotation, scale or partial
   opacity. The GTK/WebKitGTK libraries are loaded through purego at run time and
   the backend is behind the `webview` feature tag, so a design without a WebView
-  never pays for them.
+  never pays for them. The bridge is a string channel: it is reachable from
+  every frame of the page and carries no origin, so a page that embeds a
+  third-party iframe must treat every message as untrusted. A settled page is
+  still polled at 20 Hz (16 Hz while loading) because WebKit's loop shares the
+  wayland display and cannot wake the SDL wait by itself.
   Windows hosts WebView2 as a child window of the SDL window and macOS adds a
   WKWebView subview, so neither needs synthetic input; both reach their engine
   through the same purego rule: the WebView2 runtime is located without

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	neturl "net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,15 +17,20 @@ func TestWebviewURLExtractsEmbeddedPage(t *testing.T) {
 	a.assets = fstest.MapFS{
 		"ui/docs/index.html": &fstest.MapFile{Data: []byte("<link rel=stylesheet href=style.css>")},
 		"ui/docs/style.css":  &fstest.MapFile{Data: []byte("body{margin:0}")},
+		"odd/a#b.html":       &fstest.MapFile{Data: []byte("x")},
 	}
 	url, err := a.webviewURL("goi://ui/docs/index.html")
 	if err != nil {
 		t.Fatalf("goi://: %v", err)
 	}
-	if !strings.HasPrefix(url, "file://") {
-		t.Fatalf("url = %q, want a file URL", url)
+	if !strings.HasPrefix(url, "file:///") {
+		t.Fatalf("url = %q, want a three-slash file URL", url)
 	}
-	index := strings.TrimPrefix(url, "file://")
+	parsed, err := neturl.Parse(url)
+	if err != nil || parsed.Path == "" {
+		t.Fatalf("url = %q does not parse: %v", url, err)
+	}
+	index := parsed.Path
 	got, err := os.ReadFile(index)
 	if err != nil || string(got) != "<link rel=stylesheet href=style.css>" {
 		t.Fatalf("index content = %q, %v", got, err)
@@ -38,7 +44,11 @@ func TestWebviewURLExtractsEmbeddedPage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second goi://: %v", err)
 	}
-	if filepath.Dir(strings.TrimPrefix(url2, "file://")) != filepath.Dir(index) {
+	parsed2, err := neturl.Parse(url2)
+	if err != nil {
+		t.Fatalf("second url = %q does not parse: %v", url2, err)
+	}
+	if filepath.Dir(parsed2.Path) != filepath.Dir(index) {
 		t.Fatal("the second asset was extracted to a different directory")
 	}
 
@@ -50,6 +60,21 @@ func TestWebviewURLExtractsEmbeddedPage(t *testing.T) {
 	// A missing entry is an error, not an empty page.
 	if _, err := a.webviewURL("goi://ui/docs/missing.html"); err == nil {
 		t.Fatal("a missing embedded page loaded without an error")
+	}
+
+	// A path that walks out of the design is refused: goi:// is the design
+	// container, not the file system.
+	if _, err := a.webviewURL("goi://../../../../etc/hostname"); err == nil {
+		t.Fatal("goi://.. escaped the design container")
+	}
+
+	// A name with URL syntax characters survives the trip to a file URL.
+	url3, err := a.webviewURL("goi://odd/a#b.html")
+	if err != nil {
+		t.Fatalf("odd name: %v", err)
+	}
+	if !strings.Contains(url3, "%23") {
+		t.Fatalf("url = %q does not escape #", url3)
 	}
 
 	a.closeWebviews()
@@ -75,6 +100,8 @@ func TestWebviewFrameHidesUnderNativeLimits(t *testing.T) {
 		{"rotated", `Window { Stack { width: 300 height: 200 rotate: 45deg
 			WebView { id: view width: 100 height: 100 } } }`},
 		{"scaled", `Window { Stack { width: 300 height: 200 scale: 2
+			WebView { id: view width: 100 height: 100 } } }`},
+		{"half faded", `Window { Stack { width: 300 height: 200 opacity: 0.5
 			WebView { id: view width: 100 height: 100 } } }`},
 		{"faded", `Window { Stack { width: 300 height: 200 opacity: 0
 			WebView { id: view width: 100 height: 100 } } }`},

@@ -179,7 +179,13 @@ func (d *gpuDriver) run(frame func()) error {
 				d.win.WaitEventsTimeout(d.app.animWait)
 			case d.app.hasWebviews && pumpWebviews:
 				// WebKit renders on GTK's loop, which this goroutine advances.
-				d.win.WaitEventsTimeout(16 * time.Millisecond)
+				// A loading page needs a fast poll; a settled one only needs
+				// the loop kept alive, which a slow poll does for far less CPU.
+				wait := 50 * time.Millisecond
+				if platform.WebviewsLoading() {
+					wait = 16 * time.Millisecond
+				}
+				d.win.WaitEventsTimeout(wait)
 			default:
 				d.win.WaitEvents()
 			}

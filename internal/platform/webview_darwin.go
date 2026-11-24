@@ -63,6 +63,8 @@ var (
 	selSetValueKey     objc.SEL
 	selNumberBool      objc.SEL
 	selFirstResponder  objc.SEL
+	selWebView         objc.SEL
+	selSetInspectable  objc.SEL
 	selDidReceive      objc.SEL
 	selBody            objc.SEL
 	selInitFrameConfig objc.SEL
@@ -156,9 +158,10 @@ func loadCocoa() error {
 		selSetValueKey = objc.RegisterName("setValue:forKey:")
 		selNumberBool = objc.RegisterName("numberWithBool:")
 		selFirstResponder = objc.RegisterName("makeFirstResponder:")
+		selWebView = objc.RegisterName("webView")
+		selSetInspectable = objc.RegisterName("setInspectable:")
 		selDidReceive = objc.RegisterName("userContentController:didReceiveScriptMessage:")
 		selInitFrameConfig = objc.RegisterName("initWithFrame:configuration:")
-		selNumberBool = objc.RegisterName("numberWithBool:")
 	})
 	return cocoaErr
 }
@@ -204,6 +207,7 @@ type darwinWebview struct {
 	config   objc.ID
 	uc       objc.ID
 	handler  objc.ID
+	message  func(string)
 
 	x, y    float64
 	w, h    float64
@@ -212,7 +216,43 @@ type darwinWebview struct {
 	zoom    float64
 }
 
-var handlerSeq uint64
+var (
+	scriptOnce  sync.Once
+	scriptClass objc.Class
+	scriptErr   error
+)
+
+// webViews maps a WKWebView to its Go side, so the one message handler class
+// can find the view the message came from.
+var webViews = map[objc.ID]*darwinWebview{}
+
+// scriptHandlerClass registers the message handler class once. Registering a
+// class per view would leak one class (and its closure) for every view and
+// every hot reload, since ObjC classes cannot be unregistered.
+func scriptHandlerClass() (objc.Class, error) {
+	scriptOnce.Do(func() {
+		scriptClass, scriptErr = objc.RegisterClass("GoiWebViewHandler",
+			objc.GetClass("NSObject"), nil, nil,
+			[]objc.MethodDef{{
+				Cmd: selDidReceive,
+				Fn: func(_ objc.ID, _ objc.SEL, _ objc.ID, message objc.ID) {
+					view := sendID0(message, selWebView)
+					w := webViews[view]
+					if w == nil || w.message == nil {
+						return
+					}
+					body := sendID0(message, selBody)
+					if body == 0 {
+						return
+					}
+					if cs := sendPtr0(body, selUTF8); cs != nil {
+						w.message(goString(cs))
+					}
+				},
+			}})
+	})
+	return scriptClass, scriptErr
+}
 
 // NewWebview creates a WKWebView and adds it above the Metal view in SDL's
 // content view.
@@ -247,22 +287,9 @@ func NewWebview(parent *Window, onMessage func(string), _ func()) (Webview, erro
 	if w.config == 0 {
 		return nil, fmt.Errorf("%w: WKWebViewConfiguration", ErrWebviewUnavailable)
 	}
+	w.message = onMessage
 	if onMessage != nil {
-		handlerSeq++
-		handler, err := objc.RegisterClass(fmt.Sprintf("GoiWebViewHandler%d", handlerSeq),
-			objc.GetClass("NSObject"), nil, nil,
-			[]objc.MethodDef{{
-				Cmd: selDidReceive,
-				Fn: func(_ objc.ID, _ objc.SEL, _ objc.ID, message objc.ID) {
-					body := sendID0(message, selBody)
-					if body == 0 {
-						return
-					}
-					if cs := sendPtr0(body, selUTF8); cs != nil {
-						onMessage(goString(cs))
-					}
-				},
-			}})
+		handler, err := scriptHandlerClass()
 		if err != nil {
 			w.Destroy()
 			return nil, fmt.Errorf("%w: %v", ErrWebviewUnavailable, err)
@@ -279,6 +306,7 @@ func NewWebview(parent *Window, onMessage func(string), _ func()) (Webview, erro
 		return nil, fmt.Errorf("%w: WKWebView", ErrWebviewUnavailable)
 	}
 	sendVoid1ID(content, selAddSubview, w.view)
+	webViews[w.view] = w
 	w.SetBounds(w.x, w.y, w.w, w.h)
 	return w, nil
 }
@@ -381,8 +409,16 @@ func (w *darwinWebview) SetUserAgent(ua string) {
 }
 
 func (w *darwinWebview) SetDevtools(on bool) {
-	if !on || w.config == 0 {
-		// The inspector preference is private API; only touch it when asked.
+	if !on || w.view == 0 {
+		return
+	}
+	// macOS 13.3 has a public switch; the preference key below is private and
+	// can raise an exception, so it is only the fallback.
+	if sendBool1SEL(w.view, selResponds, selSetInspectable) {
+		sendVoid1Bool(w.view, selSetInspectable, true)
+		return
+	}
+	if w.config == 0 {
 		return
 	}
 	prefs := sendID0(w.config, selPreferences)
@@ -427,8 +463,13 @@ func (w *darwinWebview) Destroy() {
 	if w.config != 0 {
 		sendVoid0(w.config, selRelease)
 	}
+	delete(webViews, w.view)
 	w.view, w.config, w.uc, w.handler = 0, 0, 0, 0
+	w.message = nil
 }
 
 // SetWebviewFocus is a no-op: this platform lets the engine take focus itself.
 func SetWebviewFocus(bool) {}
+
+// WebviewsLoading is false: this platform does not poll its engine.
+func WebviewsLoading() bool { return false }

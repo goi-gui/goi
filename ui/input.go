@@ -850,6 +850,9 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 		// A press outside the native view returns the keyboard to the design.
 		i.app.blurWebview()
 	}
+	// A release that never arrived leaves the entry behind; the next press is
+	// not part of that drag.
+	i.app.pressWebview = nil
 	i.event("MouseDown", "x", x, "y", y, "button", button, "shift", shift)
 	i.cursorX, i.cursorY = x, y
 	hit := i.hit(x, y)
@@ -2815,6 +2818,9 @@ func (i *interactor) showScrollbar(n tree.Node) {
 // MouseLeave clears the hovered area when the pointer leaves the window.
 func (i *interactor) MouseLeave() {
 	i.event("MouseLeave")
+	// The pointer left while holding a button over the view: the release will
+	// not arrive, so do not let it swallow the next one.
+	i.app.pressWebview = nil
 	if i.hoverScroll != nil {
 		i.hoverScroll.Base().SetScrollbarHover(false)
 		i.showScrollbar(i.hoverScroll)

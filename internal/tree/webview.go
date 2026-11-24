@@ -28,6 +28,9 @@ type WebView struct {
 	Loaded bool
 	// LoadErr is the platform's last load failure.
 	LoadErr error
+	// Hint is the scratch text the placeholder draws for LoadErr. It is not a
+	// child: paint reuses it, so the node stays a leaf.
+	Hint *Text
 }
 
 // WebviewController is the part of the native view the node forwards its Go
@@ -59,6 +62,11 @@ func (c *WebView) namedProps() []NamedProp {
 // OnMessage sets the function that receives messages the page posts through
 // window.webkit.messageHandlers.goi.postMessage (Linux) or the platform's
 // equivalent bridge.
+//
+// The bridge carries a string and nothing else: it is reachable from every
+// frame of the page, including a third-party iframe, and the sender cannot be
+// told apart. Treat a message as untrusted input, or only load content you
+// control.
 func (c *WebView) OnMessage(fn func(string)) { c.onMessage = fn }
 
 // DeliverMessage is called by the ui layer when the page posts a message.

@@ -895,10 +895,14 @@ func newM3Component(name string) Node {
 			Foreground: newProp(nil, "foreground", DirtyPaint, uint32(0)),
 		}
 	case "WebView":
+		hint := newNode("Text").(*Text)
+		hint.Role.Set("bodySmall")
+		hint.Wrap.Set(true)
 		return &WebView{
 			Component: newComponent(),
 			Zoom:      newProp(nil, "zoom", DirtyPaint, 1.0),
 			Devtools:  newProp(nil, "devtools", DirtyPaint, false),
+			Hint:      hint,
 		}
 	case "Markdown":
 		return &Markdown{Component: newComponent()}

@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/goi-gui/goi/internal/platform"
 	"github.com/goi-gui/goi/internal/tree"
@@ -41,16 +43,6 @@ func treeHasWebview(tr *tree.Tree) bool {
 	return found
 }
 
-// webviewFor returns the view for a node, or nil.
-func (a *App) webviewFor(n *tree.WebView) *webviewEntry {
-	for _, e := range a.webviews {
-		if e.node == n {
-			return e
-		}
-	}
-	return nil
-}
-
 // webviewAt returns the topmost web view under a window-space point.
 func (a *App) webviewAt(x, y float64) *webviewEntry {
 	for i := len(a.webviews) - 1; i >= 0; i-- {
@@ -69,17 +61,22 @@ func (a *App) syncWebviews(pw *platform.Window) {
 		return
 	}
 	seen := map[*tree.WebView]bool{}
+	index := make(map[*tree.WebView]*webviewEntry, len(a.webviews))
+	for _, e := range a.webviews {
+		index[e.node] = e
+	}
 	a.win.tree.Walk(func(n tree.Node) {
 		wv, ok := n.(*tree.WebView)
 		if !ok {
 			return
 		}
 		seen[wv] = true
-		e := a.webviewFor(wv)
+		e := index[wv]
 		if e == nil {
 			// A failed creation is not retried every frame: the node lasts
 			// until a reload replaces it, and the error would repeat forever.
-			if a.webviewFailed[wv] {
+			// A runtime installed later is picked up after the pause.
+			if at, ok := a.webviewFailedAt[wv]; ok && time.Since(at) < 5*time.Second {
 				return
 			}
 			entry := &webviewEntry{node: wv, zoom: 1}
@@ -90,10 +87,10 @@ func (a *App) syncWebviews(pw *platform.Window) {
 			)
 			if err != nil {
 				wv.LoadErr = err
-				if a.webviewFailed == nil {
-					a.webviewFailed = map[*tree.WebView]bool{}
+				if a.webviewFailedAt == nil {
+					a.webviewFailedAt = map[*tree.WebView]time.Time{}
 				}
-				a.webviewFailed[wv] = true
+				a.webviewFailedAt[wv] = time.Now()
 				a.reportError(fmt.Errorf("ui: web view: %w", err))
 				return
 			}
@@ -203,6 +200,9 @@ func (a *App) blurWebview() {
 // webviewURL turns a goi:// embedded asset into a file URL. The design
 // container is extracted once, because WebKit resolves the page's relative CSS,
 // scripts and images from the directory it was loaded from.
+//
+// shortcut: the first goi:// load copies the whole container, so a design with
+// large media pays that once; serve the media through a plain URL if it hurts.
 func (a *App) webviewURL(src string) (string, error) {
 	if !strings.HasPrefix(src, "goi://") {
 		return src, nil
@@ -243,10 +243,26 @@ func (a *App) webviewURL(src string) (string, error) {
 		a.webviewDir = dir
 	}
 	path := filepath.Join(a.webviewDir, filepath.FromSlash(rel))
+	// A design may name ../ in a goi:// path; the page stays inside the
+	// extracted design, never the rest of the disk.
+	if inside, err := filepath.Rel(a.webviewDir, path); err != nil || inside == ".." ||
+		strings.HasPrefix(inside, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("web view: %s is outside the design", src)
+	}
 	if _, err := os.Stat(path); err != nil {
 		return "", fmt.Errorf("web view: %s: %w", src, err)
 	}
-	return "file://" + filepath.ToSlash(path), nil
+	return fileURL(path), nil
+}
+
+// fileURL builds a file URL that escapes the path and uses the three-slash
+// form Windows needs (file:///C:/...).
+func fileURL(path string) string {
+	slash := filepath.ToSlash(path)
+	if !strings.HasPrefix(slash, "/") {
+		slash = "/" + slash
+	}
+	return (&url.URL{Scheme: "file", Path: slash}).String()
 }
 
 // webviewFrame is the window-space rect a view may occupy. A native view
@@ -259,7 +275,7 @@ func (a *App) webviewFrame(n tree.Node) (tree.Rect, bool) {
 	}
 	for p := n; p != nil; p = p.Base().Parent() {
 		b := p.Base()
-		if !b.Visible() || b.Opacity() == 0 {
+		if !b.Visible() || b.Opacity() < 1 {
 			return r, false
 		}
 		if !b.Rotation().IsZero() || !b.Scaling().IsIdentity() {
@@ -301,7 +317,7 @@ func (a *App) closeWebviews() {
 	}
 	a.webviews = nil
 	a.hasWebviews = false
-	a.webviewFailed = nil
+	a.webviewFailedAt = nil
 	a.blurWebview()
 	a.pressWebview = nil
 	if a.webviewDir != "" {

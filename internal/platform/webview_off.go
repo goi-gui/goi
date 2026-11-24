@@ -16,3 +16,6 @@ func PumpWebviews() bool { return false }
 
 // SetWebviewFocus is a no-op: this platform lets the engine take focus itself.
 func SetWebviewFocus(bool) {}
+
+// WebviewsLoading is false: this platform does not poll its engine.
+func WebviewsLoading() bool { return false }
