@@ -51,6 +51,15 @@ var (
 	gtkButtonNewWithLabel          func(*byte) uintptr
 	gtkWidgetSetSensitive          func(uintptr, int32)
 	gtkWidgetActivate              func(uintptr)
+	gtkButtonSetAlignment          func(uintptr, float32, float32)
+	gtkSeparatorNew                func(int32) uintptr
+	gtkWidgetGetStyleContext       func(uintptr) uintptr
+	gtkStyleContextAddClass        func(uintptr, *byte)
+	gtkCssProviderNew              func() uintptr
+	gtkCssProviderLoadData         func(uintptr, *byte, int64, uintptr) int32
+	gtkStyleContextAddProvider     func(uintptr, uintptr, uint32)
+	gdkScreenGetDefault            func() uintptr
+	webkitOptionMenuItemSelected   func(uintptr) int32
 	gtkWidgetSetHalign             func(uintptr, int32)
 	gtkWidgetSetValign             func(uintptr, int32)
 	gtkWidgetSetMarginStart        func(uintptr, int32)
@@ -209,6 +218,14 @@ func initLinuxWebview() error {
 	purego.RegisterLibFunc(&gtkButtonNewWithLabel, gtkLib, "gtk_button_new_with_label")
 	purego.RegisterLibFunc(&gtkWidgetSetSensitive, gtkLib, "gtk_widget_set_sensitive")
 	purego.RegisterLibFunc(&gtkWidgetActivate, gtkLib, "gtk_widget_activate")
+	purego.RegisterLibFunc(&gtkButtonSetAlignment, gtkLib, "gtk_button_set_alignment")
+	purego.RegisterLibFunc(&gtkSeparatorNew, gtkLib, "gtk_separator_new")
+	purego.RegisterLibFunc(&gtkWidgetGetStyleContext, gtkLib, "gtk_widget_get_style_context")
+	purego.RegisterLibFunc(&gtkStyleContextAddClass, gtkLib, "gtk_style_context_add_class")
+	purego.RegisterLibFunc(&gtkCssProviderNew, gtkLib, "gtk_css_provider_new")
+	purego.RegisterLibFunc(&gtkCssProviderLoadData, gtkLib, "gtk_css_provider_load_from_data")
+	purego.RegisterLibFunc(&gtkStyleContextAddProvider, gtkLib, "gtk_style_context_add_provider_for_screen")
+	purego.RegisterLibFunc(&gdkScreenGetDefault, gdkLib, "gdk_screen_get_default")
 	purego.RegisterLibFunc(&gtkWidgetSetHalign, gtkLib, "gtk_widget_set_halign")
 	purego.RegisterLibFunc(&gtkWidgetSetValign, gtkLib, "gtk_widget_set_valign")
 	purego.RegisterLibFunc(&gtkWidgetSetMarginStart, gtkLib, "gtk_widget_set_margin_start")
@@ -260,6 +277,7 @@ func initLinuxWebview() error {
 	purego.RegisterLibFunc(&webkitOptionMenuItemGetLabel, webkitLib, "webkit_option_menu_item_get_label")
 	purego.RegisterLibFunc(&webkitOptionMenuItemGroupLabel, webkitLib, "webkit_option_menu_item_is_group_label")
 	purego.RegisterLibFunc(&webkitOptionMenuItemEnabled, webkitLib, "webkit_option_menu_item_is_enabled")
+	purego.RegisterLibFunc(&webkitOptionMenuItemSelected, webkitLib, "webkit_option_menu_item_is_selected")
 	purego.RegisterLibFunc(&webkitContextMenuGetItems, webkitLib, "webkit_context_menu_get_items")
 	purego.RegisterLibFunc(&webkitContextMenuItemTitle, webkitLib, "webkit_context_menu_item_get_title")
 	purego.RegisterLibFunc(&webkitContextMenuItemSeparator, webkitLib, "webkit_context_menu_item_is_separator")
@@ -314,6 +332,7 @@ func initLinuxWebview() error {
 	if err := bindSubcompositor(); err != nil {
 		return err
 	}
+	styleMenus()
 	// SDL must import this display before its video subsystem starts.
 	props, err := sdl.GetGlobalProperties()
 	if err != nil {
@@ -972,6 +991,63 @@ func initMenuCallbacks() {
 	})
 }
 
+// menuCSS styles the overlay menus: a rounded card with flat rows, so they read
+// as a menu rather than a stack of buttons.
+const menuCSS = `
+.goi-menu {
+	background-color: @theme_bg_color;
+	border-radius: 12px;
+	padding: 6px;
+	border: 1px solid alpha(@theme_fg_color, 0.12);
+	box-shadow: 0 6px 20px alpha(black, 0.35);
+}
+.goi-menu button {
+	background: none;
+	background-image: none;
+	border: none;
+	border-radius: 8px;
+	box-shadow: none;
+	padding: 7px 12px;
+	min-height: 20px;
+	color: @theme_fg_color;
+	font-size: 13px;
+}
+.goi-menu button:hover { background-color: alpha(@theme_fg_color, 0.10); }
+.goi-menu button:active { background-color: alpha(@theme_fg_color, 0.16); }
+.goi-menu button:disabled { color: alpha(@theme_fg_color, 0.45); }
+.goi-menu separator {
+	background-color: alpha(@theme_fg_color, 0.12);
+	min-height: 1px;
+	margin: 4px 8px;
+}
+`
+
+var menuStyled bool
+
+func styleMenus() {
+	if menuStyled {
+		return
+	}
+	menuStyled = true
+	provider := gtkCssProviderNew()
+	if provider == 0 {
+		return
+	}
+	gtkCssProviderLoadData(provider, cstr(menuCSS), int64(len(menuCSS)), 0)
+	if screen := gdkScreenGetDefault(); screen != 0 {
+		gtkStyleContextAddProvider(screen, provider, 600) // GTK_STYLE_PROVIDER_PRIORITY_APPLICATION
+	}
+}
+
+// menuRow makes one flat, left-aligned row in a menu box.
+func menuRow(box uintptr, label string) uintptr {
+	btn := gtkButtonNewWithLabel(cstr(label))
+	gtkButtonSetAlignment(btn, 0, 0.5)
+	gtkStyleContextAddClass(gtkWidgetGetStyleContext(btn), cstr("flat"))
+	gtkContainerAdd(box, btn)
+	return btn
+}
+
 // showContextMenu draws the page's context menu at the click. WebKit's own
 // menu is a separate toplevel, which cannot be positioned here.
 func showContextMenu(view, menu uintptr, event unsafe.Pointer, hit uintptr) int32 {
@@ -987,6 +1063,7 @@ func showContextMenu(view, menu uintptr, event unsafe.Pointer, hit uintptr) int3
 		}
 	}
 	box := gtkBoxNew(1, 0)
+	gtkStyleContextAddClass(gtkWidgetGetStyleContext(box), cstr("goi-menu"))
 	w.ctxItems = map[uintptr]ctxAction{}
 	list := webkitContextMenuGetItems(menu)
 	for node := list; node != nil; {
@@ -994,7 +1071,13 @@ func showContextMenu(view, menu uintptr, event unsafe.Pointer, hit uintptr) int3
 		next := *(*unsafe.Pointer)(unsafe.Add(node, unsafe.Sizeof(uintptr(0)))) // GList.next
 		node = next
 		item := uintptr(data)
-		if item == 0 || webkitContextMenuItemSeparator(item) != 0 || webkitContextMenuItemSubmenu(item) != nil {
+		if item == 0 || webkitContextMenuItemSubmenu(item) != nil {
+			continue
+		}
+		if webkitContextMenuItemSeparator(item) != 0 {
+			if len(w.ctxItems) > 0 {
+				gtkContainerAdd(box, gtkSeparatorNew(0)) // GTK_ORIENTATION_HORIZONTAL
+			}
 			continue
 		}
 		stock := webkitContextMenuItemStock(item)
@@ -1002,12 +1085,10 @@ func showContextMenu(view, menu uintptr, event unsafe.Pointer, hit uintptr) int3
 			continue
 		}
 		title := webkitContextMenuItemTitle(item)
-		label := strings.ReplaceAll(goString(title), "_", "")
-		btn := gtkButtonNewWithLabel(cstr(label))
+		btn := menuRow(box, strings.ReplaceAll(goString(title), "_", ""))
 		w.ctxItems[btn] = ctxAction{view: view, stock: stock, link: link}
 		w.ctxButtons = append(w.ctxButtons, btn)
 		gSignalConnectData(btn, cstr("clicked"), contextClickCB, btn, 0, 0)
-		gtkContainerAdd(box, btn)
 	}
 	if len(w.ctxItems) == 0 {
 		gtkWidgetDestroy(box)
@@ -1111,19 +1192,25 @@ func showOptionMenu(view, menu uintptr, rect unsafe.Pointer) int32 {
 		return 0
 	}
 	box := gtkBoxNew(1, 0) // GTK_ORIENTATION_VERTICAL
+	gtkStyleContextAddClass(gtkWidgetGetStyleContext(box), cstr("goi-menu"))
 	w.menuItems = map[uintptr]uint32{}
 	for i := uint32(0); i < n; i++ {
 		item := webkitOptionMenuGetItem(menu, i)
 		if item == 0 || webkitOptionMenuItemGroupLabel(item) != 0 {
 			continue
 		}
-		btn := gtkButtonNewWithLabel(cstr(goString(unsafe.Pointer(webkitOptionMenuItemGetLabel(item)))))
+		label := goString(unsafe.Pointer(webkitOptionMenuItemGetLabel(item)))
+		if webkitOptionMenuItemSelected(item) != 0 {
+			label = "✓  " + label
+		} else {
+			label = "    " + label
+		}
+		btn := menuRow(box, label)
 		if webkitOptionMenuItemEnabled(item) == 0 {
 			gtkWidgetSetSensitive(btn, 0)
 		}
 		w.menuItems[btn] = i
 		gSignalConnectData(btn, cstr("clicked"), menuClickCB, btn, 0, 0)
-		gtkContainerAdd(box, btn)
 	}
 	var x, y, width int32
 	if rect != nil {
