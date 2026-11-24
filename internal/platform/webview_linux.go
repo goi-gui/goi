@@ -42,6 +42,18 @@ var (
 	gtkWidgetGetWindow             func(uintptr) unsafe.Pointer
 	gtkWidgetDestroy               func(uintptr)
 	gtkContainerAdd                func(uintptr, uintptr)
+	gtkContainerRemove             func(uintptr, uintptr)
+	gtkOverlayNew                  func() uintptr
+	gtkOverlayAddOverlay           func(uintptr, uintptr)
+	gtkBoxNew                      func(int32, int32) uintptr
+	gtkButtonNewWithLabel          func(*byte) uintptr
+	gtkWidgetSetSensitive          func(uintptr, int32)
+	gtkWidgetActivate              func(uintptr)
+	gtkWidgetSetHalign             func(uintptr, int32)
+	gtkWidgetSetValign             func(uintptr, int32)
+	gtkWidgetSetMarginStart        func(uintptr, int32)
+	gtkWidgetSetMarginTop          func(uintptr, int32)
+	gtkWidgetSetSizeRequest        func(uintptr, int32, int32)
 	gtkWidgetEvent                 func(uintptr, unsafe.Pointer) int32
 	gtkWidgetAddEvents             func(uintptr, int32)
 	gtkEventsPending               func() int32
@@ -82,6 +94,13 @@ var (
 	webkitSettingsSetUserAgent     func(uintptr, *byte)
 	webkitSettingsSetDeveloper     func(uintptr, int32)
 	webkitJavascriptResultGetValue func(uintptr) uintptr
+	webkitOptionMenuGetNItems      func(uintptr) uint32
+	webkitOptionMenuGetItem        func(uintptr, uint32) uintptr
+	webkitOptionMenuActivateItem   func(uintptr, uint32)
+	webkitOptionMenuClose          func(uintptr)
+	webkitOptionMenuItemGetLabel   func(uintptr) *byte
+	webkitOptionMenuItemGroupLabel func(uintptr) int32
+	webkitOptionMenuItemEnabled    func(uintptr) int32
 	jscValueToString               func(uintptr) unsafe.Pointer
 
 	wlMarshalArrayFlags   func(uintptr, uint32, uintptr, uint32, uint32, uintptr) uintptr
@@ -171,6 +190,18 @@ func initLinuxWebview() error {
 	purego.RegisterLibFunc(&gtkWidgetGetWindow, gtkLib, "gtk_widget_get_window")
 	purego.RegisterLibFunc(&gtkWidgetDestroy, gtkLib, "gtk_widget_destroy")
 	purego.RegisterLibFunc(&gtkContainerAdd, gtkLib, "gtk_container_add")
+	purego.RegisterLibFunc(&gtkContainerRemove, gtkLib, "gtk_container_remove")
+	purego.RegisterLibFunc(&gtkOverlayNew, gtkLib, "gtk_overlay_new")
+	purego.RegisterLibFunc(&gtkOverlayAddOverlay, gtkLib, "gtk_overlay_add_overlay")
+	purego.RegisterLibFunc(&gtkBoxNew, gtkLib, "gtk_box_new")
+	purego.RegisterLibFunc(&gtkButtonNewWithLabel, gtkLib, "gtk_button_new_with_label")
+	purego.RegisterLibFunc(&gtkWidgetSetSensitive, gtkLib, "gtk_widget_set_sensitive")
+	purego.RegisterLibFunc(&gtkWidgetActivate, gtkLib, "gtk_widget_activate")
+	purego.RegisterLibFunc(&gtkWidgetSetHalign, gtkLib, "gtk_widget_set_halign")
+	purego.RegisterLibFunc(&gtkWidgetSetValign, gtkLib, "gtk_widget_set_valign")
+	purego.RegisterLibFunc(&gtkWidgetSetMarginStart, gtkLib, "gtk_widget_set_margin_start")
+	purego.RegisterLibFunc(&gtkWidgetSetMarginTop, gtkLib, "gtk_widget_set_margin_top")
+	purego.RegisterLibFunc(&gtkWidgetSetSizeRequest, gtkLib, "gtk_widget_set_size_request")
 	purego.RegisterLibFunc(&gtkWidgetEvent, gtkLib, "gtk_widget_event")
 	purego.RegisterLibFunc(&gtkWidgetAddEvents, gtkLib, "gtk_widget_add_events")
 	purego.RegisterLibFunc(&gtkEventsPending, gtkLib, "gtk_events_pending")
@@ -210,6 +241,13 @@ func initLinuxWebview() error {
 	purego.RegisterLibFunc(&webkitSettingsSetUserAgent, webkitLib, "webkit_settings_set_user_agent")
 	purego.RegisterLibFunc(&webkitSettingsSetDeveloper, webkitLib, "webkit_settings_set_enable_developer_extras")
 	purego.RegisterLibFunc(&webkitJavascriptResultGetValue, webkitLib, "webkit_javascript_result_get_js_value")
+	purego.RegisterLibFunc(&webkitOptionMenuGetNItems, webkitLib, "webkit_option_menu_get_n_items")
+	purego.RegisterLibFunc(&webkitOptionMenuGetItem, webkitLib, "webkit_option_menu_get_item")
+	purego.RegisterLibFunc(&webkitOptionMenuActivateItem, webkitLib, "webkit_option_menu_activate_item")
+	purego.RegisterLibFunc(&webkitOptionMenuClose, webkitLib, "webkit_option_menu_close")
+	purego.RegisterLibFunc(&webkitOptionMenuItemGetLabel, webkitLib, "webkit_option_menu_item_get_label")
+	purego.RegisterLibFunc(&webkitOptionMenuItemGroupLabel, webkitLib, "webkit_option_menu_item_is_group_label")
+	purego.RegisterLibFunc(&webkitOptionMenuItemEnabled, webkitLib, "webkit_option_menu_item_is_enabled")
 	purego.RegisterLibFunc(&jscValueToString, jscLib, "jsc_value_to_string")
 
 	purego.RegisterLibFunc(&wlMarshalArrayFlags, waylandLib, "wl_proxy_marshal_array_flags")
@@ -395,6 +433,12 @@ type linuxWebview struct {
 	handlerID          uintptr
 	focusID            uintptr
 	focusCallback      uintptr
+
+	overlay     uintptr
+	menu        uintptr
+	menuBox     uintptr
+	menuItems   map[uintptr]uint32
+	menuButtons []uintptr
 }
 
 var (
@@ -489,7 +533,11 @@ func NewWebview(parent *Window, onMessage func(string), onFocus func()) (Webview
 		gtkWidgetDestroy(win)
 		return nil, fmt.Errorf("%w: webkit_web_view_new", ErrWebviewUnavailable)
 	}
-	gtkContainerAdd(win, w.view)
+	// A select's popup cannot be positioned on a roleless surface, so the menu
+	// is drawn by an overlay inside this window instead.
+	w.overlay = gtkOverlayNew()
+	gtkContainerAdd(win, w.overlay)
+	gtkContainerAdd(w.overlay, w.view)
 	// Synthetic events reach GTK only for masks the widgets selected.
 	const mask = (1 << 8) | (1 << 9) | (1 << 2) | (1 << 10) | (1 << 11) | (1 << 21) | (1 << 23)
 	gtkWidgetAddEvents(win, mask)
@@ -533,6 +581,10 @@ func NewWebview(parent *Window, onMessage func(string), onFocus func()) (Webview
 		gSignalConnectData(win, cstr("button-press-event"), w.focusCallback, w.focusID, 0, 0)
 		gSignalConnectData(w.view, cstr("button-press-event"), w.focusCallback, w.focusID, 0, 0)
 	}
+	initMenuCallbacks()
+	viewByPtr[w.view] = w
+	gSignalConnectData(w.view, cstr("show-option-menu"), optionMenuCB, w.view, 0, 0)
+	gSignalConnectData(w.view, cstr("button-press-event"), closeMenuCB, w.view, 0, 0)
 	gtkWidgetShowAll(win)
 	gtkWindowSetFocus(win, w.view)
 	return w, nil
@@ -851,6 +903,106 @@ func (w *linuxWebview) ForwardPointer(kind PointerKind, x, y float64, button int
 	gdkEventFree(ev)
 }
 
+// viewByPtr finds a view from a GTK widget, for the signals that carry one.
+var viewByPtr = map[uintptr]*linuxWebview{}
+
+var optionMenuCB, closeMenuCB, menuClickCB uintptr
+
+func initMenuCallbacks() {
+	if optionMenuCB != 0 {
+		return
+	}
+	optionMenuCB = purego.NewCallback(func(view, menu, _ uintptr, rect unsafe.Pointer) int32 {
+		return showOptionMenu(view, menu, rect)
+	})
+	closeMenuCB = purego.NewCallback(func(view, _ uintptr, _ uintptr) int32 {
+		if w := viewByPtr[view]; w != nil && w.menuBox != 0 {
+			if w.menu != 0 {
+				webkitOptionMenuClose(w.menu)
+			}
+			w.closeMenu()
+		}
+		return 0
+	})
+	menuClickCB = purego.NewCallback(func(btn, _ uintptr, _ uintptr) int32 {
+		return menuClicked(btn)
+	})
+}
+
+// showOptionMenu draws a select's options inside the window at the rectangle
+// WebKit reports. The native popup would be a separate Wayland toplevel, which
+// a roleless surface cannot position.
+func showOptionMenu(view, menu uintptr, rect unsafe.Pointer) int32 {
+	w := viewByPtr[view]
+	if w == nil || w.overlay == 0 {
+		return 0
+	}
+	w.closeMenu()
+	n := webkitOptionMenuGetNItems(menu)
+	if n == 0 {
+		return 0
+	}
+	box := gtkBoxNew(1, 0) // GTK_ORIENTATION_VERTICAL
+	w.menuItems = map[uintptr]uint32{}
+	for i := uint32(0); i < n; i++ {
+		item := webkitOptionMenuGetItem(menu, i)
+		if item == 0 || webkitOptionMenuItemGroupLabel(item) != 0 {
+			continue
+		}
+		btn := gtkButtonNewWithLabel(cstr(goString(unsafe.Pointer(webkitOptionMenuItemGetLabel(item)))))
+		if webkitOptionMenuItemEnabled(item) == 0 {
+			gtkWidgetSetSensitive(btn, 0)
+		}
+		w.menuItems[btn] = i
+		w.menuButtons = append(w.menuButtons, btn)
+		gSignalConnectData(btn, cstr("clicked"), menuClickCB, btn, 0, 0)
+		gtkContainerAdd(box, btn)
+	}
+	var x, y, width int32
+	if rect != nil {
+		x = *(*int32)(unsafe.Add(rect, 0))
+		y = *(*int32)(unsafe.Add(rect, 4))
+		width = *(*int32)(unsafe.Add(rect, 8))
+	}
+	gtkWidgetSetHalign(box, 1) // GTK_ALIGN_START
+	gtkWidgetSetValign(box, 1)
+	gtkWidgetSetMarginStart(box, x)
+	gtkWidgetSetMarginTop(box, y)
+	if width < 160 {
+		width = 160
+	}
+	gtkWidgetSetSizeRequest(box, width, -1)
+	gtkOverlayAddOverlay(w.overlay, box)
+	gtkWidgetShowAll(box)
+	w.menu, w.menuBox = menu, box
+	return 1
+}
+
+// closeMenu removes the option list, if one is open.
+func (w *linuxWebview) closeMenu() {
+	if w.menuBox != 0 && w.overlay != 0 {
+		gtkContainerRemove(w.overlay, w.menuBox)
+		gtkWidgetDestroy(w.menuBox)
+	}
+	w.menu, w.menuBox, w.menuItems, w.menuButtons = 0, 0, nil, nil
+}
+
+func menuClicked(btn uintptr) int32 {
+	for _, w := range liveViews {
+		index, ok := w.menuItems[btn]
+		if !ok {
+			continue
+		}
+		if w.menu != 0 {
+			webkitOptionMenuActivateItem(w.menu, index)
+			webkitOptionMenuClose(w.menu)
+		}
+		w.closeMenu()
+		return 0
+	}
+	return 0
+}
+
 // Focus gives the web view GTK's keyboard focus, so forwarded keys reach the
 // page and its focused form control.
 func (w *linuxWebview) Focus() {
@@ -879,6 +1031,8 @@ func (w *linuxWebview) Destroy() {
 		wlMarshal(0, w.sub, 0, 0, 0, 1)
 		w.sub = 0
 	}
+	delete(viewByPtr, w.view)
+	w.closeMenu()
 	for i, v := range liveViews {
 		if v == w {
 			liveViews = append(liveViews[:i], liveViews[i+1:]...)
