@@ -2858,3 +2858,17 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   written by the command instead of adding an image library. NSIS installs per
   user under `%LOCALAPPDATA%`, so no administrator prompt; the executable keeps
   Go's icon until a `.syso` resource is generated, which is future work.
+
+- **A package always ships SDL3; the end user never installs it.** Linux has no
+  official SDL binary, so its library is the one installed on the build machine
+  (the same rule the framework already needs to run), and a cross-architecture
+  Linux build asks for `--sdl` instead of pretending. Windows and macOS download
+  a pinned SDL release (`3.4.20`, hashes in the source) once per target: the
+  official zips carry `SDL3.dll` per architecture, and the dmg's framework dylib
+  is universal, so one download serves both Mac architectures. The dmg is
+  mounted with `hdiutil` on macOS and read with 7-Zip elsewhere rather than
+  growing an HFS+ reader in the CLI; a machine with neither can still pass
+  `--sdl`. SDL's zlib notice is embedded and copied into every package that
+  bundles the library. Preferring the official release over a Homebrew or distro
+  copy keeps the macOS dylib universal and independent of the build machine's
+  deployment target.

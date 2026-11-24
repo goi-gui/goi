@@ -96,7 +96,9 @@ func TestNSISScriptBundlesSDL(t *testing.T) {
 	script := nsisScript(config{Name: "myapp", ID: "com.example.myapp"}, "/stage", "/out/myapp-setup.exe", "com.example.myapp.ico", true)
 	for _, want := range []string{
 		`File "/stage/SDL3.dll"`,
+		`File "/stage/SDL3-LICENSE.txt"`,
 		`Delete "$INSTDIR\SDL3.dll"`,
+		`Delete "$INSTDIR\SDL3-LICENSE.txt"`,
 	} {
 		if !strings.Contains(script, want) {
 			t.Fatalf("installer script lacks %q:\n%s", want, script)

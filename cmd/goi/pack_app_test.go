@@ -23,12 +23,16 @@ func TestPackDarwin(t *testing.T) {
 		}
 		return os.WriteFile(out, []byte("mach-o"), 0o755)
 	}
+	sdl := filepath.Join(t.TempDir(), "libSDL3.0.dylib")
+	if err := os.WriteFile(sdl, []byte("dylib"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	var signed string
 	runTool := func(path string, args []string, _ []string, _, _ io.Writer) error {
 		signed = path + " " + strings.Join(args, " ")
 		return nil
 	}
-	out, err := packProject(dir, packOptions{OS: "darwin", Arch: "amd64", NoSDL: true}, goRun, runTool, io.Discard, io.Discard)
+	out, err := packProject(dir, packOptions{OS: "darwin", Arch: "amd64", SDL: sdl}, goRun, runTool, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,6 +59,13 @@ func TestPackDarwin(t *testing.T) {
 		if !strings.Contains(string(plist), want) {
 			t.Fatalf("Info.plist lacks %q:\n%s", want, plist)
 		}
+	}
+	if b, err := os.ReadFile(filepath.Join(out, "Contents", "MacOS", "libSDL3.0.dylib")); err != nil || string(b) != "dylib" {
+		t.Fatalf("bundled SDL3 = %q, %v", b, err)
+	}
+	license, err := os.ReadFile(filepath.Join(out, "Contents", "Resources", "SDL3-LICENSE.txt"))
+	if err != nil || !strings.Contains(string(license), "Permission is granted") {
+		t.Fatalf("SDL3 license = %q, %v", license, err)
 	}
 	icns, err := os.ReadFile(filepath.Join(out, "Contents", "Resources", "com.example.myapp.icns"))
 	if err != nil {

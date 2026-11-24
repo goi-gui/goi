@@ -45,6 +45,9 @@ func packWindows(dir string, opts packOptions, cfg config, icon, sdl string, goR
 		if err := copyFile(real, filepath.Join(stage, packSDLFile("windows")), 0o644); err != nil {
 			return "", err
 		}
+		if err := writeSDLLicense(filepath.Join(stage, "SDL3-LICENSE.txt")); err != nil {
+			return "", err
+		}
 	}
 	icoName := cfg.ID + ".ico"
 	if err := writeICO(icon, filepath.Join(stage, icoName)); err != nil {
@@ -94,6 +97,7 @@ func nsisScript(cfg config, stage, out, icoName string, withSDL bool) string {
 	fmt.Fprintf(&b, "  File \"%s\"\n", file(icoName))
 	if withSDL {
 		fmt.Fprintf(&b, "  File \"%s\"\n", file(packSDLFile("windows")))
+		fmt.Fprintf(&b, "  File \"%s\"\n", file("SDL3-LICENSE.txt"))
 	}
 	b.WriteString("  WriteUninstaller \"$INSTDIR\\uninstall.exe\"\n")
 	fmt.Fprintf(&b, "  CreateShortcut \"$DESKTOP\\%s.lnk\" \"$INSTDIR\\%s.exe\" \"\" \"$INSTDIR\\%s\" 0\n", cfg.Name, cfg.Name, icoName)
@@ -114,6 +118,7 @@ func nsisScript(cfg config, stage, out, icoName string, withSDL bool) string {
 	fmt.Fprintf(&b, "  Delete \"$INSTDIR\\%s\"\n", icoName)
 	if withSDL {
 		fmt.Fprintf(&b, "  Delete \"$INSTDIR\\%s\"\n", packSDLFile("windows"))
+		b.WriteString("  Delete \"$INSTDIR\\SDL3-LICENSE.txt\"\n")
 	}
 	b.WriteString("  Delete \"$INSTDIR\\uninstall.exe\"\n")
 	b.WriteString("  RMDir \"$INSTDIR\"\n")

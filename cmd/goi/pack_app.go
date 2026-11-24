@@ -49,6 +49,9 @@ func packDarwin(dir string, opts packOptions, cfg config, icon, sdl string, goRu
 		if err := copyFile(real, filepath.Join(macos, packSDLFile("darwin")), 0o644); err != nil {
 			return "", err
 		}
+		if err := writeSDLLicense(filepath.Join(resources, "SDL3-LICENSE.txt")); err != nil {
+			return "", err
+		}
 	}
 	if err := writeICNS(icon, filepath.Join(resources, cfg.ID+".icns")); err != nil {
 		return "", fmt.Errorf("icon: %w", err)

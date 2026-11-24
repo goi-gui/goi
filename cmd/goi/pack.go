@@ -60,8 +60,9 @@ func newPackCmd(goRun runFunc) *cobra.Command {
 			"  linux    dist/linux-<arch>/<name>-<x86_64|aarch64>.AppImage\n" +
 			"  darwin   dist/darwin-<arch>/<name>.app\n" +
 			"  windows  dist/windows-<arch>/<name>-<arch>-setup.exe\n\n" +
-			"The package holds the binary, the SDL3 runtime found on this machine, and the\n" +
-			"icon and identity from goi.yaml. A Linux AppImage is packed on Linux with\n" +
+			"The package holds the binary, the SDL3 runtime, and the icon and identity from\n" +
+			"goi.yaml. SDL3 is the installed library on Linux and a pinned SDL release on\n" +
+			"Windows and macOS. A Linux AppImage is packed on Linux with\n" +
 			"appimagetool (--appimagetool, GOI_APPIMAGETOOL, PATH, or a pinned download);\n" +
 			"a Windows installer needs NSIS (--makensis, GOI_MAKENSIS or makensis on PATH);\n" +
 			"the .app is assembled anywhere and signed on a Mac.",
@@ -82,7 +83,7 @@ func newPackCmd(goRun runFunc) *cobra.Command {
 	f.StringVar(&opts.OS, "os", runtime.GOOS, "target operating system (linux, darwin, windows)")
 	f.StringVar(&opts.Arch, "arch", runtime.GOARCH, "target architecture (GOARCH)")
 	f.StringVar(&opts.Icon, "icon", "", "icon PNG (default: icon: in goi.yaml, or assets/icon.png)")
-	f.StringVar(&opts.SDL, "sdl", "", "SDL3 library to bundle (default: the runtime installed on this machine)")
+	f.StringVar(&opts.SDL, "sdl", "", "SDL3 library to bundle (default: the installed one on Linux, a pinned SDL release for Windows and macOS)")
 	f.BoolVar(&opts.NoSDL, "no-sdl", false, "do not bundle SDL3; the target system must install it")
 	f.StringVar(&opts.Tool, "appimagetool", "", "appimagetool binary (default: PATH, then a pinned download)")
 	f.StringVar(&opts.Makensis, "makensis", "", "makensis binary for the Windows installer (default: GOI_MAKENSIS, then PATH)")
@@ -98,6 +99,13 @@ func packProject(dir string, opts packOptions, goRun runFunc, runTool packExecFu
 	if opts.Arch == "" {
 		opts.Arch = runtime.GOARCH
 	}
+	switch opts.OS {
+	case "linux", "darwin", "windows":
+	case "js", "wasip1":
+		return "", errors.New("a browser build is not a desktop package; use goi build --os js --arch wasm")
+	default:
+		return "", fmt.Errorf("packaging for %s is not supported; use linux, darwin or windows", opts.OS)
+	}
 	cfg, err := loadConfig(dir)
 	if err != nil {
 		return "", err
@@ -111,7 +119,7 @@ func packProject(dir string, opts packOptions, goRun runFunc, runTool packExecFu
 	if err != nil {
 		return "", err
 	}
-	sdl, err := resolvePackSDL(opts, stderr)
+	sdl, err := resolvePackSDL(opts, stdout)
 	if err != nil {
 		return "", err
 	}
@@ -120,12 +128,9 @@ func packProject(dir string, opts packOptions, goRun runFunc, runTool packExecFu
 		return packLinux(dir, opts, cfg, icon, sdl, goRun, runTool, stdout, stderr)
 	case "darwin":
 		return packDarwin(dir, opts, cfg, icon, sdl, goRun, runTool, stdout, stderr)
-	case "windows":
+	default:
 		return packWindows(dir, opts, cfg, icon, sdl, goRun, runTool, stdout, stderr)
-	case "js", "wasip1":
-		return "", errors.New("a browser build is not a desktop package; use goi build --os js --arch wasm")
 	}
-	return "", fmt.Errorf("packaging for %s is not supported; use linux, darwin or windows", opts.OS)
 }
 
 // appImageArch maps a GOARCH to the architecture name an AppImage uses.
@@ -221,51 +226,6 @@ func checkIconPNG(path string, stderr io.Writer) error {
 	return nil
 }
 
-// resolvePackSDL returns the SDL3 library to bundle into the package. A library
-// of another operating system or architecture would crash the app, so only the
-// host's is used.
-func resolvePackSDL(opts packOptions, stderr io.Writer) (string, error) {
-	if opts.NoSDL {
-		return "", nil
-	}
-	if opts.SDL != "" {
-		p := resolvePath(".", opts.SDL)
-		info, err := os.Stat(p)
-		if err != nil {
-			return "", fmt.Errorf("--sdl %s: %w", opts.SDL, err)
-		}
-		if info.IsDir() {
-			return "", fmt.Errorf("--sdl %s is a directory", opts.SDL)
-		}
-		return p, nil
-	}
-	if runtime.GOOS != opts.OS || runtime.GOARCH != opts.Arch {
-		fmt.Fprintf(stderr, "goi: warning: SDL3 is not bundled for %s/%s; pass --sdl with a target %s (or --no-sdl)\n",
-			opts.OS, opts.Arch, packSDLNames(opts.OS)[0])
-		return "", nil
-	}
-	p := findLibrary(packSDLNames(opts.OS))
-	if p == "" {
-		return "", errors.New("SDL3 was not found; install it (goi doctor shows the package), pass --sdl PATH, or --no-sdl")
-	}
-	return p, nil
-}
-
-// packSDLNames are the library names an OS's dynamic loader tries.
-func packSDLNames(goos string) []string {
-	switch goos {
-	case "windows":
-		return []string{"SDL3.dll"}
-	case "darwin":
-		return []string{"libSDL3.0.dylib", "libSDL3.dylib", "SDL3"}
-	default:
-		return []string{"libSDL3.so.0", "libSDL3.so"}
-	}
-}
-
-// packSDLFile is the name the bundled library takes inside the package.
-func packSDLFile(goos string) string { return packSDLNames(goos)[0] }
-
 // copyFile writes src as dst with perm. It streams, because a binary is not a
 // file to hold twice in memory.
 func copyFile(src, dst string, perm os.FileMode) error {
@@ -342,6 +302,9 @@ func writeAppDir(appDir string, cfg config, binary, icon, sdl string) error {
 			return err
 		}
 		if err := copyFile(real, filepath.Join(binDir, "libSDL3.so.0"), 0o644); err != nil {
+			return err
+		}
+		if err := writeSDLLicense(filepath.Join(appDir, "usr", "share", "licenses", cfg.Name, "SDL3-LICENSE.txt")); err != nil {
 			return err
 		}
 	}

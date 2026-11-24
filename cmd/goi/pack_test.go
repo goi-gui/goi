@@ -116,6 +116,9 @@ func TestWriteAppDir(t *testing.T) {
 	if got, err := os.ReadFile(filepath.Join(appDir, "usr", "bin", "libSDL3.so.0")); err != nil || string(got) != "SDL" {
 		t.Fatalf("SDL3 = %q, %v", got, err)
 	}
+	if got, err := os.ReadFile(filepath.Join(appDir, "usr", "share", "licenses", "myapp", "SDL3-LICENSE.txt")); err != nil || !strings.Contains(string(got), "Permission is granted") {
+		t.Fatalf("SDL3 license = %q, %v", got, err)
+	}
 	if got, err := os.ReadFile(filepath.Join(appDir, "com.example.myapp.png")); err != nil || len(got) == 0 {
 		t.Fatalf("icon = %d bytes, %v", len(got), err)
 	}
