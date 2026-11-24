@@ -119,9 +119,8 @@ func TestWriteAppDir(t *testing.T) {
 	if got, err := os.ReadFile(filepath.Join(appDir, "com.example.myapp.png")); err != nil || len(got) == 0 {
 		t.Fatalf("icon = %d bytes, %v", len(got), err)
 	}
-	target, err := os.Readlink(filepath.Join(appDir, ".DirIcon"))
-	if err != nil || target != "com.example.myapp.png" {
-		t.Fatalf(".DirIcon -> %q, %v", target, err)
+	if info, err := os.Stat(filepath.Join(appDir, ".DirIcon")); err != nil || info.Size() == 0 {
+		t.Fatalf(".DirIcon = %v, %v", info, err)
 	}
 	desktop, err := os.ReadFile(filepath.Join(appDir, "com.example.myapp.desktop"))
 	if err != nil {

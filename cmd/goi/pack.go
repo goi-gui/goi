@@ -296,7 +296,9 @@ func writeAppDir(appDir string, cfg config, binary, icon, sdl string) error {
 	if err := copyFile(icon, filepath.Join(appDir, iconName), 0o644); err != nil {
 		return err
 	}
-	if err := os.Symlink(iconName, filepath.Join(appDir, ".DirIcon")); err != nil {
+	// A copy rather than a symlink, so extracting the image works on a
+	// filesystem without link support.
+	if err := copyFile(icon, filepath.Join(appDir, ".DirIcon"), 0o644); err != nil {
 		return err
 	}
 	desktop := fmt.Sprintf(`[Desktop Entry]
