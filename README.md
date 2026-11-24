@@ -113,6 +113,10 @@ id. Hot reload updates the open window as the file changes; the
   formatting on save; `goifmt` formats from the CLI; `goicheck -layout` catches
   collapsed nodes. A [Zed extension](https://github.com/goi-gui/zed-goi) wires
   the language server into the editor.
+- **Packaging.** [`goi pack`](https://goi.kaanksc.com/guide/pack/) writes a Linux AppImage, a macOS `.app` or a
+  Windows installer from the build, with the `goi.yaml` identity and icon and
+  the SDL3 runtime bundled; `goi doctor` reports the packagers a machine still
+  needs.
 
 ## Requirements
 
@@ -148,7 +152,7 @@ upstream:
 | [Broderick-Westrope/pele-go](https://github.com/Broderick-Westrope/pele-go), [tetratelabs/wazero](https://github.com/tetratelabs/wazero) | Mermaid diagrams in a WebAssembly runtime |
 | [kettek/apng](https://github.com/kettek/apng) | Animated PNG decoding |
 | [ncruces/zenity](https://github.com/ncruces/zenity), [godbus/dbus](https://github.com/godbus/dbus), [gen2brain/beeep](https://github.com/gen2brain/beeep) | Native file dialogs and desktop notifications |
-| [spf13/cobra](https://github.com/spf13/cobra), [charmbracelet/huh](https://github.com/charmbracelet/huh) | The `goi` command and its interactive prompts |
+| [spf13/cobra](https://github.com/spf13/cobra), [charmbracelet/huh](https://github.com/charmbracelet/huh), [charmbracelet/lipgloss](https://github.com/charmbracelet/lipgloss) | The `goi` command, its prompts and the doctor table |
 | [fsnotify/fsnotify](https://github.com/fsnotify/fsnotify) | Hot reload |
 | [ksckaan1/logger](https://github.com/ksckaan1/logger) | Structured logging |
 | [gopkg.in/yaml.v3](https://pkg.go.dev/gopkg.in/yaml.v3) | Reading `goi.yaml` |
