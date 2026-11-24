@@ -93,7 +93,7 @@ func nsisOutFile(script string) (string, bool) {
 }
 
 func TestNSISScriptBundlesSDL(t *testing.T) {
-	script := nsisScript(config{Name: "myapp", ID: "com.example.myapp"}, "/stage", "/out/myapp-setup.exe", "com.example.myapp.ico", true)
+	script := nsisScript(config{Name: "myapp", ID: "com.example.myapp"}, "/out/myapp-setup.exe", "/stage", "com.example.myapp.ico", "", true)
 	for _, want := range []string{
 		`File "/stage/SDL3.dll"`,
 		`File "/stage/SDL3-LICENSE.txt"`,

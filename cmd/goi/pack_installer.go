@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/goi-gui/goi/internal/img"
@@ -53,7 +54,11 @@ func packWindows(dir string, opts packOptions, cfg config, icon, sdl string, goR
 	if err := writeICO(icon, filepath.Join(stage, icoName)); err != nil {
 		return "", fmt.Errorf("icon: %w", err)
 	}
-	out := filepath.Join(dir, "dist", "windows-"+opts.Arch, cfg.Name+"-"+opts.Arch+"-setup.exe")
+	name := cfg.Name + "-" + opts.Arch + "-setup.exe"
+	if opts.Version != "" {
+		name = cfg.Name + "-" + opts.Version + "-" + opts.Arch + "-setup.exe"
+	}
+	out := filepath.Join(dir, "dist", "windows-"+opts.Arch, name)
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 		return "", err
 	}
@@ -64,7 +69,7 @@ func packWindows(dir string, opts packOptions, cfg config, icon, sdl string, goR
 		return "", err
 	}
 	script := filepath.Join(stage, "installer.nsi")
-	if err := os.WriteFile(script, []byte(nsisScript(cfg, stage, absOut, icoName, sdl != "")), 0o644); err != nil {
+	if err := os.WriteFile(script, []byte(nsisScript(cfg, absOut, stage, icoName, opts.Version, sdl != "")), 0o644); err != nil {
 		return "", err
 	}
 	if opts.Keep {
@@ -78,7 +83,7 @@ func packWindows(dir string, opts packOptions, cfg config, icon, sdl string, goR
 
 // nsisScript is a per-user installer: it installs below %LOCALAPPDATA%, so no
 // administrator prompt, and registers an uninstaller in Add or Remove Programs.
-func nsisScript(cfg config, stage, out, icoName string, withSDL bool) string {
+func nsisScript(cfg config, out, stage, icoName, version string, withSDL bool) string {
 	file := func(name string) string { return filepath.ToSlash(filepath.Join(stage, name)) }
 	var b strings.Builder
 	fmt.Fprintf(&b, "Unicode true\n")
@@ -89,6 +94,14 @@ func nsisScript(cfg config, stage, out, icoName string, withSDL bool) string {
 	b.WriteString("RequestExecutionLevel user\n")
 	fmt.Fprintf(&b, "Icon \"%s\"\n", file(icoName))
 	fmt.Fprintf(&b, "UninstallIcon \"%s\"\n", file(icoName))
+	if version != "" {
+		fmt.Fprintf(&b, "VIAddVersionKey \"ProductName\" \"%s\"\n", cfg.Name)
+		fmt.Fprintf(&b, "VIAddVersionKey \"ProductVersion\" \"%s\"\n", version)
+		fmt.Fprintf(&b, "VIAddVersionKey \"FileVersion\" \"%s\"\n", version)
+		if fixed, ok := nsisFileVersion(version); ok {
+			fmt.Fprintf(&b, "VIProductVersion \"%s\"\n", fixed)
+		}
+	}
 	b.WriteString("Page directory\nPage instfiles\nUninstPage uninstConfirm\nUninstPage instfiles\n\n")
 
 	b.WriteString("Section \"Install\"\n")
@@ -107,6 +120,9 @@ func nsisScript(cfg config, stage, out, icoName string, withSDL bool) string {
 	fmt.Fprintf(&b, "  WriteRegStr HKCU \"Software\\%s\" \"InstallDir\" \"$INSTDIR\"\n", cfg.ID)
 	uninstall := "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\" + cfg.ID
 	fmt.Fprintf(&b, "  WriteRegStr HKCU \"%s\" \"DisplayName\" \"%s\"\n", uninstall, cfg.Name)
+	if version != "" {
+		fmt.Fprintf(&b, "  WriteRegStr HKCU \"%s\" \"DisplayVersion\" \"%s\"\n", uninstall, version)
+	}
 	fmt.Fprintf(&b, "  WriteRegStr HKCU \"%s\" \"DisplayIcon\" \"$INSTDIR\\%s\"\n", uninstall, icoName)
 	fmt.Fprintf(&b, "  WriteRegStr HKCU \"%s\" \"UninstallString\" \"$\\\"$INSTDIR\\uninstall.exe$\\\"\"\n", uninstall)
 	fmt.Fprintf(&b, "  WriteRegDWORD HKCU \"%s\" \"NoModify\" 1\n", uninstall)
@@ -130,6 +146,27 @@ func nsisScript(cfg config, stage, out, icoName string, withSDL bool) string {
 	fmt.Fprintf(&b, "  DeleteRegKey HKCU \"%s\"\n", uninstall)
 	b.WriteString("SectionEnd\n")
 	return b.String()
+}
+
+// nsisFileVersion is the four-number form VIProductVersion requires.
+func nsisFileVersion(v string) (string, bool) {
+	parts := strings.Split(v, ".")
+	if len(parts) > 4 {
+		return "", false
+	}
+	nums := make([]string, 4)
+	for i := range nums {
+		nums[i] = "0"
+		if i >= len(parts) {
+			continue
+		}
+		n, err := strconv.Atoi(parts[i])
+		if err != nil || n < 0 || n > 65535 {
+			return "", false
+		}
+		nums[i] = strconv.Itoa(n)
+	}
+	return strings.Join(nums, "."), true
 }
 
 // icoSizes are the representations Windows uses: menus, Explorer, and the large

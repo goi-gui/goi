@@ -107,13 +107,8 @@ func resolvePackSDL(opts packOptions, stdout io.Writer) (string, error) {
 		return p, nil
 	}
 	if opts.OS == "linux" {
-		// A library this machine already has is the one the developer ran the
-		// app against, so it wins when the target matches.
-		if runtime.GOOS == "linux" && runtime.GOARCH == opts.Arch {
-			if p := findLibrary(packSDLNames("linux")); p != "" {
-				return p, nil
-			}
-		}
+		// Always the pinned build for the target architecture: the package must
+		// not depend on what this machine happens to have installed.
 		return downloadLinuxSDL(opts.Arch, stdout)
 	}
 	return downloadSDL(opts.OS, opts.Arch, stdout)

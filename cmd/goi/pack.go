@@ -39,6 +39,7 @@ var appimagetoolAssets = map[string]struct{ asset, sha256 string }{
 // packOptions is everything goi pack reads from the command line.
 type packOptions struct {
 	OS, Arch string
+	Version  string
 	Icon     string
 	SDL      string
 	NoSDL    bool
@@ -61,9 +62,9 @@ func newPackCmd(goRun runFunc) *cobra.Command {
 			"  darwin   dist/darwin-<arch>/<name>.app\n" +
 			"  windows  dist/windows-<arch>/<name>-<arch>-setup.exe\n\n" +
 			"The package holds the binary, the SDL3 runtime, and the icon and identity from\n" +
-			"goi.yaml. SDL3 is the library installed here when it matches the target, and a\n" +
-			"pinned SDL release otherwise (Windows, macOS, or Linux on another\n" +
-			"architecture). A Linux AppImage is packed on Linux with\n" +
+			"goi.yaml. SDL3 is a pinned release for the target, downloaded once, so the\n" +
+			"app never needs it installed. Pass --version to put a version in the file\n" +
+			"name and the package metadata. A Linux AppImage is packed on Linux with\n" +
 			"appimagetool (--appimagetool, GOI_APPIMAGETOOL, PATH, or a pinned download);\n" +
 			"a Windows installer needs NSIS (--makensis, GOI_MAKENSIS or makensis on PATH);\n" +
 			"the .app is assembled anywhere and signed on a Mac.",
@@ -83,8 +84,9 @@ func newPackCmd(goRun runFunc) *cobra.Command {
 	f := cmd.Flags()
 	f.StringVar(&opts.OS, "os", runtime.GOOS, "target operating system (linux, darwin, windows)")
 	f.StringVar(&opts.Arch, "arch", runtime.GOARCH, "target architecture (GOARCH)")
+	f.StringVar(&opts.Version, "version", "", "package version, shown in the file name and the app metadata")
 	f.StringVar(&opts.Icon, "icon", "", "icon PNG (default: icon: in goi.yaml, or assets/icon.png)")
-	f.StringVar(&opts.SDL, "sdl", "", "SDL3 library to bundle (default: the installed one on Linux, a pinned SDL release for Windows and macOS)")
+	f.StringVar(&opts.SDL, "sdl", "", "SDL3 library to bundle (default: a pinned release for the target)")
 	f.BoolVar(&opts.NoSDL, "no-sdl", false, "do not bundle SDL3; the target system must install it")
 	f.StringVar(&opts.Tool, "appimagetool", "", "appimagetool binary (default: PATH, then a pinned download)")
 	f.StringVar(&opts.Makensis, "makensis", "", "makensis binary for the Windows installer (default: GOI_MAKENSIS, then PATH)")
@@ -113,6 +115,10 @@ func packProject(dir string, opts packOptions, goRun runFunc, runTool packExecFu
 	}
 	if err := checkPackIdentity(cfg); err != nil {
 		return "", err
+	}
+	opts.Version = strings.TrimSpace(opts.Version)
+	if !validPackageVersion(opts.Version) {
+		return "", fmt.Errorf("version %q is not a package version; use letters, digits, '.', '_', '+' or '-'", opts.Version)
 	}
 	// Everything a package needs is checked before the compile, so a missing
 	// icon does not cost a build.
@@ -148,6 +154,19 @@ func appImageArch(goarch string) (string, error) {
 	}
 	return "", fmt.Errorf("no AppImage architecture for %s", goarch)
 }
+
+// validPackageVersion accepts the versions a file name and installer can
+// carry. An empty version keeps the old file names and metadata.
+func validPackageVersion(v string) bool {
+	if v == "" {
+		return true
+	}
+	return appSafeVersion.MatchString(v)
+}
+
+// appSafeVersion is a version without spaces, slashes or anything else that
+// would need quoting in a desktop entry, plist or NSIS script.
+var appSafeVersion = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+~-]*$`)
 
 // appSafeName is what a binary, desktop entry and icon may be named. goi build
 // accepts any file name; a package also spells them in desktop, plist or
@@ -263,13 +282,17 @@ func packLinux(dir string, opts packOptions, cfg config, icon, sdl string, goRun
 	if !opts.Keep {
 		defer os.RemoveAll(appDir)
 	}
-	if err := writeAppDir(appDir, cfg, binary, icon, sdl); err != nil {
+	if err := writeAppDir(appDir, cfg, opts.Version, binary, icon, sdl); err != nil {
 		return "", err
 	}
 	if opts.Keep {
 		fmt.Fprintln(stdout, "goi: appdir kept at", appDir)
 	}
-	out := filepath.Join(dir, "dist", "linux-"+opts.Arch, cfg.Name+"-"+imgArch+".AppImage")
+	image := cfg.Name + "-" + imgArch + ".AppImage"
+	if opts.Version != "" {
+		image = cfg.Name + "-" + opts.Version + "-" + imgArch + ".AppImage"
+	}
+	out := filepath.Join(dir, "dist", "linux-"+opts.Arch, image)
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 		return "", err
 	}
@@ -281,6 +304,9 @@ func packLinux(dir string, opts packOptions, cfg config, icon, sdl string, goRun
 	// keeps a machine without FUSE working.
 	env := envWith(os.Environ(), "ARCH", imgArch)
 	env = envWith(env, "APPIMAGE_EXTRACT_AND_RUN", "1")
+	if opts.Version != "" {
+		env = envWith(env, "VERSION", opts.Version)
+	}
 	if err := runTool(tool, []string{"--no-appstream", appDir, out}, env, stdout, stderr); err != nil {
 		return "", fmt.Errorf("appimagetool: %w", err)
 	}
@@ -289,7 +315,7 @@ func packLinux(dir string, opts packOptions, cfg config, icon, sdl string, goRun
 
 // writeAppDir writes the files an AppImage is built from. SDL3 sits next to the
 // binary because the runtime loader looks there first.
-func writeAppDir(appDir string, cfg config, binary, icon, sdl string) error {
+func writeAppDir(appDir string, cfg config, version, binary, icon, sdl string) error {
 	binDir := filepath.Join(appDir, "usr", "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		return err
@@ -326,6 +352,9 @@ Icon=%s
 Terminal=false
 Categories=Utility;
 `, cfg.Name, cfg.Name, cfg.ID)
+	if version != "" {
+		desktop += "X-AppImage-Version=" + version + "\n"
+	}
 	if err := os.WriteFile(filepath.Join(appDir, cfg.ID+".desktop"), []byte(desktop), 0o644); err != nil {
 		return err
 	}

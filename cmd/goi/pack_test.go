@@ -106,7 +106,7 @@ func TestWriteAppDir(t *testing.T) {
 	}
 	appDir := filepath.Join(dir, "AppDir")
 	cfg := config{Name: "myapp", ID: "com.example.myapp"}
-	if err := writeAppDir(appDir, cfg, binary, icon, sdl); err != nil {
+	if err := writeAppDir(appDir, cfg, "", binary, icon, sdl); err != nil {
 		t.Fatal(err)
 	}
 

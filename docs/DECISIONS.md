@@ -2884,3 +2884,18 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   glibc 2.38 floor of those bottles; a machine whose own SDL3 is newer or
   older still uses its library when the target matches, and `--sdl` covers the
   rest.
+
+- **A Linux package always carries the pinned SDL3 download, not the host's
+  library.** Using the build machine's SDL3 made the package depend on that
+  machine: an old distro's library limited what the AppImage could do, and a
+  rolling distro's raised the glibc floor. The pinned bottle is the same
+  library on every machine, the ELF machine check keeps the architecture
+  honest, and the 2.38 glibc floor is documented. `--sdl` remains for a custom
+  build.
+- **`goi pack --version` writes the version where each platform shows it.** The
+  flag is optional so existing pipelines keep their file names; when set, it
+  goes into the file name, the AppImage desktop's `X-AppImage-Version`, the
+  macOS plist (`CFBundleShortVersionString`, numeric part in `CFBundleVersion`),
+  and the installer's version resource plus the uninstall registry's
+  `DisplayVersion`. No `goi.yaml` key duplicates it: a release version is a
+  build-time input, and the package is built from a tag.

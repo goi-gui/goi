@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/goi-gui/goi/internal/img"
 )
@@ -56,7 +57,7 @@ func packDarwin(dir string, opts packOptions, cfg config, icon, sdl string, goRu
 	if err := writeICNS(icon, filepath.Join(resources, cfg.ID+".icns")); err != nil {
 		return "", fmt.Errorf("icon: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(app, "Contents", "Info.plist"), []byte(infoPlist(cfg)), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(app, "Contents", "Info.plist"), []byte(infoPlist(cfg, opts.Version)), 0o644); err != nil {
 		return "", err
 	}
 	if runtime.GOOS == "darwin" {
@@ -72,7 +73,12 @@ func packDarwin(dir string, opts packOptions, cfg config, icon, sdl string, goRu
 }
 
 // infoPlist is the bundle metadata Finder and LaunchServices read.
-func infoPlist(cfg config) string {
+func infoPlist(cfg config, version string) string {
+	short, build := "1.0", "1"
+	if version != "" {
+		short = version
+		build = bundleBuildVersion(version)
+	}
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -92,14 +98,31 @@ func infoPlist(cfg config) string {
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
+	<string>%s</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>%s</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 </dict>
 </plist>
-`, cfg.Name, cfg.Name, cfg.ID, cfg.Name, cfg.ID)
+`, cfg.Name, cfg.Name, cfg.ID, cfg.Name, cfg.ID, short, build)
+}
+
+// bundleBuildVersion is CFBundleVersion: digits and dots only, so a version
+// like 1.2.3-beta keeps its numeric part.
+func bundleBuildVersion(v string) string {
+	var b strings.Builder
+	for _, r := range v {
+		if r >= '0' && r <= '9' || r == '.' {
+			b.WriteRune(r)
+			continue
+		}
+		break
+	}
+	if out := strings.Trim(b.String(), "."); out != "" {
+		return out
+	}
+	return "1"
 }
 
 // icnsSizes are the PNG representations macOS asks for. A type codes one
