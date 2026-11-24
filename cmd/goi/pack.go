@@ -61,8 +61,9 @@ func newPackCmd(goRun runFunc) *cobra.Command {
 			"  darwin   dist/darwin-<arch>/<name>.app\n" +
 			"  windows  dist/windows-<arch>/<name>-<arch>-setup.exe\n\n" +
 			"The package holds the binary, the SDL3 runtime, and the icon and identity from\n" +
-			"goi.yaml. SDL3 is the installed library on Linux and a pinned SDL release on\n" +
-			"Windows and macOS. A Linux AppImage is packed on Linux with\n" +
+			"goi.yaml. SDL3 is the library installed here when it matches the target, and a\n" +
+			"pinned SDL release otherwise (Windows, macOS, or Linux on another\n" +
+			"architecture). A Linux AppImage is packed on Linux with\n" +
 			"appimagetool (--appimagetool, GOI_APPIMAGETOOL, PATH, or a pinned download);\n" +
 			"a Windows installer needs NSIS (--makensis, GOI_MAKENSIS or makensis on PATH);\n" +
 			"the .app is assembled anywhere and signed on a Mac.",
@@ -383,8 +384,21 @@ const maxToolBytes = 64 << 20
 
 // downloadFile writes url to dst only when its SHA-256 matches want.
 func downloadFile(url, dst, want string) error {
+	return downloadFileAuth(url, dst, want, "")
+}
+
+// downloadFileAuth is downloadFile with an optional bearer token, which the
+// container registry in front of the Linux SDL build needs.
+func downloadFileAuth(url, dst, want, bearer string) error {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
+	}
 	client := &http.Client{Timeout: 2 * time.Minute}
-	res, err := client.Get(url)
+	res, err := client.Do(req)
 	if err != nil {
 		return err
 	}

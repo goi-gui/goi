@@ -2872,3 +2872,15 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   bundles the library. Preferring the official release over a Homebrew or distro
   copy keeps the macOS dylib universal and independent of the build machine's
   deployment target.
+
+- **Cross-architecture Linux packages take SDL3 from Homebrew's bottle.** SDL
+  publishes no Linux binary, and a distro package would pin a newer glibc than
+  the distro actually needs. Homebrew builds the same SDL release as the
+  Windows and macOS downloads, publishes it as a content-addressed tarball with
+  a sha256 digest, and its bottle is self-contained apart from libc (Wayland,
+  X11, ALSA and Vulkan are dlopened). The digest doubles as the download check,
+  and the ELF `e_machine` is verified before the library is packaged, so a
+  wrong-architecture download cannot end up in an AppImage. The cost is the
+  glibc 2.38 floor of those bottles; a machine whose own SDL3 is newer or
+  older still uses its library when the target matches, and `--sdl` covers the
+  rest.

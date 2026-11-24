@@ -3,7 +3,11 @@
 package main
 
 import (
+	"archive/tar"
 	"archive/zip"
+	"bytes"
+	"compress/gzip"
+	"encoding/binary"
 	"io"
 	"os"
 	"path/filepath"
@@ -78,12 +82,8 @@ func TestResolvePackSDL(t *testing.T) {
 	if got, err := resolvePackSDL(packOptions{OS: "linux", Arch: runtime.GOARCH, NoSDL: true}, io.Discard); err != nil || got != "" {
 		t.Fatalf("--no-sdl = %q, %v", got, err)
 	}
-	other := "arm64"
-	if runtime.GOARCH == "arm64" {
-		other = "amd64"
-	}
-	if _, err := resolvePackSDL(packOptions{OS: "linux", Arch: other}, io.Discard); err == nil || !strings.Contains(err.Error(), "no official Linux binary") {
-		t.Fatalf("cross Linux error = %v", err)
+	if _, err := resolvePackSDL(packOptions{OS: "linux", Arch: "riscv64"}, io.Discard); err == nil || !strings.Contains(err.Error(), "no SDL3 binary") {
+		t.Fatalf("unsupported Linux arch error = %v", err)
 	}
 	if _, err := resolvePackSDL(packOptions{OS: "windows", Arch: "plan9"}, io.Discard); err == nil || !strings.Contains(err.Error(), "no SDL3 binary") {
 		t.Fatalf("unknown target error = %v", err)
@@ -100,5 +100,59 @@ func TestPackSDLFileNames(t *testing.T) {
 		if got := packSDLFile(goos); got != want {
 			t.Fatalf("packSDLFile(%s) = %q, want %q", goos, got, want)
 		}
+	}
+}
+
+func TestSDLBottlesArePinned(t *testing.T) {
+	for arch, bottle := range sdlBottles {
+		if len(bottle.digest) != 64 {
+			t.Fatalf("%s digest = %q", arch, bottle.digest)
+		}
+	}
+	if sdlBottles["amd64"].machine != 62 || sdlBottles["arm64"].machine != 183 {
+		t.Fatalf("bottle machines = %+v", sdlBottles)
+	}
+}
+
+func TestExtractBottledSDL(t *testing.T) {
+	dir := t.TempDir()
+	archive := filepath.Join(dir, "sdl3.tar.gz")
+	f, err := os.Create(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gz := gzip.NewWriter(f)
+	tw := tar.NewWriter(gz)
+	if err := tw.WriteHeader(&tar.Header{Name: "sdl3/3.4.20/lib/libSDL3.so.0", Typeflag: tar.TypeSymlink, Linkname: "libSDL3.so.0.4.20"}); err != nil {
+		t.Fatal(err)
+	}
+	elf := []byte{0x7f, 'E', 'L', 'F', 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+	binary.LittleEndian.PutUint16(elf[18:20], 183)
+	payload := append(elf, []byte("payload")...)
+	if err := tw.WriteHeader(&tar.Header{Name: "sdl3/3.4.20/lib/libSDL3.so.0.4.20", Typeflag: tar.TypeReg, Mode: 0o644, Size: int64(len(payload))}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(payload); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := extractBottledSDL(archive, 183, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(got); err != nil || !bytes.Equal(b, payload) {
+		t.Fatalf("extracted = %d bytes, %v", len(b), err)
+	}
+	if _, err := extractBottledSDL(archive, 62, dir); err == nil || !strings.Contains(err.Error(), "ELF machine") {
+		t.Fatalf("wrong architecture error = %v", err)
 	}
 }

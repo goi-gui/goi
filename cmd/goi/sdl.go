@@ -3,16 +3,22 @@
 package main
 
 import (
+	"archive/tar"
 	"archive/zip"
+	"compress/gzip"
 	_ "embed"
+	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // sdl3Version is the SDL runtime goi downloads for a package built away from
@@ -67,6 +73,18 @@ var sdlAssets = map[string]sdlAsset{
 	"darwin/arm64": sdlMacOS,
 }
 
+// sdlBottles are the Linux builds of SDL3. SDL publishes no Linux binary, so
+// these are Homebrew's bottles: a tarball of the same release, self-contained
+// apart from libc. The sha256 is the OCI blob digest, so the download is
+// verified against the digest that names it.
+var sdlBottles = map[string]struct {
+	digest  string
+	machine uint16 // ELF e_machine: 62 is x86-64, 183 is AArch64
+}{
+	"amd64": {"21efc3443f4dd34b94506c85d53d2c20bbf206f0779ac458aafa5b8551c28ee6", 62},
+	"arm64": {"5b6cf2966f7e42e8c1a4d7639d6cf4b7a79adf501b2a798f4a49049f6865e799", 183},
+}
+
 //go:embed SDL3-LICENSE.txt
 var sdlLicense []byte
 
@@ -89,14 +107,14 @@ func resolvePackSDL(opts packOptions, stdout io.Writer) (string, error) {
 		return p, nil
 	}
 	if opts.OS == "linux" {
-		if runtime.GOOS != "linux" || runtime.GOARCH != opts.Arch {
-			return "", fmt.Errorf("SDL3 has no official Linux binary; build this package on linux/%s or pass --sdl with its %s (or --no-sdl)",
-				opts.Arch, packSDLFile("linux"))
+		// A library this machine already has is the one the developer ran the
+		// app against, so it wins when the target matches.
+		if runtime.GOOS == "linux" && runtime.GOARCH == opts.Arch {
+			if p := findLibrary(packSDLNames("linux")); p != "" {
+				return p, nil
+			}
 		}
-		if p := findLibrary(packSDLNames("linux")); p != "" {
-			return p, nil
-		}
-		return "", errors.New("SDL3 was not found on this machine; install it (goi doctor shows the package), pass --sdl PATH, or --no-sdl")
+		return downloadLinuxSDL(opts.Arch, stdout)
 	}
 	return downloadSDL(opts.OS, opts.Arch, stdout)
 }
@@ -162,6 +180,144 @@ func downloadSDL(goos, goarch string, stdout io.Writer) (string, error) {
 		return "", err
 	}
 	return lib, nil
+}
+
+// downloadLinuxSDL fetches the Linux build for one architecture. Without a
+// local library it is also what a host-targeted pack uses, so the machine does
+// not have to install SDL at all.
+func downloadLinuxSDL(goarch string, stdout io.Writer) (string, error) {
+	bottle, ok := sdlBottles[goarch]
+	if !ok {
+		return "", fmt.Errorf("no SDL3 binary for linux/%s; pass --sdl PATH (or --no-sdl)", goarch)
+	}
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		cache = os.TempDir()
+	}
+	dir := filepath.Join(cache, "goi", "tools", "sdl3-"+sdl3Version, "linux-"+goarch)
+	lib := filepath.Join(dir, packSDLFile("linux"))
+	if info, err := os.Stat(lib); err == nil && info.Size() > 0 {
+		return lib, nil
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	work, err := os.MkdirTemp("", "goi-sdl-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(work)
+	fmt.Fprintf(stdout, "goi: downloading SDL3 %s for linux/%s\n", sdl3Version, goarch)
+	token, err := ghcrToken()
+	if err != nil {
+		return "", fmt.Errorf("download SDL3 %s: %w (pass --sdl PATH to use a local library)", sdl3Version, err)
+	}
+	archive := filepath.Join(work, "sdl3.tar.gz")
+	url := "https://ghcr.io/v2/homebrew/core/sdl3/blobs/sha256:" + bottle.digest
+	if err := downloadFileAuth(url, archive, bottle.digest, token); err != nil {
+		return "", fmt.Errorf("download SDL3 %s: %w (pass --sdl PATH to use a local library)", sdl3Version, err)
+	}
+	extracted, err := extractBottledSDL(archive, bottle.machine, work)
+	if err != nil {
+		return "", err
+	}
+	tmp := lib + ".tmp"
+	if err := copyFile(extracted, tmp, 0o644); err != nil {
+		return "", err
+	}
+	if err := os.Rename(tmp, lib); err != nil {
+		return "", err
+	}
+	return lib, nil
+}
+
+// ghcrToken asks the container registry for an anonymous pull token.
+func ghcrToken() (string, error) {
+	const tokenURL = "https://ghcr.io/token?service=ghcr.io&scope=repository:homebrew/core/sdl3:pull"
+	client := &http.Client{Timeout: 30 * time.Second}
+	res, err := client.Get(tokenURL)
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("token: %s", res.Status)
+	}
+	var v struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&v); err != nil {
+		return "", err
+	}
+	if v.Token == "" {
+		return "", errors.New("token: empty response")
+	}
+	return v.Token, nil
+}
+
+// extractBottledSDL pulls libSDL3.so.0 out of a Homebrew bottle and checks that
+// it is an ELF library for the target architecture.
+func extractBottledSDL(archive string, machine uint16, work string) (string, error) {
+	f, err := os.Open(archive)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return "", err
+	}
+	defer gz.Close()
+	tr := tar.NewReader(gz)
+	for {
+		h, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", err
+		}
+		if h.Typeflag != tar.TypeReg {
+			continue
+		}
+		base := filepath.Base(h.Name)
+		if base != "libSDL3.so.0" && !strings.HasPrefix(base, "libSDL3.so.0.") {
+			continue
+		}
+		dst := filepath.Join(work, packSDLFile("linux"))
+		out, err := os.Create(dst)
+		if err != nil {
+			return "", err
+		}
+		if _, err := io.Copy(out, tr); err != nil {
+			out.Close()
+			return "", err
+		}
+		if err := out.Close(); err != nil {
+			return "", err
+		}
+		if err := checkELFMachine(dst, machine); err != nil {
+			return "", err
+		}
+		return dst, nil
+	}
+	return "", errors.New("SDL3 bottle has no libSDL3.so.0")
+}
+
+// checkELFMachine rejects a library built for another architecture, which would
+// only fail once the packaged app tries to load it.
+func checkELFMachine(path string, machine uint16) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if len(b) < 20 || b[0] != 0x7f || b[1] != 'E' || b[2] != 'L' || b[3] != 'F' {
+		return errors.New("SDL3 download is not an ELF library")
+	}
+	if got := binary.LittleEndian.Uint16(b[18:20]); got != machine {
+		return fmt.Errorf("SDL3 download is for ELF machine %d, want %d", got, machine)
+	}
+	return nil
 }
 
 // extractSDL pulls the library out of the target's release archive.
