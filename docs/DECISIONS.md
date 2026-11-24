@@ -2829,3 +2829,20 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   the root (the wasm directory stays unrestricted), and a non-loopback `--host`
   prints a warning. Design files and catalogs still reach the page through the
   HMR snapshot, not through a file request.
+
+- **`goi pack` wraps the existing build; it does not build again.** A Linux
+  AppImage is an AppDir (the binary, SDL3, icon, desktop entry, AppRun) handed
+  to appimagetool, so the command calls the same `buildProject` as `goi build`
+  and only assembles the directory. SDL3 goes next to the binary because
+  `sdlLibraryPath` already looks in the executable's directory, which keeps
+  AppRun a three-line script; a `usr/lib` copy would need `LD_LIBRARY_PATH` and
+  a second lookup path. appimagetool itself is not shipped: it is taken from
+  `--appimagetool`, the environment, PATH, or a checksum-pinned download into
+  the user cache, because a stable release with digests exists and requiring a
+  system install would make the command fail on a clean machine. The icon is
+  required instead of defaulting to the goi logo, since a package that ships
+  the framework's logo is worse than an error naming the missing file. Only
+  the host's SDL3 is bundled: a library of another architecture would link but
+  crash at load, so `--arch` across machines warns and expects `--sdl`. The
+  AppImage inherits the build machine's glibc through that library, the usual
+  AppImage constraint; pack on the oldest distribution you support.

@@ -59,6 +59,7 @@ func printDoctorWith(w io.Writer, latest func(context.Context) (string, error)) 
 		sdlCheck(),
 		vulkanCheck(),
 		optionalCheck("ffmpeg", "media playback (or set GOI_FFMPEG)"),
+		optionalCheck("appimagetool", "goi pack (downloaded on first use)"),
 		optionalCheck("git", "module downloads without a proxy"),
 	}
 

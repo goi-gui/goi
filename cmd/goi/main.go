@@ -151,9 +151,11 @@ func yamlScalar(s string) string {
 }
 
 // config is goi.yaml. name, buildFlags and entrypoint are read by the commands;
-// id and assets are for the app and LoadWindow.
+// id and icon are for packaging, assets for LoadWindow.
 type config struct {
 	Name       string   `yaml:"name"`
+	ID         string   `yaml:"id"`
+	Icon       string   `yaml:"icon"`
 	Entrypoint string   `yaml:"entrypoint"`
 	Assets     string   `yaml:"assets"`
 	RunFlags   []string `yaml:"runFlags"`
@@ -182,7 +184,7 @@ func newRootCmd(goCmd commandRunner, goRun runFunc) *cobra.Command {
 	}
 	root.SetOut(os.Stdout)
 	root.SetErr(os.Stderr)
-	root.AddCommand(newInitCmd(goCmd), newRunCmd(goRun), newServeCmd(goRun), newBuildCmd(goRun), newSetupCmd(goRun), newUpdateCmd(goRun), newDoctorCmd(), newVersionCmd())
+	root.AddCommand(newInitCmd(goCmd), newRunCmd(goRun), newServeCmd(goRun), newBuildCmd(goRun), newPackCmd(goRun), newSetupCmd(goRun), newUpdateCmd(goRun), newDoctorCmd(), newVersionCmd())
 	return root
 }
 
