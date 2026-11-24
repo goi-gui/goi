@@ -33,15 +33,6 @@ func TestAppImageArch(t *testing.T) {
 	}
 }
 
-func TestPackAppImageToolIsPinned(t *testing.T) {
-	for _, arch := range []string{"x86_64", "aarch64", "armhf", "i686"} {
-		asset, ok := appimagetoolAssets[arch]
-		if !ok || asset.asset == "" || len(asset.sha256) != 64 {
-			t.Fatalf("%s asset = %+v, want a name and a sha256", arch, asset)
-		}
-	}
-}
-
 func writePackIcon(t *testing.T, path string, w, h int) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

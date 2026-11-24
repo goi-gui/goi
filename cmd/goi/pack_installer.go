@@ -5,9 +5,11 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -19,7 +21,7 @@ import (
 // itself runs on Linux, macOS and Windows, so the installer can be built
 // anywhere the tool is installed.
 func packWindows(dir string, opts packOptions, cfg config, icon, sdl string, goRun runFunc, runTool packExecFunc, stdout, stderr io.Writer) (string, error) {
-	makensis, makensisEnv, err := resolveMakensis(opts.Makensis, stdout)
+	makensis, err := makensisPath(opts.Makensis)
 	if err != nil {
 		return "", err
 	}
@@ -75,8 +77,7 @@ func packWindows(dir string, opts packOptions, cfg config, icon, sdl string, goR
 	if opts.Keep {
 		fmt.Fprintln(stdout, "goi: appdir kept at", stage)
 	}
-	env := append(os.Environ(), makensisEnv...)
-	if err := runTool(makensis, []string{script}, env, stdout, stderr); err != nil {
+	if err := runTool(makensis, []string{script}, os.Environ(), stdout, stderr); err != nil {
 		return "", fmt.Errorf("makensis: %w", err)
 	}
 	return out, nil
@@ -147,6 +148,21 @@ func nsisScript(cfg config, out, stage, icoName, version string, withSDL bool) s
 	fmt.Fprintf(&b, "  DeleteRegKey HKCU \"%s\"\n", uninstall)
 	b.WriteString("SectionEnd\n")
 	return b.String()
+}
+
+// makensisPath finds NSIS on this machine: the flag, the environment, then
+// PATH. goi does not install it; goi doctor shows whether it is there.
+func makensisPath(override string) (string, error) {
+	if override != "" {
+		return override, nil
+	}
+	if p := os.Getenv("GOI_MAKENSIS"); p != "" {
+		return p, nil
+	}
+	if p, err := exec.LookPath("makensis"); err == nil {
+		return p, nil
+	}
+	return "", errors.New("a Windows installer needs NSIS (makensis); install it (apt install nsis, port install nsis, winget install NSIS.NSIS) or pass --makensis")
 }
 
 // nsisFileVersion is the four-number form VIProductVersion requires.

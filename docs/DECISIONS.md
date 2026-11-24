@@ -2919,3 +2919,13 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   `appimagetool`, `NSIS`, `7-Zip` and the SDL3 package cache, which is how a
   reader sees what `goi pack` will fetch before running it. lipgloss was already
   in the module graph through `huh`, so the redesign adds no new dependency.
+
+- **`goi pack` runs the machine's tools; only SDL3 is downloaded.** Shipping a
+  checksum-pinned appimagetool and unpacking NSIS from Debian packages made the
+  command work on a clean machine, but it also moved the toolchain out of the
+  user's package manager and needed an xz decoder, an ar reader and three
+  pinned sources. The packagers are now looked up in `--flag`, the environment
+  and PATH, with the install hint in the error; `goi doctor` reports each one
+  before a pack is attempted. SDL3 stays downloaded because it is a runtime
+  dependency of every package rather than a packager, and because the target
+  architecture often differs from the host.

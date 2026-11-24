@@ -22,20 +22,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// appimagetoolVersion is the release goi downloads when the tool is not on
-// PATH. Its assets are pinned by hash: the tag is fixed, so a file that does
-// not match is broken or has been tampered with.
-const appimagetoolVersion = "1.9.1"
-
-// appimagetoolAssets is the download for each AppImage architecture. The host
-// binary is what runs; the target architecture is passed in ARCH.
-var appimagetoolAssets = map[string]struct{ asset, sha256 string }{
-	"x86_64":  {"appimagetool-x86_64.AppImage", "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0"},
-	"aarch64": {"appimagetool-aarch64.AppImage", "f0837e7448a0c1e4e650a93bb3e85802546e60654ef287576f46c71c126a9158"},
-	"armhf":   {"appimagetool-armhf.AppImage", "42b61cba5495d8aaf418a5c9a015a49b85ad92efabcbd3c341f1540440e4e23d"},
-	"i686":    {"appimagetool-i686.AppImage", "7ad9ff47c203aae0149b18f6df9e3018b2e2f470ea644a0413e3ded39e9e3bdb"},
-}
-
 // packOptions is everything goi pack reads from the command line.
 type packOptions struct {
 	OS, Arch string
@@ -63,11 +49,11 @@ func newPackCmd(goRun runFunc) *cobra.Command {
 			"  windows  dist/windows-<arch>/<name>-<arch>-setup.exe\n\n" +
 			"The package holds the binary, the SDL3 runtime, and the icon and identity from\n" +
 			"goi.yaml. SDL3 is a pinned release for the target, downloaded once, so the\n" +
-			"app never needs it installed. Pass --version to put a version in the file\n" +
-			"name and the package metadata. A Linux AppImage is packed on Linux with\n" +
-			"appimagetool (--appimagetool, GOI_APPIMAGETOOL, PATH, or a pinned download);\n" +
-			"a Windows installer needs NSIS (--makensis, GOI_MAKENSIS or makensis on PATH);\n" +
-			"the .app is assembled anywhere and signed on a Mac.",
+			"app never needs it installed. Other packagers come from this machine: the\n" +
+			"Linux AppImage needs appimagetool (--appimagetool, GOI_APPIMAGETOOL or PATH),\n" +
+			"and a Windows installer needs NSIS (--makensis, GOI_MAKENSIS or makensis on\n" +
+			"PATH). The .app is assembled anywhere and signed on a Mac. goi doctor shows\n" +
+			"which of them are installed.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if opts.OS == "linux" && runtime.GOOS != "linux" {
@@ -88,7 +74,7 @@ func newPackCmd(goRun runFunc) *cobra.Command {
 	f.StringVar(&opts.Icon, "icon", "", "icon PNG (default: icon: in goi.yaml, or assets/icon.png)")
 	f.StringVar(&opts.SDL, "sdl", "", "SDL3 library to bundle (default: a pinned release for the target)")
 	f.BoolVar(&opts.NoSDL, "no-sdl", false, "do not bundle SDL3; the target system must install it")
-	f.StringVar(&opts.Tool, "appimagetool", "", "appimagetool binary (default: PATH, then a pinned download)")
+	f.StringVar(&opts.Tool, "appimagetool", "", "appimagetool binary (default: GOI_APPIMAGETOOL, then PATH)")
 	f.StringVar(&opts.Makensis, "makensis", "", "makensis binary for the Windows installer (default: GOI_MAKENSIS, then PATH)")
 	f.BoolVar(&opts.Keep, "keep-appdir", false, "keep the assembled package directory for inspection")
 	return cmd
@@ -271,7 +257,7 @@ func packLinux(dir string, opts packOptions, cfg config, icon, sdl string, goRun
 	if err != nil {
 		return "", err
 	}
-	tool, err := packToolPath(opts.Tool, stdout)
+	tool, err := packToolPath(opts.Tool)
 	if err != nil {
 		return "", err
 	}
@@ -362,9 +348,9 @@ Categories=Utility;
 	return os.WriteFile(filepath.Join(appDir, "AppRun"), []byte(appRun), 0o755)
 }
 
-// packToolPath finds appimagetool: the flag, the environment, PATH, then the
-// pinned download.
-func packToolPath(override string, stdout io.Writer) (string, error) {
+// packToolPath finds appimagetool on this machine: the flag, the environment,
+// then PATH. goi does not install it; goi doctor shows whether it is there.
+func packToolPath(override string) (string, error) {
 	if override != "" {
 		return override, nil
 	}
@@ -374,39 +360,7 @@ func packToolPath(override string, stdout io.Writer) (string, error) {
 	if p, err := exec.LookPath("appimagetool"); err == nil {
 		return p, nil
 	}
-	return downloadAppimagetool(stdout)
-}
-
-// appimagetoolCachePath is the downloaded copy for a host architecture.
-func appimagetoolCachePath(hostArch string) string {
-	return filepath.Join(toolCacheDir(), "appimagetool-"+appimagetoolVersion+"-"+hostArch+".AppImage")
-}
-
-// downloadAppimagetool fetches and verifies the pinned release once, and keeps
-// it in the user cache for later packs.
-func downloadAppimagetool(stdout io.Writer) (string, error) {
-	hostArch, err := appImageArch(runtime.GOARCH)
-	if err != nil {
-		return "", fmt.Errorf("appimagetool is not on PATH and goi has no download for %s; pass --appimagetool", runtime.GOARCH)
-	}
-	asset, ok := appimagetoolAssets[hostArch]
-	if !ok {
-		return "", fmt.Errorf("appimagetool is not on PATH and goi has no download for %s; pass --appimagetool", hostArch)
-	}
-	tools := filepath.Dir(appimagetoolCachePath(hostArch))
-	path := appimagetoolCachePath(hostArch)
-	if sum, err := fileSHA256(path); err == nil && strings.EqualFold(sum, asset.sha256) {
-		return path, nil
-	}
-	if err := os.MkdirAll(tools, 0o755); err != nil {
-		return "", err
-	}
-	fmt.Fprintln(stdout, "goi: downloading appimagetool", appimagetoolVersion)
-	url := "https://github.com/AppImage/appimagetool/releases/download/" + appimagetoolVersion + "/" + asset.asset
-	if err := downloadFile(url, path, asset.sha256); err != nil {
-		return "", fmt.Errorf("download appimagetool %s: %w (install it and pass --appimagetool)", appimagetoolVersion, err)
-	}
-	return path, nil
+	return "", errors.New("a Linux AppImage needs appimagetool; install it (https://github.com/AppImage/appimagetool) or pass --appimagetool")
 }
 
 // maxToolBytes caps the tool download. The real asset is about 15 MB.
@@ -465,20 +419,6 @@ func downloadFileAuth(url, dst, want, bearer string) error {
 		return err
 	}
 	return os.Rename(tmp, dst)
-}
-
-// fileSHA256 is the hash of one file, used to reuse a cached download.
-func fileSHA256(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	sum := sha256.New()
-	if _, err := io.Copy(sum, f); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(sum.Sum(nil)), nil
 }
 
 // execPackTool runs an external packager for real.

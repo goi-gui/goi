@@ -168,6 +168,15 @@ func downloadSDL(goos, goarch string, stdout io.Writer) (string, error) {
 	return lib, nil
 }
 
+// toolCacheDir is where goi keeps what it downloads: the SDL3 runtimes.
+func toolCacheDir() string {
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		cache = os.TempDir()
+	}
+	return filepath.Join(cache, "goi", "tools")
+}
+
 // sdlCachePath is where the pinned runtime for one target is kept. The macOS
 // dylib is universal, so both architectures share one copy.
 func sdlCachePath(goos, goarch string) string {
@@ -405,4 +414,10 @@ func writeSDLLicense(path string) error {
 		return err
 	}
 	return os.WriteFile(path, sdlLicense, 0o644)
+}
+
+// fileExists reports a regular file, used by goi doctor to see a cached runtime.
+func fileExists(name string) bool {
+	info, err := os.Stat(name)
+	return err == nil && !info.IsDir()
 }

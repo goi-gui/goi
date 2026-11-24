@@ -111,7 +111,7 @@ func printDoctorTable(w io.Writer, rows []doctorCheck) {
 	footer := r.NewStyle().Foreground(doctorMuted)
 	fmt.Fprintln(w, footer.Render("required: Go, SDL3 and a GPU backend (Vulkan on Linux/Windows, Metal on macOS)"))
 	fmt.Fprintln(w, footer.Render("missing a tool? goi setup installs goi, goipls and goifmt"))
-	fmt.Fprintln(w, footer.Render("goi pack downloads appimagetool, NSIS and SDL3 on first use"))
+	fmt.Fprintln(w, footer.Render("goi pack downloads SDL3; appimagetool and NSIS come from this machine"))
 }
 
 func doctorStatusStyle(r *lipgloss.Renderer, status string) lipgloss.Style {
@@ -129,7 +129,7 @@ func doctorStatusStyle(r *lipgloss.Renderer, status string) lipgloss.Style {
 	}
 }
 
-// appImagePackCheck reports the AppImage packer, which goi downloads.
+// appImagePackCheck reports the AppImage packer goi pack runs from this machine.
 func appImagePackCheck() doctorCheck {
 	if runtime.GOOS != "linux" {
 		return doctorCheck{Name: "appimagetool", Status: "n/a", Detail: "AppImage target needs Linux"}
@@ -137,24 +137,15 @@ func appImagePackCheck() doctorCheck {
 	if p, err := exec.LookPath("appimagetool"); err == nil {
 		return doctorCheck{Name: "appimagetool", Status: "ok", Detail: p}
 	}
-	if arch, err := appImageArch(runtime.GOARCH); err == nil && fileExists(appimagetoolCachePath(arch)) {
-		return doctorCheck{Name: "appimagetool", Status: "cached", Detail: "downloaded for goi pack"}
-	}
-	return doctorCheck{Name: "appimagetool", Status: "download", Detail: "installs on the first goi pack"}
+	return doctorCheck{Name: "appimagetool", Status: "missing", Detail: "needed for a Linux AppImage (or pass --appimagetool)"}
 }
 
-// nsisCheck reports the Windows installer compiler, downloaded where goi can.
+// nsisCheck reports the Windows installer compiler goi pack runs.
 func nsisCheck() doctorCheck {
 	if p, err := exec.LookPath("makensis"); err == nil {
 		return doctorCheck{Name: "NSIS", Status: "ok", Detail: p}
 	}
-	if _, _, ok := cachedNSIS(); ok {
-		return doctorCheck{Name: "NSIS", Status: "cached", Detail: "downloaded for goi pack"}
-	}
-	if runtime.GOOS == "linux" || runtime.GOOS == "windows" {
-		return doctorCheck{Name: "NSIS", Status: "download", Detail: "installs on the first goi pack"}
-	}
-	return doctorCheck{Name: "NSIS", Status: "missing", Detail: "needed for a Windows installer (port install nsis)"}
+	return doctorCheck{Name: "NSIS", Status: "missing", Detail: "needed for a Windows installer (apt/port/winget install nsis, or --makensis)"}
 }
 
 // sevenZipCheck reports the unpacker for SDL's macOS disk image away from a Mac.
