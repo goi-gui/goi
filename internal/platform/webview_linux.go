@@ -5,8 +5,10 @@ package platform
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/Zyko0/go-sdl3/sdl"
@@ -101,6 +103,16 @@ var (
 	webkitOptionMenuItemGetLabel   func(uintptr) *byte
 	webkitOptionMenuItemGroupLabel func(uintptr) int32
 	webkitOptionMenuItemEnabled    func(uintptr) int32
+	webkitContextMenuGetItems      func(uintptr) unsafe.Pointer
+	webkitContextMenuItemTitle     func(uintptr) unsafe.Pointer
+	webkitContextMenuItemSeparator func(uintptr) int32
+	webkitContextMenuItemSubmenu   func(uintptr) unsafe.Pointer
+	webkitContextMenuItemStock     func(uintptr) int32
+	webkitStopLoading              func(uintptr)
+	webkitExecuteEditingCommand    func(uintptr, *byte)
+	webkitHitTestLinkURI           func(uintptr) *byte
+	webkitGetInspector             func(uintptr) uintptr
+	webkitInspectorShow            func(uintptr)
 	jscValueToString               func(uintptr) unsafe.Pointer
 
 	wlMarshalArrayFlags   func(uintptr, uint32, uintptr, uint32, uint32, uintptr) uintptr
@@ -248,6 +260,16 @@ func initLinuxWebview() error {
 	purego.RegisterLibFunc(&webkitOptionMenuItemGetLabel, webkitLib, "webkit_option_menu_item_get_label")
 	purego.RegisterLibFunc(&webkitOptionMenuItemGroupLabel, webkitLib, "webkit_option_menu_item_is_group_label")
 	purego.RegisterLibFunc(&webkitOptionMenuItemEnabled, webkitLib, "webkit_option_menu_item_is_enabled")
+	purego.RegisterLibFunc(&webkitContextMenuGetItems, webkitLib, "webkit_context_menu_get_items")
+	purego.RegisterLibFunc(&webkitContextMenuItemTitle, webkitLib, "webkit_context_menu_item_get_title")
+	purego.RegisterLibFunc(&webkitContextMenuItemSeparator, webkitLib, "webkit_context_menu_item_is_separator")
+	purego.RegisterLibFunc(&webkitContextMenuItemSubmenu, webkitLib, "webkit_context_menu_item_get_submenu")
+	purego.RegisterLibFunc(&webkitContextMenuItemStock, webkitLib, "webkit_context_menu_item_get_stock_action")
+	purego.RegisterLibFunc(&webkitStopLoading, webkitLib, "webkit_web_view_stop_loading")
+	purego.RegisterLibFunc(&webkitExecuteEditingCommand, webkitLib, "webkit_web_view_execute_editing_command")
+	purego.RegisterLibFunc(&webkitHitTestLinkURI, webkitLib, "webkit_hit_test_result_get_link_uri")
+	purego.RegisterLibFunc(&webkitGetInspector, webkitLib, "webkit_web_view_get_inspector")
+	purego.RegisterLibFunc(&webkitInspectorShow, webkitLib, "webkit_web_inspector_show")
 	purego.RegisterLibFunc(&jscValueToString, jscLib, "jsc_value_to_string")
 
 	purego.RegisterLibFunc(&wlMarshalArrayFlags, waylandLib, "wl_proxy_marshal_array_flags")
@@ -434,11 +456,20 @@ type linuxWebview struct {
 	focusID            uintptr
 	focusCallback      uintptr
 
-	overlay     uintptr
-	menu        uintptr
-	menuBox     uintptr
-	menuItems   map[uintptr]uint32
-	menuButtons []uintptr
+	overlay    uintptr
+	menu       uintptr
+	menuBox    uintptr
+	menuItems  map[uintptr]uint32
+	menuAt     int64
+	ctxItems   map[uintptr]ctxAction
+	ctxButtons []uintptr
+}
+
+// ctxAction is one context-menu row: the GAction to run and its parameter.
+type ctxAction struct {
+	view  uintptr
+	stock int32
+	link  string
 }
 
 var (
@@ -584,6 +615,7 @@ func NewWebview(parent *Window, onMessage func(string), onFocus func()) (Webview
 	initMenuCallbacks()
 	viewByPtr[w.view] = w
 	gSignalConnectData(w.view, cstr("show-option-menu"), optionMenuCB, w.view, 0, 0)
+	gSignalConnectData(w.view, cstr("context-menu"), contextMenuCB, w.view, 0, 0)
 	gSignalConnectData(w.view, cstr("button-press-event"), closeMenuCB, w.view, 0, 0)
 	gtkWidgetShowAll(win)
 	gtkWindowSetFocus(win, w.view)
@@ -906,7 +938,7 @@ func (w *linuxWebview) ForwardPointer(kind PointerKind, x, y float64, button int
 // viewByPtr finds a view from a GTK widget, for the signals that carry one.
 var viewByPtr = map[uintptr]*linuxWebview{}
 
-var optionMenuCB, closeMenuCB, menuClickCB uintptr
+var optionMenuCB, closeMenuCB, menuClickCB, contextMenuCB, contextClickCB uintptr
 
 func initMenuCallbacks() {
 	if optionMenuCB != 0 {
@@ -917,6 +949,11 @@ func initMenuCallbacks() {
 	})
 	closeMenuCB = purego.NewCallback(func(view, _ uintptr, _ uintptr) int32 {
 		if w := viewByPtr[view]; w != nil && w.menuBox != 0 {
+			// A press that just opened this menu (a right-click) must not
+			// close it; only a later press outside does.
+			if time.Since(time.Unix(0, w.menuAt)) < 250*time.Millisecond {
+				return 0
+			}
 			if w.menu != 0 {
 				webkitOptionMenuClose(w.menu)
 			}
@@ -927,6 +964,137 @@ func initMenuCallbacks() {
 	menuClickCB = purego.NewCallback(func(btn, _ uintptr, _ uintptr) int32 {
 		return menuClicked(btn)
 	})
+	contextMenuCB = purego.NewCallback(func(view, menu uintptr, event unsafe.Pointer, hit uintptr) int32 {
+		return showContextMenu(view, menu, event, hit)
+	})
+	contextClickCB = purego.NewCallback(func(btn, _ uintptr, _ uintptr) int32 {
+		return contextClicked(btn)
+	})
+}
+
+// showContextMenu draws the page's context menu at the click. WebKit's own
+// menu is a separate toplevel, which cannot be positioned here.
+func showContextMenu(view, menu uintptr, event unsafe.Pointer, hit uintptr) int32 {
+	w := viewByPtr[view]
+	if w == nil || w.overlay == 0 || menu == 0 {
+		return 0
+	}
+	w.closeMenu()
+	link := ""
+	if hit != 0 {
+		if uri := webkitHitTestLinkURI(hit); uri != nil {
+			link = goString(unsafe.Pointer(uri))
+		}
+	}
+	box := gtkBoxNew(1, 0)
+	w.ctxItems = map[uintptr]ctxAction{}
+	list := webkitContextMenuGetItems(menu)
+	for node := list; node != nil; {
+		data := *(*unsafe.Pointer)(node)                                        // GList.data
+		next := *(*unsafe.Pointer)(unsafe.Add(node, unsafe.Sizeof(uintptr(0)))) // GList.next
+		node = next
+		item := uintptr(data)
+		if item == 0 || webkitContextMenuItemSeparator(item) != 0 || webkitContextMenuItemSubmenu(item) != nil {
+			continue
+		}
+		stock := webkitContextMenuItemStock(item)
+		if !contextActionRuns(stock) {
+			continue
+		}
+		title := webkitContextMenuItemTitle(item)
+		label := strings.ReplaceAll(goString(title), "_", "")
+		btn := gtkButtonNewWithLabel(cstr(label))
+		w.ctxItems[btn] = ctxAction{view: view, stock: stock, link: link}
+		w.ctxButtons = append(w.ctxButtons, btn)
+		gSignalConnectData(btn, cstr("clicked"), contextClickCB, btn, 0, 0)
+		gtkContainerAdd(box, btn)
+	}
+	if len(w.ctxItems) == 0 {
+		gtkWidgetDestroy(box)
+		return 0
+	}
+	var x, y int32
+	if event != nil {
+		x = int32(*(*float64)(unsafe.Add(event, 24)))
+		y = int32(*(*float64)(unsafe.Add(event, 32)))
+	}
+	gtkWidgetSetHalign(box, 1)
+	gtkWidgetSetValign(box, 1)
+	gtkWidgetSetMarginStart(box, x)
+	gtkWidgetSetMarginTop(box, y)
+	gtkWidgetSetSizeRequest(box, 220, -1)
+	gtkOverlayAddOverlay(w.overlay, box)
+	gtkWidgetShowAll(box)
+	w.menuBox, w.menuAt = box, time.Now().UnixNano()
+	return 1
+}
+
+// contextActionRuns reports whether this backend can perform the action. The
+// rows it cannot run are left out rather than shown dead.
+//
+// shortcut: spelling suggestions, font menus and media actions are not mapped;
+// add their stock action here when a design needs them.
+func contextActionRuns(stock int32) bool {
+	switch stock {
+	case 1, 2, 4, 10, 11, 12, 13, 14, 15, 16, 17, 18, 27, 28, 29, 31: // open/copy link, history, edit, style, inspect
+		return true
+	}
+	return false
+}
+
+// runContextAction performs one stock context-menu action through WebKit.
+func (a ctxAction) run() {
+	switch a.stock {
+	case 1, 2: // open link, open link in a new window: this view has no windows
+		if a.link != "" {
+			webkitWebViewLoadURI(a.view, cstr(a.link))
+		}
+	case 4:
+		if a.link != "" {
+			sdlSetClipboard(a.link)
+		}
+	case 10:
+		webkitWebViewGoBack(a.view)
+	case 11:
+		webkitWebViewGoForward(a.view)
+	case 12:
+		webkitStopLoading(a.view)
+	case 13:
+		webkitWebViewReload(a.view)
+	case 14:
+		webkitExecuteEditingCommand(a.view, cstr("Copy"))
+	case 15:
+		webkitExecuteEditingCommand(a.view, cstr("Cut"))
+	case 16:
+		webkitExecuteEditingCommand(a.view, cstr("Paste"))
+	case 17:
+		webkitExecuteEditingCommand(a.view, cstr("Delete"))
+	case 18:
+		webkitExecuteEditingCommand(a.view, cstr("SelectAll"))
+	case 27:
+		webkitExecuteEditingCommand(a.view, cstr("Bold"))
+	case 28:
+		webkitExecuteEditingCommand(a.view, cstr("Italic"))
+	case 29:
+		webkitExecuteEditingCommand(a.view, cstr("Underline"))
+	case 31:
+		if i := webkitGetInspector(a.view); i != 0 {
+			webkitInspectorShow(i)
+		}
+	}
+}
+
+func contextClicked(btn uintptr) int32 {
+	for _, w := range liveViews {
+		item, ok := w.ctxItems[btn]
+		if !ok {
+			continue
+		}
+		item.run()
+		w.closeMenu()
+		return 0
+	}
+	return 0
 }
 
 // showOptionMenu draws a select's options inside the window at the rectangle
@@ -954,7 +1122,6 @@ func showOptionMenu(view, menu uintptr, rect unsafe.Pointer) int32 {
 			gtkWidgetSetSensitive(btn, 0)
 		}
 		w.menuItems[btn] = i
-		w.menuButtons = append(w.menuButtons, btn)
 		gSignalConnectData(btn, cstr("clicked"), menuClickCB, btn, 0, 0)
 		gtkContainerAdd(box, btn)
 	}
@@ -974,7 +1141,7 @@ func showOptionMenu(view, menu uintptr, rect unsafe.Pointer) int32 {
 	gtkWidgetSetSizeRequest(box, width, -1)
 	gtkOverlayAddOverlay(w.overlay, box)
 	gtkWidgetShowAll(box)
-	w.menu, w.menuBox = menu, box
+	w.menu, w.menuBox, w.menuAt = menu, box, time.Now().UnixNano()
 	return 1
 }
 
@@ -984,7 +1151,7 @@ func (w *linuxWebview) closeMenu() {
 		gtkContainerRemove(w.overlay, w.menuBox)
 		gtkWidgetDestroy(w.menuBox)
 	}
-	w.menu, w.menuBox, w.menuItems, w.menuButtons = 0, 0, nil, nil
+	w.menu, w.menuBox, w.menuItems, w.ctxItems, w.ctxButtons = 0, 0, nil, nil, nil
 }
 
 func menuClicked(btn uintptr) int32 {
