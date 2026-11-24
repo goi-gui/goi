@@ -179,6 +179,9 @@ func TestPackProject(t *testing.T) {
 	if got := envValue(gotEnv, "APPIMAGE_EXTRACT_AND_RUN"); got != "1" {
 		t.Fatalf("APPIMAGE_EXTRACT_AND_RUN = %q, want 1", got)
 	}
+	if info, err := os.Stat(appDir); err != nil || info.Mode().Perm() != 0o755 {
+		t.Fatalf("AppDir mode = %v, %v; want 0755", info.Mode().Perm(), err)
+	}
 	if _, err := os.Stat(filepath.Join(appDir, "usr", "bin", "myapp")); err != nil {
 		t.Fatalf("AppDir binary missing: %v", err)
 	}

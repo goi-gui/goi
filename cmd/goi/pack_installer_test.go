@@ -52,6 +52,9 @@ func TestPackWindows(t *testing.T) {
 		t.Fatalf("out = %q, want %q", out, want)
 	}
 	stage := filepath.Dir(scriptPath)
+	if info, err := os.Stat(stage); err != nil || info.Mode().Perm() != 0o755 {
+		t.Fatalf("stage mode = %v, %v; want 0755", info.Mode().Perm(), err)
+	}
 	if b, err := os.ReadFile(filepath.Join(stage, "myapp.exe")); err != nil || string(b) != "PE" {
 		t.Fatalf("staged exe = %q, %v", b, err)
 	}

@@ -265,7 +265,7 @@ func packLinux(dir string, opts packOptions, cfg config, icon, sdl string, goRun
 	if err != nil {
 		return "", err
 	}
-	appDir, err := os.MkdirTemp("", "goi-pack-*")
+	appDir, err := packTempDir()
 	if err != nil {
 		return "", err
 	}
@@ -297,6 +297,21 @@ func packLinux(dir string, opts packOptions, cfg config, icon, sdl string, goRun
 		return "", fmt.Errorf("appimagetool: %w", err)
 	}
 	return out, nil
+}
+
+// packTempDir makes the staging directory. MkdirTemp creates it 0700, which
+// appimagetool refuses: another user has to be able to read and execute the
+// AppDir. The package inside stays 0755/0644.
+func packTempDir() (string, error) {
+	dir, err := os.MkdirTemp("", "goi-pack-*")
+	if err != nil {
+		return "", err
+	}
+	if err := os.Chmod(dir, 0o755); err != nil {
+		os.RemoveAll(dir)
+		return "", err
+	}
+	return dir, nil
 }
 
 // writeAppDir writes the files an AppImage is built from. SDL3 sits next to the

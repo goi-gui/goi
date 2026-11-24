@@ -29,7 +29,7 @@ func packWindows(dir string, opts packOptions, cfg config, icon, sdl string, goR
 	if err != nil {
 		return "", err
 	}
-	stage, err := os.MkdirTemp("", "goi-pack-*")
+	stage, err := packTempDir()
 	if err != nil {
 		return "", err
 	}
