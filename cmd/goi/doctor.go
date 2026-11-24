@@ -16,9 +16,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 )
 
@@ -58,20 +58,124 @@ func printDoctorWith(w io.Writer, latest func(context.Context) (string, error)) 
 		installedCheck("goifmt", goPath),
 		sdlCheck(),
 		vulkanCheck(),
+		appImagePackCheck(),
+		nsisCheck(),
+		sevenZipCheck(),
+		sdlPackCheck(),
 		optionalCheck("ffmpeg", "media playback (or set GOI_FFMPEG)"),
-		optionalCheck("appimagetool", "goi pack (downloaded on first use)"),
 		optionalCheck("git", "module downloads without a proxy"),
 	}
+	printDoctorTable(w, rows)
+}
 
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "COMPONENT\tSTATUS\tDETAIL")
+// Doctor colors are adaptive so the table reads in a light or dark terminal.
+var (
+	doctorAccent = lipgloss.AdaptiveColor{Light: "#5A32A3", Dark: "#C9A9FF"}
+	doctorMuted  = lipgloss.AdaptiveColor{Light: "#6C6C6C", Dark: "#8E8E8E"}
+	doctorOK     = lipgloss.AdaptiveColor{Light: "#1A7F37", Dark: "#5BD68A"}
+	doctorWarn   = lipgloss.AdaptiveColor{Light: "#9A6700", Dark: "#E7C05C"}
+	doctorBad    = lipgloss.AdaptiveColor{Light: "#B42318", Dark: "#FF8A80"}
+	doctorInfo   = lipgloss.AdaptiveColor{Light: "#0B6BCB", Dark: "#7CC4FF"}
+)
+
+// printDoctorTable renders the report: a rounded table with colored statuses,
+// which is the part a terminal shows at a glance.
+func printDoctorTable(w io.Writer, rows []doctorCheck) {
+	r := lipgloss.NewRenderer(w)
+	nameW, statusW, detailW := len("COMPONENT"), len("STATUS"), len("DETAIL")
 	for _, row := range rows {
-		fmt.Fprintf(tw, "%s\t%s\t%s\n", row.Name, row.Status, row.Detail)
+		nameW = max(nameW, len(row.Name))
+		statusW = max(statusW, len(row.Status))
+		detailW = max(detailW, len(row.Detail))
 	}
-	tw.Flush()
+	header := r.NewStyle().Bold(true).Foreground(doctorMuted).
+		Render(fmt.Sprintf("%-*s  %-*s  %s", nameW, "COMPONENT", statusW, "STATUS", "DETAIL"))
+	rule := r.NewStyle().Foreground(doctorMuted).
+		Render(strings.Repeat("─", nameW+statusW+detailW+4))
+	lines := []string{header, rule}
+	for _, row := range rows {
+		status := doctorStatusStyle(r, row.Status).Render(fmt.Sprintf("%-*s", statusW, row.Status))
+		lines = append(lines, fmt.Sprintf("%-*s  %s  %s", nameW, row.Name, status, row.Detail))
+	}
+	table := r.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(doctorAccent).
+		Padding(0, 1).
+		Render(strings.Join(lines, "\n"))
+
+	fmt.Fprintln(w, r.NewStyle().Bold(true).Foreground(doctorAccent).Render("goi doctor"))
+	fmt.Fprintln(w, r.NewStyle().Foreground(doctorMuted).Render("build, runtime and packaging requirements"))
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "required: Go, SDL3 and a GPU backend (Vulkan on Linux/Windows, Metal on macOS)")
-	fmt.Fprintln(w, "missing a tool? goi setup installs goi, goipls and goifmt")
+	fmt.Fprintln(w, table)
+	fmt.Fprintln(w)
+	footer := r.NewStyle().Foreground(doctorMuted)
+	fmt.Fprintln(w, footer.Render("required: Go, SDL3 and a GPU backend (Vulkan on Linux/Windows, Metal on macOS)"))
+	fmt.Fprintln(w, footer.Render("missing a tool? goi setup installs goi, goipls and goifmt"))
+	fmt.Fprintln(w, footer.Render("goi pack downloads appimagetool, NSIS and SDL3 on first use"))
+}
+
+func doctorStatusStyle(r *lipgloss.Renderer, status string) lipgloss.Style {
+	switch status {
+	case "ok", "cached":
+		return r.NewStyle().Foreground(doctorOK)
+	case "download":
+		return r.NewStyle().Foreground(doctorInfo)
+	case "available":
+		return r.NewStyle().Foreground(doctorWarn)
+	case "missing":
+		return r.NewStyle().Foreground(doctorBad)
+	default:
+		return r.NewStyle().Foreground(doctorMuted)
+	}
+}
+
+// appImagePackCheck reports the AppImage packer, which goi downloads.
+func appImagePackCheck() doctorCheck {
+	if runtime.GOOS != "linux" {
+		return doctorCheck{Name: "appimagetool", Status: "n/a", Detail: "AppImage target needs Linux"}
+	}
+	if p, err := exec.LookPath("appimagetool"); err == nil {
+		return doctorCheck{Name: "appimagetool", Status: "ok", Detail: p}
+	}
+	if arch, err := appImageArch(runtime.GOARCH); err == nil && fileExists(appimagetoolCachePath(arch)) {
+		return doctorCheck{Name: "appimagetool", Status: "cached", Detail: "downloaded for goi pack"}
+	}
+	return doctorCheck{Name: "appimagetool", Status: "download", Detail: "installs on the first goi pack"}
+}
+
+// nsisCheck reports the Windows installer compiler, downloaded where goi can.
+func nsisCheck() doctorCheck {
+	if p, err := exec.LookPath("makensis"); err == nil {
+		return doctorCheck{Name: "NSIS", Status: "ok", Detail: p}
+	}
+	if _, _, ok := cachedNSIS(); ok {
+		return doctorCheck{Name: "NSIS", Status: "cached", Detail: "downloaded for goi pack"}
+	}
+	if runtime.GOOS == "linux" || runtime.GOOS == "windows" {
+		return doctorCheck{Name: "NSIS", Status: "download", Detail: "installs on the first goi pack"}
+	}
+	return doctorCheck{Name: "NSIS", Status: "missing", Detail: "needed for a Windows installer (port install nsis)"}
+}
+
+// sevenZipCheck reports the unpacker for SDL's macOS disk image away from a Mac.
+func sevenZipCheck() doctorCheck {
+	if runtime.GOOS == "darwin" {
+		return doctorCheck{Name: "7-Zip", Status: "n/a", Detail: "hdiutil reads the macOS disk image"}
+	}
+	for _, name := range []string{"7z", "7zz", "7za"} {
+		if p, err := exec.LookPath(name); err == nil {
+			return doctorCheck{Name: "7-Zip", Status: "ok", Detail: p}
+		}
+	}
+	return doctorCheck{Name: "7-Zip", Status: "optional", Detail: "unpacks the macOS SDL3 dmg on this host"}
+}
+
+// sdlPackCheck reports the SDL3 build a package ships.
+func sdlPackCheck() doctorCheck {
+	if fileExists(sdlCachePath(runtime.GOOS, runtime.GOARCH)) {
+		return doctorCheck{Name: "SDL3 packages", Status: "cached", Detail: "v" + sdl3Version + " for " + runtime.GOOS + "/" + runtime.GOARCH}
+	}
+	return doctorCheck{Name: "SDL3 packages", Status: "download", Detail: "v" + sdl3Version + ", installs on the first goi pack"}
 }
 
 const releasesURL = "https://api.github.com/repos/goi-gui/goi/releases/latest"

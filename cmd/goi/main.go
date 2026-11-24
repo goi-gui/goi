@@ -129,9 +129,10 @@ type initOptions struct {
 // configSource writes goi.yaml. The name and id lead because they name the app;
 // buildFlags, assets and entrypoint follow the settings they belong to.
 func configSource(o initOptions) string {
-	return "# Application name and id, used by goi build and packaging.\n" +
+	return "# Application name, id and icon, used by goi build and packaging.\n" +
 		"name: " + yamlScalar(o.Name) + "\n" +
-		"id: " + yamlScalar(o.ID) + "\n\n" +
+		"id: " + yamlScalar(o.ID) + "\n" +
+		"icon: " + yamlScalar(filepath.ToSlash(filepath.Join(o.Assets, "icon.png"))) + "\n\n" +
 		"# Build tags passed to goi run. nofakecgo and CGO_ENABLED=0 are always\n" +
 		"# used; all turns on every optional feature.\n" +
 		"runFlags: [all]\n\n" +
@@ -346,7 +347,7 @@ func initProject(dir string, opts initOptions, goRun commandRunner) error {
 		opts.Assets = "assets"
 	}
 	if !opts.Overwrite {
-		for _, name := range []string{"go.mod", filepath.Join("cmd", "main.go"), "goi.yaml", filepath.Join(opts.Assets, "ui", "Main.goi"), filepath.Join(opts.Assets, "images", "goi.svg")} {
+		for _, name := range []string{"go.mod", filepath.Join("cmd", "main.go"), "goi.yaml", filepath.Join(opts.Assets, "ui", "Main.goi"), filepath.Join(opts.Assets, "images", "goi.svg"), filepath.Join(opts.Assets, "icon.png")} {
 			if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
 				return fmt.Errorf("%s already exists", name)
 			} else if !errors.Is(err, os.ErrNotExist) {
@@ -378,6 +379,7 @@ func initProject(dir string, opts initOptions, goRun commandRunner) error {
 		"goi.yaml":                      configSource(opts),
 		filepath.Join(opts.Assets, "ui", "Main.goi"):    designSource,
 		filepath.Join(opts.Assets, "images", "goi.svg"): logoSVG,
+		filepath.Join(opts.Assets, "icon.png"):          string(initIconPNG),
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
 			return err

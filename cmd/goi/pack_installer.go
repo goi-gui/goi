@@ -19,7 +19,7 @@ import (
 // itself runs on Linux, macOS and Windows, so the installer can be built
 // anywhere the tool is installed.
 func packWindows(dir string, opts packOptions, cfg config, icon, sdl string, goRun runFunc, runTool packExecFunc, stdout, stderr io.Writer) (string, error) {
-	makensis, err := makensisPath(opts.Makensis)
+	makensis, makensisEnv, err := resolveMakensis(opts.Makensis, stdout)
 	if err != nil {
 		return "", err
 	}
@@ -75,7 +75,8 @@ func packWindows(dir string, opts packOptions, cfg config, icon, sdl string, goR
 	if opts.Keep {
 		fmt.Fprintln(stdout, "goi: appdir kept at", stage)
 	}
-	if err := runTool(makensis, []string{script}, os.Environ(), stdout, stderr); err != nil {
+	env := append(os.Environ(), makensisEnv...)
+	if err := runTool(makensis, []string{script}, env, stdout, stderr); err != nil {
 		return "", fmt.Errorf("makensis: %w", err)
 	}
 	return out, nil

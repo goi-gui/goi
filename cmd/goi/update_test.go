@@ -77,7 +77,7 @@ func assertCalls(t *testing.T, got, want [][]string) {
 func TestDoctorReportsEveryComponent(t *testing.T) {
 	var out strings.Builder
 	printDoctorWith(&out, func(context.Context) (string, error) { return "v0.0.0", nil })
-	for _, want := range []string{"COMPONENT", "Update", "OS", "Go", "CGO", "goi", "goipls", "goifmt", "SDL3", "Vulkan", "ffmpeg", "git"} {
+	for _, want := range []string{"COMPONENT", "Update", "OS", "Go", "CGO", "goi", "goipls", "goifmt", "SDL3", "Vulkan", "appimagetool", "NSIS", "7-Zip", "SDL3 packages", "ffmpeg", "git"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("doctor output lacks %q:\n%s", want, out.String())
 		}

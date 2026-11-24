@@ -136,17 +136,8 @@ func downloadSDL(goos, goarch string, stdout io.Writer) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("no SDL3 binary for %s/%s; pass --sdl PATH (or --no-sdl)", goos, goarch)
 	}
-	cache, err := os.UserCacheDir()
-	if err != nil {
-		cache = os.TempDir()
-	}
-	// The macOS dylib is universal, so both architectures share one copy.
-	archDir := goarch
-	if goos == "darwin" {
-		archDir = "universal"
-	}
-	dir := filepath.Join(cache, "goi", "tools", "sdl3-"+sdl3Version, goos+"-"+archDir)
-	lib := filepath.Join(dir, packSDLFile(goos))
+	lib := sdlCachePath(goos, goarch)
+	dir := filepath.Dir(lib)
 	if info, err := os.Stat(lib); err == nil && info.Size() > 0 {
 		return lib, nil
 	}
@@ -177,6 +168,16 @@ func downloadSDL(goos, goarch string, stdout io.Writer) (string, error) {
 	return lib, nil
 }
 
+// sdlCachePath is where the pinned runtime for one target is kept. The macOS
+// dylib is universal, so both architectures share one copy.
+func sdlCachePath(goos, goarch string) string {
+	archDir := goarch
+	if goos == "darwin" {
+		archDir = "universal"
+	}
+	return filepath.Join(toolCacheDir(), "sdl3-"+sdl3Version, goos+"-"+archDir, packSDLFile(goos))
+}
+
 // downloadLinuxSDL fetches the Linux build for one architecture. Without a
 // local library it is also what a host-targeted pack uses, so the machine does
 // not have to install SDL at all.
@@ -185,12 +186,8 @@ func downloadLinuxSDL(goarch string, stdout io.Writer) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("no SDL3 binary for linux/%s; pass --sdl PATH (or --no-sdl)", goarch)
 	}
-	cache, err := os.UserCacheDir()
-	if err != nil {
-		cache = os.TempDir()
-	}
-	dir := filepath.Join(cache, "goi", "tools", "sdl3-"+sdl3Version, "linux-"+goarch)
-	lib := filepath.Join(dir, packSDLFile("linux"))
+	lib := sdlCachePath("linux", goarch)
+	dir := filepath.Dir(lib)
 	if info, err := os.Stat(lib); err == nil && info.Size() > 0 {
 		return lib, nil
 	}

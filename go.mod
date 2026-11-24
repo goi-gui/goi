@@ -7,6 +7,7 @@ require (
 	github.com/Zyko0/go-sdl3 v0.1.4
 	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/charmbracelet/huh v1.0.0
+	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/ebitengine/purego v0.11.3
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/gen2brain/beeep v0.12.0
@@ -20,6 +21,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef
+	github.com/ulikunitz/xz v0.5.17
 	github.com/yuin/goldmark v1.8.7
 	golang.org/x/image v0.48.0
 	golang.org/x/text v0.44.0
@@ -39,7 +41,6 @@ require (
 	github.com/charmbracelet/bubbles v1.0.0 // indirect
 	github.com/charmbracelet/bubbletea v1.3.10 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
-	github.com/charmbracelet/lipgloss v1.1.0 // indirect
 	github.com/charmbracelet/x/ansi v0.11.10 // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.15 // indirect
 	github.com/charmbracelet/x/exp/strings v0.1.0 // indirect

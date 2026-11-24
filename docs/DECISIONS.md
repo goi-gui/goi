@@ -2899,3 +2899,23 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   and the installer's version resource plus the uninstall registry's
   `DisplayVersion`. No `goi.yaml` key duplicates it: a release version is a
   build-time input, and the package is built from a tag.
+
+- **`goi init` writes the icon it packs.** The scaffold now writes
+  `assets/icon.png` from the icon embedded in the CLI (`cmd/goi/init-icon.png`,
+  an 8-bit conversion of the repository's icon) and points `icon:` at it, so a
+  fresh project can run `goi pack` with no setup. The alternative — a missing
+  icon error on the first pack — was worse than one 25 KB file per project.
+  `goi pack` still accepts `--icon` and the old asset names.
+- **`goi pack` downloads NSIS on the hosts where a prebuilt copy exists.** The
+  Debian packages give Linux a working `makensis` (with `NSISDIR` pointing at
+  the unpacked data) and the portable Windows zip does the same on Windows; the
+  user does not install NSIS there. macOS has no prebuilt copy that does not
+  drag in MacPorts libraries, so it keeps the install hint. The `ar` reader and
+  the xz decoder (`github.com/ulikunitz/xz`) are only for pulling `data.tar.xz`
+  out of the .debs; the Windows path uses the standard library zip reader.
+- **`goi doctor` is a lipgloss table.** The plain tabwriter report became a
+  rounded box with adaptive colors: green for ready, cyan for "installs on
+  first use", red for missing, muted for informational. It now also reports
+  `appimagetool`, `NSIS`, `7-Zip` and the SDL3 package cache, which is how a
+  reader sees what `goi pack` will fetch before running it. lipgloss was already
+  in the module graph through `huh`, so the redesign adds no new dependency.

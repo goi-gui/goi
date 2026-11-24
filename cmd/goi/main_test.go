@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"os"
@@ -50,6 +51,13 @@ func TestInitProjectWritesTheScaffold(t *testing.T) {
 	if !strings.Contains(string(logo), "<svg") || !strings.Contains(string(logo), "GOI logo") {
 		t.Fatalf("logo is not the hello example mark:\n%s", logo)
 	}
+	icon, err := os.ReadFile(filepath.Join(dir, "assets", "icon.png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(icon, []byte("\x89PNG\r\n\x1a\n")) {
+		t.Fatalf("icon is not a PNG: % x", icon[:8])
+	}
 	cfg, err := loadConfig(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -64,7 +72,7 @@ func TestInitProjectWritesTheScaffold(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"name: myapp", "id: com.example.myapp", "runFlags: [all]", "buildFlags: [auto]", "assets: assets", "entrypoint: cmd"} {
+	for _, want := range []string{"name: myapp", "id: com.example.myapp", "icon: assets/icon.png", "runFlags: [all]", "buildFlags: [auto]", "assets: assets", "entrypoint: cmd"} {
 		if !strings.Contains(string(raw), want) {
 			t.Errorf("goi.yaml lacks %q:\n%s", want, raw)
 		}

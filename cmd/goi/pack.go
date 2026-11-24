@@ -271,6 +271,10 @@ func packLinux(dir string, opts packOptions, cfg config, icon, sdl string, goRun
 	if err != nil {
 		return "", err
 	}
+	tool, err := packToolPath(opts.Tool, stdout)
+	if err != nil {
+		return "", err
+	}
 	binary, err := buildProject(dir, "linux", opts.Arch, goRun, stdout, stderr)
 	if err != nil {
 		return "", err
@@ -294,10 +298,6 @@ func packLinux(dir string, opts packOptions, cfg config, icon, sdl string, goRun
 	}
 	out := filepath.Join(dir, "dist", "linux-"+opts.Arch, image)
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
-		return "", err
-	}
-	tool, err := packToolPath(opts.Tool, stdout)
-	if err != nil {
 		return "", err
 	}
 	// 1.9.x reads the architecture from ARCH, and the extract-and-run mode
@@ -377,6 +377,11 @@ func packToolPath(override string, stdout io.Writer) (string, error) {
 	return downloadAppimagetool(stdout)
 }
 
+// appimagetoolCachePath is the downloaded copy for a host architecture.
+func appimagetoolCachePath(hostArch string) string {
+	return filepath.Join(toolCacheDir(), "appimagetool-"+appimagetoolVersion+"-"+hostArch+".AppImage")
+}
+
 // downloadAppimagetool fetches and verifies the pinned release once, and keeps
 // it in the user cache for later packs.
 func downloadAppimagetool(stdout io.Writer) (string, error) {
@@ -388,12 +393,8 @@ func downloadAppimagetool(stdout io.Writer) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("appimagetool is not on PATH and goi has no download for %s; pass --appimagetool", hostArch)
 	}
-	cache, err := os.UserCacheDir()
-	if err != nil {
-		cache = os.TempDir()
-	}
-	tools := filepath.Join(cache, "goi", "tools")
-	path := filepath.Join(tools, "appimagetool-"+appimagetoolVersion+"-"+hostArch+".AppImage")
+	tools := filepath.Dir(appimagetoolCachePath(hostArch))
+	path := appimagetoolCachePath(hostArch)
 	if sum, err := fileSHA256(path); err == nil && strings.EqualFold(sum, asset.sha256) {
 		return path, nil
 	}
@@ -478,20 +479,6 @@ func fileSHA256(path string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(sum.Sum(nil)), nil
-}
-
-// makensisPath finds NSIS: the flag, the environment, then PATH.
-func makensisPath(override string) (string, error) {
-	if override != "" {
-		return override, nil
-	}
-	if p := os.Getenv("GOI_MAKENSIS"); p != "" {
-		return p, nil
-	}
-	if p, err := exec.LookPath("makensis"); err == nil {
-		return p, nil
-	}
-	return "", errors.New("goi pack needs NSIS (makensis) for a Windows installer; install it (apt install nsis, brew install nsis, winget install NSIS.NSIS) or pass --makensis")
 }
 
 // execPackTool runs an external packager for real.
