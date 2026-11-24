@@ -2846,3 +2846,15 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   crash at load, so `--arch` across machines warns and expects `--sdl`. The
   AppImage inherits the build machine's glibc through that library, the usual
   AppImage constraint; pack on the oldest distribution you support.
+
+- **`goi pack` is cross-platform by packaging for each OS natively.** One
+  command dispatches on `--os`: a Linux AppImage, a macOS `.app`, a Windows NSIS
+  installer. The `.app` is plain files and is assembled on any host (only the
+  ad-hoc `codesign` needs a Mac); the Windows installer needs `makensis`, which
+  itself runs on all three hosts, so cross-building works. The AppImage stays
+  Linux-only because appimagetool is a Linux binary — the command says so rather
+  than writing an image it cannot test. Icons are one PNG in `goi.yaml`; `.icns`
+  (PNG payloads in a container) and `.ico` (32-bit bitmaps with an AND mask) are
+  written by the command instead of adding an image library. NSIS installs per
+  user under `%LOCALAPPDATA%`, so no administrator prompt; the executable keeps
+  Go's icon until a `.syso` resource is generated, which is future work.

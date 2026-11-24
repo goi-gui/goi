@@ -42,28 +42,33 @@ type packOptions struct {
 	Icon     string
 	SDL      string
 	NoSDL    bool
-	Tool     string
+	Tool     string // appimagetool
+	Makensis string
 	Keep     bool
 }
 
-// packToolFunc runs appimagetool. It is a value so a test can record the
-// invocation instead of packing a real image.
-type packToolFunc func(path string, args, env []string, stdout, stderr io.Writer) error
+// packExecFunc runs an external packager: appimagetool, codesign or makensis.
+// It is a value so a test can record the invocation instead of running it.
+type packExecFunc func(path string, args, env []string, stdout, stderr io.Writer) error
 
 func newPackCmd(goRun runFunc) *cobra.Command {
 	opts := packOptions{}
 	cmd := &cobra.Command{
 		Use:   "pack",
-		Short: "package the built app as an AppImage",
-		Long: "Build the app for Linux and write dist/linux-<arch>/<name>-<arch>.AppImage.\n\n" +
-			"The AppDir holds the binary, the SDL3 runtime found on this machine, the icon from\n" +
-			"goi.yaml (or assets/icon.png) and a desktop entry naming the id. appimagetool comes\n" +
-			"from --appimagetool, GOI_APPIMAGETOOL, PATH, or a pinned download on first use.\n\n" +
-			"macOS .app bundles and Windows installers are not implemented yet.",
+		Short: "package the built app for its operating system",
+		Long: "Build the app and write a package for --os (the host by default):\n\n" +
+			"  linux    dist/linux-<arch>/<name>-<x86_64|aarch64>.AppImage\n" +
+			"  darwin   dist/darwin-<arch>/<name>.app\n" +
+			"  windows  dist/windows-<arch>/<name>-<arch>-setup.exe\n\n" +
+			"The package holds the binary, the SDL3 runtime found on this machine, and the\n" +
+			"icon and identity from goi.yaml. A Linux AppImage is packed on Linux with\n" +
+			"appimagetool (--appimagetool, GOI_APPIMAGETOOL, PATH, or a pinned download);\n" +
+			"a Windows installer needs NSIS (--makensis, GOI_MAKENSIS or makensis on PATH);\n" +
+			"the .app is assembled anywhere and signed on a Mac.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if runtime.GOOS != "linux" {
-				return errors.New("goi pack builds a Linux AppImage and has to run on Linux")
+			if opts.OS == "linux" && runtime.GOOS != "linux" {
+				return errors.New("a Linux AppImage needs a Linux host: appimagetool is a Linux binary; run goi pack on Linux or in a container")
 			}
 			out, err := packProject(".", opts, goRun, execPackTool, cmd.OutOrStdout(), cmd.ErrOrStderr())
 			if err != nil {
@@ -74,30 +79,24 @@ func newPackCmd(goRun runFunc) *cobra.Command {
 		},
 	}
 	f := cmd.Flags()
-	f.StringVar(&opts.OS, "os", runtime.GOOS, "target operating system")
+	f.StringVar(&opts.OS, "os", runtime.GOOS, "target operating system (linux, darwin, windows)")
 	f.StringVar(&opts.Arch, "arch", runtime.GOARCH, "target architecture (GOARCH)")
 	f.StringVar(&opts.Icon, "icon", "", "icon PNG (default: icon: in goi.yaml, or assets/icon.png)")
-	f.StringVar(&opts.SDL, "sdl", "", "libSDL3 to bundle (default: the runtime installed on this machine)")
+	f.StringVar(&opts.SDL, "sdl", "", "SDL3 library to bundle (default: the runtime installed on this machine)")
 	f.BoolVar(&opts.NoSDL, "no-sdl", false, "do not bundle SDL3; the target system must install it")
 	f.StringVar(&opts.Tool, "appimagetool", "", "appimagetool binary (default: PATH, then a pinned download)")
-	f.BoolVar(&opts.Keep, "keep-appdir", false, "keep the assembled AppDir for inspection")
+	f.StringVar(&opts.Makensis, "makensis", "", "makensis binary for the Windows installer (default: GOI_MAKENSIS, then PATH)")
+	f.BoolVar(&opts.Keep, "keep-appdir", false, "keep the assembled package directory for inspection")
 	return cmd
 }
 
-// packProject builds one AppImage and returns its path.
-func packProject(dir string, opts packOptions, goRun runFunc, runTool packToolFunc, stdout, stderr io.Writer) (string, error) {
+// packProject builds one package and returns its path.
+func packProject(dir string, opts packOptions, goRun runFunc, runTool packExecFunc, stdout, stderr io.Writer) (string, error) {
 	if opts.OS == "" {
 		opts.OS = runtime.GOOS
 	}
 	if opts.Arch == "" {
 		opts.Arch = runtime.GOARCH
-	}
-	if opts.OS != "linux" {
-		return "", fmt.Errorf("packaging for %s is not implemented yet; goi pack builds a Linux AppImage", opts.OS)
-	}
-	imgArch, err := appImageArch(opts.Arch)
-	if err != nil {
-		return "", err
 	}
 	cfg, err := loadConfig(dir)
 	if err != nil {
@@ -112,7 +111,183 @@ func packProject(dir string, opts packOptions, goRun runFunc, runTool packToolFu
 	if err != nil {
 		return "", err
 	}
-	sdl, err := packSDL(opts, stderr)
+	sdl, err := resolvePackSDL(opts, stderr)
+	if err != nil {
+		return "", err
+	}
+	switch opts.OS {
+	case "linux":
+		return packLinux(dir, opts, cfg, icon, sdl, goRun, runTool, stdout, stderr)
+	case "darwin":
+		return packDarwin(dir, opts, cfg, icon, sdl, goRun, runTool, stdout, stderr)
+	case "windows":
+		return packWindows(dir, opts, cfg, icon, sdl, goRun, runTool, stdout, stderr)
+	case "js", "wasip1":
+		return "", errors.New("a browser build is not a desktop package; use goi build --os js --arch wasm")
+	}
+	return "", fmt.Errorf("packaging for %s is not supported; use linux, darwin or windows", opts.OS)
+}
+
+// appImageArch maps a GOARCH to the architecture name an AppImage uses.
+func appImageArch(goarch string) (string, error) {
+	switch goarch {
+	case "amd64":
+		return "x86_64", nil
+	case "arm64":
+		return "aarch64", nil
+	case "arm":
+		return "armhf", nil
+	case "386":
+		return "i686", nil
+	}
+	return "", fmt.Errorf("no AppImage architecture for %s", goarch)
+}
+
+// appSafeName is what a binary, desktop entry and icon may be named. goi build
+// accepts any file name; a package also spells them in desktop, plist or
+// installer files, which have no quoting of their own.
+var appSafeName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// checkPackIdentity validates the names a package is built around.
+func checkPackIdentity(cfg config) error {
+	if cfg.Name == "" {
+		return errors.New("goi.yaml has no name; add name: myapp")
+	}
+	if !appSafeName.MatchString(cfg.Name) {
+		return fmt.Errorf("goi.yaml name %q is not a package name; use letters, digits, '.', '_' or '-'", cfg.Name)
+	}
+	if cfg.ID == "" {
+		return errors.New("goi.yaml has no id; add id: com.example.myapp")
+	}
+	if !appSafeName.MatchString(cfg.ID) {
+		return fmt.Errorf("goi.yaml id %q is not a reverse-DNS name; use letters, digits, '.', '_' or '-'", cfg.ID)
+	}
+	return nil
+}
+
+// resolvePackIcon finds the PNG a package shows in a menu. An explicit flag or
+// goi.yaml entry wins; otherwise the usual asset names are tried.
+func resolvePackIcon(dir string, cfg config, flag string, stderr io.Writer) (string, error) {
+	explicit := flag
+	if explicit == "" {
+		explicit = cfg.Icon
+	}
+	if explicit != "" {
+		p := resolvePath(dir, explicit)
+		if err := checkIconPNG(p, stderr); err != nil {
+			return "", fmt.Errorf("icon %s: %w", explicit, err)
+		}
+		return p, nil
+	}
+	assets := resolvePath(dir, cfg.Assets)
+	for _, p := range []string{
+		filepath.Join(assets, "icon.png"),
+		filepath.Join(assets, "images", "icon.png"),
+		filepath.Join(assets, "images", cfg.Name+".png"),
+	} {
+		if info, err := os.Stat(p); err != nil || info.IsDir() {
+			continue
+		}
+		if err := checkIconPNG(p, stderr); err != nil {
+			return "", fmt.Errorf("icon %s: %w", p, err)
+		}
+		return p, nil
+	}
+	return "", errors.New("no icon found; add icon: assets/icon.png to goi.yaml (a 256x256 PNG)")
+}
+
+// checkIconPNG reads the header and size of an icon, so the packager is not the
+// first to say the file is not an image.
+func checkIconPNG(path string, stderr io.Writer) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	var sig [8]byte
+	if _, err := io.ReadFull(f, sig[:]); err != nil || string(sig[:]) != "\x89PNG\r\n\x1a\n" {
+		return errors.New("not a PNG file")
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	c, _, err := image.DecodeConfig(f)
+	if err != nil {
+		return err
+	}
+	if c.Width < 256 || c.Height < 256 {
+		fmt.Fprintf(stderr, "goi: warning: icon %s is %dx%d; 256x256 or larger looks best\n", filepath.Base(path), c.Width, c.Height)
+	}
+	return nil
+}
+
+// resolvePackSDL returns the SDL3 library to bundle into the package. A library
+// of another operating system or architecture would crash the app, so only the
+// host's is used.
+func resolvePackSDL(opts packOptions, stderr io.Writer) (string, error) {
+	if opts.NoSDL {
+		return "", nil
+	}
+	if opts.SDL != "" {
+		p := resolvePath(".", opts.SDL)
+		info, err := os.Stat(p)
+		if err != nil {
+			return "", fmt.Errorf("--sdl %s: %w", opts.SDL, err)
+		}
+		if info.IsDir() {
+			return "", fmt.Errorf("--sdl %s is a directory", opts.SDL)
+		}
+		return p, nil
+	}
+	if runtime.GOOS != opts.OS || runtime.GOARCH != opts.Arch {
+		fmt.Fprintf(stderr, "goi: warning: SDL3 is not bundled for %s/%s; pass --sdl with a target %s (or --no-sdl)\n",
+			opts.OS, opts.Arch, packSDLNames(opts.OS)[0])
+		return "", nil
+	}
+	p := findLibrary(packSDLNames(opts.OS))
+	if p == "" {
+		return "", errors.New("SDL3 was not found; install it (goi doctor shows the package), pass --sdl PATH, or --no-sdl")
+	}
+	return p, nil
+}
+
+// packSDLNames are the library names an OS's dynamic loader tries.
+func packSDLNames(goos string) []string {
+	switch goos {
+	case "windows":
+		return []string{"SDL3.dll"}
+	case "darwin":
+		return []string{"libSDL3.0.dylib", "libSDL3.dylib", "SDL3"}
+	default:
+		return []string{"libSDL3.so.0", "libSDL3.so"}
+	}
+}
+
+// packSDLFile is the name the bundled library takes inside the package.
+func packSDLFile(goos string) string { return packSDLNames(goos)[0] }
+
+// copyFile writes src as dst with perm. It streams, because a binary is not a
+// file to hold twice in memory.
+func copyFile(src, dst string, perm os.FileMode) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
+}
+
+// packLinux builds the binary and packs it into an AppImage.
+func packLinux(dir string, opts packOptions, cfg config, icon, sdl string, goRun runFunc, runTool packExecFunc, stdout, stderr io.Writer) (string, error) {
+	imgArch, err := appImageArch(opts.Arch)
 	if err != nil {
 		return "", err
 	}
@@ -149,128 +324,6 @@ func packProject(dir string, opts packOptions, goRun runFunc, runTool packToolFu
 		return "", fmt.Errorf("appimagetool: %w", err)
 	}
 	return out, nil
-}
-
-// appImageArch maps a GOARCH to the architecture name an AppImage uses.
-func appImageArch(goarch string) (string, error) {
-	switch goarch {
-	case "amd64":
-		return "x86_64", nil
-	case "arm64":
-		return "aarch64", nil
-	case "arm":
-		return "armhf", nil
-	case "386":
-		return "i686", nil
-	}
-	return "", fmt.Errorf("no AppImage architecture for %s", goarch)
-}
-
-// appSafeName is what a binary, desktop entry and icon may be named. goi build
-// accepts any file name; a package also spells them in a desktop file, which
-// has no quoting of its own.
-var appSafeName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
-
-// checkPackIdentity validates the names an AppDir is built around.
-func checkPackIdentity(cfg config) error {
-	if cfg.Name == "" {
-		return errors.New("goi.yaml has no name; add name: myapp")
-	}
-	if !appSafeName.MatchString(cfg.Name) {
-		return fmt.Errorf("goi.yaml name %q is not a package name; use letters, digits, '.', '_' or '-'", cfg.Name)
-	}
-	if cfg.ID == "" {
-		return errors.New("goi.yaml has no id; add id: com.example.myapp")
-	}
-	if !appSafeName.MatchString(cfg.ID) {
-		return fmt.Errorf("goi.yaml id %q is not a reverse-DNS name; use letters, digits, '.', '_' or '-'", cfg.ID)
-	}
-	return nil
-}
-
-// resolvePackIcon finds the PNG an AppImage shows in a desktop menu. An explicit
-// flag or goi.yaml entry wins; otherwise the usual asset names are tried.
-func resolvePackIcon(dir string, cfg config, flag string, stderr io.Writer) (string, error) {
-	explicit := flag
-	if explicit == "" {
-		explicit = cfg.Icon
-	}
-	if explicit != "" {
-		p := resolvePath(dir, explicit)
-		if err := checkIconPNG(p, stderr); err != nil {
-			return "", fmt.Errorf("icon %s: %w", explicit, err)
-		}
-		return p, nil
-	}
-	assets := resolvePath(dir, cfg.Assets)
-	for _, p := range []string{
-		filepath.Join(assets, "icon.png"),
-		filepath.Join(assets, "images", "icon.png"),
-		filepath.Join(assets, "images", cfg.Name+".png"),
-	} {
-		if info, err := os.Stat(p); err != nil || info.IsDir() {
-			continue
-		}
-		if err := checkIconPNG(p, stderr); err != nil {
-			return "", fmt.Errorf("icon %s: %w", p, err)
-		}
-		return p, nil
-	}
-	return "", errors.New("no icon found; add icon: assets/icon.png to goi.yaml (a 256x256 PNG)")
-}
-
-// checkIconPNG reads the header and size of an icon, so appimagetool is not the
-// first to say the file is not an image.
-func checkIconPNG(path string, stderr io.Writer) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	var sig [8]byte
-	if _, err := io.ReadFull(f, sig[:]); err != nil || string(sig[:]) != "\x89PNG\r\n\x1a\n" {
-		return errors.New("not a PNG file")
-	}
-	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
-	c, _, err := image.DecodeConfig(f)
-	if err != nil {
-		return err
-	}
-	if c.Width < 256 || c.Height < 256 {
-		fmt.Fprintf(stderr, "goi: warning: icon %s is %dx%d; 256x256 or larger looks best\n", filepath.Base(path), c.Width, c.Height)
-	}
-	return nil
-}
-
-// packSDL returns the SDL3 shared library to bundle. A library of another
-// architecture would crash the packaged app, so only the host's is copied.
-func packSDL(opts packOptions, stderr io.Writer) (string, error) {
-	if opts.NoSDL {
-		return "", nil
-	}
-	if opts.SDL != "" {
-		p := resolvePath(".", opts.SDL)
-		info, err := os.Stat(p)
-		if err != nil {
-			return "", fmt.Errorf("--sdl %s: %w", opts.SDL, err)
-		}
-		if info.IsDir() {
-			return "", fmt.Errorf("--sdl %s is a directory", opts.SDL)
-		}
-		return p, nil
-	}
-	if runtime.GOOS != "linux" || opts.Arch != runtime.GOARCH {
-		fmt.Fprintf(stderr, "goi: warning: SDL3 is not bundled for %s/%s; pass --sdl with a target libSDL3.so.0 (or --no-sdl)\n",
-			runtime.GOOS, opts.Arch)
-		return "", nil
-	}
-	p := findLibrary(sdlNames())
-	if p == "" {
-		return "", errors.New("SDL3 was not found; install it (goi doctor shows the package), pass --sdl PATH, or --no-sdl")
-	}
-	return p, nil
 }
 
 // writeAppDir writes the files an AppImage is built from. SDL3 sits next to the
@@ -314,25 +367,6 @@ Categories=Utility;
 	}
 	appRun := "#!/bin/sh\nHERE=\"${APPDIR:-$(dirname \"$(readlink -f \"$0\")\")}\"\nexec \"$HERE/usr/bin/" + cfg.Name + "\" \"$@\"\n"
 	return os.WriteFile(filepath.Join(appDir, "AppRun"), []byte(appRun), 0o755)
-}
-
-// copyFile writes src as dst with perm. It streams, because a binary is not a
-// file to hold twice in memory.
-func copyFile(src, dst string, perm os.FileMode) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
-		return err
-	}
-	return out.Close()
 }
 
 // packToolPath finds appimagetool: the flag, the environment, PATH, then the
@@ -440,7 +474,21 @@ func fileSHA256(path string) (string, error) {
 	return hex.EncodeToString(sum.Sum(nil)), nil
 }
 
-// execPackTool runs appimagetool for real.
+// makensisPath finds NSIS: the flag, the environment, then PATH.
+func makensisPath(override string) (string, error) {
+	if override != "" {
+		return override, nil
+	}
+	if p := os.Getenv("GOI_MAKENSIS"); p != "" {
+		return p, nil
+	}
+	if p, err := exec.LookPath("makensis"); err == nil {
+		return p, nil
+	}
+	return "", errors.New("goi pack needs NSIS (makensis) for a Windows installer; install it (apt install nsis, brew install nsis, winget install NSIS.NSIS) or pass --makensis")
+}
+
+// execPackTool runs an external packager for real.
 func execPackTool(path string, args, env []string, stdout, stderr io.Writer) error {
 	cmd := exec.Command(path, args...)
 	cmd.Env = env

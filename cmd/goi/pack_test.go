@@ -211,8 +211,11 @@ func TestPackProjectChecksBeforeBuilding(t *testing.T) {
 	}
 
 	writePackIcon(t, filepath.Join(dir, "assets", "icon.png"), 256, 256)
-	if _, err := packProject(dir, packOptions{OS: "windows", Arch: "amd64", NoSDL: true}, goRun, tool, io.Discard, io.Discard); err == nil || !strings.Contains(err.Error(), "not implemented") {
-		t.Fatalf("windows error = %v", err)
+	if _, err := packProject(dir, packOptions{OS: "plan9", Arch: "amd64", NoSDL: true}, goRun, tool, io.Discard, io.Discard); err == nil || !strings.Contains(err.Error(), "not supported") {
+		t.Fatalf("plan9 error = %v", err)
+	}
+	if _, err := packProject(dir, packOptions{OS: "js", Arch: "wasm", NoSDL: true}, goRun, tool, io.Discard, io.Discard); err == nil || !strings.Contains(err.Error(), "browser") {
+		t.Fatalf("js error = %v", err)
 	}
 
 	dir = buildProjectDir(t, "name: myapp\n")
