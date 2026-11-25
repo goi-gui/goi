@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"io"
 	"os"
@@ -3220,4 +3221,52 @@ func pathLabels(list completionList) map[string]bool {
 		out[it.Label] = true
 	}
 	return out
+}
+
+// TestResponsesAlwaysCarryResultOrError pins the JSON-RPC shape VS Code
+// enforces: a reply has a result (null when there is nothing to say) or an
+// error, never neither. `result` used to be omitted with omitempty, which made
+// hover over nothing an invalid response.
+func TestResponsesAlwaysCarryResultOrError(t *testing.T) {
+	var out bytes.Buffer
+	s := New(strings.NewReader(""), &out)
+	if err := s.reply(&message{ID: json.RawMessage("7")}, nil); err != nil {
+		t.Fatal(err)
+	}
+	body := framedJSON(t, out.Bytes())
+	if got, ok := body["result"]; !ok || string(got) != "null" {
+		t.Fatalf("reply result = %s (present %v), want null: %s", got, ok, out.Bytes())
+	}
+	if _, ok := body["error"]; ok {
+		t.Fatalf("successful reply carries an error: %s", out.Bytes())
+	}
+	if string(body["id"]) != "7" {
+		t.Fatalf("id = %s, want 7", body["id"])
+	}
+
+	out.Reset()
+	if err := s.fail(&message{ID: json.RawMessage("8")}, codeInvalidParams, "bad"); err != nil {
+		t.Fatal(err)
+	}
+	body = framedJSON(t, out.Bytes())
+	if _, ok := body["result"]; ok {
+		t.Fatalf("failed reply carries a result: %s", out.Bytes())
+	}
+	if _, ok := body["error"]; !ok {
+		t.Fatalf("failed reply has no error: %s", out.Bytes())
+	}
+}
+
+// framedJSON returns the JSON body of one framed message.
+func framedJSON(t *testing.T, framed []byte) map[string]json.RawMessage {
+	t.Helper()
+	i := bytes.Index(framed, []byte("\r\n\r\n"))
+	if i < 0 {
+		t.Fatalf("no header terminator in %q", framed)
+	}
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(framed[i+4:], &body); err != nil {
+		t.Fatalf("bad body %q: %v", framed[i+4:], err)
+	}
+	return body
 }

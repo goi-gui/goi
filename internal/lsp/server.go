@@ -129,11 +129,11 @@ func (s *Server) handle(m *message) error {
 }
 
 func (s *Server) reply(m *message, result any) error {
-	return writeMessage(s.out, &message{ID: m.ID, Result: result})
+	return writeReply(s.out, m.ID, result)
 }
 
 func (s *Server) fail(m *message, code int, text string) error {
-	return writeMessage(s.out, &message{ID: m.ID, Error: &rpcError{Code: code, Message: text}})
+	return writeError(s.out, m.ID, &rpcError{Code: code, Message: text})
 }
 
 func (s *Server) notify(method string, params any) error {

@@ -28,6 +28,22 @@ type message struct {
 	Error   *rpcError       `json:"error,omitempty"`
 }
 
+// response is a successful reply. The result member is written even when it is
+// nil: JSON-RPC requires a result or an error, and a client (VS Code, for one)
+// rejects a reply that has neither. A nil result encodes as `"result":null`.
+type response struct {
+	JSONRPC string          `json:"jsonrpc"`
+	ID      json.RawMessage `json:"id"`
+	Result  any             `json:"result"`
+}
+
+// errorResponse is a failed reply.
+type errorResponse struct {
+	JSONRPC string          `json:"jsonrpc"`
+	ID      json.RawMessage `json:"id"`
+	Error   *rpcError       `json:"error"`
+}
+
 // rpcError is the error member of a failed response.
 type rpcError struct {
 	Code    int    `json:"code"`
@@ -86,10 +102,26 @@ func readMessage(r *bufio.Reader) (*message, error) {
 	return &m, nil
 }
 
-// writeMessage frames and writes one message.
+// writeMessage frames and writes one request or notification.
 func writeMessage(w io.Writer, m *message) error {
 	m.JSONRPC = "2.0"
-	body, err := json.Marshal(m)
+	return writeBody(w, m)
+}
+
+// writeReply writes a successful response, with a null result when there is
+// nothing to return.
+func writeReply(w io.Writer, id json.RawMessage, result any) error {
+	return writeBody(w, &response{JSONRPC: "2.0", ID: id, Result: result})
+}
+
+// writeError writes a failed response.
+func writeError(w io.Writer, id json.RawMessage, rpcErr *rpcError) error {
+	return writeBody(w, &errorResponse{JSONRPC: "2.0", ID: id, Error: rpcErr})
+}
+
+// writeBody frames and writes one JSON body.
+func writeBody(w io.Writer, v any) error {
+	body, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
