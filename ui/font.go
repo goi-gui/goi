@@ -69,14 +69,18 @@ type fontFaceFile struct {
 	data   []byte
 	// index is the face inside a collection, 0 for a single-font file.
 	index int
+	// system marks a best-effort face found on the machine: a parse failure
+	// falls back to Roboto without an OnError report.
+	system bool
 }
 
 // fontVariable is a variable font plus the axes pinned for every weight. wght
 // comes from fontWeight; the other axes are fixed.
 type fontVariable struct {
-	data  []byte
-	axes  map[string]float64
-	index int // face inside a collection, 0 for a single-font file
+	data   []byte
+	axes   map[string]float64
+	index  int // face inside a collection, 0 for a single-font file
+	system bool
 }
 
 // fontAssets is the container LoadFont resolves paths in: the live window's

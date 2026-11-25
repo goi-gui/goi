@@ -97,7 +97,7 @@ func (a *App) initWindow(w *Window) error {
 		}
 		for name, faces := range a.fontFaces {
 			for _, face := range faces {
-				if err := lib.RegisterFamilyFaceAt(name, face.weight, face.italic, face.data, face.index); err != nil {
+				if err := lib.RegisterFamilyFaceAt(name, face.weight, face.italic, face.data, face.index); err != nil && !face.system {
 					a.reportError(err)
 				}
 			}
@@ -106,7 +106,9 @@ func (a *App) initWindow(w *Window) error {
 			loaded := false
 			for _, variable := range variables {
 				if err := lib.RegisterVariableFamilyAt(name, variable.data, variable.index, variable.axes); err != nil {
-					a.reportError(err)
+					if !variable.system {
+						a.reportError(err)
+					}
 					continue
 				}
 				loaded = true

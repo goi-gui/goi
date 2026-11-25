@@ -54,7 +54,7 @@ func (a *App) loadSystemFonts(tr *tree.Tree) {
 				read[file.Path] = data
 			}
 			if file.Variable {
-				variables = append(variables, fontVariable{data: data, index: file.Index})
+				variables = append(variables, fontVariable{data: data, index: file.Index, system: true})
 				continue
 			}
 			weight := text.Weight(file.Weight)
@@ -66,6 +66,7 @@ func (a *App) loadSystemFonts(tr *tree.Tree) {
 				italic: file.Italic,
 				data:   data,
 				index:  file.Index,
+				system: true,
 			})
 		}
 		if len(faces) == 0 && len(variables) == 0 {
