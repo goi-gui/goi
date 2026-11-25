@@ -3,7 +3,9 @@ package sysfont
 import (
 	"encoding/binary"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"unicode/utf16"
 )
@@ -166,5 +168,149 @@ func TestScanSkipsBrokenFiles(t *testing.T) {
 	idx := Scan([]string{dir})
 	if len(idx.families) != 0 {
 		t.Fatalf("broken file was indexed: %+v", idx.families)
+	}
+}
+
+func TestGenericFamily(t *testing.T) {
+	cases := []struct{ goos, family, want string }{
+		{"darwin", "sans-serif", "Helvetica"},
+		{"darwin", "monospace", "Menlo"},
+		{"windows", "serif", "Times New Roman"},
+		{"windows", "system-ui", "Segoe UI"},
+		{"linux", "serif", "DejaVu Serif"},
+		{"linux", "sans", "DejaVu Sans"},
+		{"plan9", "sans-serif", ""},
+	}
+	for _, c := range cases {
+		if got := genericFamily(c.goos, c.family); got != c.want {
+			t.Fatalf("genericFamily(%s, %s) = %q, want %q", c.goos, c.family, got, c.want)
+		}
+	}
+}
+
+func TestResolveGenericOnLinux(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("fontconfig is Linux-only here")
+	}
+	if _, err := exec.LookPath("fc-match"); err != nil {
+		t.Skip("fontconfig is not installed")
+	}
+	files := Fonts("sans-serif")
+	if len(files) == 0 {
+		t.Skip("no sans-serif font is installed")
+	}
+}
+
+func TestReadWOFF(t *testing.T) {
+	path := filepath.Join("..", "text", "fonts", "roboto-regular.woff")
+	files, err := readFont(path)
+	if err != nil {
+		t.Skipf("the test font is unavailable: %v", err)
+	}
+	if len(files) != 1 || files[0].Family != "Roboto" || files[0].Weight != 400 || files[0].Index != 0 {
+		t.Fatalf("faces = %+v", files)
+	}
+	face := ReadFaces(files[:1])[0]
+	if len(face.Data) == 0 || face.Index != 0 {
+		t.Fatalf("ReadFaces = %d bytes, index %d", len(face.Data), face.Index)
+	}
+}
+
+// dfontBytes builds a Mac resource-fork font holding one sfnt resource per
+// font.
+func dfontBytes(t *testing.T, fonts ...[]byte) []byte {
+	t.Helper()
+	var dataArea []byte
+	offsets := make([]int, len(fonts))
+	for i, f := range fonts {
+		offsets[i] = len(dataArea)
+		dataArea = binary.BigEndian.AppendUint32(dataArea, uint32(len(f)))
+		dataArea = append(dataArea, f...)
+	}
+	mapOffset := 16 + len(dataArea)
+	mapLength := 28 + 10 + 12*len(fonts)
+	mapData := make([]byte, mapLength)
+	binary.BigEndian.PutUint16(mapData[24:26], 28) // type list offset from map start
+	copy(mapData[30:34], "sfnt")
+	binary.BigEndian.PutUint16(mapData[34:36], uint16(len(fonts)-1))
+	binary.BigEndian.PutUint16(mapData[36:38], 10) // reference list from type list start
+	ref := 38
+	for i, off := range offsets {
+		binary.BigEndian.PutUint16(mapData[ref:ref+2], uint16(i+1))
+		binary.BigEndian.PutUint16(mapData[ref+2:ref+4], 0xFFFF)
+		mapData[ref+4] = 0
+		mapData[ref+5] = byte(off >> 16)
+		mapData[ref+6] = byte(off >> 8)
+		mapData[ref+7] = byte(off)
+		ref += 12
+	}
+	header := make([]byte, 16)
+	binary.BigEndian.PutUint32(header[0:4], 16)
+	binary.BigEndian.PutUint32(header[4:8], uint32(mapOffset))
+	binary.BigEndian.PutUint32(header[8:12], uint32(len(dataArea)))
+	binary.BigEndian.PutUint32(header[12:16], uint32(mapLength))
+	copy(mapData[0:16], header)
+	out := append(header, dataArea...)
+	return append(out, mapData...)
+}
+
+func TestDfont(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "text", "fonts", "roboto-mono.ttf"))
+	if err != nil {
+		t.Skipf("the test font is unavailable: %v", err)
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Old.dfont")
+	if err := os.WriteFile(path, dfontBytes(t, raw, raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	files, err := readFont(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 2 || files[0].Index != 0 || files[1].Index != 1 {
+		t.Fatalf("faces = %+v", files)
+	}
+	if files[0].Family == "" || files[0].Family != files[1].Family {
+		t.Fatalf("families = %q, %q", files[0].Family, files[1].Family)
+	}
+	for i, face := range ReadFaces(files) {
+		if face.Index != 0 || len(face.Data) != len(raw) {
+			t.Fatalf("ReadFaces(%d) = %d bytes, index %d", i, len(face.Data), face.Index)
+		}
+	}
+}
+
+func TestRegString(t *testing.T) {
+	out := []byte("\r\nHKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\FontSubstitutes\r\n" +
+		"    Helvetica    REG_SZ    Arial\r\n\r\n")
+	value, ok := regString(out)
+	if !ok || value != "Arial" {
+		t.Fatalf("regString = %q, %v", value, ok)
+	}
+	if _, ok := regString([]byte("    Helvetica    REG_SZ\r\n")); ok {
+		t.Fatal("an empty substitution was accepted")
+	}
+	if _, ok := regString([]byte("ERROR: not found")); ok {
+		t.Fatal("an error output was read as a substitution")
+	}
+}
+
+func TestScanFindsDfont(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "text", "fonts", "roboto-mono.ttf"))
+	if err != nil {
+		t.Skipf("the test font is unavailable: %v", err)
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "Old.dfont"), dfontBytes(t, raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	files := Scan([]string{dir}).Lookup("Roboto Mono")
+	if len(files) != 1 || filepath.Ext(files[0].Path) != ".dfont" {
+		t.Fatalf("scan found %+v", files)
+	}
+	face := ReadFaces(files[:1])[0]
+	if len(face.Data) != len(raw) {
+		t.Fatalf("ReadFaces = %d bytes", len(face.Data))
 	}
 }

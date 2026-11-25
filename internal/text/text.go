@@ -81,6 +81,14 @@ type Library struct {
 	// one missed most of the time. Four slots keyed by the size absorb that
 	// pattern without a map lookup or a hash.
 	front [4]faceSlot
+
+	// resolveMu guards the fallback lookup for a family that is not registered:
+	// the callback may read files and register faces, so it runs outside the
+	// library lock. attempted remembers names the callback could not find, so a
+	// miss is not retried on every run.
+	resolveMu sync.Mutex
+	resolve   func(string)
+	attempted map[string]bool
 }
 
 type faceKey struct {
@@ -498,15 +506,55 @@ func (l *Library) Face(size float64, weight Weight) *Face {
 	return l.face(size, weight, false, false, false, "")
 }
 
+// SetFamilyResolver installs a callback for a family that is not registered.
+// It runs on the UI goroutine, outside the library lock, and may register the
+// family before returning; the face is looked up again afterwards. A name the
+// callback does not register is not asked for again.
+func (l *Library) SetFamilyResolver(fn func(string)) {
+	l.resolveMu.Lock()
+	l.resolve = fn
+	l.attempted = map[string]bool{}
+	l.resolveMu.Unlock()
+}
+
+// ensureFamily gives the resolver a chance to register family before a face is
+// built. Roboto and Roboto Mono are built in, so they never need a lookup.
+func (l *Library) ensureFamily(family string) {
+	if family == "" || family == "Roboto" || family == "Roboto Mono" {
+		return
+	}
+	l.mu.Lock()
+	_, ok := l.families[family]
+	l.mu.Unlock()
+	if ok {
+		return
+	}
+	l.resolveMu.Lock()
+	defer l.resolveMu.Unlock()
+	l.mu.Lock()
+	_, ok = l.families[family]
+	l.mu.Unlock()
+	if ok || l.resolve == nil || l.attempted[family] {
+		return
+	}
+	if l.attempted == nil {
+		l.attempted = map[string]bool{}
+	}
+	l.attempted[family] = true
+	l.resolve(family)
+}
+
 // FamilyFace returns the face of a registered family, falling back to Roboto
 // when the name is unknown or empty, so a design that names a font the app never
 // loaded still draws.
 func (l *Library) FamilyFace(size float64, weight Weight, family string) *Face {
+	l.ensureFamily(family)
 	return l.face(size, weight, false, false, false, family)
 }
 
 // FamilyItalicFace is FamilyFace slanted for `fontStyle: italic`.
 func (l *Library) FamilyItalicFace(size float64, weight Weight, family string) *Face {
+	l.ensureFamily(family)
 	return l.face(size, weight, false, false, true, family)
 }
 

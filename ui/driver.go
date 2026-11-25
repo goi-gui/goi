@@ -119,6 +119,12 @@ func (a *App) initWindow(w *Window) error {
 		}
 	}
 	meas := textMeasurer{lib: gpu.Text()}
+	// A family a Go setter names after the window is up is not in the design,
+	// so the library asks for it when the face is first needed. The design's
+	// own families were resolved before the window was created.
+	if meas.lib != nil {
+		meas.lib.SetFamilyResolver(a.resolveSystemFamily)
+	}
 	d := &gpuDriver{
 		app:    a,
 		win:    pw,

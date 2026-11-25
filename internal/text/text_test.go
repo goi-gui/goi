@@ -368,6 +368,42 @@ func TestRegisterFamilyFaceAt(t *testing.T) {
 	if err := lib.RegisterFamilyFaceAt("At Collection", WeightMedium, false, data, 2); err == nil {
 		t.Fatal("a missing collection face was accepted")
 	}
+	if err := lib.RegisterFamilyFaceAt("At WOFF", WeightRegular, false, robotoRegular, 0); err != nil {
+		t.Fatalf("WOFF face: %v", err)
+	}
+	if !lib.HasFamily("At WOFF") {
+		t.Fatal("family registered from a WOFF is missing")
+	}
+}
+
+func TestFamilyResolver(t *testing.T) {
+	lib := NewLibrary()
+	calls := 0
+	lib.SetFamilyResolver(func(name string) {
+		calls++
+		if name == "Late" {
+			if err := lib.RegisterFamily("Late", robotoRegular); err != nil {
+				t.Error(err)
+			}
+		}
+	})
+	if lib.FamilyFace(16, WeightRegular, "Late") == nil {
+		t.Fatal("the resolver did not register the family")
+	}
+	if calls != 1 {
+		t.Fatalf("resolver calls = %d, want 1", calls)
+	}
+	lib.FamilyFace(16, WeightBold, "Late")
+	if calls != 1 {
+		t.Fatalf("resolver ran again for a registered family: %d", calls)
+	}
+	if lib.FamilyFace(16, WeightRegular, "Missing") == nil {
+		t.Fatal("a missing family did not fall back")
+	}
+	lib.FamilyFace(16, WeightRegular, "Missing")
+	if calls != 2 {
+		t.Fatalf("resolver calls = %d, want one attempt per family", calls)
+	}
 }
 
 func TestRegisterVariableFamilyAt(t *testing.T) {

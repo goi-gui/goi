@@ -2942,3 +2942,13 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   deterministic and avoids redistributing fonts. A later `LoadFont` for the same
   name replaces the system family, clearing its per-weight variants so the
   app's single face is not shadowed.
+
+- **A system family resolves through the platform's own matcher, at runtime
+  too.** `fc-match` gives fontconfig's canonical family on Linux; on Windows the
+  FontSubstitutes registry value is the DirectWrite rule (`Helvetica` to
+  `Arial`); the CSS generic families fall back to a fixed per-platform face.
+  macOS has no scriptable matcher without cgo, so only the generic map applies
+  there. `.dfont` and `.woff` are read as well, and `text.Library` takes a
+  resolver callback so a `SetFontFamily` made after the window is up registers
+  lazily; a miss is remembered once, and a resolver is never installed in
+  headless builds.
