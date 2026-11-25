@@ -174,6 +174,10 @@ type App struct {
 	fonts         map[string][]byte
 	fontFaces     map[string][]fontFaceFile
 	fontVariables map[string][]fontVariable
+	// useSystemFonts lets a family the design names but the app did not
+	// register resolve to an installed font. A headless test leaves it off, so
+	// the machine's fonts cannot change what a test draws.
+	useSystemFonts bool
 	// catalog is the design's i18n folder, nil when it has none. language and
 	// fallbackLanguage are what SetLanguage chose; empty means "follow the
 	// desktop", which is why neither needs a startup write.
@@ -206,6 +210,7 @@ func NewApp() (*App, error) {
 		logg().Error(logCtx, "ui: platform init failed", "error", err)
 		return nil, err
 	}
+	a.useSystemFonts = true
 	return a, nil
 }
 
@@ -250,6 +255,9 @@ func (a *App) LoadWindow(entry string) (*Window, error) {
 	tr.SetI18n(catalog)
 	tr.SetLanguage(a.language)
 	tr.SetFallbackLanguage(a.fallbackLanguage)
+	// Families the app registered win; the rest may be installed on the
+	// machine, which is what lets a design name a system font directly.
+	a.loadSystemFonts(tr)
 
 	w := &Window{tree: tr, app: a, title: tr.Root.Title.Get()}
 	w.width, w.height = 480, 320

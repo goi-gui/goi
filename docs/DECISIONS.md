@@ -2929,3 +2929,16 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   before a pack is attempted. SDL3 stays downloaded because it is a runtime
   dependency of every package rather than a packager, and because the target
   architecture often differs from the host.
+
+- **A design may name an installed font; the app does not have to load it.**
+  `internal/sysfont` indexes the platform's font directories by reading only
+  the sfnt `name`, `OS/2`, `head` and `fvar` tables (plus collections), and the
+  scan is cached and lazy. `ui` resolves the families the tree names and the app
+  did not register when a window loads and on hot reload, before the first
+  layout; the font library is untouched until then. Only native builds look at
+  the system, and a headless test leaves it off, so the machine's fonts cannot
+  change a test's layout. System faces are not embedded: a package on a machine
+  without the family still falls back to Roboto, which keeps builds
+  deterministic and avoids redistributing fonts. A later `LoadFont` for the same
+  name replaces the system family, clearing its per-weight variants so the
+  app's single face is not shadowed.

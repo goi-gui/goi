@@ -126,6 +126,7 @@ func (a *App) applyReload(f *syntax.File) error {
 	}
 	a.loadImages(tr)
 	a.loadMedia(tr)
+	a.loadSystemFonts(tr)
 	if a.win != nil {
 		a.win.noteMissingFonts(tr)
 	}

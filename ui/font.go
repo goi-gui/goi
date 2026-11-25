@@ -47,6 +47,10 @@ func (a *App) LoadFont(name, path string) error {
 		a.fonts = make(map[string][]byte, 1)
 	}
 	a.fonts[name] = data
+	// The app's own face replaces a system family (or a family registered with
+	// a different loader) for windows created later.
+	delete(a.fontFaces, name)
+	delete(a.fontVariables, name)
 	// A window may already be up, so write through to its library and repaint;
 	// a window created later picks the font up from a.fonts.
 	if lib := a.textLibrary(); lib != nil {
@@ -63,13 +67,16 @@ type fontFaceFile struct {
 	weight text.Weight
 	italic bool
 	data   []byte
+	// index is the face inside a collection, 0 for a single-font file.
+	index int
 }
 
 // fontVariable is a variable font plus the axes pinned for every weight. wght
 // comes from fontWeight; the other axes are fixed.
 type fontVariable struct {
-	data []byte
-	axes map[string]float64
+	data  []byte
+	axes  map[string]float64
+	index int // face inside a collection, 0 for a single-font file
 }
 
 // fontAssets is the container LoadFont resolves paths in: the live window's
@@ -144,6 +151,8 @@ func (a *App) LoadFontFamily(name, pattern string) error {
 		a.fontFaces = map[string][]fontFaceFile{}
 	}
 	a.fontFaces[name] = faces
+	delete(a.fonts, name)
+	delete(a.fontVariables, name)
 	if lib := a.textLibrary(); lib != nil {
 		for _, face := range faces {
 			if err := lib.RegisterFamilyFace(name, face.weight, face.italic, face.data); err != nil {
@@ -202,6 +211,8 @@ func (a *App) LoadVariableFont(name, fontPath string, axes map[string]float64) e
 		a.fontVariables = map[string][]fontVariable{}
 	}
 	a.fontVariables[name] = append(a.fontVariables[name], fontVariable{data: data, axes: fixed})
+	delete(a.fonts, name)
+	delete(a.fontFaces, name)
 	if lib != nil {
 		a.markDirty(tree.DirtyLayout)
 	}

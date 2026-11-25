@@ -85,7 +85,7 @@ func (w *Window) noteMissingFonts(tr *tree.Tree) {
 		}
 		logg().Warn(logCtx, "ui: unknown font family, using Roboto",
 			"family", family, "file", w.app.path,
-			"hint", "register it with ui.LoadFont")
+			"hint", "register it with ui.LoadFont or install it on the system")
 	}
 }
 

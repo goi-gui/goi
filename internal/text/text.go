@@ -265,6 +265,10 @@ func (l *Library) RegisterFamily(name string, data []byte) error {
 		fam.tag = l.familyTag
 		l.familyTag += 2 // the odd tag is the slanted copy
 	}
+	// A single face replaces the per-weight files: LoadFont called after
+	// LoadFontFamily (or after a system family was picked up) is the app's
+	// final word, not a face that the old variants shadow.
+	fam.variants = nil
 	fam.face = f
 	l.families[name] = fam
 	l.dropFamilyLocked(name)
@@ -275,12 +279,29 @@ func (l *Library) RegisterFamily(name string, data []byte) error {
 // several files; a design still names only the family and picks the file with
 // fontWeight and fontStyle.
 func (l *Library) RegisterFamilyFace(name string, weight Weight, italic bool, data []byte) error {
-	if name == "" {
-		return fmt.Errorf("text: a family needs a name")
-	}
 	f, err := font.ParseTTF(bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("text: parse font %q: %w", name, err)
+	}
+	return l.registerFamilyFace(name, weight, italic, f)
+}
+
+// RegisterFamilyFaceAt is RegisterFamilyFace for one face of a font collection.
+// index selects the face; a single-font file has one face at index 0.
+func (l *Library) RegisterFamilyFaceAt(name string, weight Weight, italic bool, data []byte, index int) error {
+	faces, err := font.ParseTTC(bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("text: parse font %q: %w", name, err)
+	}
+	if index < 0 || index >= len(faces) {
+		return fmt.Errorf("text: font %q has no face %d", name, index)
+	}
+	return l.registerFamilyFace(name, weight, italic, faces[index])
+}
+
+func (l *Library) registerFamilyFace(name string, weight Weight, italic bool, f *font.Face) error {
+	if name == "" {
+		return fmt.Errorf("text: a family needs a name")
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -310,12 +331,38 @@ func (l *Library) RegisterFamilyFace(name string, weight Weight, italic bool, da
 // wdth or opsz). Italic requests slant the upright face, since the ital/slnt
 // axis is not driven separately.
 func (l *Library) RegisterVariableFamily(name string, data []byte, axes map[string]float64) error {
-	if name == "" {
-		return fmt.Errorf("text: a family needs a name")
+	parsed, err := font.ParseTTF(bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("text: variable font %q: parse: %w", name, err)
 	}
-	parsed, vars, err := variableSetup(data, axes)
+	vars, err := variableSetupFace(parsed, axes)
 	if err != nil {
 		return fmt.Errorf("text: variable font %q: %w", name, err)
+	}
+	return l.registerVariableFamily(name, parsed, vars)
+}
+
+// RegisterVariableFamilyAt is RegisterVariableFamily for one face of a font
+// collection.
+func (l *Library) RegisterVariableFamilyAt(name string, data []byte, index int, axes map[string]float64) error {
+	faces, err := font.ParseTTC(bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("text: variable font %q: parse: %w", name, err)
+	}
+	if index < 0 || index >= len(faces) {
+		return fmt.Errorf("text: font %q has no face %d", name, index)
+	}
+	parsed := faces[index]
+	vars, err := variableSetupFace(parsed, axes)
+	if err != nil {
+		return fmt.Errorf("text: variable font %q: %w", name, err)
+	}
+	return l.registerVariableFamily(name, parsed, vars)
+}
+
+func (l *Library) registerVariableFamily(name string, parsed *font.Face, vars []font.Variation) error {
+	if name == "" {
+		return fmt.Errorf("text: a family needs a name")
 	}
 	// The file's own style decides which slot it fills: the italic file of a
 	// family registers the italic variants, so fontStyle: italic uses its
@@ -362,6 +409,16 @@ func variableSetup(data []byte, axes map[string]float64) (*font.Face, []font.Var
 	if err != nil {
 		return nil, nil, fmt.Errorf("parse: %w", err)
 	}
+	vars, err := variableSetupFace(parsed, axes)
+	if err != nil {
+		return nil, nil, err
+	}
+	return parsed, vars, nil
+}
+
+// variableSetupFace pins the extra axes and checks that the default face has
+// usable outlines.
+func variableSetupFace(parsed *font.Face, axes map[string]float64) ([]font.Variation, error) {
 	vars := make([]font.Variation, 0, len(axes)+1)
 	for axis, value := range axes {
 		if axis == "wght" {
@@ -369,21 +426,21 @@ func variableSetup(data []byte, axes map[string]float64) (*font.Face, []font.Var
 		}
 		tag, ok := variationTag(axis)
 		if !ok {
-			return nil, nil, fmt.Errorf("variation axis %q must be four characters", axis)
+			return nil, fmt.Errorf("variation axis %q must be four characters", axis)
 		}
 		vars = append(vars, font.Variation{Tag: tag, Value: float32(value)})
 	}
 	probe := font.NewFace(parsed.Font)
 	probe.SetVariations(append(vars, font.Variation{Tag: weightTag, Value: float32(WeightRegular)}))
 	if len(probe.Coords()) == 0 {
-		return nil, nil, fmt.Errorf("not a variable font")
+		return nil, fmt.Errorf("not a variable font")
 	}
 	if !hasOutlines(probe) {
 		// Some CFF2 variable fonts parse but produce no outline; without this
 		// check the app would draw blank text and report nothing.
-		return nil, nil, fmt.Errorf("no readable outlines (some CFF2 variable fonts are unsupported)")
+		return nil, fmt.Errorf("no readable outlines (some CFF2 variable fonts are unsupported)")
 	}
-	return parsed, vars, nil
+	return vars, nil
 }
 
 var weightTag = font.Tag(uint32('w')<<24 | uint32('g')<<16 | uint32('h')<<8 | uint32('t'))

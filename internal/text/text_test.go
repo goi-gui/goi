@@ -1,6 +1,7 @@
 package text
 
 import (
+	"encoding/binary"
 	"os"
 	"testing"
 
@@ -320,5 +321,77 @@ func TestRegisterVariableFamily(t *testing.T) {
 	}
 	if err := l.RegisterVariableFamily("Static", robotoRegular, nil); err == nil {
 		t.Fatal("a static font was accepted as variable")
+	}
+}
+
+// ttcBytes wraps a single font in a collection with count copies of its face.
+// The table offsets are adjusted because a TTC's offsets are absolute from the
+// start of the file.
+func ttcBytes(t *testing.T, raw []byte, count int) []byte {
+	t.Helper()
+	if len(raw) < 12 {
+		t.Fatal("font is too short")
+	}
+	numTables := int(binary.BigEndian.Uint16(raw[4:6]))
+	start := 12 + count*4
+	out := make([]byte, start+len(raw))
+	copy(out[:4], "ttcf")
+	binary.BigEndian.PutUint32(out[4:8], 0x00010000)
+	binary.BigEndian.PutUint32(out[8:12], uint32(count))
+	for i := 0; i < count; i++ {
+		binary.BigEndian.PutUint32(out[12+i*4:16+i*4], uint32(start))
+	}
+	copy(out[start:], raw)
+	for i := 0; i < numTables; i++ {
+		at := start + 12 + i*16 + 8
+		offset := binary.BigEndian.Uint32(out[at : at+4])
+		binary.BigEndian.PutUint32(out[at:at+4], offset+uint32(start))
+	}
+	return out
+}
+
+func TestRegisterFamilyFaceAt(t *testing.T) {
+	lib := NewLibrary()
+	if err := lib.RegisterFamilyFaceAt("At Face", WeightBold, false, robotoMono, 0); err != nil {
+		t.Fatal(err)
+	}
+	if !lib.HasFamily("At Face") {
+		t.Fatal("family registered from a single font is missing")
+	}
+	data := ttcBytes(t, robotoMono, 2)
+	if err := lib.RegisterFamilyFaceAt("At Collection", WeightMedium, false, data, 1); err != nil {
+		t.Fatal(err)
+	}
+	if !lib.HasFamily("At Collection") {
+		t.Fatal("family registered from a collection is missing")
+	}
+	if err := lib.RegisterFamilyFaceAt("At Collection", WeightMedium, false, data, 2); err == nil {
+		t.Fatal("a missing collection face was accepted")
+	}
+}
+
+func TestRegisterVariableFamilyAt(t *testing.T) {
+	lib := NewLibrary()
+	if err := lib.RegisterVariableFamilyAt("Mono Variable", ttcBytes(t, robotoMono, 1), 0, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !lib.HasFamily("Mono Variable") {
+		t.Fatal("variable family from a collection is missing")
+	}
+}
+
+func TestRegisterFamilyReplacesVariants(t *testing.T) {
+	lib := NewLibrary()
+	if err := lib.RegisterFamilyFace("Replace", WeightBold, false, robotoRegular); err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.RegisterFamily("Replace", robotoRegular); err != nil {
+		t.Fatal(err)
+	}
+	lib.mu.Lock()
+	variants := len(lib.families["Replace"].variants)
+	lib.mu.Unlock()
+	if variants != 0 {
+		t.Fatalf("single face left %d variants behind", variants)
 	}
 }
