@@ -111,8 +111,9 @@ id. Hot reload updates the open window as the file changes; the
   WebGPU renderer over pure-Go Vulkan, Direct3D 12 and Metal backends.
 - **Tooling.** `goipls` adds diagnostics, completion, hover docs, an outline and
   formatting on save; `goifmt` formats from the CLI; `goicheck -layout` catches
-  collapsed nodes. A [Zed extension](https://github.com/goi-gui/zed-goi) wires
-  the language server into the editor.
+  collapsed nodes. The [Zed extension](https://github.com/goi-gui/zed-goi) and
+  the [VS Code extension](https://marketplace.visualstudio.com/items?itemName=ksckaan1.goi)
+  wire the language server into the editor.
 - **Packaging.** [`goi pack`](https://goi.kaanksc.com/guide/pack/) writes a Linux AppImage, a macOS `.app` or a
   Windows installer from the build, with the `goi.yaml` identity and icon and
   the SDL3 runtime bundled; `goi doctor` reports the packagers a machine still
