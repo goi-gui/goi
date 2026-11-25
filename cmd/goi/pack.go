@@ -112,6 +112,18 @@ func packProject(dir string, opts packOptions, goRun runFunc, runTool packExecFu
 	if err != nil {
 		return "", err
 	}
+	// Check the packager before anything is downloaded: a missing tool should
+	// not cost a 28 MB SDL download first.
+	switch opts.OS {
+	case "linux":
+		if _, err := packToolPath(opts.Tool); err != nil {
+			return "", err
+		}
+	case "windows":
+		if _, err := makensisPath(opts.Makensis); err != nil {
+			return "", err
+		}
+	}
 	sdl, err := resolvePackSDL(opts, stdout)
 	if err != nil {
 		return "", err
@@ -139,6 +151,29 @@ func appImageArch(goarch string) (string, error) {
 		return "i686", nil
 	}
 	return "", fmt.Errorf("no AppImage architecture for %s", goarch)
+}
+
+// versionDigits is the leading numeric part of a version: "v1.2.3-beta" is
+// "1.2.3", which is the form Apple's plist and NSIS's fixed version want. Empty
+// dot components are dropped, so a typo like 1..2 stays a valid version.
+func versionDigits(v string) string {
+	v = strings.TrimSpace(v)
+	v = strings.TrimPrefix(strings.TrimPrefix(v, "v"), "V")
+	var b strings.Builder
+	for _, r := range v {
+		if r >= '0' && r <= '9' || r == '.' {
+			b.WriteRune(r)
+			continue
+		}
+		break
+	}
+	var parts []string
+	for _, part := range strings.Split(b.String(), ".") {
+		if part != "" {
+			parts = append(parts, part)
+		}
+	}
+	return strings.Join(parts, ".")
 }
 
 // validPackageVersion accepts the versions a file name and installer can
@@ -286,6 +321,12 @@ func packLinux(dir string, opts packOptions, cfg config, icon, sdl string, goRun
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 		return "", err
 	}
+	// appimagetool resolves a relative destination against the working
+	// directory, which is not necessarily the project directory.
+	absOut, err := filepath.Abs(out)
+	if err != nil {
+		return "", err
+	}
 	// 1.9.x reads the architecture from ARCH, and the extract-and-run mode
 	// keeps a machine without FUSE working.
 	env := envWith(os.Environ(), "ARCH", imgArch)
@@ -293,10 +334,30 @@ func packLinux(dir string, opts packOptions, cfg config, icon, sdl string, goRun
 	if opts.Version != "" {
 		env = envWith(env, "VERSION", opts.Version)
 	}
-	if err := runTool(tool, []string{"--no-appstream", appDir, out}, env, stdout, stderr); err != nil {
+	if err := runTool(tool, []string{"--no-appstream", appDir, absOut}, env, stdout, stderr); err != nil {
 		return "", fmt.Errorf("appimagetool: %w", err)
 	}
 	return out, nil
+}
+
+// copyFileAtomic writes src as dst through a unique temp file, so a failed or
+// concurrent copy cannot leave a half-written library behind.
+func copyFileAtomic(src, dst string, perm os.FileMode) error {
+	f, err := os.CreateTemp(filepath.Dir(dst), ".goi-copy-*")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	f.Close()
+	if err := copyFile(src, tmp, perm); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, dst); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // packTempDir makes the staging directory. MkdirTemp creates it 0700, which
@@ -405,11 +466,11 @@ func downloadFileAuth(url, dst, want, bearer string) error {
 	if res.StatusCode != http.StatusOK {
 		return fmt.Errorf("%s: %s", url, res.Status)
 	}
-	tmp := dst + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
+	f, err := os.CreateTemp(filepath.Dir(dst), ".goi-download-*")
 	if err != nil {
 		return err
 	}
+	tmp := f.Name()
 	sum := sha256.New()
 	n, err := io.Copy(io.MultiWriter(f, sum), io.LimitReader(res.Body, maxToolBytes))
 	closeErr := f.Close()

@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 
 	"github.com/goi-gui/goi/internal/img"
 )
@@ -76,8 +75,11 @@ func packDarwin(dir string, opts packOptions, cfg config, icon, sdl string, goRu
 func infoPlist(cfg config, version string) string {
 	short, build := "1.0", "1"
 	if version != "" {
-		short = version
 		build = bundleBuildVersion(version)
+		short = build
+		if versionDigits(version) == "" {
+			short = version
+		}
 	}
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -109,18 +111,10 @@ func infoPlist(cfg config, version string) string {
 }
 
 // bundleBuildVersion is CFBundleVersion: digits and dots only, so a version
-// like 1.2.3-beta keeps its numeric part.
+// like v1.2.3-beta keeps its numeric part.
 func bundleBuildVersion(v string) string {
-	var b strings.Builder
-	for _, r := range v {
-		if r >= '0' && r <= '9' || r == '.' {
-			b.WriteRune(r)
-			continue
-		}
-		break
-	}
-	if out := strings.Trim(b.String(), "."); out != "" {
-		return out
+	if d := versionDigits(v); d != "" {
+		return d
 	}
 	return "1"
 }

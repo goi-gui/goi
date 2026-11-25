@@ -69,65 +69,102 @@ func TestPackLinuxVersion(t *testing.T) {
 	}
 }
 
+func TestVersionDigits(t *testing.T) {
+	cases := map[string]string{
+		"1.2.3":        "1.2.3",
+		"v0.0.1":       "0.0.1",
+		"V2":           "2",
+		"1.2.3-beta.1": "1.2.3",
+		"nightly":      "",
+		"2026.11+abc":  "2026.11",
+	}
+	for in, want := range cases {
+		if got := versionDigits(in); got != want {
+			t.Fatalf("versionDigits(%q) = %q, want %q", in, got, want)
+		}
+	}
+	cases = map[string]string{
+		"1.2.3":       "1.2.3.0",
+		"v0.0.1":      "0.0.1.0",
+		"1.2.3-beta":  "1.2.3.0",
+		"nightly":     "0.0.0.0",
+		"1":           "1.0.0.0",
+		"1.2.3.4.5.6": "1.2.3.4",
+	}
+	for in, want := range cases {
+		if got := nsisFileVersion(in); got != want {
+			t.Fatalf("nsisFileVersion(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestPackDarwinVersion(t *testing.T) {
 	dir, goRun := packVersionProject(t)
-	sdl := filepath.Join(t.TempDir(), "libSDL3.0.dylib")
-	if err := os.WriteFile(sdl, []byte("dylib"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	out, err := packProject(dir, packOptions{OS: "darwin", Arch: "amd64", Version: "1.2.3-beta", SDL: sdl},
-		goRun, func(string, []string, []string, io.Writer, io.Writer) error { return nil }, io.Discard, io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-	plist, err := os.ReadFile(filepath.Join(out, "Contents", "Info.plist"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{"<string>1.2.3-beta</string>", "<key>CFBundleVersion</key>\n\t<string>1.2.3</string>"} {
-		if !strings.Contains(string(plist), want) {
-			t.Fatalf("Info.plist lacks %q:\n%s", want, plist)
+	sdl := fakeSDL(t, "darwin", "amd64")
+	for version, want := range map[string]string{
+		"1.2.3-beta": "1.2.3",
+		"v0.0.1":     "0.0.1",
+	} {
+		out, err := packProject(dir, packOptions{OS: "darwin", Arch: "amd64", Version: version, SDL: sdl},
+			goRun, func(string, []string, []string, io.Writer, io.Writer) error { return nil }, io.Discard, io.Discard)
+		if err != nil {
+			t.Fatal(err)
+		}
+		plist, err := os.ReadFile(filepath.Join(out, "Contents", "Info.plist"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, key := range []string{"CFBundleShortVersionString", "CFBundleVersion"} {
+			field := "<key>" + key + "</key>\n\t<string>" + want + "</string>"
+			if !strings.Contains(string(plist), field) {
+				t.Fatalf("%s: %s lacks %q:\n%s", version, key, want, plist)
+			}
 		}
 	}
 }
 
 func TestPackWindowsVersion(t *testing.T) {
 	dir, goRun := packVersionProject(t)
-	var scriptPath string
-	runTool := func(_ string, args []string, _ []string, _, _ io.Writer) error {
-		scriptPath = args[0]
-		b, err := os.ReadFile(scriptPath)
-		if err != nil {
-			return err
-		}
-		out, ok := nsisOutFile(string(b))
-		if !ok {
-			t.Fatalf("no OutFile:\n%s", b)
-		}
-		return os.WriteFile(filepath.FromSlash(out), []byte("setup"), 0o755)
-	}
-	out, err := packProject(dir, packOptions{
-		OS: "windows", Arch: "amd64", Version: "1.2.3", Makensis: "/fake/makensis", NoSDL: true, Keep: true,
-	}, goRun, runTool, io.Discard, io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(filepath.Dir(scriptPath))
-	want := filepath.Join(dir, "dist", "windows-amd64", "myapp-1.2.3-amd64-setup.exe")
-	if out != want {
-		t.Fatalf("out = %q, want %q", out, want)
-	}
-	script, err := os.ReadFile(scriptPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{
-		`"DisplayVersion" "1.2.3"`,
-		`VIAddVersionKey "ProductVersion" "1.2.3"`,
-		`VIProductVersion "1.2.3.0"`,
+	for version, fixed := range map[string]string{
+		"1.2.3":      "1.2.3.0",
+		"v0.0.1":     "0.0.1.0",
+		"1.2.3-beta": "1.2.3.0",
 	} {
-		if !strings.Contains(string(script), want) {
-			t.Fatalf("installer script lacks %q:\n%s", want, script)
+		var scriptPath string
+		runTool := func(_ string, args []string, _ []string, _, _ io.Writer) error {
+			scriptPath = args[0]
+			b, err := os.ReadFile(scriptPath)
+			if err != nil {
+				return err
+			}
+			out, ok := nsisOutFile(string(b))
+			if !ok {
+				t.Fatalf("no OutFile:\n%s", b)
+			}
+			return os.WriteFile(filepath.FromSlash(out), []byte("setup"), 0o755)
+		}
+		out, err := packProject(dir, packOptions{
+			OS: "windows", Arch: "amd64", Version: version, Makensis: "/fake/makensis", NoSDL: true, Keep: true,
+		}, goRun, runTool, io.Discard, io.Discard)
+		if err != nil {
+			t.Fatal(err)
+		}
+		script, err := os.ReadFile(scriptPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		os.RemoveAll(filepath.Dir(scriptPath))
+		if !strings.Contains(out, version) {
+			t.Fatalf("%s: out = %q, want the version in the name", version, out)
+		}
+		for _, want := range []string{
+			`"DisplayVersion" "` + version + `"`,
+			`VIAddVersionKey "ProductVersion" "` + version + `"`,
+			`VIProductVersion "` + fixed + `"`,
+		} {
+			if !strings.Contains(string(script), want) {
+				t.Fatalf("%s: installer script lacks %q:\n%s", version, want, script)
+			}
 		}
 	}
 }

@@ -100,9 +100,7 @@ func nsisScript(cfg config, out, stage, icoName, version string, withSDL bool) s
 		fmt.Fprintf(&b, "VIAddVersionKey \"ProductName\" \"%s\"\n", cfg.Name)
 		fmt.Fprintf(&b, "VIAddVersionKey \"ProductVersion\" \"%s\"\n", version)
 		fmt.Fprintf(&b, "VIAddVersionKey \"FileVersion\" \"%s\"\n", version)
-		if fixed, ok := nsisFileVersion(version); ok {
-			fmt.Fprintf(&b, "VIProductVersion \"%s\"\n", fixed)
-		}
+		fmt.Fprintf(&b, "VIProductVersion \"%s\"\n", nsisFileVersion(version))
 	}
 	b.WriteString("Page directory\nPage instfiles\nUninstPage uninstConfirm\nUninstPage instfiles\n\n")
 
@@ -165,12 +163,15 @@ func makensisPath(override string) (string, error) {
 	return "", errors.New("a Windows installer needs NSIS (makensis); install it (apt install nsis, port install nsis, winget install NSIS.NSIS) or pass --makensis")
 }
 
-// nsisFileVersion is the four-number form VIProductVersion requires.
-func nsisFileVersion(v string) (string, bool) {
-	parts := strings.Split(v, ".")
-	if len(parts) > 4 {
-		return "", false
+// nsisFileVersion is the four-number form VIProductVersion requires. makensis
+// rejects the version keys without it, so a version it cannot parse becomes
+// 0.0.0.0 rather than dropping the whole resource.
+func nsisFileVersion(v string) string {
+	digits := versionDigits(v)
+	if digits == "" {
+		return "0.0.0.0"
 	}
+	parts := strings.Split(digits, ".")
 	nums := make([]string, 4)
 	for i := range nums {
 		nums[i] = "0"
@@ -178,12 +179,15 @@ func nsisFileVersion(v string) (string, bool) {
 			continue
 		}
 		n, err := strconv.Atoi(parts[i])
-		if err != nil || n < 0 || n > 65535 {
-			return "", false
+		if err != nil || n < 0 {
+			continue
+		}
+		if n > 65535 {
+			n = 65535
 		}
 		nums[i] = strconv.Itoa(n)
 	}
-	return strings.Join(nums, "."), true
+	return strings.Join(nums, ".")
 }
 
 // icoSizes are the representations Windows uses: menus, Explorer, and the large

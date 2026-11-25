@@ -72,10 +72,7 @@ func TestExtractSDLZip(t *testing.T) {
 }
 
 func TestResolvePackSDL(t *testing.T) {
-	sdl := filepath.Join(t.TempDir(), "libSDL3.so.0")
-	if err := os.WriteFile(sdl, []byte("so"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	sdl := fakeSDL(t, "linux", runtime.GOARCH)
 	if got, err := resolvePackSDL(packOptions{OS: "linux", Arch: runtime.GOARCH, SDL: sdl}, io.Discard); err != nil || got != sdl {
 		t.Fatalf("--sdl = %q, %v", got, err)
 	}
@@ -155,4 +152,101 @@ func TestExtractBottledSDL(t *testing.T) {
 	if _, err := extractBottledSDL(archive, 62, dir); err == nil || !strings.Contains(err.Error(), "ELF machine") {
 		t.Fatalf("wrong architecture error = %v", err)
 	}
+}
+
+func TestCheckSDLLibrary(t *testing.T) {
+	elf := func(machine uint16) []byte {
+		b := make([]byte, 64)
+		copy(b, "\x7fELF")
+		binary.LittleEndian.PutUint16(b[18:20], machine)
+		return b
+	}
+	pe := func(machine uint16) []byte {
+		b := make([]byte, 0x80)
+		copy(b, "MZ")
+		binary.LittleEndian.PutUint32(b[0x3c:0x40], 0x40)
+		copy(b[0x40:], "PE\x00\x00")
+		binary.LittleEndian.PutUint16(b[0x44:0x46], machine)
+		return b
+	}
+	thin := func(cpu uint32) []byte {
+		b := make([]byte, 32)
+		binary.BigEndian.PutUint32(b[0:4], 0xcffaedfe) // cf fa ed fe: little-endian 64-bit
+		binary.LittleEndian.PutUint32(b[4:8], cpu)
+		return b
+	}
+	fat := func(cpu uint32) []byte {
+		b := make([]byte, 32)
+		binary.BigEndian.PutUint32(b[0:4], 0xcafebabe)
+		binary.BigEndian.PutUint32(b[4:8], 1)
+		binary.BigEndian.PutUint32(b[8:12], cpu)
+		return b
+	}
+	dir := t.TempDir()
+	write := func(name string, b []byte) string {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	ok := map[string]string{
+		"linux/amd64":   write("elf-amd64", elf(62)),
+		"linux/arm64":   write("elf-arm64", elf(183)),
+		"windows/amd64": write("pe-amd64", pe(0x8664)),
+		"windows/arm64": write("pe-arm64", pe(0xAA64)),
+		"darwin/amd64":  write("thin-amd64", thin(0x01000007)),
+		"darwin/arm64":  write("fat-universal", fat(0x0100000c)),
+	}
+	for target, path := range ok {
+		parts := strings.Split(target, "/")
+		if err := checkSDLLibrary(path, parts[0], parts[1]); err != nil {
+			t.Fatalf("%s rejected: %v", target, err)
+		}
+	}
+	bad := []struct{ target, path string }{
+		{"linux/arm64", ok["linux/amd64"]},
+		{"windows/arm64", ok["windows/amd64"]},
+		{"darwin/arm64", ok["darwin/amd64"]},
+		{"linux/amd64", write("not-a-lib", []byte("hello"))},
+	}
+	for _, c := range bad {
+		parts := strings.Split(c.target, "/")
+		if err := checkSDLLibrary(c.path, parts[0], parts[1]); err == nil {
+			t.Fatalf("%s accepted a wrong library", c.target)
+		}
+	}
+}
+
+func TestVersionDigitsDropsEmptyParts(t *testing.T) {
+	if got := versionDigits("1..2"); got != "1.2" {
+		t.Fatalf("versionDigits(1..2) = %q, want 1.2", got)
+	}
+}
+
+// fakeSDL writes the smallest object file checkSDLLibrary accepts.
+func fakeSDL(t *testing.T, goos, goarch string) string {
+	t.Helper()
+	var b []byte
+	switch goos {
+	case "linux":
+		b = make([]byte, 64)
+		copy(b, "\x7fELF")
+		binary.LittleEndian.PutUint16(b[18:20], elfMachines[goarch])
+	case "darwin":
+		b = make([]byte, 32)
+		binary.BigEndian.PutUint32(b[0:4], 0xcffaedfe)
+		binary.LittleEndian.PutUint32(b[4:8], machoCPUs[goarch])
+	case "windows":
+		b = make([]byte, 0x80)
+		copy(b, "MZ")
+		binary.LittleEndian.PutUint32(b[0x3c:0x40], 0x40)
+		copy(b[0x40:], "PE\x00\x00")
+		binary.LittleEndian.PutUint16(b[0x44:0x46], peMachines[goarch])
+	}
+	path := filepath.Join(t.TempDir(), packSDLFile(goos))
+	if err := os.WriteFile(path, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }

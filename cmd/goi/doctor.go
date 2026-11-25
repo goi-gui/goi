@@ -134,6 +134,9 @@ func appImagePackCheck() doctorCheck {
 	if runtime.GOOS != "linux" {
 		return doctorCheck{Name: "appimagetool", Status: "n/a", Detail: "AppImage target needs Linux"}
 	}
+	if p := os.Getenv("GOI_APPIMAGETOOL"); p != "" {
+		return doctorCheck{Name: "appimagetool", Status: "ok", Detail: p + " (GOI_APPIMAGETOOL)"}
+	}
 	if p, err := exec.LookPath("appimagetool"); err == nil {
 		return doctorCheck{Name: "appimagetool", Status: "ok", Detail: p}
 	}
@@ -142,6 +145,9 @@ func appImagePackCheck() doctorCheck {
 
 // nsisCheck reports the Windows installer compiler goi pack runs.
 func nsisCheck() doctorCheck {
+	if p := os.Getenv("GOI_MAKENSIS"); p != "" {
+		return doctorCheck{Name: "NSIS", Status: "ok", Detail: p + " (GOI_MAKENSIS)"}
+	}
 	if p, err := exec.LookPath("makensis"); err == nil {
 		return doctorCheck{Name: "NSIS", Status: "ok", Detail: p}
 	}

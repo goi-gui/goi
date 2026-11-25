@@ -104,6 +104,9 @@ func resolvePackSDL(opts packOptions, stdout io.Writer) (string, error) {
 		if info.IsDir() {
 			return "", fmt.Errorf("--sdl %s is a directory", opts.SDL)
 		}
+		if err := checkSDLLibrary(p, opts.OS, opts.Arch); err != nil {
+			return "", fmt.Errorf("--sdl %s: %w", opts.SDL, err)
+		}
 		return p, nil
 	}
 	if opts.OS == "linux" {
@@ -158,11 +161,7 @@ func downloadSDL(goos, goarch string, stdout io.Writer) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	tmp := lib + ".tmp"
-	if err := copyFile(extracted, tmp, 0o644); err != nil {
-		return "", err
-	}
-	if err := os.Rename(tmp, lib); err != nil {
+	if err := copyFileAtomic(extracted, lib, 0o644); err != nil {
 		return "", err
 	}
 	return lib, nil
@@ -222,11 +221,7 @@ func downloadLinuxSDL(goarch string, stdout io.Writer) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	tmp := lib + ".tmp"
-	if err := copyFile(extracted, tmp, 0o644); err != nil {
-		return "", err
-	}
-	if err := os.Rename(tmp, lib); err != nil {
+	if err := copyFileAtomic(extracted, lib, 0o644); err != nil {
 		return "", err
 	}
 	return lib, nil
@@ -312,13 +307,113 @@ func checkELFMachine(path string, machine uint16) error {
 	if err != nil {
 		return err
 	}
+	return checkELFMachineData(b, machine)
+}
+
+func checkELFMachineData(b []byte, machine uint16) error {
 	if len(b) < 20 || b[0] != 0x7f || b[1] != 'E' || b[2] != 'L' || b[3] != 'F' {
-		return errors.New("SDL3 download is not an ELF library")
+		return errors.New("SDL3 library is not an ELF library")
 	}
 	if got := binary.LittleEndian.Uint16(b[18:20]); got != machine {
-		return fmt.Errorf("SDL3 download is for ELF machine %d, want %d", got, machine)
+		return fmt.Errorf("SDL3 library is for ELF machine %d, want %d", got, machine)
 	}
 	return nil
+}
+
+// sdlMachines are the object-file machine values for a target.
+var (
+	elfMachines = map[string]uint16{"amd64": 62, "arm64": 183, "386": 3, "arm": 40}
+	peMachines  = map[string]uint16{"amd64": 0x8664, "arm64": 0xAA64, "386": 0x14c}
+	machoCPUs   = map[string]uint32{"amd64": 0x01000007, "arm64": 0x0100000c}
+)
+
+// checkSDLLibrary rejects a --sdl file built for another OS or architecture,
+// so the mistake surfaces at pack time instead of at the app's first launch.
+func checkSDLLibrary(path, goos, goarch string) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	switch goos {
+	case "linux":
+		machine, ok := elfMachines[goarch]
+		if !ok {
+			return nil
+		}
+		return checkELFMachineData(b, machine)
+	case "windows":
+		machine, ok := peMachines[goarch]
+		if !ok {
+			return nil
+		}
+		return checkPEMachine(b, machine)
+	case "darwin":
+		cpu, ok := machoCPUs[goarch]
+		if !ok {
+			return nil
+		}
+		return checkMachOCPU(b, cpu)
+	}
+	return nil
+}
+
+// checkPEMachine reads the COFF machine from a PE image (a Windows DLL).
+func checkPEMachine(b []byte, machine uint16) error {
+	if len(b) < 0x40 || b[0] != 'M' || b[1] != 'Z' {
+		return errors.New("SDL3 library is not a PE image")
+	}
+	off := int(binary.LittleEndian.Uint32(b[0x3c:0x40]))
+	if off < 0 || off+6 > len(b) || b[off] != 'P' || b[off+1] != 'E' || b[off+2] != 0 || b[off+3] != 0 {
+		return errors.New("SDL3 library is not a PE image")
+	}
+	got := binary.LittleEndian.Uint16(b[off+4 : off+6])
+	if got != machine {
+		return fmt.Errorf("SDL3 library is for PE machine %#x, want %#x", got, machine)
+	}
+	return nil
+}
+
+// checkMachOCPU accepts a thin image for cpu or a universal image that carries
+// one for it.
+func checkMachOCPU(b []byte, cpu uint32) error {
+	if len(b) < 8 {
+		return errors.New("SDL3 library is not a Mach-O image")
+	}
+	magic := binary.BigEndian.Uint32(b[0:4])
+	switch magic {
+	case 0xcafebabe, 0xcafebabf:
+		count := int(binary.BigEndian.Uint32(b[4:8]))
+		if count <= 0 || count > 64 {
+			return errors.New("SDL3 library has a broken universal header")
+		}
+		size := 20
+		if magic == 0xcafebabf {
+			size = 32
+		}
+		for i := 0; i < count; i++ {
+			off := 8 + i*size
+			if off+4 > len(b) {
+				return errors.New("SDL3 library has a truncated universal header")
+			}
+			if binary.BigEndian.Uint32(b[off:off+4]) == cpu {
+				return nil
+			}
+		}
+		return fmt.Errorf("SDL3 library has no slice for CPU %#x", cpu)
+	case 0xfeedface, 0xfeedfacf, 0xcefaedfe, 0xcffaedfe:
+		var order binary.ByteOrder = binary.LittleEndian
+		if magic == 0xfeedface || magic == 0xfeedfacf {
+			order = binary.BigEndian
+		}
+		if len(b) < 8 {
+			return errors.New("SDL3 library has a truncated Mach-O header")
+		}
+		if got := order.Uint32(b[4:8]); got != cpu {
+			return fmt.Errorf("SDL3 library is for Mach-O CPU %#x, want %#x", got, cpu)
+		}
+		return nil
+	}
+	return errors.New("SDL3 library is not a Mach-O image")
 }
 
 // extractSDL pulls the library out of the target's release archive.
