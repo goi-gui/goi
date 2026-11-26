@@ -1743,6 +1743,22 @@ func (v *validator) checkEventCall(e *syntax.Element, ev EventDef, p *syntax.Pro
 				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes a bool",
 					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
 			}
+		case "show":
+			// A popover's panel: `pop.show(true)`.
+			if def, ok := Lookup(target.Name); ok && def.Name != "Popover" {
+				v.add(at, end,
+					fmt.Sprintf("%s.%s: only a Popover has show", e.Name, p.Name), "")
+				return
+			}
+			if len(call.Args) != 1 {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes one bool",
+					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+				return
+			}
+			if _, ok := call.Args[0].(*syntax.Bool); !ok && !boolishValue(call.Args[0]) {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes a bool",
+					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+			}
 		case "expand":
 			// `expand()` toggles and `expand(true)` sets, so no argument is
 			// legal and the one that may follow is a bool.

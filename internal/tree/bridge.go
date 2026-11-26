@@ -381,6 +381,29 @@ func (t *Tree) callNodeMethodX(id, method string, args []any) {
 		t.bridgeErr(fmt.Errorf("goi: no element with id %q", id))
 		return
 	}
+	if p, ok := n.(*Popover); ok {
+		switch method {
+		case "show":
+			if len(args) != 1 {
+				t.bridgeErr(fmt.Errorf("goi: %s.show takes one bool", n.Kind()))
+				return
+			}
+			on, ok := args[0].(bool)
+			if !ok {
+				t.bridgeErr(fmt.Errorf("goi: %s.show takes a bool", n.Kind()))
+				return
+			}
+			p.Show(on)
+			return
+		case "toggle":
+			if len(args) != 0 {
+				t.bridgeErr(fmt.Errorf("goi: %s.toggle takes no arguments", n.Kind()))
+				return
+			}
+			p.Toggle()
+			return
+		}
+	}
 	// `id.scrollTo(200)` and its child forms move a scroll area without a Go
 	// handler, which is what a "jump to top" button in a design needs.
 	if method == "autoScroll" || method == "autoScrollSmooth" {

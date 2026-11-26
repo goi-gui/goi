@@ -19,6 +19,26 @@ type Popover struct {
 // Kind implements Node.
 func (*Popover) Kind() string { return "Popover" }
 
+// Show shows or hides the panel. The panel's `visible` cell is the state, so
+// layout, paint and hit-testing all follow it. Showing a popover with no
+// `$popover` slot does nothing.
+func (p *Popover) Show(on bool) {
+	if p == nil || p.Panel == nil {
+		return
+	}
+	p.Panel.Base().SetVisible(on)
+}
+
+// Toggle flips the panel's visibility and returns the new state.
+func (p *Popover) Toggle() bool {
+	if p == nil || p.Panel == nil {
+		return false
+	}
+	on := !p.Panel.Base().Visible()
+	p.Show(on)
+	return on
+}
+
 func (c *Popover) namedProps() []NamedProp {
 	return append(c.propsExcept("Popover", "align"),
 		EnumProp(&c.NodeBase, "align", DirtyLayout, &c.Align, AlignValues))

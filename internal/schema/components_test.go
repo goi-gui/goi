@@ -458,3 +458,25 @@ func TestSliderIconsUseThemeColors(t *testing.T) {
 		}
 	}
 }
+
+func TestEventCallsPopoverMethods(t *testing.T) {
+	base := `Window { Column {
+		Popover { id: pop Button { label: "anchor" } $popover { Card { label: "panel" } } }
+		Button { id: other label: "other" }
+		Button { %s }
+	} }`
+	for _, call := range []string{"pop.toggle()", "pop.show(true)", "pop.show(false)"} {
+		src := fmt.Sprintf(base, "onClick: "+call)
+		if _, diag := validate(t, src); !diag.Empty() {
+			t.Errorf("%s: %v", call, diag)
+		}
+	}
+	for _, bad := range []string{
+		"pop.show()", "pop.show(1)", "pop.toggle(true)", "other.show(true)",
+	} {
+		src := fmt.Sprintf(base, "onClick: "+bad)
+		if _, diag := validate(t, src); diag.Empty() {
+			t.Errorf("%s was accepted", bad)
+		}
+	}
+}

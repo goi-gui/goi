@@ -157,3 +157,55 @@ func TestZIndexBeatsAFloatingBranch(t *testing.T) {
 		t.Fatalf("the floating branch is not painted last: %v", order)
 	}
 }
+
+// TestPopoverShowAndToggle covers the panel state from Go and from a design
+// event: the panel's own visibility is the one source, so layout, paint and
+// hit-testing follow.
+func TestPopoverShowAndToggle(t *testing.T) {
+	tr, diag := BuildSource([]byte(`Window {
+		Popover {
+			id: pop
+			Button { id: flipper label: "Flip" onClick: pop.toggle() }
+			Button { id: hider label: "Hide" onClick: pop.show(false) }
+			$popover { Card { label: "Panel" width: 100 height: 60 } }
+		}
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	n, _ := tr.ByID("pop")
+	p := n.(*Popover)
+	if p.Panel == nil || !p.Panel.Base().Visible() {
+		t.Fatal("the panel did not start visible")
+	}
+	p.Show(false)
+	if p.Panel.Base().Visible() {
+		t.Fatal("Show(false) left the panel visible")
+	}
+	p.Show(true)
+	if !p.Panel.Base().Visible() {
+		t.Fatal("Show(true) did not show the panel")
+	}
+	if p.Toggle() || p.Panel.Base().Visible() {
+		t.Fatal("Toggle did not hide the panel")
+	}
+	if !p.Toggle() || !p.Panel.Base().Visible() {
+		t.Fatal("Toggle did not show the panel again")
+	}
+
+	// The same two methods from a design event.
+	btn, _ := tr.ByID("flipper")
+	btn.(*Button).Click.Emit(ClickEvent{})
+	if p.Panel.Base().Visible() {
+		t.Fatal("pop.toggle() did not hide the panel")
+	}
+	btn.(*Button).Click.Emit(ClickEvent{})
+	if !p.Panel.Base().Visible() {
+		t.Fatal("pop.toggle() did not show the panel")
+	}
+	hider, _ := tr.ByID("hider")
+	hider.(*Button).Click.Emit(ClickEvent{})
+	if p.Panel.Base().Visible() {
+		t.Fatal("pop.show(false) did not hide the panel")
+	}
+}
