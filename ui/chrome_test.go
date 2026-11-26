@@ -90,8 +90,9 @@ func TestWindowGoSetters(t *testing.T) {
 		{"minimized", w.SetMinimized, w.Minimized},
 		{"minimizable", w.SetMinimizable, w.Minimizable},
 		{"maximized", w.SetMaximized, w.Maximized},
+		{"maximize", w.Maximize, w.Maximized},
 		{"maximizable", w.SetMaximizable, w.Maximizable},
-		{"fullscreen", w.SetFullscreen, w.Fullscreen},
+		{"fullscreen", w.SetFullscreen, func() bool { return w.Fullscreen() }},
 		{"resizable", w.SetResizable, w.Resizable},
 	} {
 		// resizable defaults to true, the rest to false.
@@ -159,5 +160,19 @@ func TestWindowMinHeightLayouts(t *testing.T) {
 	layout.New(layout.FakeMeasurer{}).Layout(w.tree.Root, 400, 400)
 	if got := box.Base().Bounds().H; got != 90 {
 		t.Fatalf("height = %v, want the minHeight floor", got)
+	}
+}
+
+// TestWindowFullscreenShortForm covers Fullscreen(true) next to the getter form.
+func TestWindowFullscreenShortForm(t *testing.T) {
+	_, w := reloadApp(t, `Window { }`)
+	if !w.Fullscreen(true) {
+		t.Fatal("Fullscreen(true) did not request fullscreen")
+	}
+	if !w.Fullscreen() {
+		t.Fatal("the no-argument getter did not see fullscreen")
+	}
+	if w.Fullscreen(false) {
+		t.Fatal("Fullscreen(false) did not leave fullscreen")
 	}
 }

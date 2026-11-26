@@ -211,6 +211,10 @@ func (w *Window) SetMaximized(on bool) {
 	}
 }
 
+// Maximize maximizes the window with true and restores it with false. It is
+// SetMaximized under the name a handler reads best.
+func (w *Window) Maximize(on bool) { w.SetMaximized(on) }
+
 // requestState writes a state prop, which the frame loop then applies. When the
 // prop already holds the value — the user maximized from the title bar, so the
 // prop is behind the window — the platform is nudged directly, otherwise the
@@ -257,8 +261,14 @@ func (w *Window) SetResizable(on bool) {
 	w.tree.Root.Resizable.Set(on)
 }
 
-// Fullscreen reports whether the window fills the display.
-func (w *Window) Fullscreen() bool {
+// Fullscreen reports whether the window fills the display. With an argument it
+// is also the setter: Fullscreen(true) makes it fullscreen, Fullscreen(false)
+// returns it to a normal window, and the return is the state after the request
+// (the live platform value once the next frame has reported it).
+func (w *Window) Fullscreen(on ...bool) bool {
+	if len(on) > 0 {
+		w.SetFullscreen(on[0])
+	}
 	r := w.root()
 	if r == nil {
 		return false
@@ -270,7 +280,7 @@ func (w *Window) Fullscreen() bool {
 }
 
 // SetFullscreen makes the window fill the display, or returns it to a normal
-// window.
+// window. Fullscreen(true) is the shorter form.
 func (w *Window) SetFullscreen(on bool) {
 	if w == nil || w.tree == nil {
 		return
