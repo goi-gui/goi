@@ -99,8 +99,12 @@ type Component struct {
 	// FocusRing is set only when the focus came from the keyboard. A pointer
 	// press moves focus too, but M3 only shows the ring for keyboard users.
 	FocusRing bool
-	// Caret for text fields.
-	Caret int
+	// Caret for text fields. CaretBlink is the caret's current visibility; the
+	// input layer toggles it while a field is focused, and CaretBlinkPhase is
+	// the time since the last toggle.
+	Caret           int
+	CaretBlink      bool
+	CaretBlinkPhase float64
 	// Preedit is the IME composition that is not committed yet. It is drawn
 	// after the value but is not part of Text until the input method commits.
 	Preedit string
@@ -144,6 +148,7 @@ type Component struct {
 func newComponent() Component {
 	return Component{
 		SelAnchor:          -1,
+		CaretBlink:         true,
 		Label:              newProp(nil, "label", DirtyLayout, ""),
 		Supporting:         newProp(nil, "supporting", DirtyLayout, ""),
 		Text:               newProp(nil, "text", DirtyLayout, ""),

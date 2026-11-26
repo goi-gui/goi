@@ -2,6 +2,7 @@ package ui
 
 import (
 	"math"
+	"time"
 
 	"github.com/goi-gui/goi/internal/tree"
 )
@@ -56,4 +57,35 @@ func (i *interactor) tickFieldLabels(dt float64) bool {
 		moving = true
 	})
 	return moving
+}
+
+// caretBlinkHalf is how long the caret stays visible or hidden while a field
+// has focus.
+const caretBlinkHalf = 0.5 // seconds
+
+// tickCaretBlink advances the focused text field's caret blink and reports
+// whether it toggled, plus how long until the next toggle is due. The wait lets
+// the loop sleep between blinks instead of redrawing at the display rate.
+func (i *interactor) tickCaretBlink(dt float64) (bool, time.Duration) {
+	c := i.focus
+	if c == nil || !isTextField(c) || !visibleInTree(c.Base().Node()) {
+		return false, 0
+	}
+	if dt > 0 {
+		c.CaretBlinkPhase += dt
+	}
+	changed := false
+	for c.CaretBlinkPhase >= caretBlinkHalf {
+		c.CaretBlinkPhase -= caretBlinkHalf
+		c.CaretBlink = !c.CaretBlink
+		changed = true
+	}
+	if changed {
+		c.Base().MarkDirty(tree.DirtyPaint)
+	}
+	wait := time.Duration((caretBlinkHalf - c.CaretBlinkPhase) * float64(time.Second))
+	if wait <= 0 {
+		wait = time.Millisecond
+	}
+	return changed, wait
 }

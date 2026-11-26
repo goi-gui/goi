@@ -154,7 +154,7 @@ func (l *List) paintTextArea(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		y := box.Y + float64(idx)*lh - shift
 		l.textIn(c.Preedit, body, fg, tree.Rect{X: box.X + x, Y: y, W: box.W - x, H: lh}, AlignStart, textClip)
 	}
-	if c.Focused {
+	if c.Focused && c.CaretBlink {
 		idx, x := areaCaret(lines, c.Caret, advance)
 		y := box.Y + float64(idx)*lh - shift
 		if y+lh > box.Y && y < box.Bottom() {

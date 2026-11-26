@@ -23,9 +23,11 @@ func (c *Component) SelectAll() {
 	n := len(c.Text.Get())
 	if n == 0 {
 		c.SelAnchor, c.Caret = -1, 0
+		c.ResetCaretBlink()
 		return
 	}
 	c.SelAnchor, c.Caret = 0, n
+	c.ResetCaretBlink()
 }
 
 // ClearSelection drops the anchor without moving the caret.
@@ -43,6 +45,15 @@ func (c *Component) MoveCaret(to int, extend bool) {
 		c.SelAnchor = -1
 	}
 	c.Caret = to
+	c.ResetCaretBlink()
+}
+
+// ResetCaretBlink shows the caret and restarts its blink. Typing, moving the
+// caret or focusing the field calls it, so the caret never stays hidden while
+// the reader is editing.
+func (c *Component) ResetCaretBlink() {
+	c.CaretBlink = true
+	c.CaretBlinkPhase = 0
 }
 
 // snapIndex clamps i to the string and moves it back to a rune boundary, so a
@@ -68,6 +79,7 @@ func (c *Component) SetPreedit(text string, caret int) {
 	}
 	c.Preedit = text
 	c.PreeditCaret = snapIndex(text, caret)
+	c.ResetCaretBlink()
 }
 
 // ClearPreedit drops the composition without touching the value.

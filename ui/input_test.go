@@ -285,7 +285,7 @@ func TestTextFieldDragAutoScroll(t *testing.T) {
 	first := field.Caret
 	scroll := field.M3().TextScroll
 	for i := 0; i < 20; i++ {
-		if !in.tick(1.0 / 60) {
+		if changed, _ := in.tick(1.0 / 60); !changed {
 			t.Fatal("tick stopped scrolling while the pointer was past the edge")
 		}
 		rebuild()
@@ -297,10 +297,13 @@ func TestTextFieldDragAutoScroll(t *testing.T) {
 		t.Fatalf("caret = %d, want beyond the first frame's %d", field.Caret, first)
 	}
 
-	// Moving the pointer back inside stops the auto-scroll.
+	// Moving the pointer back inside stops the auto-scroll. The blink may still
+	// ask for a frame, so check the caret itself.
 	in.MouseMove(b.X+b.W/2, b.Y+b.H/2)
-	if in.tick(1.0 / 60) {
-		t.Fatal("auto-scroll kept running after the pointer returned inside")
+	before := field.Caret
+	in.tick(1.0 / 60)
+	if field.Caret != before {
+		t.Fatal("auto-scroll kept moving the caret after the pointer returned inside")
 	}
 }
 
@@ -852,7 +855,7 @@ func TestRippleRunsAndFinishes(t *testing.T) {
 	if !c.RippleOn {
 		t.Fatal("press did not start a ripple")
 	}
-	if !in.tick(0.1) {
+	if changed, _ := in.tick(0.1); !changed {
 		t.Fatal("tick reported no animation")
 	}
 	if c.Ripple <= 0 || c.Ripple >= 1 {
@@ -876,7 +879,7 @@ func TestRippleRunsAndFinishes(t *testing.T) {
 	}
 
 	in.MouseUp(b.X+20, b.Y+10, 0)
-	if in.tick(1) {
+	if changed, _ := in.tick(1); changed {
 		t.Fatal("ripple outlived its duration")
 	}
 	if c.RippleOn {
@@ -2280,5 +2283,106 @@ func TestAutoFocusOnlyTheFirst(t *testing.T) {
 	in.applyAutoFocus()
 	if in.focus == second.M3() {
 		t.Fatal("the second field stole focus after the first was left")
+	}
+}
+
+// TestCaretBlink checks the timing: a focused field shows the caret, hides it
+// after half a second, shows it again, and typing restarts the visible phase.
+func TestCaretBlink(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		Column { TextField { id: field width: 200 } }
+	}`, 480, 320)
+	field := MustByID[*TextField](win, "field")
+	in.setKbd(field)
+	if !field.M3().CaretBlink {
+		t.Fatal("the caret was hidden when the field took focus")
+	}
+
+	changed, wait := in.tick(0.4)
+	if changed {
+		t.Fatal("the caret toggled before the half-second mark")
+	}
+	if wait <= 0 || wait > 200*time.Millisecond {
+		t.Fatalf("wait after 0.4s = %v, want about 100ms", wait)
+	}
+
+	changed, _ = in.tick(0.2)
+	if !changed || field.M3().CaretBlink {
+		t.Fatal("the caret did not hide at the half-second mark")
+	}
+
+	changed, _ = in.tick(0.5)
+	if !changed || !field.M3().CaretBlink {
+		t.Fatal("the caret did not come back after another half second")
+	}
+
+	// Typing shows it again even if the blink was off.
+	in.tick(0.5)
+	if field.M3().CaretBlink {
+		t.Fatal("the caret did not hide before the typing check")
+	}
+	in.Char('x')
+	if !field.M3().CaretBlink || field.M3().CaretBlinkPhase != 0 {
+		t.Fatal("typing did not restart the visible caret phase")
+	}
+
+	// A blurred field asks for no blink frames.
+	in.setFocus(nil)
+	in.setKbd(nil)
+	changed, wait = in.tick(0.5)
+	if changed || wait != 0 {
+		t.Fatalf("blurred blink = changed %v, wait %v", changed, wait)
+	}
+}
+
+// TestCaretBlinkPaint checks each text input's painter follows the flag.
+func TestCaretBlinkPaint(t *testing.T) {
+	cases := []struct {
+		name   string
+		design string
+		node   func(*Window) tree.Node
+	}{
+		{
+			"TextField",
+			`Window { Column { TextField { id: field width: 200 } } }`,
+			func(w *Window) tree.Node { return MustByID[*TextField](w, "field") },
+		},
+		{
+			"SearchBar",
+			`Window { Column { SearchBar { id: field width: 200 } } }`,
+			func(w *Window) tree.Node { return MustByID[*SearchBar](w, "field") },
+		},
+		{
+			"TextArea",
+			`Window { Column { TextArea { id: field width: 200 height: 100 } } }`,
+			func(w *Window) tree.Node { return MustByID[*TextArea](w, "field") },
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, win, in := inputFixture(t, c.design, 480, 320)
+			n := c.node(win)
+			in.setKbd(n)
+			carets := func() int {
+				list := &paint.List{}
+				list.Build(win.tree, 480, 320)
+				count := 0
+				for _, op := range list.Ops {
+					if op.Kind == paint.Fill && op.Rect[2] == 2 && op.Rect[3] <= 24 {
+						count++
+					}
+				}
+				return count
+			}
+
+			comp(n).CaretBlink = true
+			if got := carets(); got != 1 {
+				t.Fatalf("%s caret ops visible = %d, want 1", c.name, got)
+			}
+			comp(n).CaretBlink = false
+			if got := carets(); got != 0 {
+				t.Fatalf("%s caret ops hidden = %d, want 0", c.name, got)
+			}
+		})
 	}
 }

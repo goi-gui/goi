@@ -2982,3 +2982,12 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   cleared and the main screen still returns on exit, which is what a terminal
   clear does. A full reset would also forget the mouse and bracketed-paste modes
   the pty still believes are on.
+- **The caret blinks on a half-second timer, and the loop sleeps between
+  blinks.** The interactor advances the focused text input's `CaretBlinkPhase`
+  and toggles `CaretBlink`; paint skips the caret while it is false. Focus,
+  typing and caret movement call `ResetCaretBlink` so editing never happens with
+  an invisible caret. `interactor.tick` now also returns the time until the next
+  blink, merged into `animWait`, so a focused field wakes the loop twice a
+  second instead of redrawing at the display rate. The blink covers TextField,
+  SearchBar and TextArea, and follows the ColorPicker's hex field while it is
+  active through the same `isTextField` path.

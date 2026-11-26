@@ -1,6 +1,10 @@
 package ui
 
-import "github.com/goi-gui/goi/internal/tree"
+import (
+	"time"
+
+	"github.com/goi-gui/goi/internal/tree"
+)
 
 // rippleDur is how long one press ripple lives: expansion, then fade.
 const rippleDur = 0.45 // seconds
@@ -29,8 +33,9 @@ func (i *interactor) startRipple(n tree.Node, x, y float64) {
 // tick advances every live ripple by dt seconds and reports whether another
 // frame is needed to finish them. A selection drag that sits past the field
 // edge also keeps scrolling, so holding the pointer at the edge reveals the
-// rest of a long value.
-func (i *interactor) tick(dt float64) bool {
+// rest of a long value. The wait is the next caret blink, which lets the loop
+// sleep instead of drawing at the display rate while a field is focused.
+func (i *interactor) tick(dt float64) (bool, time.Duration) {
 	scrolling := i.autoScroll(dt)
 	if i.tickFling(dt) {
 		scrolling = true
@@ -44,8 +49,9 @@ func (i *interactor) tick(dt float64) bool {
 	if i.tickFieldLabels(dt) {
 		scrolling = true
 	}
+	blinkChanged, blinkWait := i.tickCaretBlink(dt)
 	if len(i.ripples) == 0 {
-		return scrolling
+		return scrolling || blinkChanged, blinkWait
 	}
 	live := i.ripples[:0]
 	for _, r := range i.ripples {
@@ -64,7 +70,7 @@ func (i *interactor) tick(dt float64) bool {
 		live = append(live, r)
 	}
 	i.ripples = live
-	return len(live) > 0 || scrolling
+	return len(live) > 0 || scrolling || blinkChanged, blinkWait
 }
 
 // autoScrollPx is how fast a held drag scrolls a text field, in logical pixels

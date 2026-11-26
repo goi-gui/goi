@@ -189,12 +189,14 @@ func (l *List) paintColorPicker(c *tree.Component, r tree.Rect, clip tree.Rect) 
 			px := textX - shift + textWidth(l, raw[:n], style)
 			l.preedit(c.Preedit, px, cl.Hex.Y, style, fg, cl.Hex.Bottom()-8, textClip)
 		}
-		caretX := textX - shift + fieldCaretX(l, c, style)
-		l.Ops = append(l.Ops, Op{
-			Kind: Fill, Shape: RoundedRect,
-			Rect:  [4]float32{float32(caretX), float32(cl.Hex.Y + 12), 2, 20},
-			Color: col.Primary, Clip: clipArr(textClip),
-		})
+		if c.CaretBlink {
+			caretX := textX - shift + fieldCaretX(l, c, style)
+			l.Ops = append(l.Ops, Op{
+				Kind: Fill, Shape: RoundedRect,
+				Rect:  [4]float32{float32(caretX), float32(cl.Hex.Y + 12), 2, 20},
+				Color: col.Primary, Clip: clipArr(textClip),
+			})
+		}
 	}
 
 	// Actions, right-aligned like the time picker's.

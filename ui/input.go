@@ -3482,6 +3482,7 @@ func (i *interactor) setFocus(c *tree.Component) {
 	i.focus = c
 	if c != nil {
 		c.Focused = true
+		c.ResetCaretBlink()
 		c.Base().SetStateFocused(true)
 		c.Base().MarkDirty(tree.DirtyPaint)
 	}
@@ -3849,6 +3850,7 @@ func (i *interactor) applyEdit(f *tree.Component, s string, caret int) {
 	f.Text.Set(s)
 	f.Caret = caret
 	f.ClearSelection()
+	f.ResetCaretBlink()
 	f.Base().MarkDirty(tree.DirtyPaint)
 	if cp := colorPickerOf(f); cp != nil {
 		if hex, ok := cp.ValidHex(); ok {
@@ -4225,6 +4227,7 @@ func (i *interactor) pressText(f *tree.Component, x, y float64, shift bool) {
 	default:
 		f.MoveCaret(idx, false)
 	}
+	f.ResetCaretBlink()
 	f.Base().MarkDirty(tree.DirtyPaint)
 	i.markDirty()
 }

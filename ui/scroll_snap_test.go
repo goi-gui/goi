@@ -53,7 +53,7 @@ func sprintf(format, a, b string) string {
 // tickScroll runs the per-frame scroll work until nothing is left to animate.
 func tickScroll(in *interactor) {
 	for k := 0; k < 200; k++ {
-		if !in.tick(0.016) {
+		if changed, _ := in.tick(0.016); !changed {
 			return
 		}
 	}

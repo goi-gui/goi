@@ -277,8 +277,13 @@ func (a *App) frame() {
 	if dt > 0.1 {
 		dt = 0.1 // don't jump after a long idle
 	}
-	if d.input != nil && d.input.tick(dt) {
-		a.needsFrame = true
+	var inputWait time.Duration
+	if d.input != nil {
+		changed, wait := d.input.tick(dt)
+		if changed {
+			a.needsFrame = true
+		}
+		inputWait = wait
 	}
 	if a.tickImageLoads(dt) {
 		a.needsFrame = true
@@ -288,6 +293,9 @@ func (a *App) frame() {
 	// the loop how long it may sleep before the next one is due.
 	changed, animWait := a.tickAnimations(dt)
 	a.animWait = animWait
+	if inputWait > 0 && (a.animWait == 0 || inputWait < a.animWait) {
+		a.animWait = inputWait
+	}
 	if changed {
 		a.needsFrame = true
 	}

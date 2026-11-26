@@ -1675,7 +1675,7 @@ func (l *List) paintTextField(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	}
 
 	// Caret.
-	if c.Focused {
+	if c.Focused && c.CaretBlink {
 		caretX := lx - shift + fieldCaretX(l, c, labelStyle)
 		caretTop := valueTop + 4
 		l.Ops = append(l.Ops, Op{
@@ -1761,7 +1761,7 @@ func (l *List) paintSearchBar(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	}
 	// Caret, so typing into the bar is visible. Search has no label band, so the
 	// caret uses the full line height.
-	if c.Focused {
+	if c.Focused && c.CaretBlink {
 		x := start + fieldCaretX(l, c, style)
 		l.Ops = append(l.Ops, Op{
 			Kind: Fill, Shape: RoundedRect,
