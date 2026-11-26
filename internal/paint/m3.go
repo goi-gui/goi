@@ -409,7 +409,7 @@ func (l *List) paintComponent(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	case "SearchBar":
 		l.paintSearchBar(c, r, clip)
 	case "Tooltip":
-		l.paintTooltip(c, r, clip)
+		l.queueTooltip(c, r, clip)
 	case "Card":
 		l.paintCard(c, r, clip)
 	case "Dialog":

@@ -1546,3 +1546,46 @@ func TestNavigationIndicatorFades(t *testing.T) {
 		t.Fatalf("fade bands = %d, want the old and the new", n)
 	}
 }
+
+// TestTooltipIsNotClippedByItsCard keeps the bubble outside the surface that
+// clips the child and at the end of the display list, so no later sibling or
+// card edge can cut or cover the label.
+func TestTooltipIsNotClippedByItsCard(t *testing.T) {
+	const src = `Window { Column {
+		padding: 60
+		Card {
+			width:  120
+			height: 40
+			Tooltip {
+				id:   tip
+				text: "A tooltip much wider than the card"
+				Text { text: "Hover" }
+			}
+		}
+	} }`
+	tr, diag := tree.BuildSource([]byte(src), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	layout.New(nil).Layout(tr.Root, 400, 400)
+	n, _ := tr.ByID("tip")
+	n.(*tree.Tooltip).M3().Hover = true
+	l := &List{}
+	l.Build(tr, 400, 400)
+
+	idx := -1
+	for i, op := range l.Ops {
+		if op.Kind == Fill && op.Color == m3.Light().Colors.InverseSurface {
+			idx = i
+			if w := op.Clip[2] - op.Clip[0]; w < 399 {
+				t.Fatalf("bubble clip width = %v, want the window width", w)
+			}
+		}
+	}
+	if idx < 0 {
+		t.Fatal("no tooltip bubble was painted")
+	}
+	if idx < len(l.Ops)-3 {
+		t.Fatalf("bubble at %d of %d ops, not at the top of the list", idx, len(l.Ops))
+	}
+}

@@ -235,12 +235,17 @@ type List struct {
 	// heroOps are the flight copies of shared elements, collected during the
 	// walk and painted above the page.
 	heroOps []Op
+	// tooltips are the bubbles collected during the walk. They paint after
+	// everything else, with the window as their clip, so a parent surface or a
+	// later sibling cannot cut or cover the label.
+	tooltips []tooltipPaint
 }
 
 // Reset empties the list but keeps its capacity.
 func (l *List) Reset() {
 	l.Ops = l.Ops[:0]
 	l.heroOps = l.heroOps[:0]
+	l.tooltips = l.tooltips[:0]
 	l.Animating = false
 }
 
@@ -250,10 +255,6 @@ func (l *List) Build(tr *tree.Tree, w, h float64) {
 		tr.BeginHeroFrame()
 	}
 	l.BuildClip(tr, w, h, tree.Rect{W: w, H: h})
-	if len(l.heroOps) > 0 {
-		l.Ops = append(l.Ops, l.heroOps...)
-		l.heroOps = l.heroOps[:0]
-	}
 	if tr != nil {
 		tr.EndHeroFrame()
 	}
@@ -282,6 +283,47 @@ func (l *List) BuildClip(tr *tree.Tree, w, h float64, clip tree.Rect) {
 		l.textIn(strconv.Itoa(l.FPS)+" fps", l.style("labelSmall"), l.Theme.Colors.OnSurfaceVariant,
 			tree.Rect{X: 0, Y: 8, W: w - 12, H: 20}, AlignEnd, clip)
 	}
+	// A hero flight is above the page, and a tooltip is above both.
+	if len(l.heroOps) > 0 {
+		l.Ops = append(l.Ops, l.heroOps...)
+		l.heroOps = l.heroOps[:0]
+	}
+	l.paintTooltips()
+}
+
+// tooltipPaint is one queued tooltip bubble. The rectangle is the box its
+// anchor occupied during the walk; family is the inherited text family at that
+// point, because the final paint runs after the walk.
+type tooltipPaint struct {
+	c      *tree.Component
+	r      tree.Rect
+	family string
+}
+
+// queueTooltip records a hovering tooltip for the final pass. It is skipped
+// when the anchor itself is clipped away, so a tooltip scrolled out of view
+// does not float over the page.
+func (l *List) queueTooltip(c *tree.Component, r, clip tree.Rect) {
+	if !c.Hover || c.Text.Get() == "" {
+		return
+	}
+	if vis := intersect(clip, r); vis.W <= 0 || vis.H <= 0 {
+		return
+	}
+	l.tooltips = append(l.tooltips, tooltipPaint{c: c, r: r, family: l.family})
+}
+
+// paintTooltips draws the queued bubbles last, with the whole window as the
+// clip. A card or a stack that clips its content therefore cannot cut the
+// tooltip label.
+func (l *List) paintTooltips() {
+	for _, tip := range l.tooltips {
+		outer := l.family
+		l.family = tip.family
+		l.paintTooltip(tip.c, tip.r, l.window)
+		l.family = outer
+	}
+	l.tooltips = l.tooltips[:0]
 }
 
 // panelPlace returns the bounds and clip a popover panel draws with: the box

@@ -3007,3 +3007,11 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   reflow; the header's right borders are the reference and the first row's cells
   are used when the header is hidden. The minimum is 24dp, and the outer
   scrollbar still has its own area.
+- **A tooltip bubble is an overlay, not part of its parent's paint.** The walk
+  queues a hovering `Tooltip` instead of drawing it, then paints every bubble
+  after the tree, the hero copies and the FPS overlay with the window as its
+  clip. A Card, Stack, scroll viewport or later sibling can no longer cut or
+  cover the label; only the window edge can. The anchor's own clip still decides
+  whether it is visible, so a tooltip scrolled out of view stays out. The
+  inherited font family is captured with the queue, since the final paint runs
+  after the walk.
