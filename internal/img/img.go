@@ -10,6 +10,8 @@ import (
 	_ "image/gif"  // register decoders for the file formats a design may use
 	_ "image/jpeg" // register
 	_ "image/png"  // register
+
+	_ "golang.org/x/image/webp" // register
 )
 
 // Data is a decoded image: tightly packed RGBA, straight (not premultiplied)
@@ -23,8 +25,8 @@ type Data struct {
 	Gen int
 }
 
-// Decode reads a PNG, JPEG or GIF. Anything else is an error naming the format,
-// so a typo in a path does not look like a decode failure.
+// Decode reads a PNG, JPEG, GIF or WebP. Anything else is an error naming the
+// format, so a typo in a path does not look like a decode failure.
 func Decode(b []byte) (*Data, error) {
 	src, _, err := image.Decode(bytes.NewReader(b))
 	if err != nil {

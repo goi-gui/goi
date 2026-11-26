@@ -2,6 +2,7 @@ package img
 
 import (
 	"bytes"
+	"encoding/base64"
 	"image"
 	"image/color"
 	"image/png"
@@ -40,6 +41,28 @@ func TestDecodePNGAndScale(t *testing.T) {
 
 	if _, err := Decode([]byte("not an image")); err == nil {
 		t.Fatal("garbage decoded")
+	}
+}
+
+// TestDecodeWebP wires the WebP decoder into the formats a design can use: a
+// still WebP decodes like any bitmap and is not mistaken for an animation.
+func TestDecodeWebP(t *testing.T) {
+	b, err := base64.StdEncoding.DecodeString("UklGRh4AAABXRUJQVlA4TBEAAAAvA0AAAAdQiirUo/+BiOh/AAA=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := Decode(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.W != 4 || d.H != 2 || len(d.Pix) != 4*2*4 {
+		t.Fatalf("decoded %dx%d with %d bytes", d.W, d.H, len(d.Pix))
+	}
+	if d.Pix[0] != 10 || d.Pix[1] != 20 || d.Pix[2] != 30 || d.Pix[3] != 255 {
+		t.Fatalf("pixel = %v", d.Pix[:4])
+	}
+	if first, anim, err := DecodeAnimated(b); err != nil || anim != nil || first.W != 4 {
+		t.Fatalf("DecodeAnimated = %v,%v,%v, want a still WebP", first, anim, err)
 	}
 }
 
