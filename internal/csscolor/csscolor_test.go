@@ -104,3 +104,26 @@ func TestParseGradientCoversCSSForms(t *testing.T) {
 		t.Error("a gradient with an unknown colour parsed")
 	}
 }
+
+func TestParseWithOpacity(t *testing.T) {
+	cases := map[string]uint32{
+		"red / 50":            0xFF000080,
+		"#411f89 / 50":        0x411F8980,
+		"#411f8980 / 50":      0x411F8980,
+		"rgb(0 0 0) / 40%":    0x00000066,
+		"rgb(0 0 0 / 20%)":    0x00000033,
+		"rebeccapurple / 0":   0x66339900,
+		"rebeccapurple / 100": 0x663399FF,
+	}
+	for in, want := range cases {
+		got, ok := ParseWithOpacity(in)
+		if !ok || got != want {
+			t.Errorf("%q = %08x ok=%v, want %08x", in, got, ok, want)
+		}
+	}
+	for _, in := range []string{"red / 101", "red / -1", "red /", "notacolour / 50"} {
+		if _, ok := ParseWithOpacity(in); ok {
+			t.Errorf("%q parsed", in)
+		}
+	}
+}

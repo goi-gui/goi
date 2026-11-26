@@ -25,8 +25,14 @@ type Series struct {
 	ColorRoles []string
 	// ColorRole names a theme role for the series, such as "primary". It wins
 	// over Color and follows the scheme, so a role written on a ChartSeries
-	// keeps changing colour with the theme.
-	ColorRole string
+	// keeps changing colour with the theme. ColorAlpha and ColorAlphaSet carry
+	// its `/ 0-100` opacity.
+	ColorRole     string
+	ColorAlpha    uint8
+	ColorAlphaSet bool
+	// ColorAlphas is ColorRoles' opacity, 255 for an opaque role. A literal
+	// colour already carries its alpha in Colors.
+	ColorAlphas []uint8
 }
 
 // ChartData is what a chart draws: the category labels along the value axis and
@@ -231,11 +237,17 @@ func (c *Chart) syncData() {
 		for _, col := range cs.Colors.Get() {
 			s.Colors = append(s.Colors, col.Color)
 			s.ColorRoles = append(s.ColorRoles, col.Role)
+			alpha := uint8(255)
+			if col.HasAlpha {
+				alpha = col.Alpha
+			}
+			s.ColorAlphas = append(s.ColorAlphas, alpha)
 		}
 		// A role outlives the child: the painter resolves it from the current
 		// scheme, which a colour copied now could not do.
 		if role := cs.colorRoleFor("color"); role != "" && !strings.HasPrefix(role, "custom:") {
 			s.ColorRole, s.Color = strings.TrimPrefix(role, "theme:"), 0
+			s.ColorAlpha, s.ColorAlphaSet = cs.colorAlphaFor("color")
 		}
 		series = append(series, s)
 	}
@@ -261,10 +273,12 @@ func sameChartData(cur ChartData, cats []string, series []Series) bool {
 	}
 	for i := range series {
 		a, b := cur.Series[i], series[i]
-		if a.Label != b.Label || a.Color != b.Color || a.ColorRole != b.ColorRole {
+		if a.Label != b.Label || a.Color != b.Color || a.ColorRole != b.ColorRole ||
+			a.ColorAlpha != b.ColorAlpha || a.ColorAlphaSet != b.ColorAlphaSet {
 			return false
 		}
-		if !slices.Equal(a.Values, b.Values) || !slices.Equal(a.Colors, b.Colors) || !slices.Equal(a.ColorRoles, b.ColorRoles) {
+		if !slices.Equal(a.Values, b.Values) || !slices.Equal(a.Colors, b.Colors) ||
+			!slices.Equal(a.ColorRoles, b.ColorRoles) || !slices.Equal(a.ColorAlphas, b.ColorAlphas) {
 			return false
 		}
 	}
@@ -512,6 +526,9 @@ func (c *Chart) resolveListRoles(lookup func(string) (uint32, bool)) bool {
 			}
 			for len(s.Colors) <= i {
 				s.Colors = append(s.Colors, 0)
+			}
+			if i < len(s.ColorAlphas) && s.ColorAlphas[i] != 255 {
+				rgba = withAlphaByte(rgba, s.ColorAlphas[i])
 			}
 			if s.Colors[i] == rgba {
 				continue

@@ -1056,7 +1056,7 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 				}
 				return
 			}
-			if _, ok := csscolor.Parse(c.Val); !ok {
+			if _, ok := csscolor.ParseWithOpacity(c.Val); !ok {
 				v.add(at, end, fmt.Sprintf("%s.%s is not a valid color: %q (a hex literal, a CSS colour name, rgb()/rgba() or a gradient)", e.Name, pd.Name, c.Val), "")
 			}
 		case *syntax.Ident:
@@ -1064,7 +1064,7 @@ func (v *validator) checkLiteral(e *syntax.Element, pd *Prop, val syntax.Value) 
 			// as a reference: a bare `surfaceContainerHigh` is a typo the
 			// compiler can catch, and a bare word that is neither a role nor a
 			// CSS colour is not a colour at all.
-			if _, ok := csscolor.Parse(c.Val); ok {
+			if _, ok := csscolor.ParseWithOpacity(c.Val); ok {
 				return
 			}
 			if _, ok := (m3.Colors{}).Role(c.Val); ok {
@@ -1174,7 +1174,7 @@ func (v *validator) checkShadow(e *syntax.Element, pd *Prop, sh *syntax.Shadow) 
 					fmt.Sprintf("%s.%s: a shadow color names theme.<role> or customColor.<name>", e.Name, pd.Name), "")
 			}
 		case *syntax.String:
-			if _, ok := csscolor.Parse(c.Val); !ok {
+			if _, ok := csscolor.ParseWithOpacity(c.Val); !ok {
 				v.add(c.At, c.At+syntax.Pos(len(c.Val)+2),
 					fmt.Sprintf("%s.%s is not a valid shadow color: %q", e.Name, pd.Name, c.Val), "")
 			}

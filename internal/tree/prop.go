@@ -447,7 +447,7 @@ func (p *NamedProp) setLiteral(v syntax.Value) bool {
 				cp.val = 0
 				return true
 			}
-			rgba, ok := csscolor.Parse(c.Val)
+			rgba, ok := csscolor.ParseWithOpacity(c.Val)
 			if !ok {
 				return false
 			}
@@ -458,13 +458,17 @@ func (p *NamedProp) setLiteral(v syntax.Value) bool {
 			// `theme.primary` follows the scheme; `customColor.brand` is the
 			// name the app defined with ui.SetCustomColor. The role cell keeps
 			// the prefix so the resolver knows which side to ask.
+			alpha := uint8(255)
+			if c.HasAlpha {
+				alpha = opacityByte(c.Alpha)
+			}
 			switch c.ID {
 			case "theme":
-				if !cp.base.setColorRole(p.Name, "theme:"+c.Prop) {
+				if !cp.base.setColorRoleAlpha(p.Name, "theme:"+c.Prop, alpha) {
 					return false
 				}
 			case "customColor":
-				if !cp.base.setColorRole(p.Name, "custom:"+c.Prop) {
+				if !cp.base.setColorRoleAlpha(p.Name, "custom:"+c.Prop, alpha) {
 					return false
 				}
 			default:
@@ -482,7 +486,7 @@ func (p *NamedProp) setLiteral(v syntax.Value) bool {
 			// A CSS colour keyword is a literal. A scheme colour is a
 			// reference (`theme.primary`), never a bare name, so anything else
 			// is rejected here too; the schema reports the typo first.
-			rgba, ok := csscolor.Parse(c.Val)
+			rgba, ok := csscolor.ParseWithOpacity(c.Val)
 			if !ok {
 				return false
 			}

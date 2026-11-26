@@ -772,8 +772,12 @@ func roleName(role string) (string, bool) {
 // written in the design is resolved here, so the series follows the scheme.
 func seriesColor(c *tree.Chart, t m3.Theme, pal []uint32, s int) uint32 {
 	if s < len(c.Data.Series) {
-		if name, ok := roleName(c.Data.Series[s].ColorRole); ok {
+		ser := c.Data.Series[s]
+		if name, ok := roleName(ser.ColorRole); ok {
 			if col, ok := t.Colors.Role(name); ok {
+				if ser.ColorAlphaSet && ser.ColorAlpha != 255 {
+					col = withAlpha(col, float64(ser.ColorAlpha)/255)
+				}
 				return col
 			}
 		}
@@ -792,6 +796,9 @@ func pointColor(c *tree.Chart, t m3.Theme, pal []uint32, s, i int) uint32 {
 		if i < len(ser.ColorRoles) {
 			if name, ok := roleName(ser.ColorRoles[i]); ok {
 				if col, ok := t.Colors.Role(name); ok {
+					if i < len(ser.ColorAlphas) && ser.ColorAlphas[i] != 255 {
+						col = withAlpha(col, float64(ser.ColorAlphas[i])/255)
+					}
 					return col
 				}
 			}

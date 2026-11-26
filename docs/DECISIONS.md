@@ -2991,3 +2991,19 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   second instead of redrawing at the display rate. The blink covers TextField,
   SearchBar and TextArea, and follows the ColorPicker's hex field while it is
   active through the same `isTextField` path.
+- **A colour's `/ 0-100` is folded by the parser, not evaluated at run time.**
+  `parseMul` turns `red / 50`, `#rrggbb / 50` and a colour reference into a
+  literal with the alpha already applied, or a `Ref` carrying `Alpha`; a plain
+  `count / 2` stays an expression because the left is not colour-like. Quoted
+  colours go through `csscolor.ParseWithOpacity`, which only treats a top-level
+  slash as the suffix, so `rgb(0 0 0 / 50%)` keeps its CSS alpha. Role cells
+  store the alpha next to the role, shadow layers carry it, and chart lists keep
+  it per role; `goifmt` writes the suffix back. Gradients are still strings, so
+  a suffix inside a gradient stop is not this feature.
+- **A resizable table fixes the dragged column in pixels.** The pointer near a
+  column's right border turns into a horizontal resize cursor; a press captures
+  the column and the width, a move sets `width` in pixels, and `SetWidthPixels`
+  drops a percentage expression so layout reads the new value. Other columns
+  reflow; the header's right borders are the reference and the first row's cells
+  are used when the header is hidden. The minimum is 24dp, and the outer
+  scrollbar still has its own area.

@@ -463,3 +463,61 @@ func TestScrollDefaultsByKind(t *testing.T) {
 		t.Errorf("Stack default axis = %v, want none", got)
 	}
 }
+
+// TestColorOpacity covers the `/ 0-100` suffix on a literal, a CSS name, a
+// quoted function and both colour namespaces.
+func TestColorOpacity(t *testing.T) {
+	tr, diag := BuildSource([]byte(`Window {
+		Column {
+			Text { id: named text: "x" color: red / 25 }
+			Text { id: hex text: "x" color: #411f89 / 80 }
+			Text { id: quoted text: "x" color: "rgb(0 0 0)" / 40 }
+			Text { id: themed text: "x" color: theme.primary / 50 }
+			Text { id: custom text: "x" color: customColor.brand / 0 }
+			Rectangle { id: box width: 10 height: 10 shadow: 0 0 5 #000 / 50 }
+			Rectangle { id: roleBox width: 10 height: 10 shadow: 0 0 5 theme.primary / 50 }
+		}
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	text := func(id string) *Text {
+		n, _ := tr.ByID(id)
+		return n.(*Text)
+	}
+	for id, want := range map[string]uint32{
+		"named":  0xFF000040,
+		"hex":    0x411F89CC,
+		"quoted": 0x00000066,
+	} {
+		if got := text(id).Color.Get(); got != want {
+			t.Errorf("%s = %08x, want %08x", id, got, want)
+		}
+	}
+	if got := text("themed").Color.Get(); got != 0 {
+		t.Fatalf("a role resolved before the theme: %08x", got)
+	}
+	tr.ResolveColors(func(name string) (uint32, bool) {
+		switch name {
+		case "theme:primary":
+			return 0x6750A4FF, true
+		case "custom:brand":
+			return 0x112233FF, true
+		}
+		return 0, false
+	})
+	if got := text("themed").Color.Get(); got != 0x6750A480 {
+		t.Errorf("themed = %08x", got)
+	}
+	if got := text("custom").Color.Get(); got != 0x11223300 {
+		t.Errorf("custom = %08x", got)
+	}
+	box, _ := tr.ByID("box")
+	if got := box.(*Rectangle).Base().Shadow()[0].Color; got != 0x00000080 {
+		t.Errorf("shadow = %08x", got)
+	}
+	roleBox, _ := tr.ByID("roleBox")
+	if got := roleBox.(*Rectangle).Base().Shadow()[0].Color; got != 0x6750A480 {
+		t.Errorf("role shadow = %08x", got)
+	}
+}

@@ -8,6 +8,22 @@ import (
 	"github.com/goi-gui/goi/internal/csscolor"
 )
 
+// opacityByte turns a colour's `/ 0-100` value into an alpha channel.
+func opacityByte(percent float64) uint8 {
+	if percent < 0 {
+		percent = 0
+	}
+	if percent > 100 {
+		percent = 100
+	}
+	return uint8(math.Round(percent * 255 / 100))
+}
+
+// withAlphaByte replaces a colour's alpha channel.
+func withAlphaByte(c uint32, alpha uint8) uint32 {
+	return c&0xFFFFFF00 | uint32(alpha)
+}
+
 // HSVColor packs an opaque HSV colour into 0xRRGGBBAA. Hue is in degrees, with
 // 0 and 360 both red.
 func HSVColor(h, s, v float64) uint32 {

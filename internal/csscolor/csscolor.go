@@ -59,6 +59,66 @@ func Parse(s string) (uint32, bool) {
 	return 0, false
 }
 
+// WithOpacity returns c with its alpha channel set to percent (0..100), rounded.
+// The RGB channels stay as they are; an alpha a hex literal already carried is
+// replaced, not multiplied, so `/ 50` always means half opaque.
+func WithOpacity(c uint32, percent float64) uint32 {
+	if percent < 0 {
+		percent = 0
+	}
+	if percent > 100 {
+		percent = 100
+	}
+	a := uint32(math.Round(percent * 255 / 100))
+	return c&0xFFFFFF00 | a
+}
+
+// ParseWithOpacity is Parse with the design language's optional `/ 0-100`
+// suffix, so `red / 50`, `#411f89 / 50` and `"rgb(0 0 0)" / 50` all read as
+// colours with that alpha. A slash inside a CSS function is still that
+// function's alpha channel, because only a top-level slash is the suffix.
+func ParseWithOpacity(s string) (uint32, bool) {
+	base, percent, ok := splitOpacity(s)
+	if !ok {
+		return Parse(s)
+	}
+	c, ok := Parse(base)
+	if !ok {
+		return 0, false
+	}
+	return WithOpacity(c, percent), true
+}
+
+// splitOpacity finds a top-level slash and reads the number after it. The
+// suffix is outside the colour text, so `rgb(0 0 0 / 50%)` keeps its CSS alpha.
+func splitOpacity(s string) (base string, percent float64, ok bool) {
+	depth := 0
+	slash := -1
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+		case '/':
+			if depth == 0 {
+				slash = i
+			}
+		}
+	}
+	if slash < 0 {
+		return s, 0, false
+	}
+	base = strings.TrimSpace(s[:slash])
+	rest := strings.TrimSpace(s[slash+1:])
+	rest = strings.TrimSuffix(rest, "%")
+	v, err := strconv.ParseFloat(strings.TrimSpace(rest), 64)
+	if err != nil || v < 0 || v > 100 {
+		return "", 0, false
+	}
+	return base, v, true
+}
+
 // IsName reports whether s is a CSS colour keyword.
 func IsName(s string) bool {
 	_, ok := names[strings.ToLower(strings.TrimSpace(s))]

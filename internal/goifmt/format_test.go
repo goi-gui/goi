@@ -572,3 +572,20 @@ background: responsive { base: state { default: red hover: blue } }
 		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
 	}
 }
+
+func TestFormatKeepsColorOpacity(t *testing.T) {
+	src := `Window {
+	Rectangle {
+		background: red / 50
+		borderColor: #411f89 / 80
+		shadow: 0 0 5 #000 / 25
+	}
+	Text { color: theme.primary / 40 }
+}`
+	got := string(Source([]byte(src)))
+	for _, want := range []string{"#ff0000 / 50", "#411f89 / 80", "#000000 / 25", "theme.primary / 40"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("formatted output has no %q:\n%s", want, got)
+		}
+	}
+}

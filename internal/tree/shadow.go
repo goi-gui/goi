@@ -18,6 +18,10 @@ type ShadowLayer struct {
 	// Role is the theme role the design named instead of a literal. It is kept
 	// so a theme switch can resolve the layer again; Color is what paint reads.
 	Role string
+	// Alpha and HasAlpha carry a role's `/ 0-100` opacity; a literal colour
+	// already has its alpha.
+	Alpha    uint8
+	HasAlpha bool
 }
 
 // ShadowProp is the `shadow` cell. The layers are not a comparable value, so it
@@ -66,6 +70,10 @@ func shadowLayers(sh *syntax.Shadow) []ShadowLayer {
 			case "customColor":
 				out[i].Role = "custom:" + c.Prop
 			}
+			if c.HasAlpha {
+				out[i].HasAlpha = true
+				out[i].Alpha = opacityByte(c.Alpha)
+			}
 		}
 	}
 	return out
@@ -91,7 +99,13 @@ func (b *NodeBase) resolveShadows(lookup func(string) (uint32, bool)) bool {
 			continue
 		}
 		rgba, ok := lookup(role)
-		if !ok || b.shadow.layers[i].Color == rgba {
+		if !ok {
+			continue
+		}
+		if b.shadow.layers[i].HasAlpha {
+			rgba = withAlphaByte(rgba, b.shadow.layers[i].Alpha)
+		}
+		if b.shadow.layers[i].Color == rgba {
 			continue
 		}
 		b.shadow.layers[i].Color = rgba

@@ -118,6 +118,12 @@ func (p *parser) errorf(t token, msg string) {
 	p.diag = append(p.diag, Diagnostic{Pos: t.pos, End: t.end, Message: msg})
 }
 
+// errorVal reports a value at its own position, for checks that run after the
+// token has been consumed.
+func (p *parser) errorVal(v Value, msg string) {
+	p.diag = append(p.diag, Diagnostic{Pos: v.Pos(), End: v.Pos() + 1, Message: msg})
+}
+
 // sync skips tokens until a plausible member or element boundary so one bad
 // literal does not swallow the rest of the file.
 func (p *parser) sync() {
@@ -1433,6 +1439,24 @@ func (p *parser) parseShadowLayer() (ShadowLayer, bool) {
 			}
 		}
 	}
+	if layer.Color != nil && p.peek().kind == tokSlash && p.sameLine(p.peek().pos) {
+		p.next()
+		right, ok := p.parseUnary()
+		if !ok {
+			return layer, false
+		}
+		pct, ok := opacityOf(right)
+		if !ok || pct < 0 || pct > 100 {
+			p.errorVal(right, "shadow colour opacity must be between 0 and 100")
+			return layer, false
+		}
+		if v, ok := applyColorOpacity(layer.Color, pct); ok {
+			layer.Color = v
+		} else {
+			p.errorVal(right, "`/` opacity needs a colour before it")
+			return layer, false
+		}
+	}
 	if t := p.peek(); t.kind == tokIdent && t.text == "inset" && p.sameLine(t.pos) {
 		p.next()
 		layer.Inset = true
@@ -1798,8 +1822,89 @@ func (p *parser) parseMul() (Value, bool) {
 		if !ok {
 			return nil, false
 		}
+		// `red / 50`, `#411f89 / 50` and `theme.primary / 50` are colours with
+		// an opacity, not division. Only a colour-like left folds; `count / 2`
+		// stays an expression.
+		if op == "/" && colorLike(left) {
+			pct, ok := opacityOf(right)
+			if !ok {
+				p.errorVal(right, "expected a colour opacity after `/`")
+				return nil, false
+			}
+			if pct < 0 || pct > 100 {
+				p.errorVal(right, "colour opacity must be between 0 and 100")
+				return nil, false
+			}
+			v, ok := applyColorOpacity(left, pct)
+			if !ok {
+				p.errorVal(right, "`/` opacity needs a colour before it")
+				return nil, false
+			}
+			left = v
+			continue
+		}
 		left = &Binary{At: left.Pos(), Op: op, Left: left, Right: right}
 	}
+}
+
+// colorLike reports whether v can carry the `/ 0-100` opacity suffix. A bare
+// identifier counts only when it is a CSS colour name; a reference only in the
+// two colour namespaces, so `props.count / 2` stays arithmetic.
+func colorLike(v Value) bool {
+	switch x := v.(type) {
+	case *Color:
+		return true
+	case *Ref:
+		return x.ID == "theme" || x.ID == "customColor"
+	case *Ident:
+		_, ok := csscolor.Parse(x.Val)
+		return ok
+	case *String:
+		_, ok := csscolor.Parse(x.Val)
+		return ok
+	}
+	return false
+}
+
+// opacityOf reads the number after a colour's `/`: `50` or `50%`.
+func opacityOf(v Value) (float64, bool) {
+	switch x := v.(type) {
+	case *Number:
+		return x.Val, true
+	case *Percent:
+		return x.Val, true
+	}
+	return 0, false
+}
+
+// applyColorOpacity writes the opacity into a colour literal, CSS name or a
+// theme/custom role. The caller has already checked colorLike and the range.
+func applyColorOpacity(v Value, percent float64) (Value, bool) {
+	switch x := v.(type) {
+	case *Color:
+		x.RGBA = csscolor.WithOpacity(x.RGBA, percent)
+		x.Opacity, x.HasOpacity = percent, true
+		return x, true
+	case *Ident:
+		rgba, ok := csscolor.Parse(x.Val)
+		if !ok {
+			return v, false
+		}
+		return &Color{At: x.At, RGBA: csscolor.WithOpacity(rgba, percent), Opacity: percent, HasOpacity: true}, true
+	case *String:
+		rgba, ok := csscolor.Parse(x.Val)
+		if !ok {
+			return v, false
+		}
+		return &Color{At: x.At, RGBA: csscolor.WithOpacity(rgba, percent), Opacity: percent, HasOpacity: true}, true
+	case *Ref:
+		if x.ID != "theme" && x.ID != "customColor" {
+			return v, false
+		}
+		x.Alpha, x.HasAlpha = percent, true
+		return x, true
+	}
+	return v, false
 }
 
 func (p *parser) parseUnary() (Value, bool) {

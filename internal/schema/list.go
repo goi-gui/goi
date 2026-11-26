@@ -2,6 +2,7 @@ package schema
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/goi-gui/goi/internal/csscolor"
 	"github.com/goi-gui/goi/internal/syntax"
@@ -25,6 +26,10 @@ func (c Coord) Lat() float64 { return c[1] }
 type ListColor struct {
 	Color uint32
 	Role  string
+	// Alpha is the opacity of a role, 0-255; HasAlpha tells 0 apart from the
+	// opaque default. A literal Color already carries its own alpha.
+	Alpha    uint8
+	HasAlpha bool
 }
 
 // ListItem reads one item of a list property. elem is the property's Elem type,
@@ -50,35 +55,42 @@ func ListItem(elem ValueType, v syntax.Value) (any, error) {
 	case TypeColor:
 		switch c := v.(type) {
 		case *syntax.Color:
-			return ListColor{Color: c.RGBA}, nil
+			return ListColor{Color: c.RGBA, Alpha: 255}, nil
 		case *syntax.Ref:
 			// Only a namespaced role names a colour; a bare word would be a
 			// CSS colour name, which the Ident case below takes. A theme role
 			// is kept by name; a custom colour keeps its prefix, because the
 			// painter cannot resolve one.
+			lc := ListColor{}
+			lc.HasAlpha = c.HasAlpha
+			if c.HasAlpha {
+				lc.Alpha = uint8(math.Round(c.Alpha * 255 / 100))
+			}
 			switch c.ID {
 			case "theme":
-				return ListColor{Role: c.Prop}, nil
+				lc.Role = c.Prop
+				return lc, nil
 			case "customColor":
 				// The resolver's namespace, so the colour pass can ask the
 				// same lookup a colour property does.
-				return ListColor{Role: "custom:" + c.Prop}, nil
+				lc.Role = "custom:" + c.Prop
+				return lc, nil
 			}
 			return nil, fmt.Errorf("%s.%s is not a colour", c.ID, c.Prop)
 		case *syntax.String:
-			rgba, ok := csscolor.Parse(c.Val)
+			rgba, ok := csscolor.ParseWithOpacity(c.Val)
 			if !ok {
 				return nil, fmt.Errorf("%q is not a colour", c.Val)
 			}
-			return ListColor{Color: rgba}, nil
+			return ListColor{Color: rgba, Alpha: 255}, nil
 		case *syntax.Ident:
 			// A CSS colour name, which is a literal; a role needs its
 			// namespace so the list reads like every other colour property.
-			rgba, ok := csscolor.Parse(c.Val)
+			rgba, ok := csscolor.ParseWithOpacity(c.Val)
 			if !ok {
 				return nil, fmt.Errorf("%q is not a colour; a theme role is written theme.%s", c.Val, c.Val)
 			}
-			return ListColor{Color: rgba}, nil
+			return ListColor{Color: rgba, Alpha: 255}, nil
 		}
 		return nil, fmt.Errorf("expected a colour or a theme role")
 	default:

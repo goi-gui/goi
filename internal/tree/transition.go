@@ -212,13 +212,13 @@ func (b *NodeBase) applyTransitionLiteral(name string, v syntax.Value) bool {
 				return false
 			}
 			var ok bool
-			rgba, ok = csscolor.Parse(c.Val)
+			rgba, ok = csscolor.ParseWithOpacity(c.Val)
 			if !ok {
 				return false
 			}
 		case *syntax.Ident:
 			var ok bool
-			rgba, ok = csscolor.Parse(c.Val)
+			rgba, ok = csscolor.ParseWithOpacity(c.Val)
 			if !ok {
 				return false
 			}

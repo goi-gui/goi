@@ -26,7 +26,7 @@ func LiteralEqual(a, b syntax.Value) bool {
 		return x.Val == b.(*syntax.Percent).Val
 	case *syntax.Ref:
 		y := b.(*syntax.Ref)
-		return x.ID == y.ID && x.Prop == y.Prop
+		return x.ID == y.ID && x.Prop == y.Prop && x.HasAlpha == y.HasAlpha && x.Alpha == y.Alpha
 	case *syntax.Binary:
 		y := b.(*syntax.Binary)
 		return x.Op == y.Op && LiteralEqual(x.Left, y.Left) && LiteralEqual(x.Right, y.Right)

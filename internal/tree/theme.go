@@ -3,11 +3,17 @@ package tree
 // colorSpec is one property written as a named theme role instead of a literal.
 // The name stays until the theme changes, then ResolveColors rewrites the cell.
 type colorSpec struct {
-	name string
-	role string
+	name  string
+	role  string
+	alpha uint8 // 255 is opaque; `/ 50` stores 128
 }
 
 func (b *NodeBase) setColorRole(name, role string) bool {
+	return b.setColorRoleAlpha(name, role, 255)
+}
+
+// setColorRoleAlpha is setColorRole with the opacity of a `/ 0-100` suffix.
+func (b *NodeBase) setColorRoleAlpha(name, role string, alpha uint8) bool {
 	b.properties()
 	if _, ok := b.byName[name]; !ok {
 		return false
@@ -15,15 +21,27 @@ func (b *NodeBase) setColorRole(name, role string) bool {
 	for i := range b.colors {
 		if b.colors[i].name == name {
 			b.colors[i].role = role
+			b.colors[i].alpha = alpha
 			return true
 		}
 	}
-	b.colors = append(b.colors, colorSpec{name: name, role: role})
+	b.colors = append(b.colors, colorSpec{name: name, role: role, alpha: alpha})
 	if b.tree != nil && !b.colorListed {
 		b.colorListed = true
 		b.tree.colorNodes = append(b.tree.colorNodes, b)
 	}
 	return true
+}
+
+// colorAlphaFor returns the opacity stored with a role, and whether it is
+// explicitly not opaque.
+func (b *NodeBase) colorAlphaFor(name string) (uint8, bool) {
+	for i := range b.colors {
+		if b.colors[i].name == name {
+			return b.colors[i].alpha, b.colors[i].alpha != 255
+		}
+	}
+	return 255, false
 }
 
 func (b *NodeBase) colorRoleFor(name string) string {
@@ -81,6 +99,9 @@ func (t *Tree) ResolveColors(lookup func(string) (uint32, bool)) bool {
 			rgba, ok := lookup(spec.role)
 			if !ok {
 				continue
+			}
+			if spec.alpha != 255 {
+				rgba = withAlphaByte(rgba, spec.alpha)
 			}
 			if cur, ok := b.PropValue(spec.name); ok {
 				if old, ok := cur.(uint32); ok && old == rgba {

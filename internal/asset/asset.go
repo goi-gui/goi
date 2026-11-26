@@ -851,7 +851,7 @@ func copyValue(v syntax.Value) syntax.Value {
 	case *syntax.String:
 		return &syntax.String{At: x.At, Val: x.Val}
 	case *syntax.Ref:
-		return &syntax.Ref{At: x.At, ID: x.ID, Prop: x.Prop}
+		return &syntax.Ref{At: x.At, ID: x.ID, Prop: x.Prop, Alpha: x.Alpha, HasAlpha: x.HasAlpha}
 	case *syntax.Map:
 		out := &syntax.Map{At: x.At, Entries: make([]syntax.MapEntry, len(x.Entries))}
 		for i, entry := range x.Entries {
@@ -872,7 +872,7 @@ func copyValue(v syntax.Value) syntax.Value {
 		}
 		var callee *syntax.Ref
 		if x.Callee != nil {
-			callee = &syntax.Ref{At: x.Callee.At, ID: x.Callee.ID, Prop: x.Callee.Prop}
+			callee = &syntax.Ref{At: x.Callee.At, ID: x.Callee.ID, Prop: x.Callee.Prop, Alpha: x.Callee.Alpha, HasAlpha: x.Callee.HasAlpha}
 		}
 		return &syntax.Call{At: x.At, Callee: callee, Name: x.Name, Args: args}
 	}

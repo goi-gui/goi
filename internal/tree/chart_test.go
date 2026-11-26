@@ -221,3 +221,36 @@ func TestChartCustomColourInAList(t *testing.T) {
 		t.Fatalf("role = %q", role)
 	}
 }
+
+func TestChartColorOpacity(t *testing.T) {
+	tr, diag := BuildSource([]byte(`Window {
+		PieChart {
+			id:         slices
+			categories: ["a", "b"]
+			ChartSeries {
+				values: [1, 1]
+				colors: [theme.primary / 50, #c62828 / 25]
+			}
+		}
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	n, _ := tr.ByID("slices")
+	s := n.(*PieChart).ChartCore().Data.Series[0]
+	if len(s.ColorAlphas) != 2 || s.ColorAlphas[0] != 128 || s.ColorAlphas[1] != 255 {
+		t.Fatalf("alphas = %v", s.ColorAlphas)
+	}
+	if s.Colors[1] != 0xC6282840 {
+		t.Fatalf("literal = %08x", s.Colors[1])
+	}
+	tr.ResolveColors(func(name string) (uint32, bool) {
+		if name == "theme:primary" {
+			return 0x6750A4FF, true
+		}
+		return 0, false
+	})
+	if got := s.Colors[0]; got != 0x6750A480 {
+		t.Fatalf("resolved = %08x", got)
+	}
+}

@@ -364,7 +364,7 @@ func literalMatches(cur any, v syntax.Value) bool {
 			return c == x.Val
 		}
 		if c, ok := cur.(uint32); ok {
-			rgba, ok := csscolor.Parse(x.Val)
+			rgba, ok := csscolor.ParseWithOpacity(x.Val)
 			return ok && rgba == c
 		}
 	case *syntax.Rotate:

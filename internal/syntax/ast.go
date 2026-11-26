@@ -453,6 +453,10 @@ type Bool struct {
 type Color struct {
 	At   Pos
 	RGBA uint32
+	// Opacity and HasOpacity preserve a `/ 0-100` suffix so the formatter can
+	// write it back; RGBA already has the alpha it produced.
+	Opacity    float64
+	HasOpacity bool
 }
 
 // List is `[a, b, c]`: a property whose value is a list, such as a chart's
@@ -601,6 +605,10 @@ type Ref struct {
 	At   Pos
 	ID   string
 	Prop string
+	// Alpha is a colour reference's `/ 0-100` opacity, and HasAlpha tells 0
+	// apart from "no suffix". Only theme and customColor references use it.
+	Alpha    float64
+	HasAlpha bool
 }
 
 // SlotRef is `$name` in a value, the argument of len: it counts the elements an

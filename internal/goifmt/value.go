@@ -206,6 +206,9 @@ func printInner(v syntax.Value) string {
 	case *syntax.Bool:
 		return strconv.FormatBool(x.Val)
 	case *syntax.Color:
+		if x.HasOpacity {
+			return fmt.Sprintf("#%06x / %s", x.RGBA>>8, strconv.FormatFloat(x.Opacity, 'g', -1, 64))
+		}
 		if x.RGBA&0xFF == 0xFF {
 			return fmt.Sprintf("#%06x", x.RGBA>>8)
 		}
@@ -215,10 +218,14 @@ func printInner(v syntax.Value) string {
 	case *syntax.Percent:
 		return strconv.FormatFloat(x.Val, 'g', -1, 64) + "%"
 	case *syntax.Ref:
-		if x.Prop == "" {
-			return x.ID
+		s := x.ID
+		if x.Prop != "" {
+			s += "." + x.Prop
 		}
-		return x.ID + "." + x.Prop
+		if x.HasAlpha {
+			s += " / " + strconv.FormatFloat(x.Alpha, 'g', -1, 64)
+		}
+		return s
 	case *syntax.SlotRef:
 		return x.Name
 	case *syntax.Call:

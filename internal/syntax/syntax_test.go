@@ -1542,3 +1542,56 @@ func TestDeepValueNestingReportsDiagnostic(t *testing.T) {
 		}
 	}
 }
+
+// TestParseColorOpacity covers the `/ 0-100` suffix on every colour spelling.
+func TestParseColorOpacity(t *testing.T) {
+	src := `A {
+		hex:    #411f89 / 50
+		name:   red / 25
+		role:   theme.primary / 40
+		custom: customColor.brand / 0
+		quoted: "rgb(0 0 0)" / 80
+		shadow: 0 0 5 #000 / 50
+		math:   count / 2
+	}`
+	f, diag := Parse([]byte(src))
+	if !diag.Empty() {
+		t.Fatalf("unexpected diagnostics: %v", diag)
+	}
+	if got := f.Root.Prop("hex").Value.(*Color).RGBA; got != 0x411F8980 {
+		t.Errorf("hex = %08x", got)
+	}
+	if got := f.Root.Prop("name").Value.(*Color).RGBA; got != 0xFF000040 {
+		t.Errorf("name = %08x", got)
+	}
+	role := f.Root.Prop("role").Value.(*Ref)
+	if !role.HasAlpha || role.Alpha != 40 || role.ID != "theme" || role.Prop != "primary" {
+		t.Errorf("role = %+v", role)
+	}
+	custom := f.Root.Prop("custom").Value.(*Ref)
+	if !custom.HasAlpha || custom.Alpha != 0 || custom.ID != "customColor" {
+		t.Errorf("custom = %+v", custom)
+	}
+	if got := f.Root.Prop("quoted").Value.(*Color).RGBA; got != 0x000000CC {
+		t.Errorf("quoted = %08x", got)
+	}
+	shadow := f.Root.Prop("shadow").Value.(*Shadow)
+	if got := shadow.Layers[0].Color.(*Color).RGBA; got != 0x00000080 {
+		t.Errorf("shadow = %08x", got)
+	}
+	if _, ok := f.Root.Prop("math").Value.(*Binary); !ok {
+		t.Errorf("count / 2 = %T, want an expression", f.Root.Prop("math").Value)
+	}
+}
+
+func TestParseColorOpacityRange(t *testing.T) {
+	for _, src := range []string{
+		`A { c: red / 101 }`,
+		`A { c: red / -1 }`,
+		`A { shadow: 0 0 5 #000 / 101 }`,
+	} {
+		if _, diag := Parse([]byte(src)); diag.Empty() {
+			t.Errorf("%s was accepted", src)
+		}
+	}
+}

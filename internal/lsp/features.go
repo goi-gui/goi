@@ -2732,7 +2732,8 @@ func propDoc(el string, p schema.Prop) string {
 			"(`customColor.brand`, defined with `ui.SetCustomColor`), or CSS colour syntax: " +
 			"`#rrggbb`, any of the 148 CSS names (`white`, `rebeccapurple`), " +
 			"`rgb()`/`rgba()` and `hsl()`/`hsla()`. " +
-			"Quote a function or a gradient: `background: \"linear-gradient(90deg, red, blue)\")`.")
+			"Quote a function or a gradient: `background: \"linear-gradient(90deg, red, blue)\")`. " +
+			"Any form takes `/ 0-100` for opacity: `theme.primary / 50`.")
 	}
 	if p.Name == "src" {
 		b.WriteString("\n\n`goi://path` reads the design's asset container, `./path` or an absolute " +
