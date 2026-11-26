@@ -3036,3 +3036,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   implements them with the real `Window` methods; a headless tree falls back to
   the root's state properties for the four that have one, and reports that
   `close` needs a live window.
+- **Bridge declarations merge by name across files, not append.** The loader
+  keeps the entry's declaration and accepts a fragment's repeat only when the
+  type is the same; handler parameter names may differ, but arity and each
+  parameter type must match. A mismatch is reported at the repeated name with
+  both source files. The one declaration is what makes SetData and SetHandler
+  reach every page that reads the name. Row shapes merge too when their fields
+  match, so a fragment can repeat `type row { ... }` around a shared bridge list.

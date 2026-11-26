@@ -61,17 +61,121 @@ func Load(fsys fs.FS, name string) (*Bundle, syntax.Diagnostics) {
 		return b, diag
 	}
 	// Data declarations are design-wide: Go sets them by name and any file may
-	// read them, so a fragment's `data { ... }` and shapes merge into the one
+	// read them, so a fragment's `bridge { ... }` and shapes merge into the one
 	// file the tree sees. The entry file's own declarations are already there.
+	// A name may repeat across files; it is one declaration as long as its type
+	// is the same, so every page reads the value and handler SetData/SetHandler
+	// writes.
+	type bridgeDecl struct {
+		v   syntax.DataVar
+		src string
+	}
+	seen := make(map[string]bridgeDecl, len(expanded.Vars))
+	for _, v := range expanded.Vars {
+		if _, ok := seen[v.Name]; !ok {
+			seen[v.Name] = bridgeDecl{v: v, src: entry}
+		}
+	}
+	type shapeDecl struct {
+		v   syntax.DataShape
+		src string
+	}
+	seenShapes := make(map[string]shapeDecl, len(expanded.Shapes))
+	for _, sh := range expanded.Shapes {
+		if _, ok := seenShapes[sh.Name]; !ok {
+			seenShapes[sh.Name] = shapeDecl{v: sh, src: entry}
+		}
+	}
 	for _, name := range l.order {
 		if name == entry {
 			continue
 		}
-		expanded.Vars = append(expanded.Vars, l.files[name].Vars...)
-		expanded.Shapes = append(expanded.Shapes, l.files[name].Shapes...)
+		for _, v := range l.files[name].Vars {
+			prev, ok := seen[v.Name]
+			if !ok {
+				expanded.Vars = append(expanded.Vars, v)
+				seen[v.Name] = bridgeDecl{v: v, src: name}
+				continue
+			}
+			if sameBridgeType(prev.v.Type, v.Type) {
+				continue
+			}
+			diag = append(diag, syntax.Diagnostic{
+				Src: name, Pos: v.NameAt, End: v.NameAt + syntax.Pos(len(v.Name)),
+				Message: fmt.Sprintf("bridge declaration %q is %s here, but %s in %s",
+					v.Name, v.Type.String(), prev.v.Type.String(), prev.src),
+			})
+		}
+		for _, sh := range l.files[name].Shapes {
+			prev, ok := seenShapes[sh.Name]
+			if !ok {
+				expanded.Shapes = append(expanded.Shapes, sh)
+				seenShapes[sh.Name] = shapeDecl{v: sh, src: name}
+				continue
+			}
+			if sameShape(prev.v, sh) {
+				continue
+			}
+			diag = append(diag, syntax.Diagnostic{
+				Src: name, Pos: sh.NameAt, End: sh.NameAt + syntax.Pos(len(sh.Name)),
+				Message: fmt.Sprintf("row type %q is declared differently here than in %s",
+					sh.Name, prev.src),
+			})
+		}
 	}
 	b.File = expanded
+	if !diag.Empty() {
+		return b, diag
+	}
 	return b, nil
+}
+
+// sameShape reports whether two row-type declarations are the same shape: the
+// same fields in the same order, with the same types.
+func sameShape(a, b syntax.DataShape) bool {
+	if len(a.Fields) != len(b.Fields) {
+		return false
+	}
+	for i := range a.Fields {
+		if a.Fields[i].Name != b.Fields[i].Name || !sameBridgeType(a.Fields[i].Type, b.Fields[i].Type) {
+			return false
+		}
+	}
+	return true
+}
+
+// sameBridgeType reports whether two bridge declarations have the same type.
+// Parameter names on a handler do not matter; the arity and each parameter type
+// do.
+func sameBridgeType(a, b syntax.Type) bool {
+	if a.Kind != b.Kind {
+		return false
+	}
+	switch a.Kind {
+	case syntax.TypeScalar:
+		return a.Name == b.Name
+	case syntax.TypeSlice:
+		if a.Elem == nil || b.Elem == nil {
+			return a.Elem == b.Elem
+		}
+		return sameBridgeType(*a.Elem, *b.Elem)
+	case syntax.TypeMap:
+		if a.Name != b.Name || a.Elem == nil || b.Elem == nil {
+			return a.Name == b.Name && a.Elem == b.Elem
+		}
+		return sameBridgeType(*a.Elem, *b.Elem)
+	case syntax.TypeFunc:
+		if len(a.Args) != len(b.Args) {
+			return false
+		}
+		for i := range a.Args {
+			if !sameBridgeType(a.Args[i].Type, b.Args[i].Type) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }
 
 type loader struct {

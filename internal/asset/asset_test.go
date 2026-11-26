@@ -760,3 +760,124 @@ Window {
 		t.Fatalf("imports did not expand: %v", seen)
 	}
 }
+
+// TestBridgeDuplicatesAcrossPagesMerge lets the entry and a fragment declare the
+// same bridge name with the same type: it is one value and one handler, so
+// SetData/SetHandler reach both pages.
+func TestBridgeDuplicatesAcrossPagesMerge(t *testing.T) {
+	dir := design(t, map[string]string{
+		"Main.goi": `import Page "./Page.goi"
+bridge {
+	activePage string
+	onOpen func(id string)
+}
+Window {
+	Column {
+		Text { id: main text: bridge.activePage }
+		Page {}
+	}
+}`,
+		"Page.goi": `bridge {
+	activePage string
+	onOpen func(id string)
+}
+Column {
+	Text { id: page text: bridge.activePage }
+	Button { id: pageOpen label: "open" onClick: bridge.onOpen("page") }
+}`,
+	})
+	tr, err := load(t, dir, "Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr.SetData("activePage", "Home")
+	tr.ApplyExpressions()
+	for _, id := range []string{"main", "page"} {
+		n, _ := tr.ByID(id)
+		if got := n.(*tree.Text).Text.Get(); got != "Home" {
+			t.Errorf("%s text = %q, want Home", id, got)
+		}
+	}
+	var opened string
+	if err := tr.SetHandler("onOpen", func(id string) { opened = id }); err != nil {
+		t.Fatal(err)
+	}
+	n, _ := tr.ByID("pageOpen")
+	n.(*tree.Button).Click.Emit(tree.ClickEvent{})
+	if opened != "page" {
+		t.Fatalf("handler got %q, want page", opened)
+	}
+}
+
+func TestBridgeDuplicateTypesMustMatch(t *testing.T) {
+	cases := []struct{ mainType, pageType, want string }{
+		{"string", "int", "bridge declaration"},
+		{"func(id string)", "func(id int)", "bridge declaration"},
+	}
+	for _, tc := range cases {
+		dir := design(t, map[string]string{
+			"Main.goi": `import Page "./Page.goi"
+bridge {
+	activePage ` + tc.mainType + `
+}
+Window { Page {} }`,
+			"Page.goi": `bridge {
+	activePage ` + tc.pageType + `
+}
+Column { }`,
+		})
+		if _, err := load(t, dir, "Main.goi"); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s vs %s: err = %v", tc.mainType, tc.pageType, err)
+		}
+	}
+}
+
+func TestShapeDuplicatesAcrossPagesMerge(t *testing.T) {
+	dir := design(t, map[string]string{
+		"Main.goi": `import Page "./Page.goi"
+bridge {
+	rows []row
+}
+type row { id string }
+Window { Page {} }`,
+		"Page.goi": `bridge {
+	rows []row
+}
+type row { id string }
+Column {
+	for _, row := range bridge.rows {
+		Text { text: row.id }
+	}
+}`,
+	})
+	tr, err := load(t, dir, "Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr.SetData("rows", []map[string]any{{"id": "one"}, {"id": "two"}})
+	tr.ApplyExpressions()
+	var texts []string
+	for _, n := range tr.All() {
+		if tx, ok := n.(*tree.Text); ok {
+			texts = append(texts, tx.Text.Get())
+		}
+	}
+	if strings.Join(texts, ",") != "one,two" {
+		t.Fatalf("texts = %v", texts)
+	}
+}
+
+func TestShapeDuplicateFieldsMustMatch(t *testing.T) {
+	dir := design(t, map[string]string{
+		"Main.goi": `import Page "./Page.goi"
+bridge { rows []row }
+type row { id string }
+Window { Page {} }`,
+		"Page.goi": `bridge { rows []row }
+type row { id int }
+Column { }`,
+	})
+	if _, err := load(t, dir, "Main.goi"); err == nil || !strings.Contains(err.Error(), "row type") {
+		t.Fatalf("err = %v", err)
+	}
+}
