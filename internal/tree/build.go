@@ -203,6 +203,24 @@ func Build(f *syntax.File, hooks *Hooks) (*Tree, error) {
 		for name, v := range hooks.Data {
 			t.vars[name] = v
 		}
+		// A bridge declaration may have changed type since the value was set:
+		// keeping it would feed the wrong shape to the design, so reset it and
+		// say why.
+		for _, dv := range f.Vars {
+			v, ok := hooks.Data[dv.Name]
+			if !ok || valueFits(v, dv.Type) {
+				continue
+			}
+			if z, ok := zeroRuntime(dv.Type); ok {
+				t.vars[dv.Name] = z
+			} else {
+				delete(t.vars, dv.Name)
+			}
+			if hooks.Warn != nil {
+				hooks.Warn(fmt.Sprintf("bridge %s: carried value has type %T, which no longer fits %s; reset to its zero value",
+					dv.Name, v, dv.Type.String()))
+			}
+		}
 	}
 	root, err := t.build(f.Root, nil, hooks)
 	t.building = false

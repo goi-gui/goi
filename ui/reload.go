@@ -119,7 +119,10 @@ func (a *App) applyReload(f *syntax.File) error {
 	start := time.Now()
 	// The old tree's native views belong to the old nodes.
 	a.closeWebviews()
-	hooks := &tree.Hooks{Marked: a.markDirty, Error: a.reportError, Media: a.mediaRequest, Window: a.windowRequest, Post: a.Post}
+	hooks := &tree.Hooks{
+		Marked: a.markDirty, Error: a.reportError, Media: a.mediaRequest, Window: a.windowRequest, Post: a.Post,
+		Warn: func(msg string) { logg().Warn(logCtx, "ui: hot reload: "+msg) },
+	}
 	// Seed the build with the values SetData stored, so conditions, loops and
 	// expressions all see the app's state from the first frame.
 	if a.win != nil && a.win.tree != nil {

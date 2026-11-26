@@ -49,6 +49,9 @@ type Hooks struct {
 	// design starts from what SetData stored instead of the bridge's zero
 	// values.
 	Data map[string]any
+	// Warn receives a recoverable problem, such as a carried data value whose
+	// type no longer matches its bridge declaration.
+	Warn func(string)
 }
 
 // NodeBase holds the state every node shares: identity, tree links, layout result

@@ -919,6 +919,55 @@ func normalizeData(v any) (any, bool) {
 	return normalize(v)
 }
 
+// valueFits reports whether v can feed a bridge variable declared as t. The
+// design type is a declaration rather than a Go type identity, so the check
+// uses the value's Go kind and recurses into a list's element type.
+func valueFits(v any, t syntax.Type) bool {
+	if v == nil {
+		return true
+	}
+	rv := reflect.ValueOf(v)
+	switch t.Kind {
+	case syntax.TypeSlice:
+		if rv.Kind() != reflect.Slice && rv.Kind() != reflect.Array {
+			return false
+		}
+		return t.Elem == nil || rv.Len() == 0 || valueFits(rv.Index(0).Interface(), *t.Elem)
+	case syntax.TypeMap:
+		return rv.Kind() == reflect.Map
+	case syntax.TypeFunc:
+		return rv.Kind() == reflect.Func
+	}
+	switch t.Name {
+	case "bool":
+		return rv.Kind() == reflect.Bool
+	case "string":
+		return rv.Kind() == reflect.String
+	case "color":
+		return rv.Kind() == reflect.Uint32
+	}
+	if isNumericName(t.Name) {
+		return isNumericKind(rv.Kind())
+	}
+	// A declared shape or a type built from a primitive: Go supplies a struct
+	// or a map for the former and a scalar for the latter.
+	switch rv.Kind() {
+	case reflect.Struct, reflect.Map, reflect.String, reflect.Bool:
+		return true
+	}
+	return isNumericKind(rv.Kind())
+}
+
+func isNumericKind(k reflect.Kind) bool {
+	switch k {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64:
+		return true
+	}
+	return false
+}
+
 // zeroRuntime is Go's zero value for a declared bridge type, so an unset
 // variable still reads (`Count: 0`, `Name: ""`). A slice or a map starts empty;
 // a handler has no value to fake.

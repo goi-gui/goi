@@ -3054,5 +3054,7 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   values pass into the new tree through `Hooks.Data`, so conditions and loops
   are built from the state the app had, and the handlers `SetHandler` registered
   are copied to the new bridge. `Bind` still runs afterwards and may replace
-  both. A condition arm's `visible` is written as derived state, not a Go write,
-  so the carry-over ignores it and the new design evaluates its own condition.
+  both. A carried value that no longer fits its declaration is reset to the
+  type's zero value and reported as a warning naming the bridge variable. A
+  condition arm's `visible` is written as derived state, not a Go write, so the
+  carry-over ignores it and the new design evaluates its own condition.

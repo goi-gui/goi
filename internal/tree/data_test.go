@@ -2,6 +2,7 @@ package tree
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -166,5 +167,41 @@ Window { Column { for _, u := range bridge.Users { Text { text: u.fullName } } }
 	tr.ApplyExpressions()
 	if got := fmt.Sprint(texts(tr)); got != "[Ada]" {
 		t.Fatalf("texts = %s, want the goi-tagged field", got)
+	}
+}
+
+// TestCarriedDataWarnsAndResetsOnTypeChange covers a hot reload whose bridge
+// declaration no longer matches the value SetData stored: the value is reset to
+// its zero value with a warning, while matching values are kept.
+func TestCarriedDataWarnsAndResetsOnTypeChange(t *testing.T) {
+	var warnings []string
+	tr, diag := BuildSource([]byte(`bridge {
+	count int
+	name  string
+	rows  []string
+}
+Window { Column { Text { text: formatf("%d %s", bridge.count, bridge.name) } } }`), &Hooks{
+		Data: map[string]any{"count": "seven", "name": "Kaan", "rows": []int{1, 2}},
+		Warn: func(msg string) { warnings = append(warnings, msg) },
+	})
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	if got, _ := tr.Data("count"); got != float64(0) {
+		t.Fatalf("count = %v, want the zero value", got)
+	}
+	if got, _ := tr.Data("name"); got != "Kaan" {
+		t.Fatalf("name = %v, want the carried value", got)
+	}
+	if got, _ := tr.Data("rows"); fmt.Sprint(got) != "[]" {
+		t.Fatalf("rows = %v, want the empty zero value", got)
+	}
+	if len(warnings) != 2 {
+		t.Fatalf("warnings = %v, want one for count and one for rows", warnings)
+	}
+	for _, msg := range warnings {
+		if !strings.Contains(msg, "no longer fits") || !strings.Contains(msg, "reset to its zero value") {
+			t.Fatalf("warning = %q", msg)
+		}
 	}
 }
