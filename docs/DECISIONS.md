@@ -3043,8 +3043,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   both source files. The one declaration is what makes SetData and SetHandler
   reach every page that reads the name. Row shapes merge too when their fields
   match, so a fragment can repeat `type row { ... }` around a shared bridge list.
-- **A Popover's panel is its own visibility.** `Show(bool)` and `Toggle()` write
-  the panel node's `visible` cell, so layout, paint, hit-testing and
-  `onClickOutside` agree without a second open state. The design calls them as
-  `pop.show(bool)` / `pop.toggle()` through the same event method path as
-  `expand`; a popover with no `$popover` slot is a no-op.
+- **A Popover's `show` is the panel state.** It defaults to false, so a design
+  starts with the panel closed and opens it with `show: true` or `show: expr`.
+  Layout copies the property onto the panel node's `visible` cell, so paint,
+  hit-testing, focus traversal and `onClickOutside` agree without a second open
+  state. The design calls `pop.show(bool)` / `pop.toggle()` through the same
+  event method path as `expand`, and `Popover.Show`/`Toggle` write the same
+  property; a popover with no `$popover` slot has nothing to show.

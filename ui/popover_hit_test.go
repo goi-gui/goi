@@ -15,7 +15,8 @@ func TestPopoverChildUsesPlacedRect(t *testing.T) {
 		width: 300
 		height: 200
 		Popover {
-			id: pop
+			id:   pop
+			show: true
 			Button { label: "Open" }
 			$popover {
 				Column {

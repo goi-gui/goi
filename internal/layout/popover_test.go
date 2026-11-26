@@ -24,6 +24,7 @@ func TestPopoverPanelHangsUnderTheAnchor(t *testing.T) {
 					Popover {
 						id: pop
 						align: `+tc.align+`
+						show: true
 						Button { id: first label: "Open" }
 						IconButton { id: second icon: add }
 						$popover {

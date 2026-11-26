@@ -1,6 +1,10 @@
 package ui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/goi-gui/goi/internal/layout"
+)
 
 const outsideUI = `bridge {
 	onClose func()
@@ -10,6 +14,7 @@ Window {
 	Column {
 		Popover {
 			id:             pop
+			show:           true
 			onClickOutside: bridge.onClose()
 
 			Button { id: anchor label: "Open" }
@@ -83,13 +88,12 @@ Window {
 	Column {
 		Popover {
 			id:             pop
+			show:           bridge.open
 			onClickOutside: bridge.onClose()
 
 			Button { label: "Open" }
 
-			if bridge.open {
-				$popover { Card { label: "Panel" width: 140 height: 80 } }
-			}
+			$popover { Card { label: "Panel" width: 140 height: 80 } }
 		}
 	}
 }`, 400, 300)
@@ -109,6 +113,7 @@ Window {
 
 	SetData(win, "open", true)
 	win.tree.ApplyExpressions() // headless: the frame loop would do this
+	layout.New(textMeasurer{}).Layout(win.tree.Root, 400, 300)
 	in.MouseDown(360, 250, 0, false)
 	in.MouseUp(360, 250, 0)
 	if fired != 1 {

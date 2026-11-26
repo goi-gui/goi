@@ -1797,6 +1797,10 @@ func (e *Engine) popoverChildren(b *tree.NodeBase, kids []*tree.NodeBase, w, h, 
 		return
 	}
 	panel := p.Panel.Base()
+	// The `show` property is the single state: a design expression and the Go
+	// Show/Toggle methods both land here, and paint and hit-testing follow the
+	// panel's own visibility.
+	panel.SetVisible(p.Shown.Get())
 	anchors := make([]*tree.NodeBase, 0, len(kids))
 	for _, k := range kids {
 		if k != panel {

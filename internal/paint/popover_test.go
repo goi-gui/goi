@@ -19,6 +19,7 @@ func TestPopoverPanelPaintsAboveAndFlips(t *testing.T) {
 			Rectangle { width: 200 height: 120 background: #00ff00 }
 
 			Popover {
+				show: true
 				Button { label: "Open" }
 				$popover {
 					Card { id: panel label: "Panel" width: 120 height: 80 }
@@ -82,7 +83,8 @@ func TestPopoverPanelClipsToItsScroller(t *testing.T) {
 				Rectangle { width: 300 height: 400 background: #00ff00 }
 
 				Popover {
-					id: pop
+					id:   pop
+					show: true
 					Button { label: "Open" }
 					$popover {
 						Card { label: "Panel" width: 120 height: 80 }
@@ -152,6 +154,7 @@ func TestPopoverPanelEscapesAColumnThatDoesNotOverflow(t *testing.T) {
 
 			Column {
 				Popover {
+					show: true
 					Button { label: "Share" }
 					$popover {
 						Card { id: panel label: "Panel" width: 200 height: 100 }

@@ -10,6 +10,9 @@ type Popover struct {
 	Component
 	// Align lines the panel up with the anchor: start, center or end.
 	Align Prop[string]
+	// Shown is the `show` property: whether the `$popover` panel is on screen.
+	// It starts false, so a design opens the panel with `show: true`.
+	Shown Prop[bool]
 	// Panel is the node built from the `$popover` slot, nil when the design
 	// wrote none. It stays an ordinary child so paint and hit-testing reach it;
 	// layout is the one place that treats it apart.
@@ -19,29 +22,33 @@ type Popover struct {
 // Kind implements Node.
 func (*Popover) Kind() string { return "Popover" }
 
-// Show shows or hides the panel. The panel's `visible` cell is the state, so
-// layout, paint and hit-testing all follow it. Showing a popover with no
-// `$popover` slot does nothing.
+// Show sets the `show` property, which opens or closes the panel. Layout also
+// syncs the panel's visibility from it every pass, so a design's `show:`
+// expression reaches paint and hit-testing the same way.
 func (p *Popover) Show(on bool) {
-	if p == nil || p.Panel == nil {
+	if p == nil {
 		return
 	}
-	p.Panel.Base().SetVisible(on)
+	p.Shown.Set(on)
+	if p.Panel != nil {
+		p.Panel.Base().SetVisible(on)
+	}
 }
 
-// Toggle flips the panel's visibility and returns the new state.
+// Toggle flips `show` and returns the new state.
 func (p *Popover) Toggle() bool {
-	if p == nil || p.Panel == nil {
+	if p == nil {
 		return false
 	}
-	on := !p.Panel.Base().Visible()
+	on := !p.Shown.Get()
 	p.Show(on)
 	return on
 }
 
 func (c *Popover) namedProps() []NamedProp {
-	return append(c.propsExcept("Popover", "align"),
-		EnumProp(&c.NodeBase, "align", DirtyLayout, &c.Align, AlignValues))
+	return append(c.propsExcept("Popover", "align", "show"),
+		EnumProp(&c.NodeBase, "align", DirtyLayout, &c.Align, AlignValues),
+		BoolProp(&c.NodeBase, "show", DirtyLayout, &c.Shown))
 }
 
 // PanelShift moves the panel's box so it stays inside a window of winW by winH:

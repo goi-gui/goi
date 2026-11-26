@@ -1596,6 +1596,7 @@ func TestPopoverPanelIsHitAboveLaterSiblings(t *testing.T) {
 	_, win, in := inputFixture(t, `Window {
 		Column {
 			Popover {
+				show: true
 				Button { id: anchor label: "Open" }
 				$popover {
 					Card { id: panel label: "Panel" width: 140 height: 80 }
@@ -1635,7 +1636,8 @@ func TestPopoverPanelIsNotHitWhenItsAnchorScrolledAway(t *testing.T) {
 				Rectangle { width: 300 height: 400 background: #00ff00 }
 
 				Popover {
-					id: pop
+					id:   pop
+					show: true
 					Button { id: anchor label: "Open" }
 					$popover {
 						Card { id: panel label: "Panel" width: 120 height: 80 }
@@ -1751,6 +1753,7 @@ func TestPopoverPanelIsHitThroughAColumnThatDoesNotOverflow(t *testing.T) {
 		Column {
 			Column {
 				Popover {
+					show: anchor.expanded
 					SplitButton {
 						id:      anchor
 						label:   "Share"
@@ -1758,9 +1761,8 @@ func TestPopoverPanelIsHitThroughAColumnThatDoesNotOverflow(t *testing.T) {
 					}
 					$popover {
 						Card {
-							id:      panel
-							visible: anchor.expanded
-							label:   "Panel"
+							id:    panel
+							label: "Panel"
 							width:   200
 							height:  100
 						}

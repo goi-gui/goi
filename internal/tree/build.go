@@ -410,6 +410,9 @@ func (t *Tree) buildSlot(el *syntax.Element, parent *NodeBase, hooks *Hooks) (No
 			return nil, err
 		}
 		p.Panel = n
+		// The property is read before the slot is built, so the panel starts
+		// closed instead of flashing on the first frame.
+		n.Base().SetVisible(p.Shown.Get())
 		// Paint and hit-testing lift the panel and every ancestor above the
 		// siblings written after them, the way an overlay does.
 		for a := n.Base(); a != nil && !a.floats; a = a.parent {
@@ -816,6 +819,7 @@ func newM3Component(name string) Node {
 		return &Popover{
 			Component: newComponent(),
 			Align:     newProp(nil, "align", DirtyLayout, "start"),
+			Shown:     newProp(nil, "show", DirtyLayout, false),
 		}
 	case "Snackbar":
 		return &Snackbar{Component: newComponent()}
