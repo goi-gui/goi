@@ -2287,7 +2287,7 @@ func TestAutoFocusOnlyTheFirst(t *testing.T) {
 }
 
 // TestCaretBlink checks the timing: a focused field shows the caret, hides it
-// after half a second, shows it again, and typing restarts the visible phase.
+// after one half-period, shows it again, and typing restarts the visible phase.
 func TestCaretBlink(t *testing.T) {
 	_, win, in := inputFixture(t, `Window {
 		Column { TextField { id: field width: 200 } }
@@ -2297,27 +2297,28 @@ func TestCaretBlink(t *testing.T) {
 	if !field.M3().CaretBlink {
 		t.Fatal("the caret was hidden when the field took focus")
 	}
+	period := time.Duration(caretBlinkHalf * float64(time.Second))
 
-	changed, wait := in.tick(0.4)
+	changed, wait := in.tick(0.8 * caretBlinkHalf)
 	if changed {
-		t.Fatal("the caret toggled before the half-second mark")
+		t.Fatal("the caret toggled before the first half-period")
 	}
-	if wait <= 0 || wait > 200*time.Millisecond {
-		t.Fatalf("wait after 0.4s = %v, want about 100ms", wait)
+	if wait <= 0 || wait > period {
+		t.Fatalf("wait after 0.8 half-periods = %v, want less than %v", wait, period)
 	}
 
-	changed, _ = in.tick(0.2)
+	changed, _ = in.tick(0.4 * caretBlinkHalf)
 	if !changed || field.M3().CaretBlink {
-		t.Fatal("the caret did not hide at the half-second mark")
+		t.Fatal("the caret did not hide after the first half-period")
 	}
 
-	changed, _ = in.tick(0.5)
+	changed, _ = in.tick(caretBlinkHalf)
 	if !changed || !field.M3().CaretBlink {
-		t.Fatal("the caret did not come back after another half second")
+		t.Fatal("the caret did not come back after another half-period")
 	}
 
 	// Typing shows it again even if the blink was off.
-	in.tick(0.5)
+	in.tick(0.9 * caretBlinkHalf)
 	if field.M3().CaretBlink {
 		t.Fatal("the caret did not hide before the typing check")
 	}
@@ -2329,7 +2330,7 @@ func TestCaretBlink(t *testing.T) {
 	// A blurred field asks for no blink frames.
 	in.setFocus(nil)
 	in.setKbd(nil)
-	changed, wait = in.tick(0.5)
+	changed, wait = in.tick(caretBlinkHalf)
 	if changed || wait != 0 {
 		t.Fatalf("blurred blink = changed %v, wait %v", changed, wait)
 	}

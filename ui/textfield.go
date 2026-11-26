@@ -61,7 +61,7 @@ func (i *interactor) tickFieldLabels(dt float64) bool {
 
 // caretBlinkHalf is how long the caret stays visible or hidden while a field
 // has focus.
-const caretBlinkHalf = 0.5 // seconds
+const caretBlinkHalf = 0.25 // seconds
 
 // tickCaretBlink advances the focused text field's caret blink and reports
 // whether it toggled, plus how long until the next toggle is due. The wait lets
