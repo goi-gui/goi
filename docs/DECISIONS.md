@@ -3017,10 +3017,11 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   after the walk.
 - **Table rows size to their content; only columns resize.** A row's height is
   the tallest cell's natural height, measured at the resolved column widths. A
-  row's own `height` and an explicitly written table `rowHeight` are floors, not
-  fixed bands; the default `rowHeight` is ignored until a design writes it. The
-  row has no drag handle or vertical cursor, so a row cannot be height-resized
-  by the pointer. This also removes the `SetHeightPixels` resize path.
+  row's own `height`, or else the table's `rowHeight` (48 by default), is a floor,
+  not a fixed band; a taller cell grows the row. Setting `rowHeight: 0` leaves
+  the content alone. The row has no drag handle or vertical cursor, so a row
+  cannot be height-resized by the pointer. This also removes the
+  `SetHeightPixels` resize path.
 - **Every component starts from the same common NodeBase as a plain node.**
   `newComponent` used a zero NodeBase, so its common cells (`width`, `padding`,
   …) had `DirtyPaint` and no defaults until the schema wrote them. A Go

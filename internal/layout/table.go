@@ -81,18 +81,16 @@ func (e *Engine) tableRowHeight(row *tree.TableRow, widths []float64, minHeight 
 }
 
 // tableRowMin is the floor a row's content height must meet: its own height
-// when the design declared one, or an explicitly written table rowHeight.
+// when the design declared one, otherwise the table's rowHeight. A row taller
+// than the floor still grows with its content.
 func tableRowMin(t *tree.Table, row *tree.TableRow) float64 {
-	minHeight := 0.0
 	if h := row.Height(); h >= 0 {
-		minHeight = h
+		return h
 	}
-	if t.RowHeight.Written() {
-		if def := t.RowHeight.Get(); def > minHeight {
-			minHeight = def
-		}
+	if def := t.RowHeight.Get(); def > 0 {
+		return def
 	}
-	return minHeight
+	return 0
 }
 
 // tableNatural is the intrinsic size: the declared column widths plus a request

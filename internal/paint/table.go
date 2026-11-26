@@ -104,20 +104,14 @@ func (l *List) paintTable(t *tree.Table, r tree.Rect, clip tree.Rect) {
 		contentW = rows[0].Base().Bounds().W
 	}
 
-	def := t.RowHeight.Get()
 	y := rowY
 	selected := make(map[int]bool, len(rows))
 	for _, i := range t.SelectedRows() {
 		selected[i] = true
 	}
 	for i, row := range rows {
-		rh := row.Height()
-		if rh < 0 {
-			rh = def
-			if rh <= 0 {
-				rh = tree.DefaultRowHeight
-			}
-		}
+		// The layout already resolved the content-driven row height.
+		rh := row.Base().Bounds().H
 		if selected[i] {
 			rowBand := col.SecondaryContainer
 			if v := t.SelectionColor.Get(); v != 0 {
@@ -187,8 +181,11 @@ func (l *List) paintTableColumn(c *tree.Component, r tree.Rect, clip tree.Rect) 
 		align = AlignEnd
 	}
 	// A header shares the cell's inset, so the label sits in the same column as
-	// the values below it.
+	// the values below it. The box is the 20dp label line, centred in the header
+	// band rather than pinned to its top edge.
 	box := alignedBox(r)
+	box.Y = r.Y + (r.H-20)/2
+	box.H = 20
 	if sorted {
 		// Room for the arrow on the trailing side. Centring loses half of it
 		// on each side so the label stays over the cell text.
@@ -214,7 +211,7 @@ func (l *List) paintTableColumn(c *tree.Component, r tree.Rect, clip tree.Rect) 
 		}
 		l.iconIn(icon, 18, fg, x+9, r.Y+r.H/2, clip)
 		l.textIn(tc.Label.Get(), st, fg,
-			tree.Rect{X: x + 26, Y: r.Y, W: labelW, H: r.H}, AlignStart, clip)
+			tree.Rect{X: x + 26, Y: r.Y + (r.H-20)/2, W: labelW, H: 20}, AlignStart, clip)
 	} else {
 		l.textIn(tc.Label.Get(), l.style("labelLarge"), fg, box, align, clip)
 	}

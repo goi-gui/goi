@@ -538,6 +538,7 @@ func TestTableRowHeightFollowsContent(t *testing.T) {
 		id: table
 		width: 400
 		height: 400
+		rowHeight: 0
 		TableColumn { label: "Name" width: 200 }
 		TableColumn { label: "Role" width: 200 }
 		TableRow {
