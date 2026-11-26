@@ -378,3 +378,74 @@ func scrollableChild(b *tree.NodeBase) *tree.NodeBase {
 func layoutAgain(w *Window) {
 	layout.New(nil).Layout(w.tree.Root, 100, 200)
 }
+
+// TestReloadKeepsSetData feeds a reload the values SetData stored: conditions
+// and loops are built from them, so a page does not fall back to zero values
+// until Bind runs.
+func TestReloadKeepsSetData(t *testing.T) {
+	const src = `bridge {
+	count int
+	rows  []row
+}
+
+type row {
+	label string
+}
+
+Window {
+	Column {
+		if bridge.count > 0 {
+			Text { id: open text: "open" }
+		}
+
+		for _, row := range bridge.rows {
+			Text { text: row.label }
+		}
+	}
+}`
+	a, w := reloadApp(t, src)
+	SetData(w, "count", 7)
+	SetData(w, "rows", []map[string]any{{"label": "a"}, {"label": "b"}})
+
+	// A cosmetic edit: the data was never set again.
+	if err := applyReloadSource(t, a, strings.Replace(src, "Window {\n\tColumn {", "Window {\n\tColumn {\n\t\tpadding: 4", 1)); err != nil {
+		t.Fatal(err)
+	}
+	if n, ok := w.tree.ByID("open"); !ok || !n.Base().Visible() {
+		t.Fatal("the condition was built with the zero count")
+	}
+	w.tree.ApplyExpressions()
+	labels := map[string]int{}
+	for _, n := range w.tree.All() {
+		if n.Kind() == "Text" {
+			labels[n.(*Text).Text.Get()]++
+		}
+	}
+	if labels["a"] != 1 || labels["b"] != 1 {
+		t.Fatalf("row labels after reload = %v, want a and b", labels)
+	}
+}
+
+// TestReloadKeepsSetHandler covers a handler registered outside Bind: the
+// design's event still reaches it after the tree was replaced.
+func TestReloadKeepsSetHandler(t *testing.T) {
+	const src = `bridge {
+	onPing func()
+}
+
+Window {
+	Button { id: ping label: "Ping" onClick: bridge.onPing() }
+}`
+	a, w := reloadApp(t, src)
+	pinged := 0
+	if err := SetHandler(w, "onPing", func() { pinged++ }); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyReloadSource(t, a, src); err != nil {
+		t.Fatal(err)
+	}
+	MustByID[*Button](w, "ping").Click.Emit(ClickEvent{})
+	if pinged != 1 {
+		t.Fatalf("the handler was lost: pinged %d", pinged)
+	}
+}

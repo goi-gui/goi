@@ -119,7 +119,13 @@ func (a *App) applyReload(f *syntax.File) error {
 	start := time.Now()
 	// The old tree's native views belong to the old nodes.
 	a.closeWebviews()
-	tr, err := tree.Build(f, &tree.Hooks{Marked: a.markDirty, Error: a.reportError, Media: a.mediaRequest, Window: a.windowRequest, Post: a.Post})
+	hooks := &tree.Hooks{Marked: a.markDirty, Error: a.reportError, Media: a.mediaRequest, Window: a.windowRequest, Post: a.Post}
+	// Seed the build with the values SetData stored, so conditions, loops and
+	// expressions all see the app's state from the first frame.
+	if a.win != nil && a.win.tree != nil {
+		hooks.Data = a.win.tree.DataValues()
+	}
+	tr, err := tree.Build(f, hooks)
 	if err != nil {
 		logg().Error(logCtx, "ui: hot reload failed", "error", err)
 		return fmt.Errorf("goi: reload: %w", err)
@@ -138,8 +144,9 @@ func (a *App) applyReload(f *syntax.File) error {
 // swapTree installs a freshly built tree, carrying over the state the framework
 // owns. It runs on the UI goroutine.
 //
-// Handlers are never carried over: Bind runs again so the app can attach them to
-// the new nodes. App state therefore has to live outside Bind.
+// The handlers SetHandler registered are carried over, so an app that registers
+// outside Bind keeps them; Bind still runs again and may replace any of them.
+// App state therefore has to live outside Bind.
 func (a *App) swapTree(tr *tree.Tree) {
 	w := a.win
 	if w == nil {
@@ -156,6 +163,7 @@ func (a *App) swapTree(tr *tree.Tree) {
 	carryOver(old, tr)
 	if old != nil {
 		carryScroll(old, tr)
+		tr.CarryHandlers(old)
 	}
 
 	w.tree = tr

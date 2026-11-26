@@ -45,6 +45,10 @@ type Hooks struct {
 	// goroutine and uses this to deliver bytes; nil runs fn at once, which is
 	// what a headless test wants.
 	Post func(fn func())
+	// Data seeds the `data` values from the tree a reload replaces, so the
+	// design starts from what SetData stored instead of the bridge's zero
+	// values.
+	Data map[string]any
 }
 
 // NodeBase holds the state every node shares: identity, tree links, layout result
@@ -313,6 +317,17 @@ func (b *NodeBase) Visible() bool { return b.visible.Get() }
 // SetVisible shows or hides the node. A hidden node and its children are
 // skipped by layout, paint and hit-testing.
 func (b *NodeBase) SetVisible(v bool) { b.visible.Set(v) }
+
+// setVisibleDerived writes the visibility a condition arm computes. It is not a
+// Go write, so hot reload re-derives the arm from the design instead of carrying
+// the old answer over as if the app had chosen it.
+func (b *NodeBase) setVisibleDerived(v bool) {
+	if b.visible.val == v {
+		return
+	}
+	b.visible.val = v
+	b.mark(DirtyLayout)
+}
 
 // Edges is an inset per side, in logical pixels.
 type Edges struct{ Top, Right, Bottom, Left float64 }

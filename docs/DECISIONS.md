@@ -3050,3 +3050,9 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   state. The design calls `pop.show(bool)` / `pop.toggle()` through the same
   event method path as `expand`, and `Popover.Show`/`Toggle` write the same
   property; a popover with no `$popover` slot has nothing to show.
+- **Hot reload rebuilds from the carried data, not zero values.** `SetData`
+  values pass into the new tree through `Hooks.Data`, so conditions and loops
+  are built from the state the app had, and the handlers `SetHandler` registered
+  are copied to the new bridge. `Bind` still runs afterwards and may replace
+  both. A condition arm's `visible` is written as derived state, not a Go write,
+  so the carry-over ignores it and the new design evaluates its own condition.

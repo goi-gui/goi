@@ -43,7 +43,7 @@ func Remove(w *Window, n Node) {
 //
 // A list element may be a struct, whose fields are matched by `json` tag and
 // then by name, or a map[string]any. Call it from Bind or App.Post: it touches
-// the tree.
+// the tree. Hot reload carries the stored values into the new tree.
 func SetData(w *Window, name string, v any) {
 	if w == nil || w.tree == nil {
 		return

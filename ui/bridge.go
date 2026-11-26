@@ -15,7 +15,8 @@ import "fmt"
 //
 // A call's arguments are evaluated when the event fires, so they read the
 // current value of a data variable or a row field. Call it from Bind, which runs
-// again after every hot reload, so re-registering there is enough.
+// again after every hot reload, or once at startup: the registry is carried
+// across a reload either way.
 //
 // The event's own payload is the identifier `event` in the call:
 // `onChange: bridge.onVolume(event)` with `func(v: number)`.

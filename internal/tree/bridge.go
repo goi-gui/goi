@@ -12,10 +12,19 @@ import (
 
 // Bridge is the Go side of the `bridge { ... }` contract: the handlers a design
 // declares by name and Go registers with Window.SetHandler. The registry lives
-// on the tree, and Bind runs again after a hot reload, so registering a handler
-// there is enough to survive one.
+// on the tree; a hot reload carries it over, and Bind runs again afterwards.
 type Bridge struct {
 	handlers map[string]reflect.Value
+}
+
+// CarryHandlers copies the handlers SetHandler registered on old, so a hot
+// reload keeps the ones an app set outside Bind. Bind runs afterwards and may
+// replace them.
+func (t *Tree) CarryHandlers(old *Tree) {
+	if t == nil || old == nil {
+		return
+	}
+	t.bridge.copyFrom(old.bridge)
 }
 
 // Set registers fn for a handler name. A handler is any Go function; its
@@ -36,6 +45,20 @@ func (b *Bridge) Set(name string, fn any) error {
 	}
 	b.handlers[name] = v
 	return nil
+}
+
+// copyFrom keeps the handlers old registered, so a hot reload does not drop
+// one an app set outside Bind. Bind runs afterwards and may replace them.
+func (b *Bridge) copyFrom(old *Bridge) {
+	if b == nil || old == nil {
+		return
+	}
+	for name, fn := range old.handlers {
+		if b.handlers == nil {
+			b.handlers = map[string]reflect.Value{}
+		}
+		b.handlers[name] = fn
+	}
 }
 
 // Call invokes the handler registered for name with the event's arguments.
@@ -101,8 +124,8 @@ func bridgeArg(v any, want reflect.Type) (reflect.Value, error) {
 }
 
 // SetHandler registers the Go function a bridge handler name calls. Call it
-// through ui.SetHandler from Window.Bind, which runs again after every hot
-// reload:
+// through ui.SetHandler, usually from Window.Bind, which runs again after every
+// hot reload; a handler registered outside Bind is carried over too:
 //
 //	w.Bind(func(w *ui.Window) error {
 //		return ui.SetHandler(w, "onOpen", func(id string) { open(id) })

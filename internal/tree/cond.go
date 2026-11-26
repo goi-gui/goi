@@ -81,7 +81,7 @@ func (t *Tree) applyConds() {
 	for _, cb := range t.conds {
 		ok := t.branchOK(cb, done)
 		for i, n := range cb.nodes {
-			n.SetVisible(cb.own[i] && ok)
+			n.setVisibleDerived(cb.own[i] && ok)
 		}
 	}
 }

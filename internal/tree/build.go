@@ -197,6 +197,13 @@ func Build(f *syntax.File, hooks *Hooks) (*Tree, error) {
 			t.vars[dv.Name] = v
 		}
 	}
+	if hooks != nil {
+		// A hot reload passes the previous tree's values here, so conditions
+		// and loops are built from the state the app had, not the zero values.
+		for name, v := range hooks.Data {
+			t.vars[name] = v
+		}
+	}
 	root, err := t.build(f.Root, nil, hooks)
 	t.building = false
 	if err != nil {

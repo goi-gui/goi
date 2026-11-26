@@ -76,6 +76,15 @@ type eachBlock struct {
 	dead bool
 }
 
+// DataValues returns every value SetData has stored. Hot reload passes them
+// into the next build so the design keeps its state.
+func (t *Tree) DataValues() map[string]any {
+	if t == nil {
+		return nil
+	}
+	return t.vars
+}
+
 // SetData stores a value for `data.name` and rebuilds the blocks that walk it.
 // A design reads it through `data.name`, a condition or an expression, so a set
 // reaches the screen on the next frame.
