@@ -124,8 +124,8 @@ var props = map[string][]string{
 	"RadioButton":      {"label", "disabled", "checked"},
 	"Switch":           {"label", "disabled", "checked", "icon", "iconOn", "iconOff", "filledIcon"},
 	"Slider":           {"variant", "orientation", "disabled", "value", "end", "center", "min", "max", "step", "showTooltip", "leadingIcon", "trailingIcon"},
-	"TextField":        {"label", "text", "placeholder", "supporting", "leadingIcon", "trailingIcon", "filledIcon", "filledLeadingIcon", "filledTrailingIcon", "variant", "color", "disabled", "type", "mask", "obscureText"},
-	"SearchBar":        {"label", "text", "placeholder", "trailingIcon", "filledIcon", "filledTrailingIcon", "disabled"},
+	"TextField":        {"label", "text", "placeholder", "supporting", "leadingIcon", "trailingIcon", "filledIcon", "filledLeadingIcon", "filledTrailingIcon", "variant", "color", "disabled", "type", "mask", "obscureText", "autoFocus"},
+	"SearchBar":        {"label", "text", "placeholder", "trailingIcon", "filledIcon", "filledTrailingIcon", "disabled", "autoFocus"},
 	"Tooltip":          {"text"},
 	"Card":             {"label", "supporting", "variant", "disabled"},
 	"Dialog":           {"label", "supporting", "leadingIcon", "filledIcon", "filledLeadingIcon"},
@@ -160,7 +160,7 @@ var props = map[string][]string{
 	"Carousel":         {"shrink"},
 	"CarouselItem":     {"label", "supporting", "labelColor", "supportingColor"},
 	"Toolbar":          {},
-	"TextArea":         {"label", "text", "placeholder", "supporting", "variant", "disabled"},
+	"TextArea":         {"label", "text", "placeholder", "supporting", "variant", "disabled", "autoFocus"},
 	"Code":             {"text", "language", "variant", "showCopy"},
 	"Terminal":         {"fontSize", "scrollback", "foreground"},
 	"WebView":          {"src", "html", "baseURL", "userAgent", "zoom", "devtools"},
@@ -352,7 +352,7 @@ func TypeOfFor(kind, name string) PropType {
 // TypeOf returns the literal type of a component property.
 func TypeOf(name string) PropType {
 	switch name {
-	case "disabled", "checked", "selected", "expanded", "showCopy", "showTooltip", "animated", "obscureText", "wrap", "truncate", "devtools",
+	case "disabled", "checked", "selected", "expanded", "showCopy", "showTooltip", "animated", "obscureText", "autoFocus", "wrap", "truncate", "devtools",
 		"filledIcon", "filledLeadingIcon", "filledTrailingIcon",
 		"sortable", "numeric", "striped", "showHeader", "stickyHeader", "sortAscending",
 		"grid", "axis", "legend", "values", "stacked", "horizontal", "smooth", "points",

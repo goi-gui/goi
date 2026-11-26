@@ -379,6 +379,11 @@ func (a *App) frame() {
 		// A relayout moves children, so everything must be repainted.
 		markAll(root.Base(), tree.DirtyPaint)
 	}
+	// Auto focus runs after layout, when a newly shown field has its bounds for
+	// the IME anchor, and before the display list is built.
+	if d.input != nil {
+		d.input.applyAutoFocus()
+	}
 	// A native web view follows its node's laid-out box. The sync runs before
 	// the display list is built, so the placeholder and the view agree.
 	if a.hasWebviews || treeHasWebview(a.win.tree) {

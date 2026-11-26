@@ -2158,3 +2158,127 @@ func TestSearchBarSlotClicksKeepsTheControls(t *testing.T) {
 		t.Fatalf("slot clicks = %d/%d, want 1/1", leads, trails)
 	}
 }
+
+// TestAutoFocusKinds covers the three text inputs: a field shown with
+// autoFocus takes keyboard focus without a press.
+func TestAutoFocusKinds(t *testing.T) {
+	cases := []struct {
+		name   string
+		design string
+		node   func(*Window) tree.Node
+	}{
+		{
+			"TextField",
+			`Window { Column { TextField { id: field autoFocus: true width: 200 } } }`,
+			func(w *Window) tree.Node { return MustByID[*TextField](w, "field") },
+		},
+		{
+			"SearchBar",
+			`Window { Column { SearchBar { id: field autoFocus: true width: 200 } } }`,
+			func(w *Window) tree.Node { return MustByID[*SearchBar](w, "field") },
+		},
+		{
+			"TextArea",
+			`Window { Column { TextArea { id: field autoFocus: true width: 200 } } }`,
+			func(w *Window) tree.Node { return MustByID[*TextArea](w, "field") },
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, win, in := inputFixture(t, c.design, 480, 320)
+			want := c.node(win)
+			in.applyAutoFocus()
+			if in.focus != comp(want) {
+				t.Fatalf("focus = %v, want the %s", in.focus, c.name)
+			}
+			in.Char('x')
+			if got := comp(want).Text.Get(); got != "x" {
+				t.Fatalf("%s text = %q after typing, want x", c.name, got)
+			}
+		})
+	}
+}
+
+// TestAutoFocusIsOffByDefault keeps an ordinary field out of the focus ring.
+func TestAutoFocusIsOffByDefault(t *testing.T) {
+	_, _, in := inputFixture(t, `Window {
+		Column { TextField { id: field width: 200 } }
+	}`, 480, 320)
+	in.applyAutoFocus()
+	if in.focus != nil {
+		t.Fatal("a field without autoFocus took focus")
+	}
+}
+
+// TestAutoFocusFollowsVisibility focuses a field the moment it is shown, and
+// does not grab focus back after the user leaves it while it stays visible.
+func TestAutoFocusFollowsVisibility(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		Column { TextField { id: field autoFocus: true width: 200 visible: false } }
+	}`, 480, 320)
+	field := MustByID[*TextField](win, "field")
+
+	in.applyAutoFocus()
+	if in.focus != nil {
+		t.Fatal("a hidden autoFocus field took focus")
+	}
+
+	field.SetVisible(true)
+	in.applyAutoFocus()
+	if in.focus != field.M3() {
+		t.Fatal("the field did not focus when it became visible")
+	}
+
+	// Leaving the field must not make the next frame steal focus back.
+	in.setFocus(nil)
+	in.setKbd(nil)
+	in.applyAutoFocus()
+	if in.focus != nil {
+		t.Fatal("autoFocus stole focus back while the field stayed visible")
+	}
+
+	// Hiding it again re-arms it for the next appearance.
+	field.SetVisible(false)
+	in.applyAutoFocus()
+	field.SetVisible(true)
+	in.applyAutoFocus()
+	if in.focus != field.M3() {
+		t.Fatal("the field did not focus on its second appearance")
+	}
+}
+
+// TestAutoFocusSkipsDisabled keeps a disabled field out of the focus ring.
+func TestAutoFocusSkipsDisabled(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		Column { TextField { id: field autoFocus: true disabled: true width: 200 } }
+	}`, 480, 320)
+	field := MustByID[*TextField](win, "field")
+	in.applyAutoFocus()
+	if in.focus == field.M3() {
+		t.Fatal("a disabled autoFocus field took focus")
+	}
+}
+
+// TestAutoFocusOnlyTheFirst focuses the first visible field, not every field
+// on a later frame.
+func TestAutoFocusOnlyTheFirst(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		Column {
+			TextField { id: first autoFocus: true width: 200 }
+			TextField { id: second autoFocus: true width: 200 }
+		}
+	}`, 480, 320)
+	first := MustByID[*TextField](win, "first")
+	second := MustByID[*TextField](win, "second")
+
+	in.applyAutoFocus()
+	if in.focus != first.M3() {
+		t.Fatal("the first field did not take focus")
+	}
+	in.setFocus(nil)
+	in.setKbd(nil)
+	in.applyAutoFocus()
+	if in.focus == second.M3() {
+		t.Fatal("the second field stole focus after the first was left")
+	}
+}

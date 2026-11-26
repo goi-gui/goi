@@ -3515,6 +3515,52 @@ func (i *interactor) focusables() []tree.Node {
 	return out
 }
 
+// applyAutoFocus focuses the first visible text field whose design asked for
+// autoFocus. It runs once per appearance: the fields are marked done, and
+// hiding, disabling or turning autoFocus off re-arms them. The first field takes
+// focus and the rest wait, so a later frame does not steal it.
+func (i *interactor) applyAutoFocus() {
+	if i.tree == nil {
+		return
+	}
+	var target tree.Node
+	var pending []*tree.Component
+	i.tree.Walk(func(n tree.Node) {
+		c := comp(n)
+		if c == nil {
+			return
+		}
+		if !c.AutoFocus.Get() || !visibleInTree(n) || c.Disabled.Get() || !isTextField(c) {
+			c.ResetAutoFocus()
+			return
+		}
+		if !c.AutoFocusPending() {
+			return
+		}
+		pending = append(pending, c)
+		if target == nil {
+			target = n
+		}
+	})
+	if target == nil {
+		return
+	}
+	for _, c := range pending {
+		c.MarkAutoFocus()
+	}
+	i.setKbd(target)
+}
+
+// visibleInTree reports whether n and every ancestor is visible.
+func visibleInTree(n tree.Node) bool {
+	for ; n != nil; n = n.Base().Parent() {
+		if !n.Base().Visible() {
+			return false
+		}
+	}
+	return true
+}
+
 // setKbd moves keyboard focus. A text field also takes the character focus, so
 // Tab lands in a field ready to type; any other target releases the field.
 func (i *interactor) setKbd(n tree.Node) {

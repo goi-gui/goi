@@ -2966,3 +2966,12 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   so a Button or IconButton written in `$leading`/`$trailing` is activated
   instead of the field taking focus and swallowing the click. A decorative slot
   body has no action, so pressing it still focuses the field.
+- **autoFocus fires once per appearance, not every frame.** The input layer walks
+  the tree after layout and focuses the first visible `TextField`, `SearchBar` or
+  `TextArea` whose `autoFocus` is true. A per-node done flag stops the next frame
+  from stealing focus back when the user moves on; hiding the field, disabling
+  it, or turning `autoFocus` off clears the flag, so showing it again focuses it
+  again. More than one visible autoFocus field marks all of them done, so the
+  second does not take focus on the following frame. The property is only in
+  those three kinds' component lists; the shared `Component` cell keeps the
+  builder and the schema in step.

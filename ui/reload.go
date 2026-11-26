@@ -175,7 +175,7 @@ func (a *App) swapTree(tr *tree.Tree) {
 		d.input.resetPointerState()
 		if focusID != "" {
 			if n, ok := tr.ByID(focusID); ok {
-				if k := n.Kind(); k == "TextField" || k == "SearchBar" {
+				if k := n.Kind(); k == "TextField" || k == "SearchBar" || k == "TextArea" {
 					d.input.focus = comp(n)
 				}
 			}

@@ -64,6 +64,9 @@ type Component struct {
 	Checked  Prop[bool]
 	Selected Prop[bool]
 	Expanded Prop[bool]
+	// AutoFocus focuses a text input when it is first shown. Only the text
+	// inputs list it; the shared cell keeps tree and schema in step.
+	AutoFocus Prop[bool]
 
 	// Numeric value (slider, progress, stepper).
 	Value Prop[float64]
@@ -85,6 +88,9 @@ type Component struct {
 	Hover   bool
 	Pressed bool
 	Focused bool
+	// autoFocusDone records that this appearance took focus, so a frame does
+	// not steal it back after the user moves on; hiding the field re-arms it.
+	autoFocusDone bool
 	// LabelFloat is a text field or area label's travel: 0 sits inside the
 	// field, 1 above it. LabelPosed is set by the first frame, so loading a
 	// page starts at rest instead of sliding every label.
@@ -163,6 +169,7 @@ func newComponent() Component {
 		// which changes its width, so this one is a layout change.
 		Selected:   newProp(nil, "selected", DirtyLayout, false),
 		Expanded:   newProp(nil, "expanded", DirtyLayout, false),
+		AutoFocus:  newProp(nil, "autoFocus", DirtyPaint, false),
 		Value:      newProp(nil, "value", DirtyPaint, 0.0),
 		Min:        newProp(nil, "min", DirtyPaint, 0.0),
 		Max:        newProp(nil, "max", DirtyPaint, 1.0),
@@ -270,6 +277,8 @@ func (c *Component) one(kind, name string) NamedProp {
 		return BoolProp(b, "selected", DirtyLayout, &c.Selected)
 	case "expanded":
 		return BoolProp(b, "expanded", DirtyLayout, &c.Expanded)
+	case "autoFocus":
+		return BoolProp(b, "autoFocus", DirtyPaint, &c.AutoFocus)
 	case "value":
 		return NumberProp(b, "value", DirtyPaint, &c.Value)
 	case "min":
@@ -572,6 +581,17 @@ func (c *TextField) SetObscureText(v bool) { c.Obscure.Set(v) }
 // of the value is what keeps the caret and the selection on the characters they
 // cover, so the field looks the same length as the text it hides.
 const MaskRune = "•"
+
+// AutoFocusPending reports whether this field still has to take focus for its
+// current appearance.
+func (c *Component) AutoFocusPending() bool { return c.AutoFocus.Get() && !c.autoFocusDone }
+
+// MarkAutoFocus records that the current appearance took focus.
+func (c *Component) MarkAutoFocus() { c.autoFocusDone = true }
+
+// ResetAutoFocus re-arms the field for a later appearance, or after autoFocus
+// was turned off or the field was disabled.
+func (c *Component) ResetAutoFocus() { c.autoFocusDone = false }
 
 // Obscured reports whether the element is a text field hiding its value.
 func (c *Component) Obscured() bool {
