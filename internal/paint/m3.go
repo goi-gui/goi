@@ -129,13 +129,15 @@ func (l *List) iconInFilled(name string, size float64, color uint32, cx, cy floa
 }
 
 // shadow appends an elevation shadow behind a rounded rect.
-func (l *List) shadow(r tree.Rect, radius float64, dp int, clip tree.Rect) {
+func (l *List) shadow(r tree.Rect, radius float64, dp int) {
 	rad := float32(radius)
-	l.shadowRadii(r, [4]float32{rad, rad, rad, rad}, dp, clip)
+	l.shadowRadii(r, [4]float32{rad, rad, rad, rad}, dp)
 }
 
 // shadowRadii is shadow for a shape whose corners differ, like a split button.
-func (l *List) shadowRadii(r tree.Rect, radii [4]float32, dp int, clip tree.Rect) {
+// The op uses the node's shadow clip, not the content clip: a component surface
+// must not cut the shadow that belongs outside it.
+func (l *List) shadowRadii(r tree.Rect, radii [4]float32, dp int) {
 	// An explicit `shadow` on the node stands in for the component's elevation,
 	// including `shadow: none`, which drops it.
 	if dp <= 0 || l.suppressElev {
@@ -151,7 +153,7 @@ func (l *List) shadowRadii(r tree.Rect, radii [4]float32, dp int, clip tree.Rect
 		Radius: [4]float32{radii[0] + b, radii[1] + b, radii[2] + b, radii[3] + b},
 		Blur:   b,
 		Color:  withAlpha(l.Theme.Colors.Shadow, 0.22),
-		Clip:   clipArr(clip),
+		Clip:   clipArr(l.shadowClip),
 	})
 }
 
@@ -564,7 +566,7 @@ func (l *List) paintButton(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		fg = col.OnSurface
 	}
 	border, bw = componentBorder(c.Base(), border, bw)
-	l.shadowRadii(r, radii32(radii), elev, clip)
+	l.shadowRadii(r, radii32(radii), elev)
 	l.fillShape(r, bg, gradient, radii, border, bw, clip)
 	if !c.Disabled.Get() {
 		l.ripple(c, r, radii[0], fg, clip)
@@ -742,7 +744,7 @@ func (l *List) paintFAB(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		bg = withAlpha(col.OnSurface, m3.DisabledContainerOpacity)
 		fg = withAlpha(col.OnSurface, m3.DisabledOpacity)
 	}
-	l.shadow(r, radius, elev, clip)
+	l.shadow(r, radius, elev)
 	l.fillRect(r, bg, radius, 0, 0, clip)
 	l.stateLayer(c, r, radius, fg, clip)
 
@@ -784,7 +786,7 @@ func (l *List) paintFABMenu(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		fg = withAlpha(fg, m3.DisabledOpacity)
 	}
 	radius := radiusFor(m3.ShapeLarge, box)
-	l.shadow(box, radius, m3.Elevation3, clip)
+	l.shadow(box, radius, m3.Elevation3)
 	l.fillRect(box, bg, radius, 0, 0, clip)
 	l.iconIn(c.Icon.Get(), 24, fg, box.X+box.W/2, box.Y+box.H/2, clip)
 }
@@ -824,7 +826,7 @@ func (l *List) paintSplitButton(c *tree.Component, r tree.Rect, clip tree.Rect) 
 		{trail, [4]float32{inner, outer, outer, inner}},
 	}
 	for _, s := range segs {
-		l.shadowRadii(s.r, s.radii, elev, clip)
+		l.shadowRadii(s.r, s.radii, elev)
 		l.Ops = append(l.Ops, Op{
 			Kind: Fill, Shape: RoundedRect, Rect: rectArr(s.r),
 			Radius: s.radii, Color: bg,
@@ -1698,7 +1700,7 @@ func minInt(a, b int) int {
 func (l *List) paintSearchBar(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
 	radius := radiusFor(m3.ShapeFull, r)
-	l.shadow(r, radius, m3.Elevation3, clip)
+	l.shadow(r, radius, m3.Elevation3)
 	l.fillRect(r, col.SurfaceContainerHigh, radius, 0, 0, clip)
 	fg := disabledAlpha(c, col.OnSurface)
 	hint := col.OnSurfaceVariant
@@ -1827,7 +1829,7 @@ func (l *List) paintCard(c *tree.Component, r tree.Rect, clip tree.Rect) {
 		l.fillRect(r, col.Surface, radius, border, 1, clip)
 	default: // elevated
 		if !c.Disabled.Get() {
-			l.shadow(r, radius, m3.Elevation1, clip)
+			l.shadow(r, radius, m3.Elevation1)
 		}
 		bg := col.SurfaceContainerLow
 		if c.Disabled.Get() {
@@ -1850,7 +1852,7 @@ func (l *List) paintCard(c *tree.Component, r tree.Rect, clip tree.Rect) {
 func (l *List) paintDialog(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
 	radius := m3.ShapeExtraLarge
-	l.shadow(r, radius, m3.Elevation3, clip)
+	l.shadow(r, radius, m3.Elevation3)
 	l.fillRect(r, col.SurfaceContainerHigh, radius, 0, 0, clip)
 	if c.Icon.Get() != "" {
 		l.iconIn(c.Icon.Get(), 24, col.Secondary, r.X+r.W/2, r.Y+40, clip)
@@ -1991,7 +1993,7 @@ func (l *List) paintListItem(c *tree.Component, r tree.Rect, clip tree.Rect) {
 
 func (l *List) paintMenu(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
-	l.shadow(r, m3.ShapeExtraSmall, m3.Elevation2, clip)
+	l.shadow(r, m3.ShapeExtraSmall, m3.Elevation2)
 	l.fillRect(r, col.SurfaceContainer, m3.ShapeExtraSmall, 0, 0, clip)
 }
 
@@ -2017,7 +2019,7 @@ func (l *List) paintMenuItem(c *tree.Component, r tree.Rect, clip tree.Rect) {
 
 func (l *List) paintSnackbar(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
-	l.shadow(r, m3.ShapeExtraSmall, m3.Elevation3, clip)
+	l.shadow(r, m3.ShapeExtraSmall, m3.Elevation3)
 	l.fillRect(r, col.InverseSurface, m3.ShapeExtraSmall, 0, 0, clip)
 	l.textIn(c.Label.Get(), l.style("bodyMedium"), col.InverseOnSurface,
 		tree.Rect{X: r.X + 16, Y: r.Y, W: r.W - 32, H: r.H}, AlignStart, clip)
@@ -2063,7 +2065,7 @@ func (l *List) paintNavigationDrawer(c *tree.Component, r tree.Rect, clip tree.R
 	// A drawer is a sheet: rounded on the right, elevated above the page.
 	rad := float32(m3.ShapeLarge)
 	radii := [4]float32{0, rad, rad, 0}
-	l.shadowRadii(r, radii, m3.Elevation1, clip)
+	l.shadowRadii(r, radii, m3.Elevation1)
 	l.Ops = append(l.Ops, Op{
 		Kind: Fill, Shape: RoundedRect, Rect: rectArr(r), Radius: radii,
 		Color: col.SurfaceContainerLow, Clip: clipArr(clip),
@@ -2851,7 +2853,7 @@ func (l *List) paintCarouselItemOverlay(c *tree.Component, r tree.Rect, clip tre
 
 func (l *List) paintToolbar(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
-	l.shadow(r, radiusFor(m3.ShapeFull, r), m3.Elevation2, clip)
+	l.shadow(r, radiusFor(m3.ShapeFull, r), m3.Elevation2)
 	l.fillRect(r, col.SurfaceContainer, radiusFor(m3.ShapeFull, r), 0, 0, clip)
 }
 

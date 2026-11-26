@@ -3673,11 +3673,20 @@ func absoluteBounds(n tree.Node) (x, y, w, h float64) {
 	return x, y, w, h
 }
 
-// fieldAt finds the text field at or above a hit node.
+// fieldAt finds the text field at or above a hit node. A control placed in a
+// field's leading or trailing slot takes the press itself: focusing the field
+// would swallow the control's click.
 func fieldAt(n tree.Node) *tree.Component {
 	for n != nil {
-		if k := n.Kind(); k == "TextField" || k == "SearchBar" || k == "TextArea" {
+		switch n.Kind() {
+		case "TextField", "SearchBar", "TextArea":
 			return comp(n)
+		}
+		if n.Base().Click.Len() > 0 {
+			return nil
+		}
+		if c := comp(n); c != nil && interactive(n) {
+			return nil
 		}
 		n = n.Base().Parent()
 	}

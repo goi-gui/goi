@@ -199,6 +199,10 @@ type List struct {
 	// scrollClip is the intersection of the scrolling ancestors' viewports and
 	// the window: what a floating panel may draw in.
 	scrollClip tree.Rect
+	// shadowClip is the clip an outer shadow may use. It ignores the implicit
+	// surface clip of an ancestor component, so a card does not cut the shadow
+	// of the search bar inside it; ClipRRect and a scrolling viewport still do.
+	shadowClip tree.Rect
 	// family is the font family of the node being painted, resolved with the
 	// same inheritance a design has. Every text op the node emits carries it.
 	family string
@@ -264,7 +268,8 @@ func (l *List) BuildClip(tr *tree.Tree, w, h float64, clip tree.Rect) {
 	l.Reset()
 	l.window = tree.Rect{W: w, H: h}
 	l.scrollClip = clip
-	l.walk(tr.Root.Base(), 0, 0, clip)
+	l.shadowClip = clip
+	l.walk(tr.Root.Base(), 0, 0, clip, clip)
 	// A fullscreen video covers the window, so it is painted last rather than
 	// where its own box sits; the walk skipped it in place.
 	if v := tree.FullscreenVideo(tr); v != nil {
@@ -284,26 +289,28 @@ func (l *List) BuildClip(tr *tree.Tree, w, h float64, clip tree.Rect) {
 // panel floats above the page instead of living inside the element that holds
 // it, but it still belongs to the scroll it was written in: an anchor scrolled
 // out of view takes its panel with it.
-func (l *List) panelPlace(b *tree.NodeBase, r tree.Rect, k *tree.NodeBase, kb tree.Rect, clip tree.Rect) (tree.Rect, tree.Rect) {
+func (l *List) panelPlace(b *tree.NodeBase, r tree.Rect, k *tree.NodeBase, kb tree.Rect, clip, shadowClip tree.Rect) (tree.Rect, tree.Rect, tree.Rect) {
 	p, ok := b.Node().(*tree.Popover)
 	if !ok || p.Panel == nil || k != p.Panel.Base() {
-		return kb, clip
+		return kb, clip, shadowClip
 	}
 	abs := tree.Rect{X: r.X + kb.X, Y: r.Y + kb.Y, W: kb.W, H: kb.H}
 	// An anchor outside its scroller has scrolled away: the panel stays where
 	// the content put it and the clip above hides it. Flipping it into the
 	// window here would leave a sliver of a panel whose anchor is nowhere.
 	if vis := intersect(r, l.scrollClip); vis.W <= 0 || vis.H <= 0 {
-		return kb, l.scrollClip
+		return kb, l.scrollClip, l.scrollClip
 	}
 	dx, dy := p.PanelShift(r, abs, l.window.W, l.window.H)
 	kb.X += dx
 	kb.Y += dy
-	return kb, l.scrollClip
+	return kb, l.scrollClip, l.scrollClip
 }
 
 // walk emits the node and its children. x,y is the node's absolute origin.
-func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
+// clip bounds the node's own content; shadowClip is the wider bound its outer
+// shadow may use.
+func (l *List) walk(b *tree.NodeBase, x, y float64, clip, shadowClip tree.Rect) {
 	if !b.Visible() {
 		return
 	}
@@ -323,12 +330,16 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 	outerFamily := l.family
 	l.family = b.FontFamily()
 	if !empty {
-		l.paintContent(b, r, clip)
+		l.paintContent(b, r, clip, shadowClip)
 	}
 	inner := b.ScrollClip(r)
 	childClip := clip
 	if b.ClipsChildren() {
 		childClip = intersect(clip, inner)
+	}
+	childShadowClip := shadowClip
+	if b.ClipsShadow() {
+		childShadowClip = intersect(shadowClip, inner)
 	}
 	outerScroll := l.scrollClip
 	if b.ScrollAxis() != tree.AxisNone && b.ClipsChildren() {
@@ -350,8 +361,9 @@ func (l *List) walk(b *tree.NodeBase, x, y float64, clip tree.Rect) {
 			}
 		}
 		kc := b.ChildClip(k, r, childClip)
-		kb, kc = l.panelPlace(b, r, k, kb, kc)
-		l.walkOffset(k, x, y, kb, kc)
+		ksc := b.ChildClip(k, r, childShadowClip)
+		kb, kc, ksc = l.panelPlace(b, r, k, kb, kc, ksc)
+		l.walkOffset(k, x, y, kb, kc, ksc)
 	}
 	frame := b.ScrollViewport(r)
 	l.paintScrollShadows(b, frame, clip)
@@ -445,7 +457,7 @@ func (l *List) applyScale(from int, b *tree.NodeBase, r tree.Rect) {
 }
 
 // walkOffset is walk with an explicit bounds override, used for scrolled lists.
-func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip tree.Rect) {
+func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds, clip, shadowClip tree.Rect) {
 	if !b.Visible() {
 		return
 	}
@@ -458,13 +470,17 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 	outerFamily := l.family
 	l.family = b.FontFamily()
 	if !empty {
-		l.paintContent(b, r, clip)
+		l.paintContent(b, r, clip, shadowClip)
 	}
 
 	inner := b.ScrollClip(r)
 	childClip := clip
 	if b.ClipsChildren() {
 		childClip = intersect(clip, inner)
+	}
+	childShadowClip := shadowClip
+	if b.ClipsShadow() {
+		childShadowClip = intersect(shadowClip, inner)
 	}
 	outerScroll := l.scrollClip
 	if b.ScrollAxis() != tree.AxisNone && b.ClipsChildren() {
@@ -486,8 +502,9 @@ func (l *List) walkOffset(b *tree.NodeBase, x, y float64, bounds tree.Rect, clip
 			}
 		}
 		kc := b.ChildClip(k, r, childClip)
-		kb, kc = l.panelPlace(b, r, k, kb, kc)
-		l.walkOffset(k, x, y, kb, kc)
+		ksc := b.ChildClip(k, r, childShadowClip)
+		kb, kc, ksc = l.panelPlace(b, r, k, kb, kc, ksc)
+		l.walkOffset(k, x, y, kb, kc, ksc)
 	}
 	frame := b.ScrollViewport(r)
 	l.paintScrollShadows(b, frame, clip)
@@ -517,11 +534,13 @@ func (l *List) paintOverlay(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
 // paintContent draws one node's own visuals: its shadow, its fill and its
 // text, image or SVG. Children are the caller's job, because they need the
 // clip and the scroll offset.
-func (l *List) paintContent(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
+func (l *List) paintContent(b *tree.NodeBase, r tree.Rect, clip, shadowClip tree.Rect) {
+	outerShadowClip := l.shadowClip
+	l.shadowClip = shadowClip
 	// Text shadows its glyphs, not its box, so it opts out of the box shadow.
 	_, isText := b.Node().(*tree.Text)
 	if !isText {
-		l.paintBoxShadows(b, r, clip, false)
+		l.paintBoxShadows(b, r, shadowClip, false)
 	}
 	if blur := b.BackdropBlurValue(); blur.Gradient != nil || blur.Radius > 0 {
 		l.paintBackdrop(b, r, clip, blur)
@@ -573,6 +592,7 @@ func (l *List) paintContent(b *tree.NodeBase, r tree.Rect, clip tree.Rect) {
 	if b.RippleSet() && b.WantsRipple() && !l.rippleDrawn {
 		l.rippleNode(b, r, l.rippleRadius(b, r, from), l.Theme.Colors.OnSurface, clip)
 	}
+	l.shadowClip = outerShadowClip
 }
 
 // paintBackdrop asks for a blurred copy of everything painted so far, masked to

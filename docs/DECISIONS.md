@@ -2952,3 +2952,17 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   resolver callback so a `SetFontFamily` made after the window is up registers
   lazily; a miss is remembered once, and a resolver is never installed in
   headless builds.
+
+- **A surface clips its content, not a child's shadow.** The paint walk keeps two
+  clips: the content clip that `ClipsChildren` narrows, and a shadow clip that
+  only `ClipRRect`, `CarouselItem` and a scrolling container that actually
+  overflows narrow. Outer box shadows (the M3 elevation and an explicit
+  `shadow`) use the shadow clip; inset shadows, fills, text, ripples and focus
+  rings still use the content clip. A Stack used to cut every page's edge shadow
+  in the gallery, and a Card cut a SearchBar's elevation, even though the shadow
+  belongs outside the surface.
+- **A control in a field's slot takes its own press.** `fieldAt` walks up from
+  the hit and stops at a node with a click handler or an interactive component,
+  so a Button or IconButton written in `$leading`/`$trailing` is activated
+  instead of the field taking focus and swallowing the click. A decorative slot
+  body has no action, so pressing it still focuses the field.

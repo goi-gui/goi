@@ -246,3 +246,110 @@ func TestClipRRectZeroRadius(t *testing.T) {
 		}
 	}
 }
+
+// TestChildShadowNotCutBySurface guards a component surface clipping the
+// shadow of what sits inside it. A card keeps its content inside its box; the
+// shadow belongs outside, so only an explicit ClipRRect may cut it.
+func TestChildShadowNotCutBySurface(t *testing.T) {
+	_, win, _ := inputFixture(t, `Window {
+		Card {
+			id:     card
+			width:  200
+			height: 200
+			Rectangle {
+				width:  80
+				height: 80
+				shadow: 0 8 16
+			}
+		}
+	}`, 600, 400)
+	card := MustByID[*Card](win, "card")
+	cardRect := absoluteRect(card)
+
+	list := &paint.List{}
+	list.Build(win.tree, 600, 400)
+
+	found := false
+	for _, op := range list.Ops {
+		if op.Kind != paint.Shadow || op.Blur != 16 {
+			continue
+		}
+		found = true
+		if w := op.Clip[2] - op.Clip[0]; w <= float32(cardRect.W) {
+			t.Fatalf("child shadow clip width = %v, cut at the card width %v", w, cardRect.W)
+		}
+	}
+	if !found {
+		t.Fatal("no child shadow was painted")
+	}
+}
+
+// TestClipRRectStillCutsChildShadow keeps the explicit clip: a ClipRRect is
+// what a design uses to say a shadow must stay inside its box.
+func TestClipRRectStillCutsChildShadow(t *testing.T) {
+	_, win, _ := inputFixture(t, `Window {
+		ClipRRect {
+			id:     clip
+			radius: 16
+			width:  200
+			height: 200
+			Rectangle {
+				width:  80
+				height: 80
+				shadow: 0 8 16
+			}
+		}
+	}`, 600, 400)
+
+	list := &paint.List{}
+	list.Build(win.tree, 600, 400)
+
+	found := false
+	for _, op := range list.Ops {
+		if op.Kind != paint.Shadow || op.Blur != 16 {
+			continue
+		}
+		found = true
+		if w := op.Clip[2] - op.Clip[0]; w > 201 {
+			t.Fatalf("shadow clip width = %v, want it cut to the ClipRRect's 200", w)
+		}
+		if op.ClipRadius != 16 {
+			t.Fatalf("shadow clip radius = %v, want 16", op.ClipRadius)
+		}
+	}
+	if !found {
+		t.Fatal("no shadow was painted")
+	}
+}
+
+// TestSearchBarShadowNotCutByStack is the gallery's shape: pages sit in a Stack,
+// and the stack used to cut the search bar's M3 elevation at the page edge.
+func TestSearchBarShadowNotCutByStack(t *testing.T) {
+	_, win, _ := inputFixture(t, `Window {
+		Stack {
+			id:     page
+			width:  300
+			height: 200
+			SearchBar { width: 280 }
+		}
+	}`, 600, 400)
+	page := MustByID[*Stack](win, "page")
+	pageRect := absoluteRect(page)
+
+	list := &paint.List{}
+	list.Build(win.tree, 600, 400)
+
+	found := false
+	for _, op := range list.Ops {
+		if op.Kind != paint.Shadow || op.Blur != 12 {
+			continue
+		}
+		found = true
+		if w := op.Clip[2] - op.Clip[0]; w <= float32(pageRect.W) {
+			t.Fatalf("search bar shadow clip width = %v, cut at the stack width %v", w, pageRect.W)
+		}
+	}
+	if !found {
+		t.Fatal("search bar elevation shadow was not painted")
+	}
+}

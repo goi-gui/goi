@@ -93,6 +93,22 @@ func (b *NodeBase) ClipsChildren() bool {
 	return true
 }
 
+// ClipsShadow reports whether children's outer shadows are clipped to this
+// node. A surface clips its content, but it must not cut a child's shadow at
+// its own edge; only an explicit ClipRRect, a carousel viewport or a scrolling
+// container that actually overflows does. The component still clips the child
+// itself through ClipsChildren.
+func (b *NodeBase) ClipsShadow() bool {
+	if b.ScrollAxis() != AxisNone {
+		return b.ClipsChildren()
+	}
+	switch b.Node().Kind() {
+	case "ClipRRect", "CarouselItem":
+		return true
+	}
+	return false
+}
+
 // ScrollMax is the largest useful offset along the node's scroll axis: how far
 // the children reach past the content box. A two-axis table reports its vertical
 // extent; ask ScrollMaxFor for the other one.

@@ -2099,3 +2099,62 @@ func TestResetPointerStateDropsOldTree(t *testing.T) {
 		t.Fatal("pointer state survived a reset")
 	}
 }
+
+// TestSearchBarSlotClicksKeepsTheControls guards the leading and trailing
+// bodies: a press on a control there belongs to the control, not to the field
+// that would otherwise take every press inside its box.
+func TestSearchBarSlotClicksKeepsTheControls(t *testing.T) {
+	_, win, in := inputFixture(t, `Window {
+		SearchBar {
+			id: search
+			width: 300
+			$leading {
+				Button { id: lead width: 40 height: 40 label: "L" }
+			}
+			$trailing {
+				Button { id: trail width: 40 height: 40 label: "T" }
+			}
+		}
+	}`, 480, 320)
+	bar := MustByID[*SearchBar](win, "search")
+	lead := MustByID[*Button](win, "lead")
+	trail := MustByID[*Button](win, "trail")
+	leads, trails := 0, 0
+	lead.OnClick(func(ClickEvent) { leads++ })
+	trail.OnClick(func(ClickEvent) { trails++ })
+
+	click := func(n tree.Node) {
+		r := absoluteRect(n)
+		x, y := r.X+r.W/2, r.Y+r.H/2
+		in.MouseDown(x, y, 0, false)
+		in.MouseUp(x, y, 0)
+	}
+
+	click(lead)
+	if leads != 1 {
+		t.Fatalf("leading slot clicks = %d, want 1", leads)
+	}
+	if in.focus == bar.M3() {
+		t.Fatal("a press on the leading control focused the search bar")
+	}
+
+	// Clicking the field itself still focuses it and types.
+	click(bar)
+	if in.focus != bar.M3() {
+		t.Fatal("the search bar did not take focus from its text area")
+	}
+	for _, r := range "go" {
+		in.Char(r)
+	}
+	if got := bar.Text.Get(); got != "go" {
+		t.Fatalf("search text = %q after clicking and typing", got)
+	}
+
+	click(trail)
+	if trails != 1 {
+		t.Fatalf("trailing slot clicks = %d, want 1", trails)
+	}
+	if leads != 1 || trails != 1 {
+		t.Fatalf("slot clicks = %d/%d, want 1/1", leads, trails)
+	}
+}

@@ -345,7 +345,7 @@ func (t TimeLayout) DialInnerLabel(i int) string {
 
 func (l *List) paintDatePicker(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
-	l.shadow(r, m3.ShapeExtraLarge, m3.Elevation3, clip)
+	l.shadow(r, m3.ShapeExtraLarge, m3.Elevation3)
 	l.fillRect(r, col.SurfaceContainerHigh, m3.ShapeExtraLarge, 0, 0, clip)
 
 	d := DateLayoutOf(r, c.Text.Get(), c.PickerMonth)
@@ -385,7 +385,7 @@ func (l *List) paintDatePicker(c *tree.Component, r tree.Rect, clip tree.Rect) {
 
 func (l *List) paintTimePicker(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	col := l.Theme.Colors
-	l.shadow(r, m3.ShapeExtraLarge, m3.Elevation3, clip)
+	l.shadow(r, m3.ShapeExtraLarge, m3.Elevation3)
 	l.fillRect(r, col.SurfaceContainerHigh, m3.ShapeExtraLarge, 0, 0, clip)
 
 	format := 12

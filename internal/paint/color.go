@@ -93,7 +93,7 @@ func (l *List) paintColorPicker(c *tree.Component, r tree.Rect, clip tree.Rect) 
 		return
 	}
 	col := l.Theme.Colors
-	l.shadow(r, m3.ShapeExtraLarge, m3.Elevation3, clip)
+	l.shadow(r, m3.ShapeExtraLarge, m3.Elevation3)
 	l.fillRect(r, col.SurfaceContainerHigh, m3.ShapeExtraLarge, 0, 0, clip)
 
 	h, s, v := cp.HSV()
