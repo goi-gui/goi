@@ -134,7 +134,7 @@ var props = map[string][]string{
 	"Divider":          {"variant"},
 	"List":             {},
 	"ListItem":         {"label", "supporting", "leadingIcon", "trailingIcon", "filledIcon", "filledLeadingIcon", "filledTrailingIcon", "leadingIconColor", "trailingIconColor", "labelColor", "supportingColor", "disabled", "selected"},
-	"Table":            {"variant", "striped", "showHeader", "stickyHeader", "rowHeight", "headerHeight", "sortColumn", "sortAscending", "selectable", "selectedRow", "selectionColor"},
+	"Table":            {"variant", "striped", "showHeader", "stickyHeader", "rowHeight", "headerHeight", "sortColumn", "sortAscending", "selectable", "selectedRow", "selectionColor", "resizable"},
 	"TableColumn":      {"label", "icon", "filledIcon", "key", "align", "sortable", "numeric"},
 	"TableRow":         {"selected", "disabled"},
 	"TableCell":        {"value", "icon", "filledIcon", "align"},
@@ -352,7 +352,7 @@ func TypeOfFor(kind, name string) PropType {
 // TypeOf returns the literal type of a component property.
 func TypeOf(name string) PropType {
 	switch name {
-	case "disabled", "checked", "selected", "expanded", "showCopy", "showTooltip", "animated", "obscureText", "autoFocus", "wrap", "truncate", "devtools",
+	case "disabled", "checked", "selected", "expanded", "showCopy", "showTooltip", "animated", "obscureText", "autoFocus", "resizable", "wrap", "truncate", "devtools",
 		"filledIcon", "filledLeadingIcon", "filledTrailingIcon",
 		"sortable", "numeric", "striped", "showHeader", "stickyHeader", "sortAscending",
 		"grid", "axis", "legend", "values", "stacked", "horizontal", "smooth", "points",

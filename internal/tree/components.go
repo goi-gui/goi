@@ -762,6 +762,9 @@ type Table struct {
 	// SelectionColor is the band under selected rows; zero follows
 	// SecondaryContainer.
 	SelectionColor Prop[uint32]
+	// Resizable lets the pointer drag a column border to change that column's
+	// width. The width is fixed in pixels after the first drag.
+	Resizable Prop[bool]
 	// SortEvent fires when a header is clicked, with the column index and the
 	// new direction. SortBy from Go does not fire it, because the caller
 	// already knows.
@@ -774,7 +777,7 @@ func (*Table) Kind() string { return "Table" }
 func (c *Table) namedProps() []NamedProp {
 	return append(c.propsExcept("Table",
 		"striped", "showHeader", "stickyHeader", "rowHeight", "headerHeight",
-		"sortColumn", "sortAscending", "selectable", "selectedRow", "selectionColor"),
+		"sortColumn", "sortAscending", "selectable", "selectedRow", "selectionColor", "resizable"),
 		BoolProp(&c.NodeBase, "striped", DirtyPaint, &c.Striped),
 		BoolProp(&c.NodeBase, "showHeader", DirtyLayout, &c.ShowHeader),
 		BoolProp(&c.NodeBase, "stickyHeader", DirtyLayout, &c.StickyHeader),
@@ -785,6 +788,7 @@ func (c *Table) namedProps() []NamedProp {
 		EnumProp(&c.NodeBase, "selectable", DirtyPaint, &c.Selectable, TableSelectableValues),
 		NumberProp(&c.NodeBase, "selectedRow", DirtyPaint, &c.SelectedRow),
 		ColorProp(&c.NodeBase, "selectionColor", DirtyPaint, &c.SelectionColor),
+		BoolProp(&c.NodeBase, "resizable", DirtyPaint, &c.Resizable),
 	)
 }
 
@@ -819,6 +823,12 @@ func (c *TableColumn) namedProps() []NamedProp {
 		BoolProp(&c.NodeBase, "sortable", DirtyPaint, &c.Sortable),
 		BoolProp(&c.NodeBase, "numeric", DirtyPaint, &c.Numeric),
 	)
+}
+
+// SetWidthPixels fixes the column at v pixels, dropping a percentage width so
+// layout reads the fixed value after a resize.
+func (c *TableColumn) SetWidthPixels(v float64) {
+	c.Base().SetWidthPixels(v)
 }
 
 // TableRow is one row; its children are TableCells, one per column.

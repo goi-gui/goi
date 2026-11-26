@@ -3,7 +3,9 @@ package ui
 import (
 	"testing"
 
+	"github.com/goi-gui/goi/internal/layout"
 	"github.com/goi-gui/goi/internal/platform"
+	"github.com/goi-gui/goi/internal/tree"
 )
 
 const tableUI = `Window {
@@ -400,4 +402,79 @@ func TestTableButtonInCellKeepsItsClick(t *testing.T) {
 	if got := tbl.SelectedRows(); len(got) != 0 {
 		t.Fatalf("selected = %v, want the button to win", got)
 	}
+}
+
+// TestTableColumnResize drags the border after the first column and checks the
+// width, the header cursor and a headerless table.
+func TestTableColumnResize(t *testing.T) {
+	_, win, in := inputFixture(t, `Window { Column { Table {
+		id: table
+		width: 400
+		resizable: true
+		TableColumn { label: "Name" width: 200 }
+		TableColumn { label: "Role" width: 200 }
+		TableRow { TableCell { value: "a" } TableCell { value: "b" } }
+	} } }`, 500, 300)
+	tbl := MustByID[*Table](win, "table")
+	col := tbl.TableColumns()[0]
+	start := col.Base().Bounds().W
+	r := absoluteRect(col)
+	x, y := r.X+r.W, r.Y+r.H/2
+
+	var cursor platform.Cursor
+	in.setCursor = func(c platform.Cursor) { cursor = c }
+	in.MouseMove(x, y)
+	if cursor != platform.CursorResizeEW {
+		t.Fatalf("cursor over the border = %v, want horizontal resize", cursor)
+	}
+
+	in.MouseDown(x, y, 0, false)
+	in.MouseMove(x+40, y)
+	if got := col.Width(); got != start+40 {
+		t.Fatalf("width after drag = %v, want %v", got, start+40)
+	}
+	in.MouseUp(x+40, y, 0)
+	layout.New(textMeasurer{}).Layout(win.tree.Root, 500, 300)
+	if got := absoluteRect(col).W; got != start+40 {
+		t.Fatalf("laid out width = %v, want %v", got, start+40)
+	}
+}
+
+func TestTableColumnResizeOff(t *testing.T) {
+	_, win, in := inputFixture(t, `Window { Column { Table {
+		id: table
+		width: 400
+		TableColumn { label: "Name" width: 200 }
+		TableColumn { label: "Role" width: 200 }
+		TableRow { TableCell { value: "a" } TableCell { value: "b" } }
+	} } }`, 500, 300)
+	col := MustByID[*Table](win, "table").TableColumns()[0]
+	r := absoluteRect(col)
+	in.MouseDown(r.X+r.W, r.Y+r.H/2, 0, false)
+	if in.resizeCol != nil {
+		t.Fatal("a non-resizable table started a width drag")
+	}
+}
+
+func TestTableColumnResizeWithoutHeader(t *testing.T) {
+	_, win, in := inputFixture(t, `Window { Column { Table {
+		id: table
+		width: 400
+		showHeader: false
+		resizable: true
+		TableColumn { label: "Name" width: 200 }
+		TableColumn { label: "Role" width: 200 }
+		TableRow { TableCell { value: "a" } TableCell { value: "b" } }
+	} } }`, 500, 300)
+	tbl := MustByID[*Table](win, "table")
+	col := tbl.TableColumns()[0]
+	cell := tree.CellNodes(tbl.TableRows()[0])[0]
+	r := absoluteRect(cell)
+	in.MouseMove(r.X+r.W, r.Y+r.H/2)
+	in.MouseDown(r.X+r.W, r.Y+r.H/2, 0, false)
+	in.MouseMove(r.X+r.W+30, r.Y+r.H/2)
+	if got := col.Width(); got != 230 {
+		t.Fatalf("width after drag = %v, want 230", got)
+	}
+	in.MouseUp(r.X+r.W+30, r.Y+r.H/2, 0)
 }

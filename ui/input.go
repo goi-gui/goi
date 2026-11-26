@@ -47,6 +47,12 @@ type interactor struct {
 	// gesture. A sideways pull on a carousel must not nudge the page it sits in.
 	dragAxis tree.Axis
 
+	// resizeCol is the table column whose right border is being dragged;
+	// resizeX and resizeW are the press position and the width it started with.
+	resizeCol *tree.TableColumn
+	resizeX   float64
+	resizeW   float64
+
 	// ripples are the live press animations.
 	ripples []ripple
 
@@ -254,6 +260,7 @@ func (i *interactor) resetPointerState() {
 	i.termSelOn, i.termSelMoved = false, false
 	i.dragging, i.selecting, i.scrolled = false, false, false
 	i.gestureDown, i.gesturePanned, i.gestureLong = false, false, false
+	i.resizeCol = nil
 }
 
 // fireLongPress runs on the UI goroutine once the pointer has rested on the
@@ -436,6 +443,66 @@ func tableOf(cell *tree.TableCell) *tree.Table {
 	return t
 }
 
+// tableResizeMin is the narrowest a column can be dragged; a design can still
+// declare something narrower.
+const tableResizeMin = 24.0
+
+// tableResizeSlop is how close to a column's right border the pointer must be.
+const tableResizeSlop = 4.0
+
+// tableResizeAt reports the column whose right border is under x,y. The header
+// columns are the reference when there is a header; otherwise the first row's
+// cells are, so a headerless table resizes too. The table's horizontal scroll
+// shift is added because the layout bounds do not carry it.
+func tableResizeAt(hit tree.Node, x, y float64) (*tree.Table, *tree.TableColumn, float64, bool) {
+	var table *tree.Table
+	for n := hit; n != nil; n = n.Base().Parent() {
+		if t, ok := n.(*tree.Table); ok {
+			table = t
+			break
+		}
+	}
+	if table == nil || !table.Resizable.Get() {
+		return nil, nil, 0, false
+	}
+	r := absoluteRect(table)
+	if x < r.X || x > r.Right() || y < r.Y || y > r.Bottom() {
+		return nil, nil, 0, false
+	}
+	cols := table.TableColumns()
+	if len(cols) == 0 {
+		return nil, nil, 0, false
+	}
+	ox, _ := table.Base().ScrollShift()
+	if table.HeaderBand() > 0 && cols[0].Base().Bounds().W > 0 {
+		for _, col := range cols {
+			b := col.Base().Bounds()
+			edge := r.X + b.X + b.W + ox
+			if math.Abs(x-edge) <= tableResizeSlop {
+				return table, col, b.W, true
+			}
+		}
+		return nil, nil, 0, false
+	}
+	rows := table.TableRows()
+	if len(rows) == 0 {
+		return nil, nil, 0, false
+	}
+	row := rows[0]
+	rowX := r.X + row.Base().Bounds().X + ox
+	for i, cell := range tree.CellNodes(row) {
+		if i >= len(cols) {
+			break
+		}
+		b := cell.Base().Bounds()
+		edge := rowX + b.X + b.W
+		if math.Abs(x-edge) <= tableResizeSlop {
+			return table, cols[i], b.W, true
+		}
+	}
+	return nil, nil, 0, false
+}
+
 // pressTarget maps a hit inside a table cell to the cell, unless the hit is a
 // control of its own: a button in a cell keeps its click, and the cell around it
 // does not also select the row.
@@ -567,6 +634,16 @@ func (i *interactor) MouseMove(x, y float64) {
 		if r, ok := i.app.webviewFrame(e.node); ok {
 			e.view.ForwardPointer(platform.PointerMove, x-r.X, y-r.Y, 0, 0, 0, false)
 		}
+		return
+	}
+	if i.resizeCol != nil {
+		w := i.resizeW + (x - i.resizeX)
+		if w < tableResizeMin {
+			w = tableResizeMin
+		}
+		i.resizeCol.SetWidthPixels(w)
+		i.markDirty()
+		i.pointer(platform.CursorResizeEW)
 		return
 	}
 	if i.termSelOn && i.termSel != nil {
@@ -804,6 +881,14 @@ func (i *interactor) pointerAt(hit tree.Node) {
 		i.pointer(platform.CursorArrow)
 		return
 	}
+	if i.resizeCol != nil {
+		i.pointer(platform.CursorResizeEW)
+		return
+	}
+	if _, _, _, ok := tableResizeAt(hit, i.cursorX, i.cursorY); ok {
+		i.pointer(platform.CursorResizeEW)
+		return
+	}
 	if c, ok := cursorFor(hit); ok {
 		i.pointer(c)
 		return
@@ -888,6 +973,23 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 	hit := i.hit(x, y)
 	if button == 0 {
 		i.clickOutside(hit, x, y)
+	}
+	// A press on a resizable table column's border starts a width drag before
+	// the scrollbar, a cell selection or a sort can claim it.
+	if button == 0 {
+		if _, col, width, ok := tableResizeAt(hit, x, y); ok {
+			i.resizeCol = col
+			i.resizeX = x
+			i.resizeW = width
+			i.pressed = nil
+			i.dragging = false
+			i.selecting = false
+			i.textField = nil
+			i.scrollNode = nil
+			i.scrollbar = nil
+			i.pointer(platform.CursorResizeEW)
+			return
+		}
 	}
 	i.pressX, i.pressY = x, y
 	if term := terminalAt(hit); term != nil && button <= 2 {
@@ -1135,6 +1237,13 @@ func (i *interactor) MouseUp(x, y float64, button int) {
 		return
 	}
 	i.event("MouseUp", "x", x, "y", y, "button", button)
+	if i.resizeCol != nil {
+		i.resizeCol = nil
+		i.cursorX, i.cursorY = x, y
+		i.pointerAt(i.hit(x, y))
+		i.markDirty()
+		return
+	}
 	if i.termMouse != nil {
 		row, col := i.termMouseRow, i.termMouseCol
 		if r, c, ok := i.terminalCellAt(i.termMouse, x, y); ok {

@@ -223,6 +223,11 @@ func carryOver(old, fresh *tree.Tree) {
 				continue
 			}
 			db.CopyProp(name, sb)
+			// A Go-set width beats a percentage expression in the design,
+			// otherwise a resized `width: 50%` column snaps back on reload.
+			if name == "width" {
+				db.SetWidthPixels(db.Width())
+			}
 		}
 
 		// Text field contents and caret are user state, not Go state: keep them

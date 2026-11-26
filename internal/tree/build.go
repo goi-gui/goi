@@ -784,6 +784,7 @@ func newM3Component(name string) Node {
 			Selectable:     newProp(nil, "selectable", DirtyPaint, "none"),
 			SelectedRow:    newProp(nil, "selectedRow", DirtyPaint, -1.0),
 			SelectionColor: newProp(nil, "selectionColor", DirtyPaint, uint32(0)),
+			Resizable:      newProp(nil, "resizable", DirtyPaint, false),
 		}
 	case "TableColumn":
 		return &TableColumn{
