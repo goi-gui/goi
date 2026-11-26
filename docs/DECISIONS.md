@@ -2975,3 +2975,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   second does not take focus on the following frame. The property is only in
   those three kinds' component lists; the shared `Component` cell keeps the
   builder and the schema in step.
+- **Terminal.Clear clears the active buffer, not the session.** The visible
+  screen and its scrollback become blank, the cursor homes, the scroll offset
+  and selection drop; colours, pen state, terminal modes, the reader and the
+  writer stay. On the alternate screen it is the alternate buffer that is
+  cleared and the main screen still returns on exit, which is what a terminal
+  clear does. A full reset would also forget the mouse and bracketed-paste modes
+  the pty still believes are on.

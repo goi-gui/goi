@@ -210,3 +210,59 @@ func TestTerminalExitReportsReadError(t *testing.T) {
 		t.Fatal("no exit event after the reader failed")
 	}
 }
+
+// TestTerminalClear empties the screen and scrollback, homes the cursor and
+// drops the selection, so new output starts at the top-left.
+func TestTerminalClear(t *testing.T) {
+	var term Terminal
+	term.Fit(10, 3)
+	term.FeedString("one\r\ntwo\r\nthree\r\nfour\r\nfive")
+	if term.ScrollLines() == 0 {
+		t.Fatal("the scrollback stayed empty")
+	}
+	term.SelectionStart(0, 0)
+	term.SelectionExtend(1, 2)
+
+	term.Clear()
+	if got := term.ScrollLines(); got != 0 {
+		t.Fatalf("scrollback after Clear = %d, want 0", got)
+	}
+	view := term.View(3)
+	for r, line := range view.Lines {
+		for c, cell := range line {
+			if cell.R != ' ' {
+				t.Fatalf("cell %d,%d = %q after Clear", r, c, string(cell.R))
+			}
+		}
+	}
+	if view.CursorRow != 0 || view.CursorCol != 0 {
+		t.Fatalf("cursor after Clear = %d,%d, want 0,0", view.CursorRow, view.CursorCol)
+	}
+	if _, _, _, _, ok := term.Selection(); ok {
+		t.Fatal("Clear kept the selection")
+	}
+
+	term.FeedString("new")
+	if got := term.View(3).Lines[0][0].R; got != 'n' {
+		t.Fatalf("first cell after Clear+feed = %q, want n", string(got))
+	}
+}
+
+// TestTerminalClearAlt clears the screen the reader is on; the main screen
+// stays for exitAlt, the way a terminal command works.
+func TestTerminalClearAlt(t *testing.T) {
+	var term Terminal
+	term.Fit(10, 3)
+	term.FeedString("main")
+	term.FeedString("\x1b[?1049h\x1b[Halt")
+
+	term.Clear()
+	if got := term.View(3).Lines[0][0].R; got != ' ' {
+		t.Fatalf("alternate screen after Clear = %q, want blank", string(got))
+	}
+
+	term.FeedString("\x1b[?1049l")
+	if got := term.View(3).Lines[0][0].R; got != 'm' {
+		t.Fatalf("restored main screen = %q, want m", string(got))
+	}
+}

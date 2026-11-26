@@ -249,6 +249,24 @@ func (t *Terminal) OnResize(fn func(TerminalSize)) (off func()) { return t.Resiz
 // stream closes. The callback runs on the UI goroutine.
 func (t *Terminal) OnExit(fn func(TerminalExit)) (off func()) { return t.Exit.On(fn) }
 
+// Clear empties the visible screen and its scrollback, homes the cursor and
+// drops the scroll position and selection. Terminal modes, colours and the
+// attached reader/writer stay as they are; it is the buffer that is cleared,
+// not the session.
+func (t *Terminal) Clear() {
+	t.mu.Lock()
+	for i := range t.state.lines {
+		t.state.lines[i] = blankTermLine(t.state.cols)
+	}
+	t.state.scroll = nil
+	t.state.row, t.state.col = 0, 0
+	t.state.wrap = false
+	t.scroll = 0
+	t.selActive = false
+	t.mu.Unlock()
+	t.MarkDirty(DirtyPaint)
+}
+
 // ScrollBy moves the scrollback by n lines; positive moves into history. It
 // reports whether the view changed.
 func (t *Terminal) ScrollBy(n int) bool {
