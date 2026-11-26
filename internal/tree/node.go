@@ -585,10 +585,12 @@ func (b *NodeBase) Width() float64 { return b.width.Get() }
 // node for layout, so the frame that follows lays it out at the new size.
 func (b *NodeBase) SetWidth(v float64) { b.width.Set(v) }
 
-// SetWidthPixels sets a pixel width and drops a percentage expression, which a
-// Go value or a table-column resize should override.
+// SetWidthPixels sets a pixel width and drops a percentage expression or a
+// responsive/conditional width, which a Go value or a table-column resize
+// should override.
 func (b *NodeBase) SetWidthPixels(v float64) {
 	b.clearExpr("width")
+	b.clearModifier("width")
 	b.SetWidth(v)
 }
 

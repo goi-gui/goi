@@ -478,3 +478,55 @@ func TestTableColumnResizeWithoutHeader(t *testing.T) {
 	}
 	in.MouseUp(r.X+r.W+30, r.Y+r.H/2, 0)
 }
+
+func TestTableColumnResizePercentInScroller(t *testing.T) {
+	_, win, in := inputFixture(t, `Window { Column {
+		width: 500
+		height: 300
+		scroll: true
+		Table {
+			id: table
+			width: 100%
+			height: 200
+			resizable: true
+			scroll: true
+			TableColumn { label: "Name" width: 50% }
+			TableColumn { label: "Role" width: 50% }
+			TableRow { TableCell { value: "a" } TableCell { value: "b" } }
+		}
+	} }`, 600, 400)
+	tbl := MustByID[*Table](win, "table")
+	col := tbl.TableColumns()[0]
+	start := col.Base().Bounds().W
+	r := absoluteRect(col)
+	in.MouseMove(r.X+r.W, r.Y+r.H/2)
+	in.MouseDown(r.X+r.W, r.Y+r.H/2, 0, false)
+	in.MouseMove(r.X+r.W+40, r.Y+r.H/2)
+	if got := col.Width(); got != start+40 {
+		t.Fatalf("width = %v, want %v", got, start+40)
+	}
+	in.MouseUp(r.X+r.W+40, r.Y+r.H/2, 0)
+}
+
+func TestTableColumnResizeResponsiveWidth(t *testing.T) {
+	_, win, in := inputFixture(t, `Window { Column { Table {
+		id: table
+		width: 400
+		resizable: true
+		TableColumn { label: "Name" width: 200 }
+		TableColumn { label: "Role" width: responsive { base: 200 md: 300 } }
+		TableRow { TableCell { value: "a" } TableCell { value: "b" } }
+	} } }`, 500, 300)
+	tbl := MustByID[*Table](win, "table")
+	col := tbl.TableColumns()[0]
+	r := absoluteRect(col)
+	in.MouseMove(r.X+r.W, r.Y+r.H/2)
+	in.MouseDown(r.X+r.W, r.Y+r.H/2, 0, false)
+	in.MouseMove(r.X+r.W+40, r.Y+r.H/2)
+	// A frame re-applies every responsive block; the resized width must win.
+	win.tree.ApplyBreakpoints(500)
+	if got := col.Width(); got != 240 {
+		t.Fatalf("width after responsive pass = %v, want 240", got)
+	}
+	in.MouseUp(r.X+r.W+40, r.Y+r.H/2, 0)
+}

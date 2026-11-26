@@ -71,6 +71,17 @@ func (b *NodeBase) setModifier(name string, m *syntax.Modifier) bool {
 	return true
 }
 
+// clearModifier drops a property's responsive, conditional or state block, so a
+// later Go write or a column resize is not overwritten by the next frame.
+func (b *NodeBase) clearModifier(name string) {
+	for i := range b.modifiers {
+		if b.modifiers[i].name == name {
+			b.modifiers = append(b.modifiers[:i], b.modifiers[i+1:]...)
+			return
+		}
+	}
+}
+
 // applyModifierBase writes the responsive base value at build time. A base that
 // is itself a conditional or state block waits for the frame pass.
 func (b *NodeBase) applyModifierBase(mp *modifierProp) {
