@@ -839,6 +839,10 @@ func (*TableRow) Kind() string { return "TableRow" }
 
 func (c *TableRow) namedProps() []NamedProp { return c.props("TableRow") }
 
+// SetHeightPixels fixes the row at v pixels, dropping a percentage or
+// responsive height so layout reads the value after a resize.
+func (r *TableRow) SetHeightPixels(v float64) { r.Base().SetHeightPixels(v) }
+
 // TableCell is one cell in a row. Its children are what a reader sees, so the
 // cell can hold a Text, a Chip, anything; Value is the machine-readable string
 // sorting uses, and may differ from what is drawn (`"31"` over a formatted

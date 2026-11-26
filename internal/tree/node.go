@@ -601,6 +601,14 @@ func (b *NodeBase) Height() float64 { return b.height.Get() }
 // auto.
 func (b *NodeBase) SetHeight(v float64) { b.height.Set(v) }
 
+// SetHeightPixels sets a pixel height and drops a percentage or responsive
+// height, which a Go value or a table-row resize should override.
+func (b *NodeBase) SetHeightPixels(v float64) {
+	b.clearExpr("height")
+	b.clearModifier("height")
+	b.SetHeight(v)
+}
+
 // SetSize declares both sides at once, the same as the design's `size`.
 func (b *NodeBase) SetSize(w, h float64) {
 	b.width.Set(w)

@@ -3015,3 +3015,9 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   whether it is visible, so a tooltip scrolled out of view stays out. The
   inherited font family is captured with the queue, since the final paint runs
   after the walk.
+- **Table rows resize by the same pointer contract as columns.** A row's bottom
+  border is a vertical handle and `SetHeightPixels` clears a percentage or
+  responsive height before writing the row's own height, so the next frame does
+  not put the old value back. The table's `rowHeight` remains the default for
+  rows the design did not size. A column handle wins at a corner, since it is
+  checked first.

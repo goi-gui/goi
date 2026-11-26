@@ -228,6 +228,9 @@ func carryOver(old, fresh *tree.Tree) {
 			if name == "width" {
 				db.SetWidthPixels(db.Width())
 			}
+			if name == "height" {
+				db.SetHeightPixels(db.Height())
+			}
 		}
 
 		// Text field contents and caret are user state, not Go state: keep them
