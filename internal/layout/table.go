@@ -59,15 +59,40 @@ func tableWidths(cols []*tree.TableColumn, total float64) []float64 {
 	return out
 }
 
-// rowHeight is a row's height: its own declaration, else the table's setting.
-func rowHeight(row *tree.TableRow, def float64) float64 {
+// tableRowHeight is the tallest cell's intrinsic height, with an explicit row
+// height or a written table rowHeight acting as a minimum. A row is no longer a
+// fixed 48dp band; a taller cell grows it.
+func (e *Engine) tableRowHeight(row *tree.TableRow, widths []float64, minHeight float64) float64 {
+	h := minHeight
+	for i, cell := range tree.CellNodes(row) {
+		w := 0.0
+		if i < len(widths) {
+			w = widths[i]
+		}
+		_, ch := e.natural(cell.Base(), w, 0)
+		if ch > h {
+			h = ch
+		}
+	}
+	if h < 1 {
+		h = 1
+	}
+	return h
+}
+
+// tableRowMin is the floor a row's content height must meet: its own height
+// when the design declared one, or an explicitly written table rowHeight.
+func tableRowMin(t *tree.Table, row *tree.TableRow) float64 {
+	minHeight := 0.0
 	if h := row.Height(); h >= 0 {
-		return h
+		minHeight = h
 	}
-	if def > 0 {
-		return def
+	if t.RowHeight.Written() {
+		if def := t.RowHeight.Get(); def > minHeight {
+			minHeight = def
+		}
 	}
-	return tree.DefaultRowHeight
+	return minHeight
 }
 
 // tableNatural is the intrinsic size: the declared column widths plus a request
@@ -98,10 +123,10 @@ func (e *Engine) tableNatural(b *tree.NodeBase, availW, availH float64) (float64
 	if b.Width() >= 0 {
 		w = b.Width()
 	}
+	widths := tableWidths(cols, w)
 	h := t.HeaderBand()
-	def := t.RowHeight.Get()
 	for _, r := range rows {
-		h += rowHeight(r, def)
+		h += e.tableRowHeight(r, widths, tableRowMin(t, r))
 	}
 	return w, h
 }
@@ -132,7 +157,6 @@ func (e *Engine) tableChildren(b *tree.NodeBase, w, h float64) {
 		x += widths[i]
 	}
 
-	def := t.RowHeight.Get()
 	y := top + hh
 	// Rows take the columns' full extent, so a table wider than its frame paints
 	// its stripes and separators across the whole scrollable width.
@@ -141,7 +165,7 @@ func (e *Engine) tableChildren(b *tree.NodeBase, w, h float64) {
 		rowW = total
 	}
 	for _, row := range t.TableRows() {
-		rh := rowHeight(row, def)
+		rh := e.tableRowHeight(row, widths, tableRowMin(t, row))
 		row.SetBounds(tree.Rect{X: left, Y: y, W: rowW, H: rh})
 		// Cells are placed inside the row, so their bounds are row-relative,
 		// which is what every other child in the tree uses.

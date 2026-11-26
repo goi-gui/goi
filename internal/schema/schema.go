@@ -165,6 +165,21 @@ var NodeMethods = append([]string{"play", "pause", "stop", "toggle", "seek", "vo
 	"fullscreen", "windowed", "toggleFullscreen", "audioTrack", "expand", "setObscureText"},
 	ScrollMethods...)
 
+// WindowMethods are the window controls an event can call, as in
+// `onClick: window.close()`. The names are the lowerCamel forms the design
+// language uses; the Go methods are the exported equivalents.
+var WindowMethods = []string{"maximize", "toggleMaximize", "minimize", "close", "fullscreen"}
+
+// WindowMethod reports whether name is a window control an event can call.
+func WindowMethod(name string) bool {
+	for _, m := range WindowMethods {
+		if m == name {
+			return true
+		}
+	}
+	return false
+}
+
 // NodeMethod reports whether name is a method an event can call on an element.
 func NodeMethod(name string) bool {
 	for _, m := range NodeMethods {

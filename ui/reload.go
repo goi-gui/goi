@@ -119,7 +119,7 @@ func (a *App) applyReload(f *syntax.File) error {
 	start := time.Now()
 	// The old tree's native views belong to the old nodes.
 	a.closeWebviews()
-	tr, err := tree.Build(f, &tree.Hooks{Marked: a.markDirty, Error: a.reportError, Media: a.mediaRequest, Post: a.Post})
+	tr, err := tree.Build(f, &tree.Hooks{Marked: a.markDirty, Error: a.reportError, Media: a.mediaRequest, Window: a.windowRequest, Post: a.Post})
 	if err != nil {
 		logg().Error(logCtx, "ui: hot reload failed", "error", err)
 		return fmt.Errorf("goi: reload: %w", err)
@@ -227,9 +227,6 @@ func carryOver(old, fresh *tree.Tree) {
 			// otherwise a resized `width: 50%` column snaps back on reload.
 			if name == "width" {
 				db.SetWidthPixels(db.Width())
-			}
-			if name == "height" {
-				db.SetHeightPixels(db.Height())
 			}
 		}
 

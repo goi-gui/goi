@@ -121,9 +121,13 @@ func (t *Tree) bindEvent(b *NodeBase, name string, v syntax.Value) error {
 	if !ok {
 		return fmt.Errorf("%s.%s: expected a handler call", b.node.Kind(), name)
 	}
-	// A call on an id drives that element instead of a bridge handler:
-	// `onClick: spin.pause()`.
-	if call.Callee.ID != "bridge" && call.Callee.ID != "data" {
+	// `window.close()` drives the live window; window is a reserved name, not
+	// an element id.
+	if call.Callee.ID == "window" {
+		if !schema.WindowMethod(call.Callee.Prop) {
+			return fmt.Errorf("%s.%s: window has no method %q", b.node.Kind(), name, call.Callee.Prop)
+		}
+	} else if call.Callee.ID != "bridge" && call.Callee.ID != "data" {
 		if !schema.NodeMethod(call.Callee.Prop) {
 			return fmt.Errorf("%s.%s: a handler call starts with bridge., or calls play, pause or stop on an id",
 				b.node.Kind(), name)
@@ -281,6 +285,10 @@ func (t *Tree) fire(b *NodeBase, name string, call *syntax.Call, payload any) {
 		}
 		args[i] = v
 	}
+	if call.Callee.ID == "window" {
+		t.callWindowMethod(call.Callee.Prop, args)
+		return
+	}
 	if call.Callee.ID != "bridge" && call.Callee.ID != "data" {
 		t.callNodeMethodX(call.Callee.ID, call.Callee.Prop, args)
 		return
@@ -310,6 +318,59 @@ func eventField(payload any, name string) (any, bool) {
 		}
 	}
 	return nil, false
+}
+
+// callWindowMethod runs one window control from an event. The ui layer owns the
+// live window, so its hook gets the first chance; a headless tree falls back to
+// the root's state props for the controls that have one.
+func (t *Tree) callWindowMethod(method string, args []any) {
+	if t.window != nil && t.window(method, args) {
+		return
+	}
+	r := t.Root
+	if r == nil {
+		t.bridgeErr(fmt.Errorf("goi: window has no root to control"))
+		return
+	}
+	boolArg := func() (bool, bool) {
+		if len(args) != 1 {
+			return false, false
+		}
+		b, ok := args[0].(bool)
+		return b, ok
+	}
+	switch method {
+	case "toggleMaximize":
+		if len(args) != 0 {
+			t.bridgeErr(fmt.Errorf("goi: window.toggleMaximize takes no arguments"))
+			return
+		}
+		r.Maximized.Set(!r.Maximized.Get())
+	case "maximize":
+		b, ok := boolArg()
+		if !ok {
+			t.bridgeErr(fmt.Errorf("goi: window.maximize takes one bool"))
+			return
+		}
+		r.Maximized.Set(b)
+	case "minimize":
+		if len(args) != 0 {
+			t.bridgeErr(fmt.Errorf("goi: window.minimize takes no arguments"))
+			return
+		}
+		r.Minimized.Set(true)
+	case "fullscreen":
+		b, ok := boolArg()
+		if !ok {
+			t.bridgeErr(fmt.Errorf("goi: window.fullscreen takes one bool"))
+			return
+		}
+		r.Fullscreen.Set(b)
+	case "close":
+		t.bridgeErr(fmt.Errorf("goi: window.close needs a live window"))
+	default:
+		t.bridgeErr(fmt.Errorf("goi: window has no method %q", method))
+	}
 }
 
 // callNodeMethodX drives an element's transport from an event, with the call's

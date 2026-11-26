@@ -133,6 +133,46 @@ func (w *Window) Title() string { return w.title }
 // Size returns the client size in logical pixels.
 func (w *Window) Size() (int, int) { return w.width, w.height }
 
+// windowRequest runs a window control a design called from an event, such as
+// `onClick: window.close()`. It returns false when no live window exists, which
+// lets a headless tree fall back to the state properties.
+func (a *App) windowRequest(method string, args []any) bool {
+	w := a.win
+	if w == nil {
+		return false
+	}
+	boolArg := func() (bool, bool) {
+		if len(args) != 1 {
+			return false, false
+		}
+		b, ok := args[0].(bool)
+		return b, ok
+	}
+	switch method {
+	case "toggleMaximize":
+		w.ToggleMaximize()
+	case "maximize":
+		b, ok := boolArg()
+		if !ok {
+			return false
+		}
+		w.Maximize(b)
+	case "minimize":
+		w.Minimize()
+	case "close":
+		w.Close()
+	case "fullscreen":
+		b, ok := boolArg()
+		if !ok {
+			return false
+		}
+		w.Fullscreen(b)
+	default:
+		return false
+	}
+	return true
+}
+
 // native returns the live platform window, or nil in headless tests.
 func (w *Window) native() *platform.Window {
 	if w.app == nil {
@@ -149,9 +189,14 @@ func (w *Window) native() *platform.Window {
 func (w *Window) Minimize() { w.SetMinimized(true) }
 
 // ToggleMaximize maximizes the window, or restores it when already maximized.
+// A headless window only has the state props, so it flips those.
 func (w *Window) ToggleMaximize() {
 	if p := w.native(); p != nil {
 		p.ToggleMaximize()
+		return
+	}
+	if r := w.root(); r != nil {
+		r.Maximized.Set(!r.Maximized.Get())
 	}
 }
 

@@ -514,6 +514,7 @@ func TestTableScrollsBothWaysAndSticksItsHeader(t *testing.T) {
 			height: 100
 			scroll: true
 			stickyHeader: true
+			rowHeight: 48
 			TableColumn { id: c1 label: "One" width: 200 }
 			TableColumn { id: c2 label: "Two" width: 200 }
 			TableRow {

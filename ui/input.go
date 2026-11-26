@@ -52,9 +52,6 @@ type interactor struct {
 	resizeCol *tree.TableColumn
 	resizeX   float64
 	resizeW   float64
-	resizeRow *tree.TableRow
-	resizeY   float64
-	resizeH   float64
 
 	// ripples are the live press animations.
 	ripples []ripple
@@ -264,7 +261,6 @@ func (i *interactor) resetPointerState() {
 	i.dragging, i.selecting, i.scrolled = false, false, false
 	i.gestureDown, i.gesturePanned, i.gestureLong = false, false, false
 	i.resizeCol = nil
-	i.resizeRow = nil
 }
 
 // fireLongPress runs on the UI goroutine once the pointer has rested on the
@@ -507,37 +503,6 @@ func tableResizeAt(hit tree.Node, x, y float64) (*tree.Table, *tree.TableColumn,
 	return nil, nil, 0, false
 }
 
-// tableRowResizeAt reports the row whose bottom border is under x,y. A row's
-// own height is the cell height; the table's rowHeight only supplies the
-// default.
-func tableRowResizeAt(hit tree.Node, x, y float64) (*tree.Table, *tree.TableRow, float64, bool) {
-	var table *tree.Table
-	for n := hit; n != nil; n = n.Base().Parent() {
-		if t, ok := n.(*tree.Table); ok {
-			table = t
-			break
-		}
-	}
-	if table == nil || !table.Resizable.Get() {
-		return nil, nil, 0, false
-	}
-	r := absoluteRect(table)
-	if x < r.X || x > r.Right() || y < r.Y || y > r.Bottom() {
-		return nil, nil, 0, false
-	}
-	rows := table.TableRows()
-	if len(rows) == 0 {
-		return nil, nil, 0, false
-	}
-	for _, row := range rows {
-		rr := absoluteRect(row)
-		if math.Abs(y-rr.Bottom()) <= tableResizeSlop {
-			return table, row, rr.H, true
-		}
-	}
-	return nil, nil, 0, false
-}
-
 // pressTarget maps a hit inside a table cell to the cell, unless the hit is a
 // control of its own: a button in a cell keeps its click, and the cell around it
 // does not also select the row.
@@ -679,16 +644,6 @@ func (i *interactor) MouseMove(x, y float64) {
 		i.resizeCol.SetWidthPixels(w)
 		i.markDirty()
 		i.pointer(platform.CursorResizeEW)
-		return
-	}
-	if i.resizeRow != nil {
-		h := i.resizeH + (y - i.resizeY)
-		if h < tableResizeMin {
-			h = tableResizeMin
-		}
-		i.resizeRow.Base().SetHeightPixels(h)
-		i.markDirty()
-		i.pointer(platform.CursorResizeNS)
 		return
 	}
 	if i.termSelOn && i.termSel != nil {
@@ -934,10 +889,6 @@ func (i *interactor) pointerAt(hit tree.Node) {
 		i.pointer(platform.CursorResizeEW)
 		return
 	}
-	if _, _, _, ok := tableRowResizeAt(hit, i.cursorX, i.cursorY); ok {
-		i.pointer(platform.CursorResizeNS)
-		return
-	}
 	if c, ok := cursorFor(hit); ok {
 		i.pointer(c)
 		return
@@ -1037,19 +988,6 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 			i.scrollNode = nil
 			i.scrollbar = nil
 			i.pointer(platform.CursorResizeEW)
-			return
-		}
-		if _, row, height, ok := tableRowResizeAt(hit, x, y); ok {
-			i.resizeRow = row
-			i.resizeY = y
-			i.resizeH = height
-			i.pressed = nil
-			i.dragging = false
-			i.selecting = false
-			i.textField = nil
-			i.scrollNode = nil
-			i.scrollbar = nil
-			i.pointer(platform.CursorResizeNS)
 			return
 		}
 	}
@@ -1299,9 +1237,8 @@ func (i *interactor) MouseUp(x, y float64, button int) {
 		return
 	}
 	i.event("MouseUp", "x", x, "y", y, "button", button)
-	if i.resizeCol != nil || i.resizeRow != nil {
+	if i.resizeCol != nil {
 		i.resizeCol = nil
-		i.resizeRow = nil
 		i.cursorX, i.cursorY = x, y
 		i.pointerAt(i.hit(x, y))
 		i.markDirty()

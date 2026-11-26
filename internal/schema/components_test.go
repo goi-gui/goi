@@ -82,6 +82,33 @@ func TestEventCallsNodeTransport(t *testing.T) {
 	}
 }
 
+// TestEventCallsWindowControls lets a design drive the window without a bridge
+// handler: `onClick: window.close()`.
+func TestEventCallsWindowControls(t *testing.T) {
+	base := `Window { Button { %s } }`
+	for _, call := range []string{
+		"window.maximize(true)", "window.maximize(false)",
+		"window.toggleMaximize()", "window.minimize()",
+		"window.fullscreen(true)", "window.fullscreen(false)",
+		"window.close()",
+	} {
+		src := fmt.Sprintf(base, "onClick: "+call)
+		if _, diag := validate(t, src); !diag.Empty() {
+			t.Errorf("%s: %v", call, diag)
+		}
+	}
+	for _, bad := range []string{
+		"window.unknown()", "window.close(true)", "window.maximize()",
+		"window.maximize(1)", "window.fullscreen()", "window.minimize(true)",
+		"window.toggleMaximize(true)",
+	} {
+		src := fmt.Sprintf(base, "onClick: "+bad)
+		if _, diag := validate(t, src); diag.Empty() {
+			t.Errorf("%s was accepted", bad)
+		}
+	}
+}
+
 // TestTableCellValueTakesScalars checks that a cell's sort value accepts a
 // number and a bool as well as text, and that TableCell still rejects a map.
 func TestTableCellValueTakesScalars(t *testing.T) {

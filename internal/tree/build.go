@@ -100,6 +100,8 @@ type Tree struct {
 	report func(error)
 	// post queues work on the UI goroutine for a Terminal reader.
 	post func(func())
+	// window runs a window control a design called through an event.
+	window func(string, []any) bool
 }
 
 // Post runs fn on the UI goroutine. It is the tree's side of a reader that
@@ -185,6 +187,7 @@ func Build(f *syntax.File, hooks *Hooks) (*Tree, error) {
 	if hooks != nil {
 		t.report = hooks.Error
 		t.post = hooks.Post
+		t.window = hooks.Window
 	}
 	// A bridge variable starts at its type's zero value, so a design that reads
 	// one before Go sets it still has a value.
@@ -478,82 +481,85 @@ func defaultValueLiteral(v any) syntax.Value {
 	return &syntax.Ident{}
 }
 
-func newNode(name string) Node {
-	b := func() NodeBase {
-		return NodeBase{
-			visible:           newProp(nil, "visible", DirtyLayout, true),
-			margin:            newProp(nil, "margin", DirtyLayout, 0.0),
-			padding:           newProp(nil, "padding", DirtyLayout, 0.0),
-			paddingX:          newProp(nil, "paddingX", DirtyLayout, -1.0),
-			paddingY:          newProp(nil, "paddingY", DirtyLayout, -1.0),
-			marginX:           newProp(nil, "marginX", DirtyLayout, -1.0),
-			marginY:           newProp(nil, "marginY", DirtyLayout, -1.0),
-			marginTop:         newProp(nil, "marginTop", DirtyLayout, -1.0),
-			marginRight:       newProp(nil, "marginRight", DirtyLayout, -1.0),
-			marginBottom:      newProp(nil, "marginBottom", DirtyLayout, -1.0),
-			marginLeft:        newProp(nil, "marginLeft", DirtyLayout, -1.0),
-			paddingTop:        newProp(nil, "paddingTop", DirtyLayout, -1.0),
-			paddingRight:      newProp(nil, "paddingRight", DirtyLayout, -1.0),
-			paddingBottom:     newProp(nil, "paddingBottom", DirtyLayout, -1.0),
-			paddingLeft:       newProp(nil, "paddingLeft", DirtyLayout, -1.0),
-			borderT:           newProp(nil, "borderThickness", DirtyLayout, -1.0),
-			borderType:        newProp(nil, "borderType", DirtyPaint, "solid"),
-			borderXT:          newProp(nil, "borderXThickness", DirtyLayout, -1.0),
-			borderYT:          newProp(nil, "borderYThickness", DirtyLayout, -1.0),
-			borderTopT:        newProp(nil, "borderTopThickness", DirtyLayout, -1.0),
-			borderRightT:      newProp(nil, "borderRightThickness", DirtyLayout, -1.0),
-			borderBottomT:     newProp(nil, "borderBottomThickness", DirtyLayout, -1.0),
-			borderLeftT:       newProp(nil, "borderLeftThickness", DirtyLayout, -1.0),
-			borderXColor:      newProp(nil, "borderXColor", DirtyPaint, uint32(0)),
-			borderYColor:      newProp(nil, "borderYColor", DirtyPaint, uint32(0)),
-			borderTopColor:    newProp(nil, "borderTopColor", DirtyPaint, uint32(0)),
-			borderRightColor:  newProp(nil, "borderRightColor", DirtyPaint, uint32(0)),
-			borderBottomColor: newProp(nil, "borderBottomColor", DirtyPaint, uint32(0)),
-			borderLeftColor:   newProp(nil, "borderLeftColor", DirtyPaint, uint32(0)),
-			flex:              newProp(nil, "flex", DirtyLayout, 0.0),
-			alignSelf:         newProp(nil, "alignSelf", DirtyLayout, ""),
-			scale:             newProp(nil, "scale", DirtyPaint, IdentityScale),
-			scroll:            newProp(nil, "scroll", DirtyPaint, false),
-			autoScroll:        newProp(nil, "autoScroll", DirtyPaint, false),
-			hideScrollbar:     newProp(nil, "hideScrollbar", DirtyPaint, false),
-			autoHideScrollbar: newProp(nil, "autoHideScrollbar", DirtyPaint, true),
-			scrollbarWidth:    newProp(nil, "scrollbarWidth", DirtyPaint, ScrollbarThickness),
-			scrollbarColor:    newProp(nil, "scrollbarColor", DirtyPaint, uint32(0)),
-			ripple:            newProp(nil, "ripple", DirtyPaint, false),
-			scrollShadow:      newProp(nil, "scrollShadow", DirtyPaint, false),
-			scrollShadowColor: newProp(nil, "scrollShadowColor", DirtyPaint, uint32(0)),
-			scrollSnapType:    newProp(nil, "scrollSnapType", DirtyPaint, "none"),
-			scrollSnapStop:    newProp(nil, "scrollSnapStop", DirtyPaint, "normal"),
-			scrollSnapAlign:   newProp(nil, "scrollSnapAlign", DirtyPaint, "none"),
-			scrollPadding:     newProp(nil, "scrollPadding", DirtyPaint, 0.0),
-			opacity:           newProp(nil, "opacity", DirtyPaint, 1.0),
-			backdropBlur:      newProp(nil, "backdropBlur", DirtyPaint, BackdropBlur{}),
-			zIndex:            newProp(nil, "zIndex", DirtyPaint, 0.0),
-			cursor:            newProp(nil, "cursor", DirtyPaint, ""),
-			pointerEvents:     newProp(nil, "pointerEvents", DirtyPaint, ""),
-			width:             newProp(nil, "width", DirtyLayout, -1.0),
-			height:            newProp(nil, "height", DirtyLayout, -1.0),
-			minWidth:          newProp(nil, "minWidth", DirtyLayout, 0.0),
-			maxWidth:          newProp(nil, "maxWidth", DirtyLayout, -1.0),
-			minHeight:         newProp(nil, "minHeight", DirtyLayout, 0.0),
-			maxHeight:         newProp(nil, "maxHeight", DirtyLayout, -1.0),
-			background:        newProp(nil, "background", DirtyPaint, uint32(0)),
-			borderColor:       newProp(nil, "borderColor", DirtyPaint, uint32(0)),
-			radius:            newProp(nil, "radius", DirtyPaint, 0.0),
-			radiusTop:         newProp(nil, "radiusTop", DirtyPaint, -1.0),
-			radiusRight:       newProp(nil, "radiusRight", DirtyPaint, -1.0),
-			radiusBottom:      newProp(nil, "radiusBottom", DirtyPaint, -1.0),
-			radiusLeft:        newProp(nil, "radiusLeft", DirtyPaint, -1.0),
-			radiusTopLeft:     newProp(nil, "radiusTopLeft", DirtyPaint, -1.0),
-			radiusTopRight:    newProp(nil, "radiusTopRight", DirtyPaint, -1.0),
-			radiusBottomRight: newProp(nil, "radiusBottomRight", DirtyPaint, -1.0),
-			radiusBottomLeft:  newProp(nil, "radiusBottomLeft", DirtyPaint, -1.0),
-			fontFamily:        newProp(nil, "fontFamily", DirtyLayout, ""),
-			// A fresh node starts at the top; an auto-scrolled chat reaches the
-			// bottom later and fires its end event then.
-			scrollAtStart: true,
-		}
+// newNodeBase seeds the common box properties every element shares.
+func newNodeBase() NodeBase {
+	return NodeBase{
+		visible:           newProp(nil, "visible", DirtyLayout, true),
+		margin:            newProp(nil, "margin", DirtyLayout, 0.0),
+		padding:           newProp(nil, "padding", DirtyLayout, 0.0),
+		paddingX:          newProp(nil, "paddingX", DirtyLayout, -1.0),
+		paddingY:          newProp(nil, "paddingY", DirtyLayout, -1.0),
+		marginX:           newProp(nil, "marginX", DirtyLayout, -1.0),
+		marginY:           newProp(nil, "marginY", DirtyLayout, -1.0),
+		marginTop:         newProp(nil, "marginTop", DirtyLayout, -1.0),
+		marginRight:       newProp(nil, "marginRight", DirtyLayout, -1.0),
+		marginBottom:      newProp(nil, "marginBottom", DirtyLayout, -1.0),
+		marginLeft:        newProp(nil, "marginLeft", DirtyLayout, -1.0),
+		paddingTop:        newProp(nil, "paddingTop", DirtyLayout, -1.0),
+		paddingRight:      newProp(nil, "paddingRight", DirtyLayout, -1.0),
+		paddingBottom:     newProp(nil, "paddingBottom", DirtyLayout, -1.0),
+		paddingLeft:       newProp(nil, "paddingLeft", DirtyLayout, -1.0),
+		borderT:           newProp(nil, "borderThickness", DirtyLayout, -1.0),
+		borderType:        newProp(nil, "borderType", DirtyPaint, "solid"),
+		borderXT:          newProp(nil, "borderXThickness", DirtyLayout, -1.0),
+		borderYT:          newProp(nil, "borderYThickness", DirtyLayout, -1.0),
+		borderTopT:        newProp(nil, "borderTopThickness", DirtyLayout, -1.0),
+		borderRightT:      newProp(nil, "borderRightThickness", DirtyLayout, -1.0),
+		borderBottomT:     newProp(nil, "borderBottomThickness", DirtyLayout, -1.0),
+		borderLeftT:       newProp(nil, "borderLeftThickness", DirtyLayout, -1.0),
+		borderXColor:      newProp(nil, "borderXColor", DirtyPaint, uint32(0)),
+		borderYColor:      newProp(nil, "borderYColor", DirtyPaint, uint32(0)),
+		borderTopColor:    newProp(nil, "borderTopColor", DirtyPaint, uint32(0)),
+		borderRightColor:  newProp(nil, "borderRightColor", DirtyPaint, uint32(0)),
+		borderBottomColor: newProp(nil, "borderBottomColor", DirtyPaint, uint32(0)),
+		borderLeftColor:   newProp(nil, "borderLeftColor", DirtyPaint, uint32(0)),
+		flex:              newProp(nil, "flex", DirtyLayout, 0.0),
+		alignSelf:         newProp(nil, "alignSelf", DirtyLayout, ""),
+		scale:             newProp(nil, "scale", DirtyPaint, IdentityScale),
+		scroll:            newProp(nil, "scroll", DirtyPaint, false),
+		autoScroll:        newProp(nil, "autoScroll", DirtyPaint, false),
+		hideScrollbar:     newProp(nil, "hideScrollbar", DirtyPaint, false),
+		autoHideScrollbar: newProp(nil, "autoHideScrollbar", DirtyPaint, true),
+		scrollbarWidth:    newProp(nil, "scrollbarWidth", DirtyPaint, ScrollbarThickness),
+		scrollbarColor:    newProp(nil, "scrollbarColor", DirtyPaint, uint32(0)),
+		ripple:            newProp(nil, "ripple", DirtyPaint, false),
+		scrollShadow:      newProp(nil, "scrollShadow", DirtyPaint, false),
+		scrollShadowColor: newProp(nil, "scrollShadowColor", DirtyPaint, uint32(0)),
+		scrollSnapType:    newProp(nil, "scrollSnapType", DirtyPaint, "none"),
+		scrollSnapStop:    newProp(nil, "scrollSnapStop", DirtyPaint, "normal"),
+		scrollSnapAlign:   newProp(nil, "scrollSnapAlign", DirtyPaint, "none"),
+		scrollPadding:     newProp(nil, "scrollPadding", DirtyPaint, 0.0),
+		opacity:           newProp(nil, "opacity", DirtyPaint, 1.0),
+		backdropBlur:      newProp(nil, "backdropBlur", DirtyPaint, BackdropBlur{}),
+		zIndex:            newProp(nil, "zIndex", DirtyPaint, 0.0),
+		cursor:            newProp(nil, "cursor", DirtyPaint, ""),
+		pointerEvents:     newProp(nil, "pointerEvents", DirtyPaint, ""),
+		width:             newProp(nil, "width", DirtyLayout, -1.0),
+		height:            newProp(nil, "height", DirtyLayout, -1.0),
+		minWidth:          newProp(nil, "minWidth", DirtyLayout, 0.0),
+		maxWidth:          newProp(nil, "maxWidth", DirtyLayout, -1.0),
+		minHeight:         newProp(nil, "minHeight", DirtyLayout, 0.0),
+		maxHeight:         newProp(nil, "maxHeight", DirtyLayout, -1.0),
+		background:        newProp(nil, "background", DirtyPaint, uint32(0)),
+		borderColor:       newProp(nil, "borderColor", DirtyPaint, uint32(0)),
+		radius:            newProp(nil, "radius", DirtyPaint, 0.0),
+		radiusTop:         newProp(nil, "radiusTop", DirtyPaint, -1.0),
+		radiusRight:       newProp(nil, "radiusRight", DirtyPaint, -1.0),
+		radiusBottom:      newProp(nil, "radiusBottom", DirtyPaint, -1.0),
+		radiusLeft:        newProp(nil, "radiusLeft", DirtyPaint, -1.0),
+		radiusTopLeft:     newProp(nil, "radiusTopLeft", DirtyPaint, -1.0),
+		radiusTopRight:    newProp(nil, "radiusTopRight", DirtyPaint, -1.0),
+		radiusBottomRight: newProp(nil, "radiusBottomRight", DirtyPaint, -1.0),
+		radiusBottomLeft:  newProp(nil, "radiusBottomLeft", DirtyPaint, -1.0),
+		fontFamily:        newProp(nil, "fontFamily", DirtyLayout, ""),
+		// A fresh node starts at the top; an auto-scrolled chat reaches the
+		// bottom later and fires its end event then.
+		scrollAtStart: true,
 	}
+}
+
+func newNode(name string) Node {
+	b := newNodeBase
 	switch name {
 	case "Window":
 		return &Window{

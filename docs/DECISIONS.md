@@ -3015,9 +3015,23 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   whether it is visible, so a tooltip scrolled out of view stays out. The
   inherited font family is captured with the queue, since the final paint runs
   after the walk.
-- **Table rows resize by the same pointer contract as columns.** A row's bottom
-  border is a vertical handle and `SetHeightPixels` clears a percentage or
-  responsive height before writing the row's own height, so the next frame does
-  not put the old value back. The table's `rowHeight` remains the default for
-  rows the design did not size. A column handle wins at a corner, since it is
-  checked first.
+- **Table rows size to their content; only columns resize.** A row's height is
+  the tallest cell's natural height, measured at the resolved column widths. A
+  row's own `height` and an explicitly written table `rowHeight` are floors, not
+  fixed bands; the default `rowHeight` is ignored until a design writes it. The
+  row has no drag handle or vertical cursor, so a row cannot be height-resized
+  by the pointer. This also removes the `SetHeightPixels` resize path.
+- **Every component starts from the same common NodeBase as a plain node.**
+  `newComponent` used a zero NodeBase, so its common cells (`width`, `padding`,
+  …) had `DirtyPaint` and no defaults until the schema wrote them. A Go
+  `SetWidth` on a TableColumn therefore only repainted, and a column resize did
+  not move until a sort relaid the table. `newComponent` now calls
+  `newNodeBase`, so a common property keeps its layout dirt and default on
+  every kind.
+- **A design event can call the window controls.** `window.maximize(bool)`,
+  `window.toggleMaximize()`, `window.minimize()`, `window.close()` and
+  `window.fullscreen(bool)` are reserved event calls, validated by the schema
+  and dispatched by the tree to a `Hooks.Window` callback. The ui layer
+  implements them with the real `Window` methods; a headless tree falls back to
+  the root's state properties for the four that have one, and reports that
+  `close` needs a live window.

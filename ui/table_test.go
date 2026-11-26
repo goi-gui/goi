@@ -531,61 +531,30 @@ func TestTableColumnResizeResponsiveWidth(t *testing.T) {
 	in.MouseUp(r.X+r.W+40, r.Y+r.H/2, 0)
 }
 
-// TestTableRowResize drags the bottom border of the first row and checks the
-// row height, the vertical resize cursor and the laid-out result.
-func TestTableRowResize(t *testing.T) {
-	_, win, in := inputFixture(t, `Window { Column { Table {
+// TestTableRowHeightFollowsContent is the row contract: a row grows to the
+// tallest cell content and is not a fixed 48dp or a drag target.
+func TestTableRowHeightFollowsContent(t *testing.T) {
+	_, win, _ := inputFixture(t, `Window { Column { Table {
 		id: table
 		width: 400
-		resizable: true
+		height: 400
 		TableColumn { label: "Name" width: 200 }
 		TableColumn { label: "Role" width: 200 }
-		TableRow { TableCell { value: "a" } TableCell { value: "b" } }
-		TableRow { TableCell { value: "c" } TableCell { value: "d" } }
-	} } }`, 500, 300)
-	tbl := MustByID[*Table](win, "table")
-	row := tbl.TableRows()[0]
-	r := absoluteRect(row)
-	x, y := r.X+20, r.Bottom()
-
-	var cursor platform.Cursor
-	in.setCursor = func(c platform.Cursor) { cursor = c }
-	in.MouseMove(x, y)
-	if cursor != platform.CursorResizeNS {
-		t.Fatalf("cursor over a row border = %v, want vertical resize", cursor)
+		TableRow {
+			TableCell { value: "tall" Rectangle { width: 10 height: 80 } }
+			TableCell { value: "b" }
+		}
+		TableRow {
+			TableCell { value: "short" Text { text: "x" } }
+			TableCell { value: "d" }
+		}
+	} } }`, 500, 500)
+	rows := MustByID[*Table](win, "table").TableRows()
+	tall, short := absoluteRect(rows[0]), absoluteRect(rows[1])
+	if tall.H != 80 {
+		t.Fatalf("tall row height = %v, want 80", tall.H)
 	}
-
-	in.MouseDown(x, y, 0, false)
-	in.MouseMove(x, y+20)
-	if got := row.Height(); got != 68 {
-		t.Fatalf("row height after drag = %v, want 68", got)
+	if short.H <= 0 || short.H >= 48 {
+		t.Fatalf("short row height = %v, want its text height below 48", short.H)
 	}
-	in.MouseUp(x, y+20, 0)
-	layout.New(textMeasurer{}).Layout(win.tree.Root, 500, 300)
-	if got := absoluteRect(row).H; got != 68 {
-		t.Fatalf("laid out row height = %v, want 68", got)
-	}
-}
-
-func TestTableRowResizeResponsiveHeight(t *testing.T) {
-	_, win, in := inputFixture(t, `Window { Column { Table {
-		id: table
-		width: 400
-		resizable: true
-		TableColumn { label: "Name" width: 200 }
-		TableColumn { label: "Role" width: 200 }
-		TableRow { height: responsive { base: 48 md: 60 } TableCell { value: "a" } TableCell { value: "b" } }
-		TableRow { TableCell { value: "c" } TableCell { value: "d" } }
-	} } }`, 500, 300)
-	tbl := MustByID[*Table](win, "table")
-	row := tbl.TableRows()[0]
-	r := absoluteRect(row)
-	in.MouseMove(r.X+20, r.Bottom())
-	in.MouseDown(r.X+20, r.Bottom(), 0, false)
-	in.MouseMove(r.X+20, r.Bottom()+20)
-	win.tree.ApplyBreakpoints(500)
-	if got := row.Height(); got != 68 {
-		t.Fatalf("responsive row height = %v, want 68", got)
-	}
-	in.MouseUp(r.X+20, r.Bottom()+20, 0)
 }

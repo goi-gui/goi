@@ -521,3 +521,32 @@ func TestColorOpacity(t *testing.T) {
 		t.Errorf("role shadow = %08x", got)
 	}
 }
+
+// TestComponentCommonWidthMarksLayout guards the common NodeBase on component
+// kinds: a Go SetWidth must lay out, not only repaint, or a table column drag
+// looks frozen until another change relayouts.
+func TestComponentCommonWidthMarksLayout(t *testing.T) {
+	tr, diag := BuildSource([]byte(`Window {
+		Column {
+			Button { id: button label: "x" }
+			Table {
+				TableColumn { id: column label: "Name" width: 100 }
+				TableRow { TableCell { value: "a" } }
+			}
+		}
+	}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	for _, id := range []string{"button", "column"} {
+		n, _ := tr.ByID(id)
+		for _, node := range tr.All() {
+			node.Base().ClearDirty()
+		}
+		n.Base().SetWidth(160)
+		kind, dirty := tr.Root.Base().Dirty()
+		if !dirty || kind != DirtyLayout {
+			t.Fatalf("%s SetWidth marked %v/%v, want layout", id, kind, dirty)
+		}
+	}
+}

@@ -37,6 +37,10 @@ type Hooks struct {
 	// The players live in the ui layer, so the tree forwards the request and
 	// reports whether the node handled it.
 	Media func(n Node, method string, args []any) bool
+	// Window runs one window control a design called, such as
+	// `onClick: window.close()`. The live window lives in the ui layer, so the
+	// tree forwards the request and reports whether it was handled.
+	Window func(method string, args []any) bool
 	// Post queues fn on the UI goroutine. A Terminal reader runs on its own
 	// goroutine and uses this to deliver bytes; nil runs fn at once, which is
 	// what a headless test wants.
@@ -600,14 +604,6 @@ func (b *NodeBase) Height() float64 { return b.height.Get() }
 // SetHeight declares the node's height in dp; a negative value returns it to
 // auto.
 func (b *NodeBase) SetHeight(v float64) { b.height.Set(v) }
-
-// SetHeightPixels sets a pixel height and drops a percentage or responsive
-// height, which a Go value or a table-row resize should override.
-func (b *NodeBase) SetHeightPixels(v float64) {
-	b.clearExpr("height")
-	b.clearModifier("height")
-	b.SetHeight(v)
-}
 
 // SetSize declares both sides at once, the same as the design's `size`.
 func (b *NodeBase) SetSize(w, h float64) {

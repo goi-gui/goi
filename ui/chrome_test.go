@@ -176,3 +176,24 @@ func TestWindowFullscreenShortForm(t *testing.T) {
 		t.Fatal("Fullscreen(false) did not leave fullscreen")
 	}
 }
+
+// TestAppWindowRequest is the bridge between a design's window.* event and the
+// live Window methods.
+func TestAppWindowRequest(t *testing.T) {
+	a, w := reloadApp(t, `Window { }`)
+	if !a.windowRequest("maximize", []any{true}) || !w.Maximized() {
+		t.Fatal("window.maximize(true) reached no window")
+	}
+	if !a.windowRequest("toggleMaximize", nil) || w.Maximized() {
+		t.Fatal("window.toggleMaximize() did not restore")
+	}
+	if !a.windowRequest("minimize", nil) || !w.Minimized() {
+		t.Fatal("window.minimize() reached no window")
+	}
+	if !a.windowRequest("fullscreen", []any{true}) || !w.Fullscreen() {
+		t.Fatal("window.fullscreen(true) reached no window")
+	}
+	if !a.windowRequest("close", nil) {
+		t.Fatal("window.close() was rejected")
+	}
+}

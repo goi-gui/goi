@@ -257,3 +257,56 @@ func TestColorPickerBridgeOK(t *testing.T) {
 		t.Fatalf("ok=%q cancel=%q", ok, cancel)
 	}
 }
+
+// TestWindowControlsFromDesign checks that an event can call the window
+// controls without a Go handler, and that the ui hook gets the first chance.
+func TestWindowControlsFromDesign(t *testing.T) {
+	const src = `Window {
+		Column {
+			Button { id: max label: "Max" onClick: window.maximize(true) }
+			Button { id: min label: "Min" onClick: window.minimize() }
+			Button { id: full label: "Full" onClick: window.fullscreen(true) }
+			Button { id: toggle label: "Toggle" onClick: window.toggleMaximize() }
+		}
+	}`
+	var method string
+	var args []any
+	tr, diag := BuildSource([]byte(src), &Hooks{Window: func(m string, a []any) bool {
+		method, args = m, a
+		return true
+	}})
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	btn, _ := tr.ByID("max")
+	btn.(*Button).Click.Emit(ClickEvent{})
+	if method != "maximize" || len(args) != 1 || args[0] != true {
+		t.Fatalf("hook got %s %v", method, args)
+	}
+
+	// Without a live ui hook the root props are the fallback.
+	tr, diag = BuildSource([]byte(src), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	click := func(id string) {
+		n, _ := tr.ByID(id)
+		n.(*Button).Click.Emit(ClickEvent{})
+	}
+	click("max")
+	if !tr.Root.Maximized.Get() {
+		t.Fatal("window.maximize(true) did not maximize the root state")
+	}
+	click("toggle")
+	if tr.Root.Maximized.Get() {
+		t.Fatal("window.toggleMaximize() did not restore")
+	}
+	click("min")
+	if !tr.Root.Minimized.Get() {
+		t.Fatal("window.minimize() did not minimize")
+	}
+	click("full")
+	if !tr.Root.Fullscreen.Get() {
+		t.Fatal("window.fullscreen(true) did not set fullscreen")
+	}
+}

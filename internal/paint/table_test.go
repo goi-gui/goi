@@ -266,7 +266,7 @@ func checkTableClipInsideFrame(t *testing.T, sticky bool) {
 // a vertical scroll the header labels stay at the top while the row text moves
 // up, and a row that runs under the header is clipped below it.
 func TestTableStickyHeaderKeepsLabelsAndClipsRows(t *testing.T) {
-	src := tableSource("height: 100 scroll: true stickyHeader: true", "")
+	src := tableSource("height: 100 scroll: true stickyHeader: true rowHeight: 48", "")
 	tr, diag := tree.BuildSource([]byte(src), nil)
 	if !diag.Empty() {
 		t.Fatalf("%v", diag)
@@ -308,7 +308,7 @@ func TestTableStickyHeaderKeepsLabelsAndClipsRows(t *testing.T) {
 // TestTableScrollsBandsWithContent checks that a horizontally scrolled table
 // moves its stripes and rules with the cells and keeps the outer frame put.
 func TestTableScrollsBandsWithContent(t *testing.T) {
-	src := tableSource("height: 100 scroll: true striped: true", "width: 400")
+	src := tableSource("height: 100 scroll: true striped: true rowHeight: 48", "width: 400")
 	tr, diag := tree.BuildSource([]byte(src), nil)
 	if !diag.Empty() {
 		t.Fatalf("%v", diag)

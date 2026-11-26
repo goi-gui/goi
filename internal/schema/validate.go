@@ -1600,6 +1600,33 @@ func (v *validator) checkEventCall(e *syntax.Element, ev EventDef, p *syntax.Pro
 		v.checkPropCall(e, p, call, at, end)
 		return
 	}
+	if call.Callee.ID == "window" {
+		if !WindowMethod(call.Callee.Prop) {
+			v.add(at, end,
+				fmt.Sprintf("%s.%s: window has no method %q; an event can call maximize, toggleMaximize, minimize, close or fullscreen",
+					e.Name, p.Name, call.Callee.Prop),
+				syntax.Suggest(call.Callee.Prop, WindowMethods))
+			return
+		}
+		switch call.Callee.Prop {
+		case "maximize", "fullscreen":
+			if len(call.Args) != 1 {
+				v.add(at, end, fmt.Sprintf("%s.%s: window.%s takes one bool",
+					e.Name, p.Name, call.Callee.Prop), "")
+				return
+			}
+			if _, ok := call.Args[0].(*syntax.Bool); !ok && !boolishValue(call.Args[0]) {
+				v.add(at, end, fmt.Sprintf("%s.%s: window.%s takes a bool",
+					e.Name, p.Name, call.Callee.Prop), "")
+			}
+		default:
+			if len(call.Args) != 0 {
+				v.add(at, end, fmt.Sprintf("%s.%s: window.%s takes no arguments",
+					e.Name, p.Name, call.Callee.Prop), "")
+			}
+		}
+		return
+	}
 	if call.Callee.ID != "bridge" && call.Callee.ID != "data" {
 		// An event may drive an element by id: `onClick: spin.pause()`.
 		if call.Callee.ID == "props" {
