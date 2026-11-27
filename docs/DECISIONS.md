@@ -3182,3 +3182,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   source and scope, and the expression, condition and range passes resolve
   setup names there. Literal defaults such as `visible: false` on the fragment
   root still apply when the caller does not override them.
+- **Setup can assign a bridge value back to the design.** A generated flush
+  compares the bridge fields before and after a call and publishes the changed
+  ones through `Tree.SetData`. The flush is skipped for files with no bridge
+  assignment, so read-only setups pay nothing. A composite value is converted
+  back to rows in interpreted code, because Go cannot read the unexported shape
+  fields the setup package declares. Bridge data is design-wide, so every
+  fragment instance sees the write.

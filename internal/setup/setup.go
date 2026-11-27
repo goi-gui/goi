@@ -59,6 +59,7 @@ type Registry struct {
 	data    func(string) (any, bool)
 	version func() uint64
 	call    func(string, []any) (any, error)
+	set     func(string, any)
 }
 
 // errScope stands in for a file whose setup failed to compile. Its functions
@@ -114,8 +115,12 @@ type Scope struct {
 	hasBridge bool
 	// propGet resolves this scope's props; setProps writes the generated props
 	// value before an interpreted call.
-	propGet  func() map[string]any
-	setProps reflect.Value
+	writesBridge bool
+	propGet      func() map[string]any
+	setProps     reflect.Value
+	// set writes a bridge assignment from setup back to the tree.
+	set   func(string, any)
+	flush reflect.Value
 }
 
 // New registers every setup block and creates the shared machine. Compiling a
@@ -215,8 +220,12 @@ func newScope(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape)
 			s.setProps = v
 		}
 	}
+	if v, err := i.Eval("goiFlush"); err == nil && v.IsValid() && v.Kind() == reflect.Func {
+		s.flush = v
+	}
 	s.names, _ = declaredNames(body)
 	s.dataNames, _ = valueNames(body)
+	s.writesBridge = bridgeWrites(body)
 	s.stateful, _ = statefulFuncs(body)
 	return s, nil
 }
@@ -232,10 +241,12 @@ func (r *Registry) Bind(tr *tree.Tree) {
 	r.data = tr.Data
 	r.version = tr.DataVersion
 	r.call = tr.CallBridge
+	r.set = tr.SetData
 	if r.m != nil {
 		r.m.data = r.data
 		r.m.version = r.version
 		r.m.call = r.call
+		r.m.set = r.set
 	}
 	for _, p := range r.programs {
 		p.synced = ^uint64(0)
@@ -254,8 +265,32 @@ func (r *Registry) bind(sc *Scope) {
 	sc.data = r.data
 	sc.version = r.version
 	sc.call = r.call
+	sc.set = r.set
 	sc.synced = ^uint64(0)
 	_ = sc.syncBridge()
+}
+
+func (s *Scope) bridgeValues() map[string]any {
+	if s == nil || !s.flush.IsValid() {
+		return nil
+	}
+	out := s.flush.Call(nil)
+	if len(out) != 1 || !out[0].IsValid() || !out[0].CanInterface() {
+		return nil
+	}
+	m, _ := out[0].Interface().(map[string]any)
+	return m
+}
+
+func (s *Scope) flushBridge(before map[string]any) {
+	if before == nil {
+		return
+	}
+	for name, v := range s.bridgeValues() {
+		if !reflect.DeepEqual(before[name], v) && s.set != nil {
+			s.set(name, v)
+		}
+	}
 }
 
 func (s *Scope) syncProps() {
@@ -616,6 +651,11 @@ func (s *Scope) Call(name string, args []any) (result any, found bool, err error
 	s.syncProps()
 	if err := s.syncBridge(); err != nil {
 		return nil, true, err
+	}
+	var before map[string]any
+	if s.writesBridge {
+		before = s.bridgeValues()
+		defer s.flushBridge(before)
 	}
 	fn, ok := s.fn(name)
 	if !ok {

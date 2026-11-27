@@ -1103,3 +1103,136 @@ Text { text: formatf("%d", count) }`)},
 		t.Fatalf("hidden fragment did not unmount: %s", got)
 	}
 }
+
+// TestSetupWritesBridgeValues lets setup assign a bridge variable, which must
+// reach the tree and every expression and loop that reads it.
+func TestSetupWritesBridgeValues(t *testing.T) {
+	f, diag := syntax.ParseNamed([]byte(`bridge {
+	myValue string
+	count   int
+	users   []User
+}
+
+type User { name string }
+
+setup {
+	func setIt() {
+		bridge.myValue = "Kaan"
+		bridge.count = 3
+		bridge.users = []User{{name: "Ada"}}
+	}
+}
+
+Window { Column {
+	Text { id: value text: bridge.myValue }
+	Text { id: count text: formatf("%d", bridge.count) }
+	for _, u := range bridge.users {
+		Text { text: u.name }
+	}
+} }`), "Main.goi")
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	scopes, err := setup.New(f.Setups, f.Vars, f.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := tree.Build(f, &tree.Hooks{Setup: scopes.For})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopes.Bind(tr)
+	if _, _, err := scopes.For("Main.goi", "").Call("setIt", nil); err != nil {
+		t.Fatal(err)
+	}
+	tr.ApplyExpressions()
+	if v := MustByID[*Text](&Window{tree: tr}, "value").Text.Get(); v != "Kaan" {
+		t.Fatalf("myValue = %q", v)
+	}
+	if v := MustByID[*Text](&Window{tree: tr}, "count").Text.Get(); v != "3" {
+		t.Fatalf("count = %q", v)
+	}
+	rows := 0
+	for _, n := range tr.All() {
+		if txt, ok := n.(*Text); ok && txt.Text.Get() == "Ada" {
+			rows++
+		}
+	}
+	if rows != 1 {
+		t.Fatalf("bridge list rows = %d", rows)
+	}
+}
+
+// TestSetupWritesBridgeValuesFallsBack covers the same assignment through the
+// interpreter path.
+func TestSetupWritesBridgeValuesFallsBack(t *testing.T) {
+	f, diag := syntax.ParseNamed([]byte(`bridge { myValue string }
+
+setup {
+	var seen int
+	type T struct{ n int }
+	func (x T) Plus() int { return x.n + seen }
+
+	func setIt() { bridge.myValue = "Kaan" }
+}
+
+Window { Text { id: value text: bridge.myValue } }`), "Main.goi")
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	scopes, err := setup.New(f.Setups, f.Vars, f.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scopes.For("Main.goi", "") == nil {
+		t.Fatal("fallback did not load")
+	}
+	tr, err := tree.Build(f, &tree.Hooks{Setup: scopes.For})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopes.Bind(tr)
+	if _, _, err := scopes.For("Main.goi", "").Call("setIt", nil); err != nil {
+		t.Fatal(err)
+	}
+	tr.ApplyExpressions()
+	if v := MustByID[*Text](&Window{tree: tr}, "value").Text.Get(); v != "Kaan" {
+		t.Fatalf("myValue = %q", v)
+	}
+}
+
+// TestSetupWritesBridgeFromMount covers the hook flush path.
+func TestSetupWritesBridgeFromMount(t *testing.T) {
+	f, diag := syntax.ParseNamed([]byte(`bridge { ready bool }
+setup {
+	func onMount() { bridge.ready = true }
+}
+Window { Text { id: value text: formatf("%v", bridge.ready) } }`), "Main.goi")
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	scopes, err := setup.New(f.Setups, f.Vars, f.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sb := setupBuild{
+		hook: scopes.For, bind: scopes.Bind, err: scopes.Err,
+		instance: scopes.Note, visible: scopes.SetVisible,
+		start: scopes.Start, stop: scopes.Unmount,
+	}
+	tr, err := tree.Build(f, &tree.Hooks{Setup: sb.hook, Visibility: sb.visible})
+	if err != nil {
+		t.Fatal(err)
+	}
+	noteSetups(sb, tr)
+	sb.bind(tr)
+	a := newHeadlessApp()
+	a.startSetups(sb)
+	for i := 0; i < 10; i++ {
+		a.drainPosted()
+		tr.ApplyExpressions()
+	}
+	if v := MustByID[*Text](&Window{tree: tr}, "value").Text.Get(); v != "true" {
+		t.Fatalf("ready = %q", v)
+	}
+}

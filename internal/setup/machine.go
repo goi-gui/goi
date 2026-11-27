@@ -11,6 +11,7 @@ type machine struct {
 	data       func(string) (any, bool)
 	version    func() uint64
 	call       func(string, []any) (any, error)
+	set        func(string, any)
 }
 
 func newMachine() *machine {

@@ -342,7 +342,8 @@ func BridgeParts(vars []syntax.DataVar, shapes []syntax.DataShape, props []synta
 
 func bridgeParts(vars []syntax.DataVar, shapes []syntax.DataShape, props []syntax.Prop, pkg string) (pre, decl string) {
 	if len(vars) == 0 && len(shapes) == 0 && len(props) == 0 {
-		return "", ""
+		// The setup factory always links Flush; an empty program still answers.
+		return "", "func goiFlush() map[string]any { return nil }\n"
 	}
 	shapeMap := make(map[string]*syntax.DataShape, len(shapes))
 	for i := range shapes {
@@ -356,7 +357,10 @@ func bridgeParts(vars []syntax.DataVar, shapes []syntax.DataShape, props []synta
 		}
 		types.WriteString("}\n\n")
 	}
-	conv := &convGen{shapes: shapeMap, pkg: pkg, names: map[string]string{}}
+	conv := &convGen{
+		shapes: shapeMap, pkg: pkg,
+		names: map[string]string{}, backNames: map[string]string{},
+	}
 	var propDecl strings.Builder
 	if len(props) > 0 {
 		propDecl.WriteString("type goiProps struct {\n")
@@ -397,9 +401,26 @@ func bridgeParts(vars []syntax.DataVar, shapes []syntax.DataShape, props []synta
 	if len(vars) > 0 || len(props) > 0 {
 		pre = "import " + pkg + " \"" + pkg + "\"\n\n"
 	}
-	decl = types.String() + conv.funcsString() + propDecl.String() +
+	var flush strings.Builder
+	dataFields := 0
+	for _, v := range vars {
+		if v.Type.Kind != syntax.TypeFunc {
+			dataFields++
+		}
+	}
+	flush.WriteString("func goiFlush() map[string]any {\n")
+	fmt.Fprintf(&flush, "m := make(map[string]any, %d)\n", dataFields)
+	for _, v := range vars {
+		if v.Type.Kind == syntax.TypeFunc {
+			continue
+		}
+		fmt.Fprintf(&flush, "m[%q] = %s\n", v.Name, conv.backExpr(v.Type, "bridge."+v.Name))
+	}
+	flush.WriteString("return m\n}\n\n")
+	decl = types.String() + conv.funcsString() + conv.backFuncsString() + propDecl.String() +
 		"type goiBridge struct {\n" + fields.String() + "}\n\n" +
 		"var bridge goiBridge\n\n" +
+		flush.String() +
 		"func (b *goiBridge) goiSync() {\n" + sync.String() + "}\n\n" +
 		methods.String()
 	return pre, decl
@@ -408,14 +429,77 @@ func bridgeParts(vars []syntax.DataVar, shapes []syntax.DataShape, props []synta
 // convGen writes Go functions that turn the untyped rows the bridge callback
 // returns into the type the design declared: []ticket, []string, map[string]int.
 type convGen struct {
-	shapes map[string]*syntax.DataShape
-	pkg    string
-	names  map[string]string
-	funcs  []string
-	next   int
+	shapes    map[string]*syntax.DataShape
+	pkg       string
+	names     map[string]string
+	funcs     []string
+	next      int
+	backNames map[string]string
+	backFuncs []string
+	backNext  int
 }
 
 func (c *convGen) funcsString() string { return strings.Join(c.funcs, "\n") }
+
+func (c *convGen) backFuncsString() string { return strings.Join(c.backFuncs, "\n") }
+
+// back turns a declared value back into the rows the tree stores, after setup
+// assigned the bridge field.
+func (c *convGen) back(t syntax.Type) string {
+	key := t.String()
+	if name, ok := c.backNames[key]; ok {
+		return name
+	}
+	name := fmt.Sprintf("goiBack%d", c.backNext)
+	c.backNext++
+	c.backNames[key] = name
+	gt := goType(t, c.shapes)
+	var b strings.Builder
+	switch t.Kind {
+	case syntax.TypeSlice:
+		fmt.Fprintf(&b, "func %s(v %s) any {\n", name, gt)
+		b.WriteString("if v == nil { return nil }\n")
+		b.WriteString("out := make([]any, 0, len(v))\n")
+		b.WriteString("for _, x := range v {\n")
+		fmt.Fprintf(&b, "out = append(out, %s)\n", c.backExpr(*t.Elem, "x"))
+		b.WriteString("}\nreturn out\n}\n")
+	case syntax.TypeMap:
+		fmt.Fprintf(&b, "func %s(v %s) any {\n", name, gt)
+		if t.Name == "string" {
+			b.WriteString("if v == nil { return nil }\n")
+			b.WriteString("out := make(map[string]any, len(v))\n")
+			b.WriteString("for k, x := range v {\n")
+			fmt.Fprintf(&b, "out[k] = %s\n", c.backExpr(*t.Elem, "x"))
+			b.WriteString("}\nreturn out\n}\n")
+		} else {
+			b.WriteString("return v\n}\n")
+		}
+	case syntax.TypeScalar:
+		shape := c.shapes[t.Name]
+		if shape == nil {
+			fmt.Fprintf(&b, "func %s(v %s) any { return v }\n", name, gt)
+			break
+		}
+		fmt.Fprintf(&b, "func %s(v %s) any {\n", name, gt)
+		b.WriteString("return map[string]any{\n")
+		for _, f := range shape.Fields {
+			fmt.Fprintf(&b, "%q: %s,\n", f.Name, c.backExpr(f.Type, "v."+f.Name))
+		}
+		b.WriteString("}\n}\n")
+	}
+	c.backFuncs = append(c.backFuncs, b.String())
+	return name
+}
+
+func (c *convGen) backExpr(t syntax.Type, expr string) string {
+	if t.Kind == syntax.TypeFunc {
+		return expr
+	}
+	if t.Kind == syntax.TypeScalar && c.shapes[t.Name] == nil {
+		return expr
+	}
+	return c.back(t) + "(" + expr + ")"
+}
 
 func (c *convGen) conv(t syntax.Type) string {
 	key := t.String()

@@ -30,6 +30,9 @@ type program struct {
 	funcs     map[string]bool
 	values    map[string]bool
 	hasBridge bool
+	// writesBridge is set when the body assigns a bridge field, so only those
+	// files pay to compare and publish the values after a call.
+	writesBridge bool
 
 	newFn      reflect.Value
 	compiled   bool
@@ -44,6 +47,7 @@ type programInstance struct {
 	mount     reflect.Value
 	unmount   reflect.Value
 	syncProps reflect.Value
+	flush     reflect.Value
 }
 
 func newProgram(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape, index int, m *machine) (*program, error) {
@@ -66,6 +70,7 @@ func newProgram(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShap
 	}
 	p.funcs, _ = functionNames(st.Code)
 	p.values, _ = valueNames(body)
+	p.writesBridge = bridgeWrites(body)
 	return p, nil
 }
 
@@ -136,6 +141,7 @@ func (p *program) newInstance(get func() map[string]any) *programInstance {
 		mount:     state.FieldByName("Mount"),
 		unmount:   state.FieldByName("Unmount"),
 		syncProps: state.FieldByName("SyncProps"),
+		flush:     state.FieldByName("Flush"),
 	}
 }
 
@@ -198,11 +204,41 @@ func (p *programInstance) HasFunc(name string) bool {
 	return p != nil && p.p != nil && p.p.funcs[name]
 }
 
+func (p *programInstance) bridgeValues() map[string]any {
+	if p == nil || !p.flush.IsValid() || p.flush.IsNil() {
+		return nil
+	}
+	out := p.flush.Call(nil)
+	if len(out) != 1 || !out[0].IsValid() || !out[0].CanInterface() {
+		return nil
+	}
+	m, _ := out[0].Interface().(map[string]any)
+	return m
+}
+
+// flushBridge writes the bridge fields setup assigned back to the tree. The
+// generated flush returns every data field as a row the tree can store.
+func (p *programInstance) flushBridge(before map[string]any) {
+	if before == nil {
+		return
+	}
+	for name, v := range p.bridgeValues() {
+		if !reflect.DeepEqual(before[name], v) && p.p.m.set != nil {
+			p.p.m.set(name, v)
+		}
+	}
+}
+
 func (p *programInstance) Call(name string, args []any) (any, bool, error) {
 	if p == nil || !p.call.IsValid() || !p.p.funcs[name] {
 		return nil, false, nil
 	}
 	p.sync()
+	var before map[string]any
+	if p.p.writesBridge {
+		before = p.bridgeValues()
+		defer p.flushBridge(before)
+	}
 	if args == nil {
 		args = []any{}
 	}
@@ -341,7 +377,7 @@ func programSource(st syntax.Setup, body string, imports []gosetup.Import, vars 
 		// The factory below uses these names for its own locals.
 		switch name {
 		case "goiSetup", "goiNewSetup", "value", "call", "goiName", "goiArgs", "goiRest", "goiArg",
-			"goiMount", "goiUnmount":
+			"goiMount", "goiUnmount", "goiFlush", "goiSetProps", "goiSyncBridge":
 			return "", fmt.Errorf("setup name %s collides with the generated program", name)
 		}
 	}
@@ -385,7 +421,7 @@ func programSource(st syntax.Setup, body string, imports []gosetup.Import, vars 
 	if len(vars) > 0 {
 		b.WriteString("func goiSyncBridge() { (&bridge).goiSync() }\n\n")
 	}
-	b.WriteString("type goiSetup struct {\nValue func(string) any\nCall func(string, []any) (any, error)\nMount func()\nUnmount func()\nSyncProps func()\n}\n\n")
+	b.WriteString("type goiSetup struct {\nValue func(string) any\nCall func(string, []any) (any, error)\nMount func()\nUnmount func()\nSyncProps func()\nFlush func() map[string]any\n}\n\n")
 	b.WriteString("func goiNewSetup(goiGet func() map[string]any) *goiSetup {\n")
 	b.WriteString("syncProps := func() {}\n")
 	if len(st.Props) > 0 {
@@ -448,7 +484,7 @@ func programSource(st syntax.Setup, body string, imports []gosetup.Import, vars 
 		b.WriteString(call)
 	}
 	b.WriteString("}\nreturn nil, nil\n}\n")
-	b.WriteString("return &goiSetup{Value: value, Call: call, Mount: goiMount, Unmount: goiUnmount, SyncProps: syncProps}\n}\n")
+	b.WriteString("return &goiSetup{Value: value, Call: call, Mount: goiMount, Unmount: goiUnmount, SyncProps: syncProps, Flush: goiFlush}\n}\n")
 
 	out, err := format.Source([]byte(b.String()))
 	if err != nil {
@@ -470,6 +506,48 @@ func writeLine(b *strings.Builder, st syntax.Setup, parseLine int) {
 		line = 1
 	}
 	fmt.Fprintf(b, "//line %s:%d\n", st.Src, line)
+}
+
+// bridgeWrites reports whether the body assigns a bridge field, directly or
+// through ++ and +=. A file that only reads the bridge skips the flush work.
+func bridgeWrites(code string) bool {
+	f, err := parser.ParseFile(token.NewFileSet(), "_.go", "package setup\n"+code, 0)
+	if err != nil {
+		return false
+	}
+	found := false
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.AssignStmt:
+			for _, lhs := range x.Lhs {
+				if isBridgeTarget(lhs) {
+					found = true
+				}
+			}
+		case *ast.IncDecStmt:
+			if isBridgeTarget(x.X) {
+				found = true
+			}
+		}
+		return !found
+	})
+	return found
+}
+
+// isBridgeTarget reports whether an assignment target starts at bridge, so a
+// nested field or one row of a list counts too.
+func isBridgeTarget(e ast.Expr) bool {
+	switch x := e.(type) {
+	case *ast.Ident:
+		return x.Name == "bridge"
+	case *ast.SelectorExpr:
+		return isBridgeTarget(x.X)
+	case *ast.IndexExpr:
+		return isBridgeTarget(x.X)
+	case *ast.StarExpr:
+		return isBridgeTarget(x.X)
+	}
+	return false
 }
 
 // valueNames lists the variables and constants a setup body declares. A bare
