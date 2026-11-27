@@ -1,6 +1,7 @@
 package setup
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -78,7 +79,7 @@ Window {}`)
 	if sc := r.For(f.Src, ""); sc == nil {
 		t.Fatal("no scope for the broken file")
 	}
-	if err := r.Err(); err == nil || !strings.Contains(err.Error(), "Main.goi") {
+	if err := r.Err(); err == nil || !strings.Contains(err.Error(), "Main.goi:3:") {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -164,7 +165,8 @@ Window {}`), "Other.goi")
 }
 
 // TestLazyScopeSharesPureCalls covers the interpreter fallback, which a method
-// forces because the shared program only compiles plain functions.
+// reading setup state forces because package-level methods cannot see the
+// factory's variables.
 func TestLazyScopeSharesPureCalls(t *testing.T) {
 	f := parse(t, `setup {
 	import "strings"
@@ -176,7 +178,7 @@ func TestLazyScopeSharesPureCalls(t *testing.T) {
 
 	type T struct{ n int }
 
-	func (t T) Double() int { return t.n * 2 }
+	func (t T) Double() int { return t.n + count }
 }
 
 Window {}`)
@@ -230,5 +232,89 @@ Window {}`)
 	}
 	if _, found, _ := a.Call("missing", nil); found {
 		t.Fatal("a missing function was found")
+	}
+}
+
+func TestSetupMethodsAndVariadicCompileToTheProgram(t *testing.T) {
+	f := parse(t, `setup {
+	type point struct{ n int }
+
+	func (p point) Double() int { return p.n * 2 }
+
+	var count int
+	func inc() { count++ }
+	func scaled() int { return point{n: count}.Double() }
+	func sum(xs ...int) int {
+		n := 0
+		for _, x := range xs {
+			n += x
+		}
+		return n
+	}
+	func join(prefix string, xs ...string) string {
+		s := prefix
+		for _, x := range xs {
+			s += x
+		}
+		return s
+	}
+}
+
+Window {}`)
+	r, err := New(f.Setups, f.Vars, f.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.programs[f.Src] == nil {
+		t.Fatalf("method file did not compile to a program: %v", r.Err())
+	}
+	sc := r.For(f.Src, "x")
+	for _, tc := range []struct {
+		name string
+		args []any
+		want any
+	}{
+		{"sum", []any{1, 2, 3}, 6},
+		{"join", []any{"a", "b", "c"}, "abc"},
+	} {
+		v, found, err := sc.Call(tc.name, tc.args)
+		if err != nil || !found || v != tc.want {
+			t.Fatalf("%s = %v, %v, %v, want %v", tc.name, v, found, err, tc.want)
+		}
+	}
+	if v, _, _ := sc.Call("scaled", nil); v != 0 {
+		t.Fatalf("scaled = %v", v)
+	}
+	_, _, _ = sc.Call("inc", nil)
+	if v, _, _ := sc.Call("scaled", nil); v != 2 {
+		t.Fatalf("scaled after inc = %v", v)
+	}
+}
+
+// TestSetupMethodReadingStateFallsBack keeps the interpreter path working for
+// a method that reads a factory-local variable, which package-level methods
+// cannot see.
+func TestSetupMethodReadingStateFallsBack(t *testing.T) {
+	f := parse(t, `setup {
+	var count int
+	func inc() { count++ }
+
+	type T struct{ n int }
+	func (t T) Plus() int { return t.n + count }
+	func total() int { return T{n: 1}.Plus() }
+}
+
+Window {}`)
+	r, err := New(f.Setups, f.Vars, f.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.programs[f.Src] != nil {
+		t.Fatal("a method reading setup state stayed on the shared program")
+	}
+	sc := r.For(f.Src, "x")
+	v, _, err := sc.Call("total", nil)
+	if err != nil || fmt.Sprint(v) != "1" {
+		t.Fatalf("total = %v, %v", v, err)
 	}
 }

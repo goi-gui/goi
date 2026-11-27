@@ -43,7 +43,7 @@ type programInstance struct {
 
 func newProgram(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape, index int, m *machine) (*program, error) {
 	bridgePkg := fmt.Sprintf("goisetup%d", index)
-	src, err := programSource(st.Code, vars, shapes, bridgePkg)
+	src, err := programSource(st, vars, shapes, bridgePkg)
 	if err != nil {
 		return nil, err
 	}
@@ -196,28 +196,22 @@ func (p *programInstance) Call(name string, args []any) (any, bool, error) {
 // programSource turns top-level setup declarations into one closure factory.
 // Package variables become locals of goiNewSetup, so every call captures its
 // own state while the interpreter compiles the file once.
-func programSource(code string, vars []syntax.DataVar, shapes []syntax.DataShape, bridgePkg string) (string, error) {
+func programSource(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape, bridgePkg string) (string, error) {
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, "_.go", "package setup\n"+code, parser.ParseComments)
+	f, err := parser.ParseFile(fset, "_.go", "package setup\n"+st.Code, parser.ParseComments)
 	if err != nil {
 		return "", err
 	}
-	var imports, consts, types, varDecls []string
-	var funcs []*ast.FuncDecl
+	var imports, consts, types, varDecls []programDecl
+	var funcs, methods []*ast.FuncDecl
 	var varNodes []*ast.GenDecl
 	var values []string
 	for _, d := range f.Decls {
 		switch d := d.(type) {
 		case *ast.FuncDecl:
 			if d.Recv != nil {
-				return "", fmt.Errorf("setup method %s is not supported by the shared program", d.Name.Name)
-			}
-			if d.Type.Params != nil && d.Type.Params.Opening.IsValid() {
-				for _, field := range d.Type.Params.List {
-					if _, ok := field.Type.(*ast.Ellipsis); ok {
-						return "", fmt.Errorf("setup function %s is variadic", d.Name.Name)
-					}
-				}
+				methods = append(methods, d)
+				continue
 			}
 			if d.Type.Results != nil && len(d.Type.Results.List) > 1 {
 				return "", fmt.Errorf("setup function %s returns more than one value", d.Name.Name)
@@ -228,23 +222,24 @@ func programSource(code string, vars []syntax.DataVar, shapes []syntax.DataShape
 			if err != nil {
 				return "", err
 			}
+			block := programDecl{text: text, line: fset.Position(d.Pos()).Line}
 			switch d.Tok {
 			case token.IMPORT:
-				imports = append(imports, text)
+				imports = append(imports, block)
 			case token.CONST:
-				consts = append(consts, text)
+				consts = append(consts, block)
 				for _, spec := range d.Specs {
 					for _, name := range spec.(*ast.ValueSpec).Names {
 						values = append(values, name.Name)
 					}
 				}
 			case token.TYPE:
-				types = append(types, text)
+				types = append(types, block)
 				for _, spec := range d.Specs {
 					values = append(values, spec.(*ast.TypeSpec).Name.Name)
 				}
 			case token.VAR:
-				varDecls = append(varDecls, text)
+				varDecls = append(varDecls, block)
 				varNodes = append(varNodes, d)
 				for _, spec := range d.Specs {
 					for _, name := range spec.(*ast.ValueSpec).Names {
@@ -260,6 +255,31 @@ func programSource(code string, vars []syntax.DataVar, shapes []syntax.DataShape
 	for _, fn := range funcs {
 		taken = append(taken, fn.Name.Name)
 		isFunc[fn.Name.Name] = true
+	}
+	for _, m := range methods {
+		taken = append(taken, m.Name.Name)
+	}
+	// A method lives at package level, where the factory's variables and
+	// functions are not visible; one that reads them keeps the interpreter.
+	varNames := map[string]bool{}
+	for _, d := range varNodes {
+		for _, spec := range d.Specs {
+			for _, name := range spec.(*ast.ValueSpec).Names {
+				varNames[name.Name] = true
+			}
+		}
+	}
+	for _, m := range methods {
+		blocked := false
+		ast.Inspect(m.Body, func(n ast.Node) bool {
+			if id, ok := n.(*ast.Ident); ok && (varNames[id.Name] || isFunc[id.Name]) {
+				blocked = true
+			}
+			return !blocked
+		})
+		if blocked {
+			return "", fmt.Errorf("setup method %s reads setup state", m.Name.Name)
+		}
 	}
 	// A variable initializer that calls a setup function would run before the
 	// function variable is assigned in the generated factory.
@@ -284,7 +304,7 @@ func programSource(code string, vars []syntax.DataVar, shapes []syntax.DataShape
 	for _, name := range taken {
 		// The factory below uses these names for its own locals.
 		switch name {
-		case "goiSetup", "goiNewSetup", "value", "call", "goiName", "goiArgs":
+		case "goiSetup", "goiNewSetup", "value", "call", "goiName", "goiArgs", "goiRest", "goiArg":
 			return "", fmt.Errorf("setup name %s collides with the generated program", name)
 		}
 	}
@@ -303,15 +323,27 @@ func programSource(code string, vars []syntax.DataVar, shapes []syntax.DataShape
 		b.WriteString("import " + bridgePkg + " \"" + bridgePkg + "\"\n\n")
 	}
 	for _, imp := range imports {
-		b.WriteString(imp)
+		writeLine(&b, st, imp.line)
+		b.WriteString(imp.text)
 		b.WriteString("\n")
 	}
 	for _, decl := range consts {
-		b.WriteString(decl)
+		writeLine(&b, st, decl.line)
+		b.WriteString(decl.text)
 		b.WriteString("\n")
 	}
 	for _, decl := range types {
-		b.WriteString(decl)
+		writeLine(&b, st, decl.line)
+		b.WriteString(decl.text)
+		b.WriteString("\n")
+	}
+	for _, m := range methods {
+		writeLine(&b, st, fset.Position(m.Pos()).Line)
+		text, err := nodeText(fset, m)
+		if err != nil {
+			return "", err
+		}
+		b.WriteString(text)
 		b.WriteString("\n")
 	}
 	b.WriteString(gosetup.BridgeDeclsPkg(vars, shapes, bridgePkg))
@@ -322,7 +354,8 @@ func programSource(code string, vars []syntax.DataVar, shapes []syntax.DataShape
 	b.WriteString("type goiSetup struct {\nValue func(string) any\nCall func(string, []any) (any, error)\n}\n\n")
 	b.WriteString("func goiNewSetup() *goiSetup {\n")
 	for _, decl := range varDecls {
-		b.WriteString(decl)
+		writeLine(&b, st, decl.line)
+		b.WriteString(decl.text)
 		b.WriteString("\n")
 	}
 	for _, fn := range funcs {
@@ -330,6 +363,7 @@ func programSource(code string, vars []syntax.DataVar, shapes []syntax.DataShape
 		if err != nil {
 			return "", err
 		}
+		writeLine(&b, st, fset.Position(fn.Pos()).Line)
 		fmt.Fprintf(&b, "var %s %s\n", fn.Name.Name, sig)
 	}
 	for _, fn := range funcs {
@@ -338,6 +372,7 @@ func programSource(code string, vars []syntax.DataVar, shapes []syntax.DataShape
 		if err != nil {
 			return "", err
 		}
+		writeLine(&b, st, fset.Position(fn.Pos()).Line)
 		fmt.Fprintf(&b, "%s = %s\n", fn.Name.Name, text)
 	}
 
@@ -362,6 +397,21 @@ func programSource(code string, vars []syntax.DataVar, shapes []syntax.DataShape
 		return "", fmt.Errorf("generated setup program: %w", err)
 	}
 	return string(out), nil
+}
+
+type programDecl struct {
+	text string
+	line int
+}
+
+// writeLine pins the next generated line to its line in the design file, so a
+// Yaegi error names the setup block instead of the generated source.
+func writeLine(b *strings.Builder, st syntax.Setup, parseLine int) {
+	line := st.Line + parseLine - 2
+	if line < 1 {
+		line = 1
+	}
+	fmt.Fprintf(b, "//line %s:%d\n", st.Src, line)
 }
 
 func functionNames(code string) (map[string]bool, error) {
@@ -391,9 +441,26 @@ func callCase(fn *ast.FuncDecl, bridgePkg string) (string, error) {
 	if fn.Type.Params != nil {
 		params = fn.Type.Params.List
 	}
+	var setup strings.Builder
 	var args []string
 	index := 0
-	for _, field := range params {
+	for i, field := range params {
+		if ell, ok := field.Type.(*ast.Ellipsis); ok {
+			if i != len(params)-1 {
+				return "", fmt.Errorf("setup function %s has a variadic parameter before the end", fn.Name.Name)
+			}
+			typ, ok := ell.Elt.(*ast.Ident)
+			if !ok {
+				return "", fmt.Errorf("setup function %s has a non-primitive variadic parameter", fn.Name.Name)
+			}
+			conv, ok := argConversion(typ.Name, "goiArg", bridgePkg)
+			if !ok {
+				return "", fmt.Errorf("setup function %s has an unsupported variadic parameter %s", fn.Name.Name, typ.Name)
+			}
+			fmt.Fprintf(&setup, "var goiRest []%s\nfor _, goiArg := range goiArgs[%d:] {\ngoiRest = append(goiRest, %s)\n}\n", typ.Name, index, conv)
+			args = append(args, "goiRest...")
+			continue
+		}
 		typ, ok := field.Type.(*ast.Ident)
 		if !ok {
 			return "", fmt.Errorf("setup function %s has a non-primitive parameter", fn.Name.Name)
@@ -412,10 +479,15 @@ func callCase(fn *ast.FuncDecl, bridgePkg string) (string, error) {
 		}
 	}
 	call := fn.Name.Name + "(" + strings.Join(args, ", ") + ")"
+	var b strings.Builder
+	fmt.Fprintf(&b, "case %q:\n", fn.Name.Name)
+	b.WriteString(setup.String())
 	if fn.Type.Results != nil && len(fn.Type.Results.List) > 0 {
-		return fmt.Sprintf("case %q:\nreturn %s, nil\n", fn.Name.Name, call), nil
+		fmt.Fprintf(&b, "return %s, nil\n", call)
+	} else {
+		fmt.Fprintf(&b, "%s\nreturn nil, nil\n", call)
 	}
-	return fmt.Sprintf("case %q:\n%s\nreturn nil, nil\n", fn.Name.Name, call), nil
+	return b.String(), nil
 }
 
 func argConversion(name, expr, bridgePkg string) (string, bool) {

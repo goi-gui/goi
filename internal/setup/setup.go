@@ -172,7 +172,9 @@ func newScope(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape)
 			"AsUint32": reflect.ValueOf(asUint32),
 		},
 	})
-	if _, err := i.Eval(gosetup.BridgeSource(st.Code, vars, shapes)); err != nil {
+	src := gosetup.BridgePrelude(vars) + "\n//line " + st.Src + ":" + strconv.Itoa(st.Line) + "\n" +
+		st.Code + "\n//line _.go:1\n" + gosetup.BridgeDecls(vars, shapes)
+	if _, err := i.Eval(src); err != nil {
 		return nil, evalError(st, err)
 	}
 	s.names, _ = declaredNames(st.Code)
@@ -677,6 +679,10 @@ func statefulFuncs(code string) (map[string]bool, error) {
 // setup block occupies in the design.
 func evalError(st syntax.Setup, err error) error {
 	msg := err.Error()
+	// A generated //line directive already named the design file.
+	if strings.HasPrefix(msg, st.Src+":") {
+		return err
+	}
 	const prefix = "_.go:"
 	if strings.HasPrefix(msg, prefix) {
 		rest := strings.TrimPrefix(msg, prefix)

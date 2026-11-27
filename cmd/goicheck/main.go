@@ -28,6 +28,33 @@ import (
 	"github.com/goi-gui/goi/internal/tree"
 )
 
+// container returns the file system root a design's imports resolve against,
+// and its name inside that root.
+func container(file string) (dir, name string) {
+	abs, err := filepath.Abs(file)
+	if err != nil {
+		return filepath.Dir(file), filepath.Base(file)
+	}
+	root := ""
+	for d := filepath.Dir(abs); ; d = filepath.Dir(d) {
+		if filepath.Base(d) == "assets" {
+			root = d
+			break
+		}
+		if filepath.Dir(d) == d {
+			break
+		}
+	}
+	if root == "" {
+		return filepath.Dir(abs), filepath.Base(abs)
+	}
+	rel, err := filepath.Rel(root, abs)
+	if err != nil {
+		return filepath.Dir(abs), filepath.Base(abs)
+	}
+	return root, filepath.ToSlash(rel)
+}
+
 func main() {
 	checkLayout := flag.Bool("layout", false, "lay the design out and report collapsed nodes")
 	ops := flag.Bool("ops", false, "print the display list op count")
@@ -54,10 +81,10 @@ func main() {
 
 	fail := false
 	for _, file := range flag.Args() {
-		// The file's own directory is the asset container, so imports resolve
-		// next to the entry file, exactly as LoadWindow does.
-		dir := filepath.Dir(file)
-		name := filepath.Base(file)
+		// A project keeps designs under its asset directory and imports them as
+		// goi://ui/Foo.goi, so that directory is the container. A loose file
+		// outside one resolves imports next to itself.
+		dir, name := container(file)
 		b, diag := asset.Load(os.DirFS(dir), name)
 		if !diag.Empty() {
 			fmt.Fprintln(os.Stderr, diag.FormatFiles(name, b.Sources[name], b.Sources))

@@ -3110,3 +3110,15 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   `ui` and `goicheck`) and an event that calls a missing function reports the
   compile error. `goicheck` calls `CompileAll` so a checker still names a broken
   block that no element reads.
+- **Generated setup source carries `//line` directives.** Moving imports,
+  types and function bodies into the factory shifted every line, so a Yaegi
+  error named the generated source and the wrong line. Each declaration is
+  preceded by `//line <design file>:<line>`, which Yaegi honors through
+  go/parser, and the interpreter fallback does the same before its body. A
+  setup error now names the design line; `evalError` passes a message that
+  already names the file through unchanged.
+- **Methods and variadic functions stay on the shared program.** Types and
+  methods are emitted at package scope; a method that reads a factory-local
+  variable or function falls back, because package-level methods cannot see
+  them. A variadic primitive parameter is converted element by element from
+  `[]any`. This removes the common fallback cases without changing semantics.
