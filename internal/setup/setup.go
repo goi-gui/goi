@@ -30,7 +30,9 @@ type Registry struct {
 	bases map[string]*Scope
 	// baseRefs counts lazy instances still reading their base.
 	baseRefs map[string]int
-	// templates are one setup body per source file.
+	// programs are setup files that the shared closure compiler could handle.
+	programs map[string]*program
+	// templates are one setup body per source file for the fallback path.
 	templates map[string]*template
 	// Live-tree callbacks, copied into scopes created after Bind.
 	data    func(string) (any, bool)
@@ -83,11 +85,16 @@ func New(setups []syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape
 		scopes:    map[string]tree.SetupScope{},
 		bases:     map[string]*Scope{},
 		baseRefs:  map[string]int{},
+		programs:  map[string]*program{},
 		templates: map[string]*template{},
 	}
 	for _, st := range setups {
 		if _, duplicate := r.templates[st.Src]; duplicate {
 			return nil, fmt.Errorf("%s: setup may appear only once per file", st.Src)
+		}
+		if p, err := newProgram(st, vars, shapes); err == nil {
+			r.programs[st.Src] = p
+			continue
 		}
 		r.templates[st.Src] = &template{setup: st, vars: vars, shapes: shapes}
 		sc, err := newScope(st, vars, shapes)
@@ -133,6 +140,9 @@ func (r *Registry) Bind(tr *tree.Tree) {
 	r.data = tr.Data
 	r.version = tr.DataVersion
 	r.call = tr.CallBridge
+	for _, p := range r.programs {
+		p.bind(tr)
+	}
 	for _, sc := range r.scopes {
 		switch x := sc.(type) {
 		case *Scope:
@@ -259,6 +269,14 @@ func (r *Registry) For(src, scope string) tree.SetupScope {
 	key := scopeKey(src, scope)
 	if sc := r.scopes[key]; sc != nil {
 		return sc
+	}
+	if p := r.programs[src]; p != nil {
+		inst := p.newInstance()
+		if inst == nil {
+			return nil
+		}
+		r.scopes[key] = inst
+		return inst
 	}
 	base := r.baseFor(src)
 	if base == nil {

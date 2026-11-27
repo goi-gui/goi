@@ -79,12 +79,18 @@ Window {}`)
 	}
 }
 
+// TestLazyScopeSharesPureCalls covers the interpreter fallback, which a method
+// forces because the shared program only compiles plain functions.
 func TestLazyScopeSharesPureCalls(t *testing.T) {
 	f := parse(t, `setup {
 	var count int
 
 	func inc() { count++ }
 	func greet(n string) string { return "Hi, " + n }
+
+	type T struct{ n int }
+
+	func (t T) Double() int { return t.n * 2 }
 }
 
 Window {}`)
@@ -107,5 +113,36 @@ Window {}`)
 	}
 	if sc.private == nil {
 		t.Fatal("a stateful function stayed on the shared base")
+	}
+}
+
+func TestProgramSharesOneInterpreter(t *testing.T) {
+	f := parse(t, `setup {
+	var count int
+
+	func inc() { count++ }
+}
+
+Window {}`)
+	r, err := New(f.Setups, f.Vars, f.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, _ := r.For(f.Src, "Main.goi#1").(*programInstance)
+	b, _ := r.For(f.Src, "Main.goi#2").(*programInstance)
+	if a == nil || b == nil {
+		t.Fatal("the file did not compile to a shared program")
+	}
+	if a.p != b.p {
+		t.Fatal("instances compiled separate interpreters")
+	}
+	if _, found, err := a.Call("inc", nil); err != nil || !found {
+		t.Fatalf("inc = %v, %v", found, err)
+	}
+	if v, _ := b.Value("count"); v != 0 {
+		t.Fatalf("second instance count = %v, want 0", v)
+	}
+	if _, found, _ := a.Call("missing", nil); found {
+		t.Fatal("a missing function was found")
 	}
 }

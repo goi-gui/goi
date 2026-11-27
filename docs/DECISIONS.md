@@ -3080,3 +3080,12 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   interpreter. This keeps three untouched counters at one interpreter, while
   each clicked counter remains independent. The shared interpreter is reclaimed
   once its last reader has a private copy or the other readers are gone.
+- **One interpreter per setup file, one state struct per instance.** The
+  setup body is rewritten into a closure factory: package variables become
+  locals of the factory, functions become function literals, and the factory
+  returns a small struct holding the value and call closures. Yaegi compiles
+  the file once and every fragment instance is just that struct, so a hundred
+  counters cost kilobytes instead of a hundred interpreters. Files the rewrite
+  cannot express (methods, variadic functions, non-primitive parameters,
+  initializers that call setup functions) keep the interpreter path with
+  copy-on-write state, so setup semantics do not depend on the rewrite.

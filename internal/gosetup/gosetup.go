@@ -312,6 +312,18 @@ func BridgeSource(code string, vars []syntax.DataVar, shapes []syntax.DataShape)
 	return pre + code + "\n" + decl
 }
 
+// BridgePrelude is the generated import a setup program needs for bridge access.
+func BridgePrelude(vars []syntax.DataVar) string {
+	pre, _ := bridgeParts(vars, nil)
+	return pre
+}
+
+// BridgeDecls is the generated bridge value and its methods.
+func BridgeDecls(vars []syntax.DataVar, shapes []syntax.DataShape) string {
+	_, decl := bridgeParts(vars, shapes)
+	return decl
+}
+
 func bridgeParts(vars []syntax.DataVar, shapes []syntax.DataShape) (pre, decl string) {
 	_ = shapes
 	if len(vars) == 0 {
