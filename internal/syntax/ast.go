@@ -265,6 +265,10 @@ type Block struct {
 	Close Pos
 	// Src names the file this block came from.
 	Src string
+	// CallerSrc and CallerScope mark a block whose range or condition came from
+	// a fragment caller's props, so setup names resolve in the caller's context.
+	CallerSrc   string
+	CallerScope string
 	// Branches holds the `if`, `else if` and `else` arms in source order. Only
 	// the last one may have a nil Cond, which is the else arm. A for block has
 	// exactly one arm with a nil Cond; a switch block's arms carry Vals instead,
@@ -430,6 +434,11 @@ type Property struct {
 	// Src names the file this property was written in. It differs from the
 	// element's Src when an instance overrides a fragment property.
 	Src string
+	// CallerSrc and CallerScope mark a property whose value came from a fragment
+	// caller (an override or a substituted prop), so setup names resolve in the
+	// caller's file and instance.
+	CallerSrc   string
+	CallerScope string
 }
 
 // ValueKind identifies the type of a literal.

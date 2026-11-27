@@ -28,6 +28,7 @@ type program struct {
 	bridgePkg string
 	imports   []gosetup.Import
 	funcs     map[string]bool
+	values    map[string]bool
 	hasBridge bool
 
 	newFn      reflect.Value
@@ -64,6 +65,7 @@ func newProgram(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShap
 		synced:    ^uint64(0),
 	}
 	p.funcs, _ = functionNames(st.Code)
+	p.values, _ = valueNames(body)
 	return p, nil
 }
 
@@ -181,7 +183,7 @@ func (p *programInstance) sync() {
 }
 
 func (p *programInstance) Value(name string) (any, bool) {
-	if p == nil || !p.value.IsValid() {
+	if p == nil || !p.value.IsValid() || !p.p.values[name] {
 		return nil, false
 	}
 	p.sync()
@@ -468,6 +470,31 @@ func writeLine(b *strings.Builder, st syntax.Setup, parseLine int) {
 		line = 1
 	}
 	fmt.Fprintf(b, "//line %s:%d\n", st.Src, line)
+}
+
+// valueNames lists the variables and constants a setup body declares. A bare
+// word elsewhere in the design that is not one of them is a literal, not a
+// setup expression.
+func valueNames(code string) (map[string]bool, error) {
+	f, err := parser.ParseFile(token.NewFileSet(), "_.go", "package setup\n"+code, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]bool{}
+	for _, d := range f.Decls {
+		gen, ok := d.(*ast.GenDecl)
+		if !ok || (gen.Tok != token.VAR && gen.Tok != token.CONST) {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			if vs, ok := spec.(*ast.ValueSpec); ok {
+				for _, name := range vs.Names {
+					out[name.Name] = true
+				}
+			}
+		}
+	}
+	return out, nil
 }
 
 func functionNames(code string) (map[string]bool, error) {

@@ -4,6 +4,7 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -874,6 +875,225 @@ Text { text: formatf("%d", count) }`)},
 	}
 	if got := mounted(); got != "true" {
 		t.Fatalf("shown fragment did not mount: %s", got)
+	}
+	if _, _, err := scopes.For("Main.goi", "").Call("toggle", nil); err != nil {
+		t.Fatal(err)
+	}
+	tr.ApplyExpressions()
+	if got := mounted(); got != "false" {
+		t.Fatalf("hidden fragment did not unmount: %s", got)
+	}
+}
+
+// TestSetupKeepsBarePropertyLiterals guards the case where a setup block used
+// to make every bare word look like a setup value, so `background: red` and an
+// enum such as `role: titleLarge` were missed.
+func TestSetupKeepsBarePropertyLiterals(t *testing.T) {
+	f, diag := syntax.ParseNamed([]byte(`setup {
+	var count = 1
+}
+Window {
+	Rectangle {
+		id: box
+		background: red
+		borderColor: red
+	}
+	Text { id: label text: formatf("%d", count) role: titleLarge }
+}`), "Main.goi")
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	scopes, err := setup.New(f.Setups, f.Vars, f.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := tree.Build(f, &tree.Hooks{Setup: scopes.For})
+	if err != nil {
+		t.Fatal(err)
+	}
+	box, ok := tr.ByID("box")
+	if !ok {
+		t.Fatal("no box")
+	}
+	if v, _ := box.Base().PropValue("background"); v != uint32(0xff0000ff) {
+		t.Fatalf("background = %#v", v)
+	}
+	if v, _ := box.Base().PropValue("borderColor"); v != uint32(0xff0000ff) {
+		t.Fatalf("borderColor = %#v", v)
+	}
+	if v := MustByID[*Text](&Window{tree: tr}, "label").Role.Get(); v != "titleLarge" {
+		t.Fatalf("role = %q", v)
+	}
+}
+
+// TestFragmentOverrideExpressionUsesCallerSetup keeps a fragment root's literal
+// defaults while the caller's visible: show comes from the caller's setup.
+func TestFragmentOverrideExpressionUsesCallerSetup(t *testing.T) {
+	fsys := fstest.MapFS{
+		"Main.goi": {Data: []byte(`import Part "./Part.goi"
+setup {
+	var show bool
+	func toggle() { show = !show }
+}
+Window { Part { visible: show } }`)},
+		"Part.goi": {Data: []byte(`setup {
+	var count = 1
+}
+Column {
+	id: part
+	visible: false
+	background: red
+	Text { text: formatf("%d", count) }
+}`)},
+	}
+	b, err := loadBundle(fsys, "Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopes, err := setup.New(b.File.Setups, b.File.Vars, b.File.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := tree.Build(b.File, &tree.Hooks{Setup: scopes.For})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopes.Bind(tr)
+	tr.ApplyExpressions()
+	part, ok := tr.ByID("part")
+	if !ok {
+		t.Fatal("no part")
+	}
+	if part.Base().Visible() {
+		t.Fatal("visible: show should start hidden")
+	}
+	if v, _ := part.Base().PropValue("background"); v != uint32(0xff0000ff) {
+		t.Fatalf("background = %#v", v)
+	}
+	if _, _, err := scopes.For("Main.goi", "").Call("toggle", nil); err != nil {
+		t.Fatal(err)
+	}
+	tr.ApplyExpressions()
+	if !part.Base().Visible() {
+		t.Fatal("the caller's show should make the fragment visible")
+	}
+	if v, _ := part.Base().PropValue("background"); v != uint32(0xff0000ff) {
+		t.Fatalf("background after toggle = %#v", v)
+	}
+}
+
+// TestSetupPropValueUsesCallerSetup covers a prop passed as a caller setup
+// value: the substituted property must resolve in the caller's file.
+func TestSetupPropValueUsesCallerSetup(t *testing.T) {
+	fsys := fstest.MapFS{
+		"Main.goi": {Data: []byte(`import Part "./Part.goi"
+setup {
+	var name = "Kaan"
+	var show = true
+}
+Window { Column {
+	Part { title: name }
+	Part { show: show }
+} }`)},
+		"Part.goi": {Data: []byte(`props { title string show bool }
+Column {
+	Text { text: props.title }
+	if props.show {
+		Text { text: "shown" }
+	}
+}`)},
+	}
+	b, err := loadBundle(fsys, "Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopes, err := setup.New(b.File.Setups, b.File.Vars, b.File.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := tree.Build(b.File, &tree.Hooks{Setup: scopes.For})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr.ApplyExpressions()
+	var texts []string
+	for _, n := range tr.All() {
+		if txt, ok := n.(*Text); ok && txt.Visible() {
+			texts = append(texts, txt.Text.Get())
+		}
+	}
+	joined := fmt.Sprint(texts)
+	if !strings.Contains(joined, "Kaan") || !strings.Contains(joined, "shown") {
+		t.Fatalf("texts = %v", texts)
+	}
+}
+
+// TestSetupLifecycleFollowsVisibleProp is the same rule for `visible: show` on
+// a fragment call rather than an if arm.
+func TestSetupLifecycleFollowsVisibleProp(t *testing.T) {
+	fsys := fstest.MapFS{
+		"Main.goi": {Data: []byte(`import Part "./Part.goi"
+setup {
+	var show bool
+	func toggle() { show = !show }
+}
+Window { Part { visible: show } }`)},
+		"Part.goi": {Data: []byte(`setup {
+	var mounted bool
+	var count int
+	func onMount() { mounted = true }
+	func onUnmount() { mounted = false }
+}
+Text { text: formatf("%d", count) }`)},
+	}
+	b, err := loadBundle(fsys, "Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopes, err := setup.New(b.File.Setups, b.File.Vars, b.File.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sb := setupBuild{
+		hook: scopes.For, bind: scopes.Bind, err: scopes.Err,
+		instance: scopes.Note, visible: scopes.SetVisible,
+		start: scopes.Start, stop: scopes.Unmount,
+	}
+	tr, err := tree.Build(b.File, &tree.Hooks{Setup: sb.hook, Visibility: sb.visible})
+	if err != nil {
+		t.Fatal(err)
+	}
+	noteSetups(sb, tr)
+	sb.bind(tr)
+	a := newHeadlessApp()
+	a.startSetups(sb)
+	for i := 0; i < 8; i++ {
+		a.drainPosted()
+		tr.ApplyExpressions()
+	}
+	partScope := ""
+	for _, n := range tr.All() {
+		if base := n.Base(); base != nil && base.AST != nil && base.AST.Src == "Part.goi" {
+			partScope = base.AST.Scope
+			break
+		}
+	}
+	mounted := func() string {
+		v, _ := scopes.For("Part.goi", partScope).Value("mounted")
+		return fmt.Sprint(v)
+	}
+	if got := mounted(); got != "false" {
+		t.Fatalf("hidden fragment mounted: %s", got)
+	}
+	if _, _, err := scopes.For("Main.goi", "").Call("toggle", nil); err != nil {
+		t.Fatal(err)
+	}
+	tr.ApplyExpressions()
+	for i := 0; i < 8; i++ {
+		a.drainPosted()
+	}
+	if got := mounted(); got != "true" {
+		t.Fatalf("visible fragment did not mount: %s", got)
 	}
 	if _, _, err := scopes.For("Main.goi", "").Call("toggle", nil); err != nil {
 		t.Fatal(err)

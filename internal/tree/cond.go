@@ -37,6 +37,10 @@ type condBranch struct {
 // buildBlock builds every arm of blk into parent and registers it for the
 // per-frame pass.
 func (t *Tree) buildBlock(blk *syntax.Block, parent *NodeBase, hooks *Hooks, outer *condBranch) error {
+	src, scopeID := blk.Src, nodeScope(parent)
+	if blk.CallerSrc != "" {
+		src, scopeID = blk.CallerSrc, blk.CallerScope
+	}
 	if blk.Kind == syntax.BlockSwitch {
 		cases := make([][]syntax.Value, len(blk.Branches))
 		for i, br := range blk.Branches {
@@ -45,7 +49,7 @@ func (t *Tree) buildBlock(blk *syntax.Block, parent *NodeBase, hooks *Hooks, out
 		for i, br := range blk.Branches {
 			cb := &condBranch{
 				subject: blk.Subject, cases: cases, isSwitch: true,
-				arm: i, parent: outer, scope: t.scope, src: blk.Src, scopeID: nodeScope(parent),
+				arm: i, parent: outer, scope: t.scope, src: src, scopeID: scopeID,
 			}
 			t.conds = append(t.conds, cb)
 			if err := t.buildMembers(br.Members, parent, hooks, cb); err != nil {
@@ -62,7 +66,7 @@ func (t *Tree) buildBlock(blk *syntax.Block, parent *NodeBase, hooks *Hooks, out
 	}
 	arm := 0
 	for _, br := range blk.Branches {
-		cb := &condBranch{conds: conds, arm: -1, parent: outer, scope: t.scope, src: blk.Src, scopeID: nodeScope(parent)}
+		cb := &condBranch{conds: conds, arm: -1, parent: outer, scope: t.scope, src: src, scopeID: scopeID}
 		if br.Cond != nil {
 			cb.arm = arm
 			arm++

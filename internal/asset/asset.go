@@ -357,7 +357,7 @@ func Preview(f *syntax.File) (*syntax.File, syntax.Diagnostics) {
 		}
 	}
 	root := copyElement(f.Root)
-	if diag := substitute(root, props, f.Src, &out); !diag.Empty() {
+	if diag := substitute(root, props, f.Src, &out, f.Src, ""); !diag.Empty() {
 		return nil, diag
 	}
 	if len(props) > 0 {
@@ -606,7 +606,7 @@ func (l *loader) instance(target string, call *syntax.Element, callerAliases map
 	if diag := slotLens(body, counts, target); !diag.Empty() {
 		return nil, diag
 	}
-	if diag := substitute(body, props, target, f); !diag.Empty() {
+	if diag := substitute(body, props, target, f, call.Src, call.Scope); !diag.Empty() {
 		return nil, diag
 	}
 	// Before the caller's children land in a slot, and before the caller's own
@@ -617,7 +617,7 @@ func (l *loader) instance(target string, call *syntax.Element, callerAliases map
 	if id, ok := literalID(call); ok && !declared["id"] {
 		scopeIDs(body, id)
 	}
-	applyOverrides(body, overrides)
+	applyOverrides(body, overrides, call.Scope)
 
 	found, diag := l.fillSlot(body, slots, callerAliases, l.aliases(f), append(stack, target))
 	if !diag.Empty() {
@@ -773,51 +773,69 @@ func (l *loader) fillMembers(members []syntax.Member, slots map[string][]*syntax
 
 // substitute replaces `props.name` values in place and reports a prop the
 // fragment never declared.
-func substitute(el *syntax.Element, props map[string]syntax.Value, from string, f *syntax.File) syntax.Diagnostics {
+func substitute(el *syntax.Element, props map[string]syntax.Value, from string, f *syntax.File, callerSrc, callerScope string) syntax.Diagnostics {
 	var diag syntax.Diagnostics
 	var walk func(*syntax.Element)
 	walk = func(e *syntax.Element) {
-		walkMembers(e.Members, props, from, f, &diag, walk)
+		walkMembers(e.Members, props, from, f, callerSrc, callerScope, &diag, walk)
 	}
 	walk(el)
 	return diag
 }
 
 // walkMembers substitutes props in a member list, descending into block arms.
-func walkMembers(members []syntax.Member, props map[string]syntax.Value, from string, f *syntax.File, diag *syntax.Diagnostics, walk func(*syntax.Element)) {
+func walkMembers(members []syntax.Member, props map[string]syntax.Value, from string, f *syntax.File, callerSrc, callerScope string, diag *syntax.Diagnostics, walk func(*syntax.Element)) {
 	for _, m := range members {
 		switch v := m.(type) {
 		case *syntax.Property:
-			v.Value, *diag = substValue(v.Value, props, v.Src, from, *diag)
+			var changed bool
+			v.Value, changed, *diag = substValue(v.Value, props, v.Src, from, callerSrc, callerScope, *diag)
+			if changed {
+				v.CallerSrc, v.CallerScope = callerSrc, callerScope
+			}
 		case *syntax.Element:
 			walk(v)
 		case *syntax.Block:
+			blockChanged := false
 			if v.Kind == syntax.BlockFor && v.Range != nil {
-				v.Range, *diag = substValue(v.Range, props, v.Src, from, *diag)
+				var changed bool
+				v.Range, changed, *diag = substValue(v.Range, props, v.Src, from, callerSrc, callerScope, *diag)
+				blockChanged = blockChanged || changed
 			}
 			if v.Kind == syntax.BlockSwitch && v.Subject != nil {
-				v.Subject, *diag = substValue(v.Subject, props, v.Src, from, *diag)
+				var changed bool
+				v.Subject, changed, *diag = substValue(v.Subject, props, v.Src, from, callerSrc, callerScope, *diag)
+				blockChanged = blockChanged || changed
 			}
 			for i := range v.Branches {
 				br := &v.Branches[i]
 				if br.Cond != nil {
-					br.Cond, *diag = substValue(br.Cond, props, v.Src, from, *diag)
+					var changed bool
+					br.Cond, changed, *diag = substValue(br.Cond, props, v.Src, from, callerSrc, callerScope, *diag)
+					blockChanged = blockChanged || changed
 				}
 				for j, val := range br.Vals {
-					br.Vals[j], *diag = substValue(val, props, v.Src, from, *diag)
+					var changed bool
+					br.Vals[j], changed, *diag = substValue(val, props, v.Src, from, callerSrc, callerScope, *diag)
+					blockChanged = blockChanged || changed
 				}
-				walkMembers(br.Members, props, from, f, diag, walk)
+				walkMembers(br.Members, props, from, f, callerSrc, callerScope, diag, walk)
+			}
+			if blockChanged {
+				v.CallerSrc, v.CallerScope = callerSrc, callerScope
 			}
 		}
 	}
 }
 
-// substValue returns a value with every `props.name` reference replaced.
-func substValue(v syntax.Value, props map[string]syntax.Value, src, from string, diag syntax.Diagnostics) (syntax.Value, syntax.Diagnostics) {
+// substValue returns a value with every `props.name` reference replaced. changed
+// reports that a caller value now sits in the tree, so the enclosing property or
+// block resolves setup names in the caller's file.
+func substValue(v syntax.Value, props map[string]syntax.Value, src, from, callerSrc, callerScope string, diag syntax.Diagnostics) (syntax.Value, bool, syntax.Diagnostics) {
 	switch x := v.(type) {
 	case *syntax.Ref:
 		if x.ID != "props" {
-			return x, diag
+			return x, false, diag
 		}
 		got, ok := props[x.Prop]
 		if !ok {
@@ -827,7 +845,7 @@ func substValue(v syntax.Value, props map[string]syntax.Value, src, from string,
 				Src:     src,
 				Message: fmt.Sprintf("%s has no prop %q", from, x.Prop),
 			})
-			return x, diag
+			return x, false, diag
 		}
 		if got == nil {
 			diag = append(diag, syntax.Diagnostic{
@@ -836,13 +854,14 @@ func substValue(v syntax.Value, props map[string]syntax.Value, src, from string,
 				Src:     src,
 				Message: fmt.Sprintf("props.%s is not set: a slice or a map has no literal default, so %s must pass one", x.Prop, from),
 			})
-			return x, diag
+			return x, false, diag
 		}
 		// Copy: the value belongs to the caller (or to the fragment's default),
 		// and the expansion rewrites ids and references in place.
-		return copyValue(got), diag
+		return copyValue(got), true, diag
 	case *syntax.Call:
 		callee := x.Callee
+		changed := false
 		// A builtin (formatf) has no callee; only a handler call names a prop.
 		if callee != nil && callee.ID == "props" {
 			// `onClick: props.onOpen(item.id)`: the instance passed the real
@@ -855,7 +874,7 @@ func substValue(v syntax.Value, props map[string]syntax.Value, src, from string,
 					Src:     src,
 					Message: fmt.Sprintf("%s has no prop %q", from, callee.Prop),
 				})
-				return x, diag
+				return x, false, diag
 			}
 			ref, ok := got.(*syntax.Ref)
 			if !ok || (ref.ID != "bridge" && ref.ID != "data") {
@@ -865,43 +884,49 @@ func substValue(v syntax.Value, props map[string]syntax.Value, src, from string,
 					Src:     src,
 					Message: fmt.Sprintf("props.%s is a handler; the instance must pass one, as %s: bridge.onSomething", callee.Prop, callee.Prop),
 				})
-				return x, diag
+				return x, false, diag
 			}
 			callee = ref
+			changed = true
 		}
 		out := &syntax.Call{At: x.At, Callee: callee, Name: x.Name, Args: make([]syntax.Value, len(x.Args))}
 		for i, a := range x.Args {
-			out.Args[i], diag = substValue(a, props, src, from, diag)
+			var argChanged bool
+			out.Args[i], argChanged, diag = substValue(a, props, src, from, callerSrc, callerScope, diag)
+			changed = changed || argChanged
 		}
-		return out, diag
+		return out, changed, diag
 	case *syntax.Map:
 		out := &syntax.Map{At: x.At, Entries: make([]syntax.MapEntry, len(x.Entries))}
+		changed := false
 		for i, entry := range x.Entries {
-			entry.Value, diag = substValue(entry.Value, props, src, from, diag)
+			var entryChanged bool
+			entry.Value, entryChanged, diag = substValue(entry.Value, props, src, from, callerSrc, callerScope, diag)
+			changed = changed || entryChanged
 			out.Entries[i] = entry
 		}
-		return out, diag
+		return out, changed, diag
 	case *syntax.Binary:
-		left, diag := substValue(x.Left, props, src, from, diag)
-		right, diag := substValue(x.Right, props, src, from, diag)
-		return &syntax.Binary{At: x.At, Op: x.Op, Left: left, Right: right}, diag
+		left, lc, diag := substValue(x.Left, props, src, from, callerSrc, callerScope, diag)
+		right, rc, diag := substValue(x.Right, props, src, from, callerSrc, callerScope, diag)
+		return &syntax.Binary{At: x.At, Op: x.Op, Left: left, Right: right}, lc || rc, diag
 	case *syntax.Unary:
-		xv, diag := substValue(x.X, props, src, from, diag)
-		return &syntax.Unary{At: x.At, Op: x.Op, X: xv}, diag
+		xv, changed, diag := substValue(x.X, props, src, from, callerSrc, callerScope, diag)
+		return &syntax.Unary{At: x.At, Op: x.Op, X: xv}, changed, diag
 	case *syntax.Ternary:
-		cond, diag := substValue(x.Cond, props, src, from, diag)
-		then, diag := substValue(x.Then, props, src, from, diag)
-		els, diag := substValue(x.Else, props, src, from, diag)
-		return &syntax.Ternary{At: x.At, Cond: cond, Then: then, Else: els}, diag
-
+		cond, cc, diag := substValue(x.Cond, props, src, from, callerSrc, callerScope, diag)
+		then, tc, diag := substValue(x.Then, props, src, from, callerSrc, callerScope, diag)
+		els, ec, diag := substValue(x.Else, props, src, from, callerSrc, callerScope, diag)
+		return &syntax.Ternary{At: x.At, Cond: cond, Then: then, Else: els}, cc || tc || ec, diag
 	}
-	return v, diag
+	return v, false, diag
 }
 
 // applyOverrides writes the instance's properties onto the fragment root,
 // replacing a property the fragment already set instead of duplicating it.
-func applyOverrides(el *syntax.Element, props []*syntax.Property) {
+func applyOverrides(el *syntax.Element, props []*syntax.Property, scope string) {
 	for _, p := range props {
+		p.CallerSrc, p.CallerScope = p.Src, scope
 		replaced := false
 		for i, m := range el.Members {
 			existing, ok := m.(*syntax.Property)
@@ -978,6 +1003,7 @@ func setScopeMembers(members []syntax.Member, id string) {
 func copyBlock(b *syntax.Block) *syntax.Block {
 	out := &syntax.Block{
 		Kind: b.Kind, At: b.At, Close: b.Close, Src: b.Src,
+		CallerSrc: b.CallerSrc, CallerScope: b.CallerScope,
 		KeyVar: b.KeyVar, KeyAt: b.KeyAt, ValVar: b.ValVar, ValAt: b.ValAt,
 		Range: copyValue(b.Range), RangeAt: b.RangeAt,
 		Subject: copyValue(b.Subject), SubjectAt: b.SubjectAt,
@@ -1005,6 +1031,7 @@ func copyMembers(members []syntax.Member) []syntax.Member {
 		case *syntax.Property:
 			out = append(out, &syntax.Property{
 				Name: v.Name, NameAt: v.NameAt, Value: copyValue(v.Value), Src: v.Src,
+				CallerSrc: v.CallerSrc, CallerScope: v.CallerScope,
 			})
 		case *syntax.Element:
 			out = append(out, copyElement(v))

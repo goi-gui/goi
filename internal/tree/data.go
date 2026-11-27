@@ -55,7 +55,10 @@ type eachBlock struct {
 	// OnEach can hook the rows it builds.
 	listName string
 	src      string
-	arm      []syntax.Member
+	// setupScope is the fragment instance a prop-provided range resolves
+	// against; empty means the node's own scope.
+	setupScope string
+	arm        []syntax.Member
 	// parent is the element the arm members are built under, and at is the
 	// slot in its child list where the loop was declared. A refill inserts the
 	// new rows there, not at the end, so a later sibling (a map marker, say)
@@ -296,6 +299,11 @@ func (t *Tree) buildFor(blk *syntax.Block, parent *NodeBase, hooks *Hooks) error
 		hooks:  hooks,
 		owner:  owner,
 	}
+	if blk.CallerSrc != "" {
+		eb.src, eb.setupScope = blk.CallerSrc, blk.CallerScope
+	} else {
+		eb.setupScope = nodeScope(parent)
+	}
 	if len(blk.Branches) > 0 {
 		eb.arm = blk.Branches[0].Members
 	}
@@ -426,7 +434,7 @@ func (t *Tree) rangeValue(eb *eachBlock) (any, bool) {
 			}
 		}
 	}
-	c := evalCtx{tree: t, sc: eb.scope, src: eb.src, scopeID: nodeScope(eb.parent)}
+	c := evalCtx{tree: t, sc: eb.scope, src: eb.src, scopeID: eb.setupScope}
 	return c.eval(eb.rng, 0)
 }
 

@@ -3169,3 +3169,16 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   bridge-backed prop follows `ui.SetData`. The interpreter fallback materializes
   an instance that has props, because one shared base cannot hold per-instance
   values.
+- **A bare word is a setup value only when a var or const declares it.** The
+  generated value closure returned nil for every unknown name, and the Go side
+  read that as a value, so in any file with a setup block `background: red`,
+  `role: titleLarge` and plain text were stored as expressions and wrote
+  nothing. The program and the interpreter fallback now keep the declared value
+  names; everything else falls through to the literal path.
+- **A property or block value carries the file and instance it was written
+  in.** A fragment call's `visible: show`, or a prop passed as a caller setup
+  value, is substituted into the fragment body, where the fragment's own setup
+  does not declare `show`. Properties and blocks now record the caller's
+  source and scope, and the expression, condition and range passes resolve
+  setup names there. Literal defaults such as `visible: false` on the fragment
+  root still apply when the caller does not override them.

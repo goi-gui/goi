@@ -99,10 +99,11 @@ type Scope struct {
 	i *interp.Interpreter
 	// names are the declarations the body wrote, so an enum literal in a
 	// property does not pay an interpreter lookup on every frame.
-	names    map[string]bool
-	stateful map[string]bool
-	values   map[string]reflect.Value
-	funcs    map[string]reflect.Value
+	names     map[string]bool
+	dataNames map[string]bool
+	stateful  map[string]bool
+	values    map[string]reflect.Value
+	funcs     map[string]reflect.Value
 
 	// The bridge callbacks are attached after the tree exists.
 	data    func(string) (any, bool)
@@ -215,6 +216,7 @@ func newScope(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape)
 		}
 	}
 	s.names, _ = declaredNames(body)
+	s.dataNames, _ = valueNames(body)
 	s.stateful, _ = statefulFuncs(body)
 	return s, nil
 }
@@ -586,7 +588,7 @@ func (s *Scope) Value(name string) (any, bool) {
 	if s == nil || name == "" {
 		return nil, false
 	}
-	if s.names != nil && !s.names[name] {
+	if s.dataNames != nil && !s.dataNames[name] {
 		return nil, false
 	}
 	if v, ok := s.values[name]; ok {

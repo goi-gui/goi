@@ -354,7 +354,11 @@ func (t *Tree) build(el *syntax.Element, parent *NodeBase, hooks *Hooks) (Node, 
 			}
 			continue
 		}
-		if !b.applyValue(p.Name, p.Value) {
+		src, scope := nodeSource(b), nodeScope(b)
+		if p.CallerSrc != "" {
+			src, scope = p.CallerSrc, p.CallerScope
+		}
+		if !b.applyValueFrom(p.Name, p.Value, src, scope) {
 			return nil, fmt.Errorf("%s.%s: value not valid for the property type", el.Name, p.Name)
 		}
 	}

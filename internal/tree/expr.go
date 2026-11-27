@@ -18,6 +18,10 @@ import (
 type exprSpec struct {
 	name  string
 	value syntax.Value
+	// src and scope are where the expression was written: a fragment call's
+	// override may name the caller's setup, not the fragment's.
+	src   string
+	scope string
 }
 
 // isExpression reports whether a value needs resolving rather than a plain
@@ -69,11 +73,16 @@ func isColorRef(v syntax.Value) bool {
 // expression. Expressions are recorded for the frame loop instead of stored in
 // the property cell directly.
 func (b *NodeBase) applyValue(name string, v syntax.Value) bool {
+	return b.applyValueFrom(name, v, nodeSource(b), nodeScope(b))
+}
+
+// applyValueFrom is applyValue for a value written in src and instance scope.
+func (b *NodeBase) applyValueFrom(name string, v syntax.Value, src, scope string) bool {
 	// A bare name that a setup block declared is a value, not an enum or a
 	// string literal, so it has to be re-read with the other expressions.
 	if id, ok := v.(*syntax.Ident); ok && b.tree != nil {
-		if _, ok := b.tree.setupValue(nodeSource(b), nodeScope(b), id.Val); ok {
-			return b.setExpr(name, v)
+		if _, ok := b.tree.setupValue(src, scope, id.Val); ok {
+			return b.setExprFrom(name, v, src, scope)
 		}
 	}
 	// A colour reference is a literal for the cell, though it reads like a
@@ -89,13 +98,13 @@ func (b *NodeBase) applyValue(name string, v syntax.Value) bool {
 		return true
 	}
 	if isExpression(v) || b.isLoopVar(v) {
-		return b.setExpr(name, v)
+		return b.setExprFrom(name, v, src, scope)
 	}
 	b.clearExpr(name)
 	return b.SetPropLiteral(name, v)
 }
 
-func (b *NodeBase) setExpr(name string, v syntax.Value) bool {
+func (b *NodeBase) setExprFrom(name string, v syntax.Value, src, scope string) bool {
 	b.properties()
 	if _, ok := b.byName[name]; !ok {
 		return false
@@ -103,10 +112,12 @@ func (b *NodeBase) setExpr(name string, v syntax.Value) bool {
 	for j := range b.exprs {
 		if b.exprs[j].name == name {
 			b.exprs[j].value = v
+			b.exprs[j].src = src
+			b.exprs[j].scope = scope
 			return true
 		}
 	}
-	b.exprs = append(b.exprs, exprSpec{name: name, value: v})
+	b.exprs = append(b.exprs, exprSpec{name: name, value: v, src: src, scope: scope})
 	if b.tree != nil && !b.exprListed {
 		b.exprListed = true
 		b.tree.exprNodes = append(b.tree.exprNodes, b)
@@ -460,7 +471,11 @@ func (b *NodeBase) applyExpressions() {
 		if r, ok := spec.value.(*syntax.Ref); ok && (r.ID == "theme" || r.ID == "customColor") {
 			continue
 		}
-		c := evalCtx{tree: b.tree, sc: b.scope, src: nodeSource(b), scopeID: nodeScope(b)}
+		src, scope := spec.src, spec.scope
+		if src == "" {
+			src = nodeSource(b)
+		}
+		c := evalCtx{tree: b.tree, sc: b.scope, src: src, scopeID: scope}
 		if v, ok := c.evalSpec(b, spec, 0); ok {
 			b.writeExpr(spec.name, v)
 		}
