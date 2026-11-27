@@ -187,8 +187,10 @@ func sameBridgeType(a, b syntax.Type) bool {
 }
 
 type loader struct {
-	fsys    fs.FS
-	sources map[string][]byte
+	fsys fs.FS
+	// nextScope numbers fragment instances, so each gets its own setup state.
+	nextScope int
+	sources   map[string][]byte
 	// files holds every parsed file, keyed by its path from the FS root.
 	files map[string]*syntax.File
 	order []string
@@ -583,6 +585,8 @@ func (l *loader) instance(target string, call *syntax.Element, callerAliases map
 	}
 
 	body := copyElement(f.Root)
+	l.nextScope++
+	setScope(body, fmt.Sprintf("%s#%d", target, l.nextScope))
 	if diag := slotLens(body, counts, target); !diag.Empty() {
 		return nil, diag
 	}
@@ -906,10 +910,39 @@ func copyElement(el *syntax.Element) *syntax.Element {
 		Open:     el.Open,
 		Close:    el.Close,
 		Src:      el.Src,
+		Scope:    el.Scope,
 		Members:  copyMembers(el.Members),
 		Resolved: el.Resolved,
 	}
 	return out
+}
+
+// setScope marks a fragment body and its descendants with the instance id.
+func setScope(el *syntax.Element, id string) {
+	el.Scope = id
+	for _, m := range el.Members {
+		switch x := m.(type) {
+		case *syntax.Element:
+			setScope(x, id)
+		case *syntax.Block:
+			for i := range x.Branches {
+				setScopeMembers(x.Branches[i].Members, id)
+			}
+		}
+	}
+}
+
+func setScopeMembers(members []syntax.Member, id string) {
+	for _, m := range members {
+		switch x := m.(type) {
+		case *syntax.Element:
+			setScope(x, id)
+		case *syntax.Block:
+			for i := range x.Branches {
+				setScopeMembers(x.Branches[i].Members, id)
+			}
+		}
+	}
 }
 
 // copyBlock deep-copies a control block, so two instances of one fragment do not

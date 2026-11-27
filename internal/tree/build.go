@@ -101,7 +101,7 @@ type Tree struct {
 	// report receives runtime errors, when the app supplied Hooks.Error.
 	report func(error)
 	// setup resolves a file's setup block, when the app supplied Hooks.Setup.
-	setup func(string) SetupScope
+	setup func(string, string) SetupScope
 	// post queues work on the UI goroutine for a Terminal reader.
 	post func(func())
 	// window runs a window control a design called through an event.

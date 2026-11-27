@@ -18,12 +18,30 @@ import (
 	"github.com/traefik/yaegi/stdlib"
 )
 
-// Registry holds one interpreter per design file. A file's names are visible
-// only to the elements written in that file, which the tree resolves by
-// Element.Src.
+// Registry holds one interpreter per design file and fragment instance. A
+// file's names are visible only to its own elements; every call of a fragment
+// gets independent setup state.
 type Registry struct {
 	scopes map[string]*Scope
+	// templates are one setup body per source file. A fragment instance gets a
+	// fresh interpreter from its template.
+	templates map[string]*template
+	// baseUsed marks a source whose eager scope now belongs to its first
+	// fragment instance. The next instance gets a clone.
+	baseUsed map[string]bool
+	// Live-tree callbacks, copied into scopes created after Bind.
+	data    func(string) (any, bool)
+	version func() uint64
+	call    func(string, []any) (any, error)
 }
+
+type template struct {
+	setup  syntax.Setup
+	vars   []syntax.DataVar
+	shapes []syntax.DataShape
+}
+
+func scopeKey(src, scope string) string { return src + "\x00" + scope }
 
 // Scope is one file's interpreted setup declarations.
 type Scope struct {
@@ -46,16 +64,20 @@ type Scope struct {
 // New evaluates every setup block. A broken block is an error naming the file
 // and the line inside it, so LoadWindow can report it like a design error.
 func New(setups []syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape) (*Registry, error) {
-	r := &Registry{scopes: map[string]*Scope{}}
+	r := &Registry{scopes: map[string]*Scope{}, templates: map[string]*template{}, baseUsed: map[string]bool{}}
 	for _, st := range setups {
-		if _, duplicate := r.scopes[st.Src]; duplicate {
+		if _, duplicate := r.templates[st.Src]; duplicate {
 			return nil, fmt.Errorf("%s: setup may appear only once per file", st.Src)
 		}
+		r.templates[st.Src] = &template{setup: st, vars: vars, shapes: shapes}
 		sc, err := newScope(st, vars, shapes)
 		if err != nil {
 			return nil, err
 		}
-		r.scopes[st.Src] = sc
+		r.scopes[scopeKey(st.Src, "")] = sc
+		if st.Src == "" {
+			r.baseUsed[st.Src] = true
+		}
 	}
 	return r, nil
 }
@@ -89,13 +111,20 @@ func (r *Registry) Bind(tr *tree.Tree) {
 	if r == nil || tr == nil {
 		return
 	}
+	r.data = tr.Data
+	r.version = tr.DataVersion
+	r.call = tr.CallBridge
 	for _, sc := range r.scopes {
-		sc.data = tr.Data
-		sc.version = tr.DataVersion
-		sc.call = tr.CallBridge
-		sc.synced = ^uint64(0)
-		_ = sc.syncBridge()
+		r.bind(sc)
 	}
+}
+
+func (r *Registry) bind(sc *Scope) {
+	sc.data = r.data
+	sc.version = r.version
+	sc.call = r.call
+	sc.synced = ^uint64(0)
+	_ = sc.syncBridge()
 }
 
 func (s *Scope) bridgeData(name string) (any, bool) {
@@ -197,15 +226,39 @@ func asUint32(v any) uint32 {
 	return 0
 }
 
-// For returns the scope of one source file, or nil when it declares none.
-func (r *Registry) For(src string) tree.SetupScope {
+// For returns the scope of one source file and fragment instance. An instance
+// not seen before gets a fresh interpreter from the file's template.
+func (r *Registry) For(src, scope string) tree.SetupScope {
 	if r == nil {
 		return nil
 	}
-	if sc := r.scopes[src]; sc != nil {
+	key := scopeKey(src, scope)
+	if sc := r.scopes[key]; sc != nil {
+		if scope == "" {
+			r.baseUsed[src] = true
+		}
 		return sc
 	}
-	return nil
+	// The eager scope of a fragment file is not used by any entry element; let
+	// its first instance take it instead of paying for an unused interpreter.
+	if scope != "" && !r.baseUsed[src] {
+		if sc := r.scopes[scopeKey(src, "")]; sc != nil {
+			r.baseUsed[src] = true
+			r.scopes[key] = sc
+			return sc
+		}
+	}
+	t := r.templates[src]
+	if t == nil {
+		return nil
+	}
+	sc, err := newScope(t.setup, t.vars, t.shapes)
+	if err != nil {
+		return nil
+	}
+	r.bind(sc)
+	r.scopes[key] = sc
+	return sc
 }
 
 // Value reads a setup variable. It is evaluated on every read so a function

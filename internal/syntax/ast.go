@@ -322,6 +322,10 @@ type Element struct {
 	// Src names the file this element came from. Pos values on this element are
 	// offsets into that file, not into the file being built.
 	Src string
+	// Scope names the fragment instance that owns this element, empty for the
+	// entry page. Two calls of one fragment get distinct scopes, so their setup
+	// variables do not mix.
+	Scope string
 	// Members preserves source order so instantiation and error messages are
 	// predictable. Use Props/Children to read them by kind.
 	Members []Member

@@ -72,7 +72,7 @@ func (b *NodeBase) applyValue(name string, v syntax.Value) bool {
 	// A bare name that a setup block declared is a value, not an enum or a
 	// string literal, so it has to be re-read with the other expressions.
 	if id, ok := v.(*syntax.Ident); ok && b.tree != nil {
-		if _, ok := b.tree.setupValue(nodeSource(b), id.Val); ok {
+		if _, ok := b.tree.setupValue(nodeSource(b), nodeScope(b), id.Val); ok {
 			return b.setExpr(name, v)
 		}
 	}
@@ -459,7 +459,7 @@ func (b *NodeBase) applyExpressions() {
 		if r, ok := spec.value.(*syntax.Ref); ok && (r.ID == "theme" || r.ID == "customColor") {
 			continue
 		}
-		c := evalCtx{tree: b.tree, sc: b.scope, src: nodeSource(b)}
+		c := evalCtx{tree: b.tree, sc: b.scope, src: nodeSource(b), scopeID: nodeScope(b)}
 		if v, ok := c.evalSpec(b, spec, 0); ok {
 			b.writeExpr(spec.name, v)
 		}
@@ -496,7 +496,7 @@ func (b *NodeBase) ResolveSize(availW, availH float64) {
 			b.writeNumber(spec.name, p.Val/100*scale)
 			continue
 		}
-		c := evalCtx{tree: b.tree, sc: b.scope, src: nodeSource(b)}
+		c := evalCtx{tree: b.tree, sc: b.scope, src: nodeSource(b), scopeID: nodeScope(b)}
 		if v, ok := c.evalSpec(b, spec, scale); ok {
 			if f, ok := v.(float64); ok {
 				b.writeNumber(spec.name, f)
@@ -529,10 +529,11 @@ type refKey struct {
 type evalCtx struct {
 	tree *Tree
 	// sc is the loop scope of the node being evaluated, so `row.title` reads
-	// the {#each} item. src is the file the expression was written in, so a
-	// bare name can resolve against that file's setup block.
-	sc  *scope
-	src string
+	// the {#each} item. src and scopeID locate the setup block of the file and
+	// fragment instance the expression was written in.
+	sc      *scope
+	src     string
+	scopeID string
 	// seen is the chain of references being evaluated, which is what stops a
 	// cycle. The chain is shallow, so a slice scan beats a map and the tree
 	// lends its scratch buffer: an expression pass allocates nothing.
@@ -575,7 +576,7 @@ func (c *evalCtx) eval(v syntax.Value, percent float64) (any, bool) {
 		if v, ok := scopeVar(c.sc, x.Val); ok {
 			return v, true
 		}
-		if v, ok := c.tree.setupValue(c.src, x.Val); ok {
+		if v, ok := c.tree.setupValue(c.src, c.scopeID, x.Val); ok {
 			return v, true
 		}
 		return x.Val, true
@@ -702,7 +703,7 @@ func (c *evalCtx) evalSetupCall(call *syntax.Call, percent float64) (any, bool) 
 	if c.tree == nil || c.src == "" {
 		return nil, false
 	}
-	if !c.tree.setupHasFunc(c.src, call.Name) {
+	if !c.tree.setupHasFunc(c.src, c.scopeID, call.Name) {
 		return nil, false
 	}
 	args := make([]any, len(call.Args))
@@ -713,7 +714,7 @@ func (c *evalCtx) evalSetupCall(call *syntax.Call, percent float64) (any, bool) 
 		}
 		args[i] = v
 	}
-	return c.tree.setupCall(c.src, call.Name, args)
+	return c.tree.setupCall(c.src, c.scopeID, call.Name, args)
 }
 
 func (c *evalCtx) evalBuiltin(call *syntax.Call, percent float64) (any, bool) {
@@ -1117,7 +1118,7 @@ func (c *evalCtx) evalRef(r *syntax.Ref) (any, bool) {
 		}
 		return nil, false
 	}
-	if v, ok := c.tree.setupValue(c.src, r.ID); ok {
+	if v, ok := c.tree.setupValue(c.src, c.scopeID, r.ID); ok {
 		if v, ok := dataValue(v, r.Prop); ok {
 			return v, true
 		}

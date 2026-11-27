@@ -11,17 +11,17 @@ type SetupScope interface {
 }
 
 // setupScope returns the setup block of src, or nil when the file has none.
-func (t *Tree) setupScope(src string) SetupScope {
+func (t *Tree) setupScope(src, scope string) SetupScope {
 	if t == nil || t.setup == nil {
 		return nil
 	}
-	return t.setup(src)
+	return t.setup(src, scope)
 }
 
 // setupValue resolves a setup variable. A struct keeps its shape so a later
 // field access can read it; scalars use the same normalization as bridge data.
-func (t *Tree) setupValue(src, name string) (any, bool) {
-	sc := t.setupScope(src)
+func (t *Tree) setupValue(src, scope, name string) (any, bool) {
+	sc := t.setupScope(src, scope)
 	if sc == nil {
 		return nil, false
 	}
@@ -37,15 +37,15 @@ func (t *Tree) setupValue(src, name string) (any, bool) {
 
 // setupHasFunc reports whether a bare call names a setup function, so the
 // evaluator does not evaluate its arguments a second time for a builtin.
-func (t *Tree) setupHasFunc(src, name string) bool {
-	sc := t.setupScope(src)
+func (t *Tree) setupHasFunc(src, scope, name string) bool {
+	sc := t.setupScope(src, scope)
 	return sc != nil && sc.HasFunc(name)
 }
 
 // setupCall invokes a setup function. found is false when the name is not a
 // function, so the expression engine can try its builtins.
-func (t *Tree) setupCall(src, name string, args []any) (any, bool) {
-	sc := t.setupScope(src)
+func (t *Tree) setupCall(src, scope, name string, args []any) (any, bool) {
+	sc := t.setupScope(src, scope)
 	if sc == nil {
 		return nil, false
 	}
@@ -70,6 +70,13 @@ func (t *Tree) CallBridge(name string, args []any) (any, error) {
 		return nil, fmt.Errorf("goi: no bridge to call %q on", name)
 	}
 	return t.bridge.CallValue(name, args)
+}
+
+func nodeScope(b *NodeBase) string {
+	if b == nil || b.AST == nil {
+		return ""
+	}
+	return b.AST.Scope
 }
 
 func nodeSource(b *NodeBase) string {

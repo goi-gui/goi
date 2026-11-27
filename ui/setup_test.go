@@ -173,7 +173,7 @@ Window { }`), "Main.goi")
 	if err := tr.SetHandler("onSave", func(name string) { saved = name }); err != nil {
 		t.Fatal(err)
 	}
-	sc := scopes.For("Main.goi")
+	sc := scopes.For("Main.goi", "")
 	if _, found, err := sc.Call("doSomething", nil); err != nil || !found {
 		t.Fatalf("doSomething = %v, %v", found, err)
 	}
@@ -182,5 +182,64 @@ Window { }`), "Main.goi")
 	}
 	if v, ok := sc.Value("seen"); !ok || v != "hello" {
 		t.Fatalf("seen = %v, %v", v, ok)
+	}
+}
+
+// TestSetupIsIndependentPerFragmentInstance is the three-counter case: each
+// call of a fragment gets its own setup variables.
+func TestSetupIsIndependentPerFragmentInstance(t *testing.T) {
+	fsys := fstest.MapFS{
+		"Main.goi": {Data: []byte(`import Part "./Part.goi"
+
+Window { Column {
+	Part {}
+	Part {}
+	Part {}
+} }`)},
+		"Part.goi": {Data: []byte(`setup {
+	var count int
+
+	func inc() { count++ }
+}
+
+Column {
+	Text { text: count }
+	Button { label: "inc" onClick: inc() }
+}`)},
+	}
+	b, diag := asset.Load(fsys, "Main.goi")
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	scopes, err := setup.New(b.File.Setups, b.File.Vars, b.File.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := tree.Build(b.File, &tree.Hooks{Setup: scopes.For})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopes.Bind(tr)
+	var buttons []*tree.Button
+	var texts []*tree.Text
+	for _, n := range tr.All() {
+		switch n := n.(type) {
+		case *tree.Button:
+			buttons = append(buttons, n)
+		case *tree.Text:
+			texts = append(texts, n)
+		}
+	}
+	if len(buttons) != 3 || len(texts) != 3 {
+		t.Fatalf("buttons=%d texts=%d, want three each", len(buttons), len(texts))
+	}
+	for _, btn := range buttons {
+		btn.Click.Emit(ClickEvent{})
+	}
+	tr.ApplyExpressions()
+	for i, text := range texts {
+		if got := text.Text.Get(); got != "1" {
+			t.Fatalf("instance %d count = %q, want 1", i, got)
+		}
 	}
 }

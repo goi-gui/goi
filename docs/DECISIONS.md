@@ -3071,4 +3071,6 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   methods call `goisetup.Call`; a handler may return one value. The proxy is
   refreshed from the tree's data version, so `bridge.content` follows SetData
   without an interpreter Eval on every frame. Handler calls use the same
-  `Bridge.CallValue` as event calls, and setup remains scoped to its file.
+  `Bridge.CallValue` as event calls, and setup remains scoped to its file and
+  to each fragment instance. Two calls of one fragment therefore get separate
+  interpreters and separate state.

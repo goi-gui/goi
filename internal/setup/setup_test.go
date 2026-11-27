@@ -32,7 +32,7 @@ Window { Text { text: greet(name) } }`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc := r.For(f.Src)
+	sc := r.For(f.Src, "")
 	if sc == nil {
 		t.Fatal("no scope for the file")
 	}
@@ -58,7 +58,7 @@ Window { Text { text: "x" } }`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.For("Other.goi") != nil {
+	if r.For("Other.goi", "") != nil {
 		t.Fatal("a scope leaked to another file")
 	}
 }

@@ -425,7 +425,7 @@ func (t *Tree) rangeValue(eb *eachBlock) (any, bool) {
 			}
 		}
 	}
-	c := evalCtx{tree: t, sc: eb.scope, src: eb.src}
+	c := evalCtx{tree: t, sc: eb.scope, src: eb.src, scopeID: nodeScope(eb.parent)}
 	return c.eval(eb.rng, 0)
 }
 

@@ -26,7 +26,9 @@ type condBranch struct {
 	// setup name used in the condition.
 	scope *scope
 	src   string
-	nodes []*NodeBase
+	// scopeID is the fragment instance the block was written in.
+	scopeID string
+	nodes   []*NodeBase
 	// own is each node's own `visible` literal, so the toggling never loses a
 	// row that the design hid on purpose.
 	own []bool
@@ -43,7 +45,7 @@ func (t *Tree) buildBlock(blk *syntax.Block, parent *NodeBase, hooks *Hooks, out
 		for i, br := range blk.Branches {
 			cb := &condBranch{
 				subject: blk.Subject, cases: cases, isSwitch: true,
-				arm: i, parent: outer, scope: t.scope, src: blk.Src,
+				arm: i, parent: outer, scope: t.scope, src: blk.Src, scopeID: nodeScope(parent),
 			}
 			t.conds = append(t.conds, cb)
 			if err := t.buildMembers(br.Members, parent, hooks, cb); err != nil {
@@ -60,7 +62,7 @@ func (t *Tree) buildBlock(blk *syntax.Block, parent *NodeBase, hooks *Hooks, out
 	}
 	arm := 0
 	for _, br := range blk.Branches {
-		cb := &condBranch{conds: conds, arm: -1, parent: outer, scope: t.scope, src: blk.Src}
+		cb := &condBranch{conds: conds, arm: -1, parent: outer, scope: t.scope, src: blk.Src, scopeID: nodeScope(parent)}
 		if br.Cond != nil {
 			cb.arm = arm
 			arm++
@@ -112,7 +114,7 @@ func (t *Tree) chainOK(cb *condBranch) bool {
 	}
 	first := -1
 	for i, cond := range cb.conds {
-		c := evalCtx{tree: t, sc: cb.scope, src: cb.src}
+		c := evalCtx{tree: t, sc: cb.scope, src: cb.src, scopeID: cb.scopeID}
 		v, ok := c.eval(cond, 0)
 		if b, isBool := v.(bool); ok && isBool && b {
 			first = i
@@ -127,7 +129,7 @@ func (t *Tree) chainOK(cb *condBranch) bool {
 // same loose comparison a `==` in a design uses, so a string case matches a
 // string bridge value and a number case a number.
 func (t *Tree) switchArm(cb *condBranch) int {
-	c := evalCtx{tree: t, sc: cb.scope, src: cb.src}
+	c := evalCtx{tree: t, sc: cb.scope, src: cb.src, scopeID: cb.scopeID}
 	if subject, ok := c.eval(cb.subject, 0); ok {
 		for i, vals := range cb.cases {
 			for _, v := range vals {

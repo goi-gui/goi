@@ -52,9 +52,9 @@ type Hooks struct {
 	// Warn receives a recoverable problem, such as a carried data value whose
 	// type no longer matches its bridge declaration.
 	Warn func(string)
-	// Setup returns the interpreted scope of one design file, or nil when it
-	// declares no setup block.
-	Setup func(src string) SetupScope
+	// Setup returns the interpreted scope of one design file and fragment
+	// instance, or nil when it declares no setup block.
+	Setup func(src, scope string) SetupScope
 }
 
 // NodeBase holds the state every node shares: identity, tree links, layout result

@@ -177,7 +177,7 @@ func (t *Tree) bindEvent(b *NodeBase, name string, v syntax.Value) error {
 		return fmt.Errorf("%s.%s: expected a handler call", b.node.Kind(), name)
 	}
 	if call.Callee == nil {
-		if !t.setupHasFunc(nodeSource(b), call.Name) {
+		if !t.setupHasFunc(nodeSource(b), nodeScope(b), call.Name) {
 			return fmt.Errorf("%s.%s: setup has no function %q", b.node.Kind(), name, call.Name)
 		}
 	} else if call.Callee.ID == "window" {
@@ -322,7 +322,7 @@ func bridgeComponent(b *NodeBase) *Component {
 // fire evaluates the call's arguments at event time and invokes the handler.
 // The identifier `event` is the event's own payload.
 func (t *Tree) fire(b *NodeBase, name string, call *syntax.Call, payload any) {
-	c := evalCtx{tree: t, sc: b.scope, src: nodeSource(b)}
+	c := evalCtx{tree: t, sc: b.scope, src: nodeSource(b), scopeID: nodeScope(b)}
 	args := make([]any, len(call.Args))
 	callee := call.Name
 	if call.Callee != nil {
@@ -349,7 +349,7 @@ func (t *Tree) fire(b *NodeBase, name string, call *syntax.Call, payload any) {
 		args[i] = v
 	}
 	if call.Callee == nil {
-		if _, found := t.setupCall(nodeSource(b), call.Name, args); !found {
+		if _, found := t.setupCall(nodeSource(b), nodeScope(b), call.Name, args); !found {
 			t.bridgeErr(fmt.Errorf("goi: setup has no function %q", call.Name))
 		}
 		return
