@@ -127,7 +127,11 @@ func (p *program) bridgeData(name string) (any, bool) {
 	if p == nil || p.m.data == nil {
 		return nil, false
 	}
-	return p.m.data(name)
+	v, ok := p.m.data(name)
+	if !ok {
+		return nil, false
+	}
+	return bridgeDataValue(v), true
 }
 
 func (p *program) bridgeCall(name string, args ...any) (any, error) {
@@ -136,7 +140,7 @@ func (p *program) bridgeCall(name string, args ...any) (any, error) {
 	}
 	v, err := p.m.call(name, args)
 	_ = p.syncBridge()
-	return v, err
+	return bridgeDataValue(v), err
 }
 
 func (p *program) syncBridge() error {
@@ -316,8 +320,9 @@ func programSource(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataS
 		}
 	}
 
+	pre, decl := gosetup.BridgeParts(vars, shapes, bridgePkg)
 	var b strings.Builder
-	if pre := gosetup.BridgePreludePkg(vars, bridgePkg); pre != "" {
+	if pre != "" {
 		b.WriteString(pre)
 	} else if needsGoisetup {
 		b.WriteString("import " + bridgePkg + " \"" + bridgePkg + "\"\n\n")
@@ -346,7 +351,7 @@ func programSource(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataS
 		b.WriteString(text)
 		b.WriteString("\n")
 	}
-	b.WriteString(gosetup.BridgeDeclsPkg(vars, shapes, bridgePkg))
+	b.WriteString(decl)
 	b.WriteString("\n")
 	if len(vars) > 0 {
 		b.WriteString("func goiSyncBridge() { (&bridge).goiSync() }\n\n")

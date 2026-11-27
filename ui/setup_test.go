@@ -3,6 +3,7 @@
 package ui
 
 import (
+	"fmt"
 	"testing"
 	"testing/fstest"
 
@@ -247,5 +248,162 @@ Column {
 		if got := text.Text.Get(); got != "1" {
 			t.Fatalf("instance %d count = %q, want 1", i, got)
 		}
+	}
+}
+
+// TestSetupBridgeListKeepsItsType is the case where setup walks a bridge list:
+// the design declares []ticket, so the rows arrive as ticket values with their
+// declared fields, not as any.
+func TestSetupBridgeListKeepsItsType(t *testing.T) {
+	f, diag := syntax.ParseNamed([]byte(`bridge {
+	tickets []ticket
+	labels  []string
+	scores  map[string]int
+}
+
+type ticket {
+	title  string
+	tags   []string
+	unread bool
+}
+
+setup {
+	func count() int { return len(bridge.tickets) }
+
+	func joined() string {
+		s := ""
+		for _, l := range bridge.labels {
+			s += l
+		}
+		return s
+	}
+
+	func total() int {
+		n := 0
+		for _, v := range bridge.scores {
+			n += v
+		}
+		return n
+	}
+
+	func unread() int {
+		n := 0
+		for _, t := range bridge.tickets {
+			if t.unread {
+				n++
+			}
+			n += len(t.tags)
+		}
+		return n
+	}
+
+	func titles(prefix string) []string {
+		out := []string{}
+		for _, t := range bridge.tickets {
+			out = append(out, prefix+t.title)
+		}
+		return out
+	}
+}
+
+Window { Text { id: label text: formatf("%d", count()) } }`), "Main.goi")
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	scopes, err := setup.New(f.Setups, f.Vars, f.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := tree.Build(f, &tree.Hooks{Setup: scopes.For})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopes.Bind(tr)
+	type ticket struct {
+		Title  string   `goi:"title"`
+		Tags   []string `goi:"tags"`
+		Unread bool     `goi:"unread"`
+	}
+	tr.SetData("tickets", []ticket{
+		{Title: "VPN", Tags: []string{"net"}, Unread: true},
+		{Title: "Printer", Unread: false},
+	})
+	tr.SetData("labels", []string{"a", "b"})
+	tr.SetData("scores", map[string]int{"x": 2, "y": 3})
+	sc := scopes.For("Main.goi", "")
+	if v, _, err := sc.Call("joined", nil); err != nil || v != "ab" {
+		t.Fatalf("joined = %v, %v", v, err)
+	}
+	if v, _, err := sc.Call("total", nil); err != nil || fmt.Sprint(v) != "5" {
+		t.Fatalf("total = %v, %v", v, err)
+	}
+	if v, _, err := sc.Call("count", nil); err != nil || fmt.Sprint(v) != "2" {
+		t.Fatalf("count = %v, %v", v, err)
+	}
+	if v, _, err := sc.Call("unread", nil); err != nil || fmt.Sprint(v) != "2" {
+		t.Fatalf("unread = %v, %v", v, err)
+	}
+	v, _, err := sc.Call("titles", []any{"#"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := v.([]string)
+	if len(got) != 2 || got[0] != "#VPN" || got[1] != "#Printer" {
+		t.Fatalf("titles = %#v, %v", v, err)
+	}
+}
+
+// TestSetupBridgeListFallsBack covers the interpreter path: a method that reads
+// setup state keeps the file there, and the list is still typed.
+func TestSetupBridgeListFallsBack(t *testing.T) {
+	f, diag := syntax.ParseNamed([]byte(`bridge {
+	tickets []ticket
+}
+
+type ticket {
+	title string
+}
+
+setup {
+	var seen int
+
+	type counter struct{ n int }
+	func (c counter) Total() int { return c.n + seen }
+
+	func bump() { seen++ }
+	func count() int { return len(bridge.tickets) }
+	func first() string {
+		for _, t := range bridge.tickets {
+			return t.title
+		}
+		return ""
+	}
+}
+
+Window { }`), "Main.goi")
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	scopes, err := setup.New(f.Setups, f.Vars, f.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := tree.Build(f, &tree.Hooks{Setup: scopes.For})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopes.Bind(tr)
+	tr.SetData("tickets", []struct {
+		Title string `goi:"title"`
+	}{{Title: "VPN"}})
+	sc := scopes.For("Main.goi", "")
+	if _, _, err := sc.Call("bump", nil); err != nil {
+		t.Fatal(err)
+	}
+	if v, _, err := sc.Call("count", nil); err != nil || fmt.Sprint(v) != "1" {
+		t.Fatalf("count = %v, %v", v, err)
+	}
+	if v, _, err := sc.Call("first", nil); err != nil || v != "VPN" {
+		t.Fatalf("first = %v, %v", v, err)
 	}
 }

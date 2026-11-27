@@ -86,3 +86,34 @@ func doSomething() {
 		}
 	}
 }
+
+func TestBridgeListKeepsItsDeclaredType(t *testing.T) {
+	f, diag := syntax.Parse([]byte(`bridge {
+	tickets []ticket
+}
+
+type ticket {
+	title  string
+	tags   []string
+	unread bool
+}
+
+Window { }`))
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	a := AnalyzeWithBridge(`func unread() int {
+	n := 0
+	for _, t := range bridge.tickets {
+		if t.unread {
+			n++
+		}
+		n += len(t.tags)
+		_ = t.title
+	}
+	return n
+}`, f.Vars, f.Shapes)
+	if ds := a.Diagnostics(); len(ds) != 0 {
+		t.Fatalf("a bridge list did not type-check as []ticket: %v", ds)
+	}
+}

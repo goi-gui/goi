@@ -222,7 +222,11 @@ func (s *Scope) bridgeData(name string) (any, bool) {
 	if s == nil || s.data == nil {
 		return nil, false
 	}
-	return s.data(name)
+	v, ok := s.data(name)
+	if !ok {
+		return nil, false
+	}
+	return bridgeDataValue(v), true
 }
 
 func (s *Scope) bridgeCall(name string, args ...any) (any, error) {
@@ -231,7 +235,7 @@ func (s *Scope) bridgeCall(name string, args ...any) (any, error) {
 	}
 	v, err := s.call(name, args)
 	_ = s.syncBridge()
-	return v, err
+	return bridgeDataValue(v), err
 }
 
 func (s *Scope) syncBridge() error {
@@ -275,9 +279,25 @@ func asInt(v any) int {
 	switch x := v.(type) {
 	case int:
 		return x
+	case int8:
+		return int(x)
+	case int16:
+		return int(x)
+	case int32:
+		return int(x)
 	case int64:
 		return int(x)
+	case uint:
+		return int(x)
+	case uint8:
+		return int(x)
+	case uint16:
+		return int(x)
+	case uint32:
+		return int(x)
 	case uint64:
+		return int(x)
+	case uintptr:
 		return int(x)
 	case float64:
 		return int(x)
@@ -295,7 +315,21 @@ func asFloat(v any) float64 {
 		return float64(x)
 	case int:
 		return float64(x)
+	case int8:
+		return float64(x)
+	case int16:
+		return float64(x)
+	case int32:
+		return float64(x)
 	case int64:
+		return float64(x)
+	case uint:
+		return float64(x)
+	case uint8:
+		return float64(x)
+	case uint16:
+		return float64(x)
+	case uint32:
 		return float64(x)
 	case uint64:
 		return float64(x)
@@ -305,13 +339,29 @@ func asFloat(v any) float64 {
 
 func asUint32(v any) uint32 {
 	switch x := v.(type) {
+	case uint8:
+		return uint32(x)
+	case uint16:
+		return uint32(x)
 	case uint32:
 		return x
+	case uint:
+		return uint32(x)
+	case uint64:
+		return uint32(x)
 	case int:
+		return uint32(x)
+	case int8:
+		return uint32(x)
+	case int16:
+		return uint32(x)
+	case int32:
 		return uint32(x)
 	case int64:
 		return uint32(x)
 	case float64:
+		return uint32(x)
+	case float32:
 		return uint32(x)
 	}
 	return 0

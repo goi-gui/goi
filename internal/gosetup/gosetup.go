@@ -324,36 +324,42 @@ func BridgePrelude(vars []syntax.DataVar) string {
 	return pre
 }
 
-// BridgePreludePkg is BridgePrelude with a named synthetic package.
-func BridgePreludePkg(vars []syntax.DataVar, pkg string) string {
-	pre, _ := bridgeParts(vars, nil, pkg)
-	return pre
-}
-
 // BridgeDecls is the generated bridge value and its methods.
 func BridgeDecls(vars []syntax.DataVar, shapes []syntax.DataShape) string {
 	_, decl := bridgeParts(vars, shapes, "goisetup")
 	return decl
 }
 
-// BridgeDeclsPkg is BridgeDecls with a named synthetic package.
-func BridgeDeclsPkg(vars []syntax.DataVar, shapes []syntax.DataShape, pkg string) string {
-	_, decl := bridgeParts(vars, shapes, pkg)
-	return decl
+// BridgeParts is the import and declarations a setup program needs, generated
+// once because the shape converters are not cheap to write twice.
+func BridgeParts(vars []syntax.DataVar, shapes []syntax.DataShape, pkg string) (pre, decl string) {
+	return bridgeParts(vars, shapes, pkg)
 }
 
 func bridgeParts(vars []syntax.DataVar, shapes []syntax.DataShape, pkg string) (pre, decl string) {
-	_ = shapes
-	if len(vars) == 0 {
+	if len(vars) == 0 && len(shapes) == 0 {
 		return "", ""
 	}
+	shapeMap := make(map[string]*syntax.DataShape, len(shapes))
+	for i := range shapes {
+		shapeMap[shapes[i].Name] = &shapes[i]
+	}
+	var types strings.Builder
+	for _, s := range shapes {
+		fmt.Fprintf(&types, "type %s struct {\n", s.Name)
+		for _, f := range s.Fields {
+			fmt.Fprintf(&types, "\t%s %s\n", f.Name, goType(f.Type, shapeMap))
+		}
+		types.WriteString("}\n\n")
+	}
+	conv := &convGen{shapes: shapeMap, pkg: pkg, names: map[string]string{}}
 	var fields, sync, methods strings.Builder
 	for _, v := range vars {
 		if v.Type.Kind == syntax.TypeFunc {
-			params, args := methodParams(v.Type.Args)
+			params, args := methodParams(v.Type.Args, shapeMap)
 			result := ""
 			if v.Type.Result != nil {
-				result = " " + goType(*v.Type.Result)
+				result = " " + goType(*v.Type.Result, shapeMap)
 			}
 			fmt.Fprintf(&methods, "func (b goiBridge) %s(%s)%s {\n", v.Name, params, result)
 			call := pkg + ".Call(" + strconv.Quote(v.Name) + args + ")"
@@ -361,39 +367,112 @@ func bridgeParts(vars []syntax.DataVar, shapes []syntax.DataShape, pkg string) (
 				fmt.Fprintf(&methods, "\tif _, err := %s; err != nil { panic(err) }\n", call)
 			} else {
 				fmt.Fprintf(&methods, "\tv, err := %s\n\tif err != nil { panic(err) }\n\treturn %s\n",
-					call, bridgeValue(*v.Type.Result, "v", pkg))
+					call, conv.expr(*v.Type.Result, "v"))
 			}
 			methods.WriteString("}\n")
 			continue
 		}
-		gt := goType(v.Type)
-		fmt.Fprintf(&fields, "\t%s %s\n", v.Name, gt)
+		fmt.Fprintf(&fields, "\t%s %s\n", v.Name, goType(v.Type, shapeMap))
 		fmt.Fprintf(&sync, "\tif v, ok := "+pkg+".Data(%q); ok { b.%s = %s }\n",
-			v.Name, v.Name, bridgeValue(v.Type, "v", pkg))
+			v.Name, v.Name, conv.expr(v.Type, "v"))
 	}
-	pre = "import " + pkg + " \"" + pkg + "\"\n\n"
-	decl = "type goiBridge struct {\n" + fields.String() + "}\n\n" +
+	if len(vars) > 0 {
+		pre = "import " + pkg + " \"" + pkg + "\"\n\n"
+	}
+	decl = types.String() + conv.funcsString() +
+		"type goiBridge struct {\n" + fields.String() + "}\n\n" +
 		"var bridge goiBridge\n\n" +
 		"func (b *goiBridge) goiSync() {\n" + sync.String() + "}\n\n" +
 		methods.String()
 	return pre, decl
 }
 
-func methodParams(fields []syntax.Field) (params, args string) {
+// convGen writes Go functions that turn the untyped rows the bridge callback
+// returns into the type the design declared: []ticket, []string, map[string]int.
+type convGen struct {
+	shapes map[string]*syntax.DataShape
+	pkg    string
+	names  map[string]string
+	funcs  []string
+	next   int
+}
+
+func (c *convGen) funcsString() string { return strings.Join(c.funcs, "\n") }
+
+func (c *convGen) conv(t syntax.Type) string {
+	key := t.String()
+	if name, ok := c.names[key]; ok {
+		return name
+	}
+	name := fmt.Sprintf("goiConv%d", c.next)
+	c.next++
+	c.names[key] = name
+	gt := goType(t, c.shapes)
+	var b strings.Builder
+	switch t.Kind {
+	case syntax.TypeSlice:
+		fmt.Fprintf(&b, "func %s(v any) %s {\n", name, gt)
+		fmt.Fprintf(&b, "if x, ok := v.(%s); ok { return x }\n", gt)
+		b.WriteString("rows, _ := v.([]any)\n")
+		fmt.Fprintf(&b, "out := make(%s, 0, len(rows))\n", gt)
+		b.WriteString("for _, r := range rows {\n")
+		fmt.Fprintf(&b, "out = append(out, %s)\n", c.expr(*t.Elem, "r"))
+		b.WriteString("}\nreturn out\n}\n")
+	case syntax.TypeMap:
+		fmt.Fprintf(&b, "func %s(v any) %s {\n", name, gt)
+		fmt.Fprintf(&b, "if x, ok := v.(%s); ok { return x }\n", gt)
+		if t.Name == "string" {
+			b.WriteString("m, _ := v.(map[string]any)\n")
+			fmt.Fprintf(&b, "out := make(%s, len(m))\n", gt)
+			fmt.Fprintf(&b, "for k, r := range m { out[k] = %s }\n", c.expr(*t.Elem, "r"))
+			b.WriteString("return out\n}\n")
+		} else {
+			fmt.Fprintf(&b, "return make(%s)\n}\n", gt)
+		}
+	case syntax.TypeScalar:
+		shape := c.shapes[t.Name]
+		fmt.Fprintf(&b, "func %s(v any) %s {\n", name, gt)
+		if shape == nil {
+			fmt.Fprintf(&b, "x, _ := v.(%s)\nreturn x\n}\n", gt)
+			break
+		}
+		fmt.Fprintf(&b, "if x, ok := v.(%s); ok { return x }\n", gt)
+		b.WriteString("r, _ := v.(map[string]any)\n")
+		fmt.Fprintf(&b, "return %s{\n", shape.Name)
+		for _, f := range shape.Fields {
+			fmt.Fprintf(&b, "%s: %s,\n", f.Name, c.expr(f.Type, fmt.Sprintf("r[%q]", f.Name)))
+		}
+		b.WriteString("}\n}\n")
+	}
+	c.funcs = append(c.funcs, b.String())
+	return name
+}
+
+func (c *convGen) expr(t syntax.Type, v string) string {
+	if t.Kind == syntax.TypeScalar && c.shapes[t.Name] == nil {
+		return scalarExpr(t, v, c.pkg)
+	}
+	if t.Kind == syntax.TypeFunc {
+		return v
+	}
+	return c.conv(t) + "(" + v + ")"
+}
+
+func methodParams(fields []syntax.Field, shapes map[string]*syntax.DataShape) (params, args string) {
 	var ps, as []string
 	for _, f := range fields {
-		ps = append(ps, f.Name+" "+goType(f.Type))
+		ps = append(ps, f.Name+" "+goType(f.Type, shapes))
 		as = append(as, ", "+f.Name)
 	}
 	return strings.Join(ps, ", "), strings.Join(as, "")
 }
 
-func goType(t syntax.Type) string {
+func goType(t syntax.Type, shapes map[string]*syntax.DataShape) string {
 	switch t.Kind {
-	case syntax.TypeSlice, syntax.TypeMap:
-		// A design's list is made of rows or maps, which have no stable Go
-		// identity here; setup sees it as a value rather than a typed slice.
-		return "any"
+	case syntax.TypeSlice:
+		return "[]" + goType(*t.Elem, shapes)
+	case syntax.TypeMap:
+		return "map[" + t.Name + "]" + goType(*t.Elem, shapes)
 	case syntax.TypeFunc:
 		return "any"
 	}
@@ -401,32 +480,52 @@ func goType(t syntax.Type) string {
 	case "string", "bool", "int", "int8", "int16", "int32", "int64",
 		"uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
 		"float32", "float64", "byte", "rune", "any":
-		if t.Name == "any" {
-			return "any"
-		}
 		return t.Name
 	case "color":
 		return "uint32"
 	}
+	if _, ok := shapes[t.Name]; ok {
+		return t.Name
+	}
 	return "any"
 }
 
-func bridgeValue(t syntax.Type, v string, pkg string) string {
-	switch t.Kind {
-	case syntax.TypeScalar:
-		switch t.Name {
-		case "string":
-			return pkg + ".AsString(" + v + ")"
-		case "bool":
-			return pkg + ".AsBool(" + v + ")"
-		case "color", "uint32":
-			return pkg + ".AsUint32(" + v + ")"
-		case "int", "int8", "int16", "int32", "int64",
-			"uint", "uint8", "uint16", "uint64", "uintptr", "byte", "rune":
-			return pkg + ".AsInt(" + v + ")"
-		case "float32", "float64":
-			return pkg + ".AsFloat(" + v + ")"
-		}
+// scalarExpr converts one untyped value to the exact scalar the design
+// declared, keeping int32, uint8 and friends assignable.
+func scalarExpr(t syntax.Type, v, pkg string) string {
+	switch t.Name {
+	case "string":
+		return pkg + ".AsString(" + v + ")"
+	case "bool":
+		return pkg + ".AsBool(" + v + ")"
+	case "color", "uint32":
+		return pkg + ".AsUint32(" + v + ")"
+	case "int":
+		return pkg + ".AsInt(" + v + ")"
+	case "int8":
+		return "int8(" + pkg + ".AsInt(" + v + "))"
+	case "int16":
+		return "int16(" + pkg + ".AsInt(" + v + "))"
+	case "int32":
+		return "int32(" + pkg + ".AsInt(" + v + "))"
+	case "int64":
+		return "int64(" + pkg + ".AsInt(" + v + "))"
+	case "uint":
+		return "uint(" + pkg + ".AsInt(" + v + "))"
+	case "uint8", "byte":
+		return "byte(" + pkg + ".AsInt(" + v + "))"
+	case "uint16":
+		return "uint16(" + pkg + ".AsInt(" + v + "))"
+	case "uint64":
+		return "uint64(" + pkg + ".AsInt(" + v + "))"
+	case "uintptr":
+		return "uintptr(" + pkg + ".AsInt(" + v + "))"
+	case "rune":
+		return "rune(" + pkg + ".AsInt(" + v + "))"
+	case "float32":
+		return "float32(" + pkg + ".AsFloat(" + v + "))"
+	case "float64":
+		return pkg + ".AsFloat(" + v + ")"
 	}
 	return v
 }

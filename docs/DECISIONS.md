@@ -3122,3 +3122,12 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   variable or function falls back, because package-level methods cannot see
   them. A variadic primitive parameter is converted element by element from
   `[]any`. This removes the common fallback cases without changing semantics.
+- **A bridge list keeps its declared type in setup.** `goType` used to map
+  every slice and map to `any`, so setup could only range after a cast. The
+  design's shapes now become Go structs in the setup package, converters turn
+  the untyped rows from `ui.SetData` into `[]ticket`, `[]string` or
+  `map[string]int`, and a Go struct row becomes a map by its `goi` tag or lower
+  first letter. Go normalizes the raw value once per data version; the
+  interpreted converter builds the typed value because unexported shape fields
+  cannot be set through Go reflection. Handler return values are normalized the
+  same way.
