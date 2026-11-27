@@ -71,6 +71,27 @@ func snapIndex(s string, i int) int {
 	return i
 }
 
+// Clear empties the field. The caret returns to the start and any selection or
+// IME composition is dropped; focus stays where it was.
+func (c *TextField) Clear() { c.clearText() }
+
+// Clear empties the bar. The caret returns to the start and any selection or
+// IME composition is dropped; focus stays where it was.
+func (c *SearchBar) Clear() { c.clearText() }
+
+// Clear empties the area. The caret returns to the start and any selection or
+// IME composition is dropped; focus stays where it was.
+func (c *TextArea) Clear() { c.clearText() }
+
+func (c *Component) clearText() {
+	c.Text.Set("")
+	c.SelAnchor, c.Caret = -1, 0
+	c.ClearPreedit()
+	c.ResetCaretBlink()
+	c.TextScroll = 0
+	c.Base().MarkDirty(DirtyLayout)
+}
+
 // SetPreedit replaces the IME composition text and its caret. The caret is a
 // byte index snapped to a rune boundary; a negative value means the end.
 func (c *Component) SetPreedit(text string, caret int) {

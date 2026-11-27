@@ -1743,6 +1743,19 @@ func (v *validator) checkEventCall(e *syntax.Element, ev EventDef, p *syntax.Pro
 				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes a bool",
 					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
 			}
+		case "clear":
+			// A text input's value: `field.clear()`.
+			switch target.Name {
+			case "TextField", "SearchBar", "TextArea":
+			default:
+				v.add(at, end,
+					fmt.Sprintf("%s.%s: only a text input has clear", e.Name, p.Name), "")
+				return
+			}
+			if len(call.Args) != 0 {
+				v.add(at, end, fmt.Sprintf("%s.%s: %s.%s takes no arguments",
+					e.Name, p.Name, call.Callee.ID, call.Callee.Prop), "")
+			}
 		case "show":
 			// A popover's panel: `pop.show(true)`.
 			if def, ok := Lookup(target.Name); ok && def.Name != "Popover" {

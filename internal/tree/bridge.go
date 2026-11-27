@@ -453,6 +453,21 @@ func (t *Tree) callNodeMethodX(id, method string, args []any) {
 		}
 		return
 	}
+	// `id.clear()` empties a text input, the clear button a design can wire
+	// without a Go handler.
+	if method == "clear" {
+		switch n := n.(type) {
+		case *TextField:
+			n.Clear()
+		case *SearchBar:
+			n.Clear()
+		case *TextArea:
+			n.Clear()
+		default:
+			t.bridgeErr(fmt.Errorf("goi: %s has no clear", n.Kind()))
+		}
+		return
+	}
 	// `id.setObscureText(false)` reveals a password field, the reveal button
 	// a design can wire without a Go handler.
 	if method == "setObscureText" {

@@ -162,7 +162,7 @@ var ScrollMethods = []string{
 // `onClick: spin.pause()`. They are the transport of an animated Image or SVG,
 // the transport of a player, and the scroll shortcuts.
 var NodeMethods = append([]string{"play", "pause", "stop", "toggle", "seek", "volume",
-	"fullscreen", "windowed", "toggleFullscreen", "audioTrack", "expand", "setObscureText", "show"},
+	"fullscreen", "windowed", "toggleFullscreen", "audioTrack", "expand", "setObscureText", "show", "clear"},
 	ScrollMethods...)
 
 // WindowMethods are the window controls an event can call, as in

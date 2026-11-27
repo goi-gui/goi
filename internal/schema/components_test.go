@@ -378,6 +378,28 @@ func TestSetObscureTextCallsAField(t *testing.T) {
 	}
 }
 
+// TestClearCallsTextInputs keeps the clear method honest: every text input has
+// it, it takes no arguments, and nothing else does.
+func TestClearCallsTextInputs(t *testing.T) {
+	base := `Window { Column {
+		TextField { id: field label: "Field" }
+		TextArea { id: area label: "Area" }
+		SearchBar { id: search label: "Search" }
+		Button { id: other label: "Other" }
+		Button { %s }
+	} }`
+	for _, call := range []string{"field.clear()", "area.clear()", "search.clear()"} {
+		if _, diag := validate(t, fmt.Sprintf(base, "onClick: "+call)); !diag.Empty() {
+			t.Errorf("%s: %v", call, diag)
+		}
+	}
+	for _, bad := range []string{"field.clear(true)", "area.clear(1)", "other.clear()"} {
+		if _, diag := validate(t, fmt.Sprintf(base, "onClick: "+bad)); diag.Empty() {
+			t.Errorf("%s was accepted", bad)
+		}
+	}
+}
+
 // TestTextFieldTakesIconSlots keeps a password field's reveal control legal:
 // $leading and $trailing belong to the component, and an icon still wins over
 // either body without the design having to choose.

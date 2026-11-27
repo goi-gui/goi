@@ -139,6 +139,46 @@ func TestSetObscureTextDrivesTheField(t *testing.T) {
 	}
 }
 
+// TestClearEmptiesTextInputs covers both paths to the same method: Go calls
+// Clear, and a design calls `id.clear()`. The caret, selection and IME
+// composition return to the start with the value.
+func TestClearEmptiesTextInputs(t *testing.T) {
+	var errs []error
+	tr, diag := BuildSource([]byte(`Window { Column {
+		TextField { id: field text: "name" }
+		TextArea { id: area text: "notes" }
+		SearchBar { id: search text: "query" }
+		Button { id: clearField label: "x" onClick: field.clear() }
+		Button { id: clearArea label: "x" onClick: area.clear() }
+		Button { id: clearSearch label: "x" onClick: search.clear() }
+	} }`), &Hooks{Error: func(err error) { errs = append(errs, err) }})
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	field := tr.ids["field"].(*TextField)
+	field.Caret = 2
+	field.SelAnchor = 0
+	field.SetPreedit("na", 1)
+	field.Clear()
+	if field.Text.Get() != "" || field.Caret != 0 || field.SelAnchor != -1 || field.Preedit != "" {
+		t.Fatalf("field after Clear = %q caret %d anchor %d preedit %q",
+			field.Text.Get(), field.Caret, field.SelAnchor, field.Preedit)
+	}
+
+	for _, id := range []string{"clearArea", "clearSearch"} {
+		tr.ids[id].(*Button).Base().Click.Emit(ClickEvent{})
+	}
+	if area := tr.ids["area"].(*TextArea); area.Text.Get() != "" || area.Caret != 0 {
+		t.Fatalf("area after clear() = %q caret %d", area.Text.Get(), area.Caret)
+	}
+	if search := tr.ids["search"].(*SearchBar); search.Text.Get() != "" || search.Caret != 0 {
+		t.Fatalf("search after clear() = %q caret %d", search.Text.Get(), search.Caret)
+	}
+	if len(errs) != 0 {
+		t.Fatalf("%v", errs)
+	}
+}
+
 // TestExpandDrivesTheExpandedProp: `id.expand()` flips the state and
 // `id.expand(true)` sets it, which is the value a design reads back as
 // `id.expanded` and the icon switch follows.
