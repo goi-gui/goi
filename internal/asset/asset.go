@@ -178,7 +178,10 @@ func sameBridgeType(a, b syntax.Type) bool {
 				return false
 			}
 		}
-		return true
+		if a.Result == nil || b.Result == nil {
+			return a.Result == b.Result
+		}
+		return sameBridgeType(*a.Result, *b.Result)
 	}
 	return false
 }

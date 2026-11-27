@@ -209,7 +209,7 @@ func (s *Server) completion(raw json.RawMessage) any {
 	// A setup body is Go, not design syntax: hand it to the Go scope instead
 	// of offering elements and properties.
 	if st, ok := setupAt(file, off); ok {
-		return completionList{Items: setupCompletionItems(st, off)}
+		return completionList{Items: setupCompletionItems(st, off, file)}
 	}
 	// A block string is a document: nothing in it is a property or a value, so
 	// a popup there would only interrupt the prose.
@@ -1079,8 +1079,8 @@ func setupAt(file *syntax.File, off int) (syntax.Setup, bool) {
 }
 
 // setupCompletionItems lists Go names at a position inside a setup body.
-func setupCompletionItems(st syntax.Setup, off int) []completionResult {
-	a := gosetup.Analyze(st.Code)
+func setupCompletionItems(st syntax.Setup, off int, file *syntax.File) []completionResult {
+	a := gosetup.AnalyzeWithBridge(st.Code, file.Vars, file.Shapes)
 	items := a.Complete(off - int(st.Body))
 	out := make([]completionResult, 0, len(items))
 	for _, item := range items {

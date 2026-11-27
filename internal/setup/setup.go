@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/goi-gui/goi/internal/gosetup"
 	"github.com/goi-gui/goi/internal/syntax"
 	"github.com/goi-gui/goi/internal/tree"
 	"github.com/traefik/yaegi/interp"
@@ -32,17 +33,25 @@ type Scope struct {
 	names  map[string]bool
 	values map[string]reflect.Value
 	funcs  map[string]reflect.Value
+
+	// The bridge callbacks are attached after the tree exists.
+	data    func(string) (any, bool)
+	version func() uint64
+	call    func(string, []any) (any, error)
+	// synced is the last DataVersion copied into the interpreted bridge.
+	synced    uint64
+	hasBridge bool
 }
 
 // New evaluates every setup block. A broken block is an error naming the file
 // and the line inside it, so LoadWindow can report it like a design error.
-func New(setups []syntax.Setup) (*Registry, error) {
+func New(setups []syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape) (*Registry, error) {
 	r := &Registry{scopes: map[string]*Scope{}}
 	for _, st := range setups {
 		if _, duplicate := r.scopes[st.Src]; duplicate {
 			return nil, fmt.Errorf("%s: setup may appear only once per file", st.Src)
 		}
-		sc, err := newScope(st)
+		sc, err := newScope(st, vars, shapes)
 		if err != nil {
 			return nil, err
 		}
@@ -51,14 +60,141 @@ func New(setups []syntax.Setup) (*Registry, error) {
 	return r, nil
 }
 
-func newScope(st syntax.Setup) (*Scope, error) {
+func newScope(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape) (*Scope, error) {
 	i := interp.New(interp.Options{})
 	i.Use(stdlib.Symbols)
-	if _, err := i.Eval(st.Code); err != nil {
+	s := &Scope{i: i, hasBridge: len(vars) > 0, synced: ^uint64(0)}
+	i.Use(interp.Exports{
+		"goisetup/goisetup": {
+			"Data":     reflect.ValueOf(s.bridgeData),
+			"Call":     reflect.ValueOf(s.bridgeCall),
+			"AsString": reflect.ValueOf(asString),
+			"AsBool":   reflect.ValueOf(asBool),
+			"AsInt":    reflect.ValueOf(asInt),
+			"AsFloat":  reflect.ValueOf(asFloat),
+			"AsUint32": reflect.ValueOf(asUint32),
+		},
+	})
+	if _, err := i.Eval(gosetup.BridgeSource(st.Code, vars, shapes)); err != nil {
 		return nil, evalError(st, err)
 	}
-	names, _ := declaredNames(st.Code)
-	return &Scope{i: i, names: names}, nil
+	s.names, _ = declaredNames(st.Code)
+	return s, nil
+}
+
+// Bind gives the scope the live tree: setup functions read its data and call
+// its handlers. It runs after the tree is built, because setup names are needed
+// while building it.
+func (r *Registry) Bind(tr *tree.Tree) {
+	if r == nil || tr == nil {
+		return
+	}
+	for _, sc := range r.scopes {
+		sc.data = tr.Data
+		sc.version = tr.DataVersion
+		sc.call = tr.CallBridge
+		sc.synced = ^uint64(0)
+		_ = sc.syncBridge()
+	}
+}
+
+func (s *Scope) bridgeData(name string) (any, bool) {
+	if s == nil || s.data == nil {
+		return nil, false
+	}
+	return s.data(name)
+}
+
+func (s *Scope) bridgeCall(name string, args ...any) (any, error) {
+	if s == nil || s.call == nil {
+		return nil, fmt.Errorf("setup bridge is not bound to a window yet")
+	}
+	v, err := s.call(name, args)
+	_ = s.syncBridge()
+	return v, err
+}
+
+func (s *Scope) syncBridge() error {
+	if s == nil || !s.hasBridge || s.version == nil {
+		return nil
+	}
+	v := s.version()
+	if v == s.synced {
+		return nil
+	}
+	s.synced = v
+	if _, err := s.i.Eval("(&bridge).goiSync()"); err != nil {
+		return fmt.Errorf("setup bridge: %w", err)
+	}
+	return nil
+}
+
+func asString(v any) string {
+	switch x := v.(type) {
+	case string:
+		return x
+	case []byte:
+		return string(x)
+	default:
+		return fmt.Sprint(v)
+	}
+}
+
+func asBool(v any) bool {
+	switch x := v.(type) {
+	case bool:
+		return x
+	case string:
+		return strings.EqualFold(x, "true")
+	default:
+		return v != nil
+	}
+}
+
+func asInt(v any) int {
+	switch x := v.(type) {
+	case int:
+		return x
+	case int64:
+		return int(x)
+	case uint64:
+		return int(x)
+	case float64:
+		return int(x)
+	case float32:
+		return int(x)
+	}
+	return 0
+}
+
+func asFloat(v any) float64 {
+	switch x := v.(type) {
+	case float64:
+		return x
+	case float32:
+		return float64(x)
+	case int:
+		return float64(x)
+	case int64:
+		return float64(x)
+	case uint64:
+		return float64(x)
+	}
+	return 0
+}
+
+func asUint32(v any) uint32 {
+	switch x := v.(type) {
+	case uint32:
+		return x
+	case int:
+		return uint32(x)
+	case int64:
+		return uint32(x)
+	case float64:
+		return uint32(x)
+	}
+	return 0
 }
 
 // For returns the scope of one source file, or nil when it declares none.
@@ -85,6 +221,7 @@ func (s *Scope) Value(name string) (any, bool) {
 	if v, ok := s.values[name]; ok {
 		return v.Interface(), true
 	}
+	_ = s.syncBridge()
 	v, err := s.i.Eval(name)
 	if err != nil || !v.IsValid() || !v.CanInterface() || v.Kind() == reflect.Func {
 		return nil, false
@@ -99,6 +236,9 @@ func (s *Scope) Value(name string) (any, bool) {
 // Call invokes a setup function. found is false when the name is not a
 // function, which lets the expression engine fall back to its builtins.
 func (s *Scope) Call(name string, args []any) (result any, found bool, err error) {
+	if err := s.syncBridge(); err != nil {
+		return nil, true, err
+	}
 	fn, ok := s.fn(name)
 	if !ok {
 		return nil, false, nil
@@ -163,6 +303,7 @@ func (s *Scope) fn(name string) (reflect.Value, bool) {
 	if v, ok := s.funcs[name]; ok {
 		return v, true
 	}
+	_ = s.syncBridge()
 	v, err := s.i.Eval(name)
 	if err != nil || !v.IsValid() || v.Kind() != reflect.Func || !v.CanInterface() {
 		return reflect.Value{}, false

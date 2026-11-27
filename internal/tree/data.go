@@ -85,6 +85,15 @@ func (t *Tree) DataValues() map[string]any {
 	return t.vars
 }
 
+// DataVersion increments on every SetData, so a setup scope can refresh only
+// when the bridge values actually changed.
+func (t *Tree) DataVersion() uint64 {
+	if t == nil {
+		return 0
+	}
+	return t.dataVersion
+}
+
 // SetData stores a value for `data.name` and rebuilds the blocks that walk it.
 // A design reads it through `data.name`, a condition or an expression, so a set
 // reaches the screen on the next frame.
@@ -99,6 +108,7 @@ func (t *Tree) SetData(name string, v any) {
 		t.vars = map[string]any{}
 	}
 	t.vars[name] = v
+	t.dataVersion++
 	// A fill can register inner blocks and drop others, so walk a snapshot.
 	for _, eb := range append([]*eachBlock(nil), t.eachs...) {
 		if t.live(eb.parent) && eb.refers(name) {

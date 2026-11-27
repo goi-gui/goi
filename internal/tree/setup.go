@@ -1,5 +1,7 @@
 package tree
 
+import "fmt"
+
 // SetupScope is the evaluated setup block of one design file.
 // The interface lives here so the tree stays independent of the interpreter.
 type SetupScope interface {
@@ -59,6 +61,15 @@ func (t *Tree) setupCall(src, name string, args []any) (any, bool) {
 		return n, true
 	}
 	return v, true
+}
+
+// CallBridge invokes a Go bridge handler and returns its value, which is how a
+// setup function reaches a handler such as getFileName().
+func (t *Tree) CallBridge(name string, args []any) (any, error) {
+	if t == nil || t.bridge == nil {
+		return nil, fmt.Errorf("goi: no bridge to call %q on", name)
+	}
+	return t.bridge.CallValue(name, args)
 }
 
 func nodeSource(b *NodeBase) string {

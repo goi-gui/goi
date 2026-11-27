@@ -62,8 +62,10 @@ type Tree struct {
 	// conds holds the arms of every {#if} block, in build order, so the frame
 	// loop can toggle their visibility.
 	conds []*condBranch
-	// vars holds the `data` values an app set with SetData.
-	vars map[string]any
+	// vars holds the `data` values an app set with SetData. dataVersion counts
+	// writes, so a setup scope only refreshes its bridge fields when one changed.
+	vars        map[string]any
+	dataVersion uint64
 	// roleCharts lists the charts whose series colours name a role, so the
 	// colour pass can resolve them; a list has no cell of its own.
 	roleCharts []*Chart

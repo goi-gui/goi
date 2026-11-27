@@ -25,7 +25,7 @@ Window { Text { id: label text: greet(name) } }`), "Main.goi")
 	if !diag.Empty() {
 		t.Fatalf("%v", diag)
 	}
-	scopes, err := setup.New(f.Setups)
+	scopes, err := setup.New(f.Setups, f.Vars, f.Shapes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,6 +33,7 @@ Window { Text { id: label text: greet(name) } }`), "Main.goi")
 	if err != nil {
 		t.Fatal(err)
 	}
+	scopes.Bind(tr)
 	tr.ApplyExpressions()
 	label := MustByID[*Text](&Window{tree: tr}, "label")
 	if got := label.Text.Get(); got != "Hi, Kaan" {
@@ -68,7 +69,7 @@ Column { Text { id: inner text: name } }`)},
 	if !diag.Empty() {
 		t.Fatalf("%v", diag)
 	}
-	scopes, err := setup.New(b.File.Setups)
+	scopes, err := setup.New(b.File.Setups, b.File.Vars, b.File.Shapes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,6 +77,7 @@ Column { Text { id: inner text: name } }`)},
 	if err != nil {
 		t.Fatal(err)
 	}
+	scopes.Bind(tr)
 	tr.ApplyExpressions()
 	win := &Window{tree: tr}
 	if got := MustByID[*Text](win, "own").Text.Get(); got != "main" {
@@ -104,7 +106,7 @@ Window { Column {
 	if !diag.Empty() {
 		t.Fatalf("%v", diag)
 	}
-	scopes, err := setup.New(f.Setups)
+	scopes, err := setup.New(f.Setups, f.Vars, f.Shapes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,6 +114,7 @@ Window { Column {
 	if err != nil {
 		t.Fatal(err)
 	}
+	scopes.Bind(tr)
 	tr.ApplyExpressions()
 	win := &Window{tree: tr}
 	if got := MustByID[*Text](win, "value").Text.Get(); got != "0" {
@@ -127,5 +130,57 @@ Window { Column {
 	tr.ApplyExpressions()
 	if got := MustByID[*Text](win, "value").Text.Get(); got != "1" {
 		t.Fatalf("text after a decrease = %q", got)
+	}
+}
+
+// TestSetupReadsBridge covers the setup side of the bridge: a variable read and
+// a handler call, plus a return value from a handler.
+func TestSetupReadsBridge(t *testing.T) {
+	f, diag := syntax.ParseNamed([]byte(`bridge {
+	onSave(fileName string)
+	getFileName() string
+	content string
+}
+
+setup {
+	var seen string
+
+	func doSomething() {
+		fileName := bridge.getFileName()
+		bridge.onSave(fileName)
+		seen = bridge.content
+	}
+}
+
+Window { }`), "Main.goi")
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	scopes, err := setup.New(f.Setups, f.Vars, f.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := tree.Build(f, &tree.Hooks{Setup: scopes.For})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopes.Bind(tr)
+	tr.SetData("content", "hello")
+	saved := ""
+	if err := tr.SetHandler("getFileName", func() string { return "notes.txt" }); err != nil {
+		t.Fatal(err)
+	}
+	if err := tr.SetHandler("onSave", func(name string) { saved = name }); err != nil {
+		t.Fatal(err)
+	}
+	sc := scopes.For("Main.goi")
+	if _, found, err := sc.Call("doSomething", nil); err != nil || !found {
+		t.Fatalf("doSomething = %v, %v", found, err)
+	}
+	if saved != "notes.txt" {
+		t.Fatalf("onSave got %q", saved)
+	}
+	if v, ok := sc.Value("seen"); !ok || v != "hello" {
+		t.Fatalf("seen = %v, %v", v, ok)
 	}
 }

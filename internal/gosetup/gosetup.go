@@ -4,13 +4,17 @@
 package gosetup
 
 import (
+	"fmt"
 	"go/ast"
 	"go/importer"
 	"go/parser"
 	"go/token"
 	"go/types"
 	"sort"
+	"strconv"
 	"strings"
+
+	"github.com/goi-gui/goi/internal/syntax"
 )
 
 const prefix = "package setup\n"
@@ -44,6 +48,7 @@ type Analysis struct {
 	pkg   *types.Package
 	info  *types.Info
 	code  string
+	base  int
 	diags []Diagnostic
 }
 
@@ -51,9 +56,21 @@ type Analysis struct {
 // analysis when the parser produced a file, so completion keeps working while a
 // line is incomplete.
 func Analyze(code string) *Analysis {
+	return analyze(code, prefix+code, len(prefix))
+}
+
+// AnalyzeWithBridge is Analyze with the design's bridge declarations exposed as
+// the `bridge` value, so setup code that reads a variable or calls a handler
+// type-checks.
+func AnalyzeWithBridge(code string, vars []syntax.DataVar, shapes []syntax.DataShape) *Analysis {
+	pre, decl := bridgeParts(vars, shapes)
+	return analyze(code, prefix+pre+code+"\n"+decl, len(prefix)+len(pre))
+}
+
+func analyze(code, source string, base int) *Analysis {
 	fset := token.NewFileSet()
-	file, _ := parser.ParseFile(fset, "_.go", prefix+code, parser.AllErrors|parser.ParseComments)
-	a := &Analysis{fset: fset, file: file, code: code}
+	file, _ := parser.ParseFile(fset, "_.go", source, parser.AllErrors|parser.ParseComments)
+	a := &Analysis{fset: fset, file: file, code: code, base: base}
 	if file == nil {
 		return a
 	}
@@ -64,10 +81,10 @@ func Analyze(code string) *Analysis {
 		Types:  map[ast.Expr]types.TypeAndValue{},
 	}
 	conf := types.Config{
-		Importer: importer.Default(),
+		Importer: bridgeImporter{base: importer.Default()},
 		Error: func(err error) {
 			if e, ok := err.(types.Error); ok {
-				off := fset.Position(e.Pos).Offset - len(prefix)
+				off := fset.Position(e.Pos).Offset - base
 				if off >= 0 && off <= len(code) {
 					a.diags = append(a.diags, Diagnostic{Offset: off, Msg: e.Msg})
 				}
@@ -181,7 +198,7 @@ func (a *Analysis) scopeAt(offset int) *types.Scope {
 	if a == nil || a.pkg == nil {
 		return nil
 	}
-	pos := token.Pos(len(prefix) + offset)
+	pos := token.Pos(a.base + offset)
 	best := a.pkg.Scope()
 	bestWidth := best.End() - best.Pos()
 	for _, scope := range a.info.Scopes {
@@ -243,7 +260,7 @@ func (a *Analysis) addMembers(items *[]Item, seen map[string]bool, word string, 
 	if st, ok := named.Underlying().(*types.Struct); ok {
 		for i := 0; i < st.NumFields(); i++ {
 			f := st.Field(i)
-			if !f.Exported() || (word != "" && !strings.HasPrefix(f.Name(), word)) {
+			if (!f.Exported() && f.Pkg() != a.pkg) || (word != "" && !strings.HasPrefix(f.Name(), word)) {
 				continue
 			}
 			if seen[f.Name()] {
@@ -255,7 +272,7 @@ func (a *Analysis) addMembers(items *[]Item, seen map[string]bool, word string, 
 	}
 	for i := 0; i < named.NumMethods(); i++ {
 		m := named.Method(i)
-		if !m.Exported() || (word != "" && !strings.HasPrefix(m.Name(), word)) {
+		if (!m.Exported() && m.Pkg() != a.pkg) || (word != "" && !strings.HasPrefix(m.Name(), word)) {
 			continue
 		}
 		if seen[m.Name()] {
@@ -286,6 +303,144 @@ func (a *Analysis) keywordItems(word string) []Item {
 	add("type", types)
 	add("keyword", builtins)
 	return out
+}
+
+// BridgeSource is the Go source a setup scope evaluates: the user body plus a
+// generated `bridge` value and methods for the design's declarations.
+func BridgeSource(code string, vars []syntax.DataVar, shapes []syntax.DataShape) string {
+	pre, decl := bridgeParts(vars, shapes)
+	return pre + code + "\n" + decl
+}
+
+func bridgeParts(vars []syntax.DataVar, shapes []syntax.DataShape) (pre, decl string) {
+	_ = shapes
+	if len(vars) == 0 {
+		return "", ""
+	}
+	var fields, sync, methods strings.Builder
+	for _, v := range vars {
+		if v.Type.Kind == syntax.TypeFunc {
+			params, args := methodParams(v.Type.Args)
+			result := ""
+			if v.Type.Result != nil {
+				result = " " + goType(*v.Type.Result)
+			}
+			fmt.Fprintf(&methods, "func (b goiBridge) %s(%s)%s {\n", v.Name, params, result)
+			call := "goisetup.Call(" + strconv.Quote(v.Name) + args + ")"
+			if v.Type.Result == nil {
+				fmt.Fprintf(&methods, "\tif _, err := %s; err != nil { panic(err) }\n", call)
+			} else {
+				fmt.Fprintf(&methods, "\tv, err := %s\n\tif err != nil { panic(err) }\n\treturn %s\n",
+					call, bridgeValue(*v.Type.Result, "v"))
+			}
+			methods.WriteString("}\n")
+			continue
+		}
+		gt := goType(v.Type)
+		fmt.Fprintf(&fields, "\t%s %s\n", v.Name, gt)
+		fmt.Fprintf(&sync, "\tif v, ok := goisetup.Data(%q); ok { b.%s = %s }\n",
+			v.Name, v.Name, bridgeValue(v.Type, "v"))
+	}
+	pre = `import goisetup "goisetup"
+
+`
+	decl = "type goiBridge struct {\n" + fields.String() + "}\n\n" +
+		"var bridge goiBridge\n\n" +
+		"func (b *goiBridge) goiSync() {\n" + sync.String() + "}\n\n" +
+		methods.String()
+	return pre, decl
+}
+
+func methodParams(fields []syntax.Field) (params, args string) {
+	var ps, as []string
+	for _, f := range fields {
+		ps = append(ps, f.Name+" "+goType(f.Type))
+		as = append(as, ", "+f.Name)
+	}
+	return strings.Join(ps, ", "), strings.Join(as, "")
+}
+
+func goType(t syntax.Type) string {
+	switch t.Kind {
+	case syntax.TypeSlice, syntax.TypeMap:
+		// A design's list is made of rows or maps, which have no stable Go
+		// identity here; setup sees it as a value rather than a typed slice.
+		return "any"
+	case syntax.TypeFunc:
+		return "any"
+	}
+	switch t.Name {
+	case "string", "bool", "int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
+		"float32", "float64", "byte", "rune", "any":
+		if t.Name == "any" {
+			return "any"
+		}
+		return t.Name
+	case "color":
+		return "uint32"
+	}
+	return "any"
+}
+
+func bridgeValue(t syntax.Type, v string) string {
+	switch t.Kind {
+	case syntax.TypeScalar:
+		switch t.Name {
+		case "string":
+			return "goisetup.AsString(" + v + ")"
+		case "bool":
+			return "goisetup.AsBool(" + v + ")"
+		case "color", "uint32":
+			return "goisetup.AsUint32(" + v + ")"
+		case "int", "int8", "int16", "int32", "int64",
+			"uint", "uint8", "uint16", "uint64", "uintptr", "byte", "rune":
+			return "goisetup.AsInt(" + v + ")"
+		case "float32", "float64":
+			return "goisetup.AsFloat(" + v + ")"
+		}
+	}
+	return v
+}
+
+type bridgeImporter struct{ base types.Importer }
+
+func (i bridgeImporter) Import(path string) (*types.Package, error) {
+	if path == "goisetup" {
+		return bridgePackage(), nil
+	}
+	return i.base.Import(path)
+}
+
+var fakeBridge *types.Package
+
+func bridgePackage() *types.Package {
+	if fakeBridge != nil {
+		return fakeBridge
+	}
+	pkg := types.NewPackage("goisetup", "goisetup")
+	anyT := types.NewInterfaceType(nil, nil)
+	anyT.Complete()
+	errT := types.Universe.Lookup("error").Type()
+	sig := func(params []*types.Var, results []*types.Var, variadic bool) *types.Signature {
+		return types.NewSignatureType(nil, nil, nil, types.NewTuple(params...), types.NewTuple(results...), variadic)
+	}
+	obj := func(name string, params []*types.Var, results []*types.Var, variadic bool) {
+		pkg.Scope().Insert(types.NewFunc(token.NoPos, pkg, name, sig(params, results, variadic)))
+	}
+	anyParam := func(name string) *types.Var { return types.NewVar(0, pkg, name, anyT) }
+	nameParam := func() *types.Var { return types.NewVar(0, pkg, "name", types.Typ[types.String]) }
+	obj("Data", []*types.Var{nameParam()}, []*types.Var{anyParam(""), types.NewVar(0, pkg, "", types.Typ[types.Bool])}, false)
+	obj("Call", []*types.Var{nameParam(), types.NewVar(0, pkg, "args", types.NewSlice(anyT))},
+		[]*types.Var{anyParam(""), types.NewVar(0, pkg, "", errT)}, true)
+	obj("AsString", []*types.Var{anyParam("")}, []*types.Var{types.NewVar(0, pkg, "", types.Typ[types.String])}, false)
+	obj("AsBool", []*types.Var{anyParam("")}, []*types.Var{types.NewVar(0, pkg, "", types.Typ[types.Bool])}, false)
+	obj("AsInt", []*types.Var{anyParam("")}, []*types.Var{types.NewVar(0, pkg, "", types.Typ[types.Int])}, false)
+	obj("AsFloat", []*types.Var{anyParam("")}, []*types.Var{types.NewVar(0, pkg, "", types.Typ[types.Float64])}, false)
+	obj("AsUint32", []*types.Var{anyParam("")}, []*types.Var{types.NewVar(0, pkg, "", types.Typ[types.Uint32])}, false)
+	pkg.MarkComplete()
+	fakeBridge = pkg
+	return pkg
 }
 
 func objectKind(obj types.Object) string {

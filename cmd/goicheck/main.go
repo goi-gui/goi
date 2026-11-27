@@ -94,7 +94,7 @@ func main() {
 				Members: []syntax.Member{body.Root}}
 			b.File = &preview
 		}
-		setups, err := setup.New(b.File.Setups)
+		setups, err := setup.New(b.File.Setups, b.File.Vars, b.File.Shapes)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %v\n", file, err)
 			fail = true
@@ -106,6 +106,7 @@ func main() {
 			fail = true
 			continue
 		}
+		setups.Bind(tr)
 		line := fmt.Sprintf("%s: ok (%d nodes, %d ids, %d files)", file, len(tr.All()), tr.IDs(), len(b.Files))
 		if *checkLayout || *ops {
 			w, h := parseSize(*size)

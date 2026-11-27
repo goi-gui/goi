@@ -236,6 +236,9 @@ func (v *validator) checkType(t syntax.Type, what string) {
 					fmt.Sprintf("handler parameter %q must be a primitive", a.Name), "")
 			}
 		}
+		if t.Result != nil {
+			v.checkType(*t.Result, what+" result")
+		}
 	default:
 		if isPrimitive(t.Name) || v.file.Shape(t.Name) != nil {
 			return
@@ -1365,7 +1368,7 @@ func SetupDiagnostics(f *syntax.File) syntax.Diagnostics {
 	// Type-check the body with the compiler's own checker. It knows the
 	// standard library, which is what a setup block may import.
 	for _, st := range f.Setups {
-		for _, item := range gosetup.Analyze(st.Code).Diagnostics() {
+		for _, item := range gosetup.AnalyzeWithBridge(st.Code, f.Vars, f.Shapes).Diagnostics() {
 			pos := st.Body + syntax.Pos(item.Offset)
 			out = append(out, syntax.Diagnostic{Src: st.Src, Pos: pos, End: pos + 1, Message: item.Msg})
 		}

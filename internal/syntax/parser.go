@@ -322,6 +322,24 @@ func (p *parser) parseField() (Field, bool) {
 	}
 	p.next()
 	f := Field{Name: name.text, NameAt: name.pos}
+	if p.peek().kind == tokLParen {
+		// A bridge handler written as a method: onSave(fileName string).
+		p.next()
+		args, ok := p.parseFuncArgs()
+		if !ok {
+			p.sync()
+			return f, false
+		}
+		typ := Type{Kind: TypeFunc, Args: args, At: name.pos}
+		if result, ok := p.parseOptionalResult(); ok {
+			typ.Result = &result
+		}
+		f.Type, f.At = typ, typ.At
+		if p.peek().kind == tokSemicolon {
+			p.next()
+		}
+		return f, true
+	}
 	typ, ok := p.parseType()
 	if !ok {
 		p.sync()
@@ -384,13 +402,57 @@ func (p *parser) parseType() (Type, bool) {
 		if !ok {
 			return Type{}, false
 		}
-		return Type{Kind: TypeFunc, Args: args, At: at}, true
+		ft := Type{Kind: TypeFunc, Args: args, At: at}
+		if result, ok := p.parseOptionalResult(); ok {
+			ft.Result = &result
+		}
+		return ft, true
 	case t.kind == tokIdent:
 		p.next()
 		return Type{Kind: TypeScalar, Name: t.text, At: t.pos}, true
 	}
 	p.errorf(t, "expected a type: a primitive, []T, map[K]V or func(...)")
 	return Type{}, false
+}
+
+// parseOptionalResult reads a single return type after a func's parameter
+// list, but only when it sits on the same line: a shape or bridge field on the
+// next line is the next declaration, not a result.
+func (p *parser) parseOptionalResult() (Type, bool) {
+	t := p.peek()
+	if t.kind == tokRParen || t.kind == tokRBrace || t.kind == tokComma || t.kind == tokSemicolon {
+		return Type{}, false
+	}
+	if !isTypeStart(t) {
+		return Type{}, false
+	}
+	if p.i > 0 && !sameLine(p.src, p.toks[p.i-1].end, t.pos) {
+		return Type{}, false
+	}
+	return p.parseType()
+}
+
+// sameLine reports whether a and b have no newline between them.
+func sameLine(src []byte, a, b Pos) bool {
+	if a < 0 {
+		a = 0
+	}
+	if int(b) > len(src) {
+		b = Pos(len(src))
+	}
+	for i := int(a); i < int(b); i++ {
+		if src[i] == '\n' {
+			return false
+		}
+	}
+	return true
+}
+
+func isTypeStart(t token) bool {
+	if t.kind == tokLBracket || t.kind == tokIdent {
+		return true
+	}
+	return false
 }
 
 // parseFuncArgs reads `(id string, count uint)`, a handler's parameters.

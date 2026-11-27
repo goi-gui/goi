@@ -5,14 +5,16 @@ package ui
 import (
 	"github.com/goi-gui/goi/internal/setup"
 	"github.com/goi-gui/goi/internal/syntax"
-	"github.com/goi-gui/goi/internal/tree"
 )
 
 // loadSetups evaluates the design's setup blocks for this build.
-func loadSetups(sts []syntax.Setup) (func(string) tree.SetupScope, error) {
-	r, err := setup.New(sts)
-	if err != nil {
-		return nil, err
+func loadSetups(f *syntax.File) (setupBuild, error) {
+	if f == nil {
+		return setupBuild{}, nil
 	}
-	return r.For, nil
+	r, err := setup.New(f.Setups, f.Vars, f.Shapes)
+	if err != nil {
+		return setupBuild{}, err
+	}
+	return setupBuild{hook: r.For, bind: r.Bind}, nil
 }

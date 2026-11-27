@@ -3066,3 +3066,9 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   ignored. The interpreter exposes the standard library but not application
   packages. A reload re-evaluates the block, so setup state resets while Go
   state outside Bind does not.
+- **Setup reaches the bridge through a generated Go proxy.** Each setup scope
+  gets a `bridge` value whose fields mirror the declared values and whose
+  methods call `goisetup.Call`; a handler may return one value. The proxy is
+  refreshed from the tree's data version, so `bridge.content` follows SetData
+  without an interpreter Eval on every frame. Handler calls use the same
+  `Bridge.CallValue` as event calls, and setup remains scoped to its file.

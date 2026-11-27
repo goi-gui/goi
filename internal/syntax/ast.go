@@ -120,8 +120,10 @@ type Type struct {
 	Name string
 	// Elem is the slice element type or the map value type.
 	Elem *Type
-	// Args are a func's parameters.
-	Args []Field
+	// Args are a func's parameters, and Result is its single return type, if
+	// any. A bridge handler may return a value that setup code reads.
+	Args   []Field
+	Result *Type
 	// At is the position of the type as written, for diagnostics.
 	At Pos
 }
@@ -157,6 +159,9 @@ func (t *Type) String() string {
 			b.WriteString(a.Name + " " + a.Type.String())
 		}
 		b.WriteString(")")
+		if t.Result != nil {
+			b.WriteString(" " + t.Result.String())
+		}
 		return b.String()
 	}
 	return t.Name

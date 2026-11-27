@@ -119,7 +119,7 @@ func (a *App) applyReload(f *syntax.File) error {
 	start := time.Now()
 	// The old tree's native views belong to the old nodes.
 	a.closeWebviews()
-	setupHook, err := loadSetups(f.Setups)
+	setupB, err := loadSetups(f)
 	if err != nil {
 		logg().Error(logCtx, "ui: setup failed", "file", a.path, "error", err)
 		return fmt.Errorf("goi: reload: %w", err)
@@ -127,7 +127,7 @@ func (a *App) applyReload(f *syntax.File) error {
 	hooks := &tree.Hooks{
 		Marked: a.markDirty, Error: a.reportError, Media: a.mediaRequest, Window: a.windowRequest, Post: a.Post,
 		Warn:  func(msg string) { logg().Warn(logCtx, "ui: hot reload: "+msg) },
-		Setup: setupHook,
+		Setup: setupB.hook,
 	}
 	// Seed the build with the values SetData stored, so conditions, loops and
 	// expressions all see the app's state from the first frame.
@@ -141,6 +141,9 @@ func (a *App) applyReload(f *syntax.File) error {
 	}
 	a.loadImages(tr)
 	a.loadMedia(tr)
+	if setupB.bind != nil {
+		setupB.bind(tr)
+	}
 	a.loadSystemFonts(tr)
 	if a.win != nil {
 		a.win.noteMissingFonts(tr)

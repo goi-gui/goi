@@ -28,7 +28,7 @@ func TestSetupValuesAndFunctions(t *testing.T) {
 }
 
 Window { Text { text: greet(name) } }`)
-	r, err := New(f.Setups)
+	r, err := New(f.Setups, f.Vars, f.Shapes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestSetupLoadsOnlyItsFile(t *testing.T) {
 }
 
 Window { Text { text: "x" } }`)
-	r, err := New(f.Setups)
+	r, err := New(f.Setups, f.Vars, f.Shapes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestSetupErrorNamesTheFile(t *testing.T) {
 }
 
 Window {}`)
-	_, err := New(f.Setups)
+	_, err := New(f.Setups, f.Vars, f.Shapes)
 	if err == nil {
 		t.Fatal("broken setup loaded")
 	}

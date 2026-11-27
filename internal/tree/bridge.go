@@ -63,27 +63,53 @@ func (b *Bridge) copyFrom(old *Bridge) {
 
 // Call invokes the handler registered for name with the event's arguments.
 func (b *Bridge) Call(name string, args []any) error {
+	_, err := b.CallValue(name, args)
+	return err
+}
+
+// CallValue is Call for a setup function: it returns the handler's first
+// result, or the value before a final error. An event call ignores the result.
+func (b *Bridge) CallValue(name string, args []any) (any, error) {
 	if b == nil {
-		return fmt.Errorf("goi: no handler registered for %q", name)
+		return nil, fmt.Errorf("goi: no handler registered for %q", name)
 	}
 	fn, ok := b.handlers[name]
 	if !ok {
-		return fmt.Errorf("goi: no handler registered for %q: call Window.SetHandler in Bind", name)
+		return nil, fmt.Errorf("goi: no handler registered for %q: call Window.SetHandler in Bind", name)
 	}
 	ft := fn.Type()
 	if ft.NumIn() != len(args) {
-		return fmt.Errorf("goi: handler %q takes %d argument(s), the design passes %d", name, ft.NumIn(), len(args))
+		return nil, fmt.Errorf("goi: handler %q takes %d argument(s), the design passes %d", name, ft.NumIn(), len(args))
 	}
 	in := make([]reflect.Value, len(args))
 	for i, a := range args {
 		v, err := bridgeArg(a, ft.In(i))
 		if err != nil {
-			return fmt.Errorf("goi: handler %q argument %d: %w", name, i+1, err)
+			return nil, fmt.Errorf("goi: handler %q argument %d: %w", name, i+1, err)
 		}
 		in[i] = v
 	}
-	fn.Call(in)
-	return nil
+	out := fn.Call(in)
+	if n := len(out); n > 0 {
+		last := out[n-1]
+		if last.Type().Implements(errorType) {
+			if !last.IsNil() {
+				return nil, last.Interface().(error)
+			}
+			out = out[:n-1]
+		}
+	}
+	switch len(out) {
+	case 0:
+		return nil, nil
+	case 1:
+		if !out[0].IsValid() || !out[0].CanInterface() {
+			return nil, nil
+		}
+		return out[0].Interface(), nil
+	default:
+		return nil, fmt.Errorf("goi: handler %q returns %d values; one value and an optional error are supported", name, len(out))
+	}
 }
 
 // BridgeArg converts one design value to a Go parameter type, using the same
@@ -126,6 +152,8 @@ func bridgeArg(v any, want reflect.Type) (reflect.Value, error) {
 	}
 	return reflect.Value{}, fmt.Errorf("%T cannot feed %s", v, want)
 }
+
+var errorType = reflect.TypeOf((*error)(nil)).Elem()
 
 // SetHandler registers the Go function a bridge handler name calls. Call it
 // through ui.SetHandler, usually from Window.Bind, which runs again after every

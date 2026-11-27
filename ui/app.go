@@ -241,17 +241,20 @@ func (a *App) LoadWindow(entry string) (*Window, error) {
 		logg().Error(logCtx, "ui: design failed to load", "file", name, "error", err)
 		return nil, err
 	}
-	setupHook, err := loadSetups(b.File.Setups)
+	setupB, err := loadSetups(b.File)
 	if err != nil {
 		logg().Error(logCtx, "ui: setup failed", "file", name, "error", err)
 		return nil, fmt.Errorf("goi: %s: %w", name, err)
 	}
 	tr, err := tree.Build(b.File, &tree.Hooks{
 		Marked: a.markDirty, Error: a.reportError, Media: a.mediaRequest, Window: a.windowRequest, Post: a.Post,
-		Setup: setupHook,
+		Setup: setupB.hook,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("goi: %s: %w", name, err)
+	}
+	if setupB.bind != nil {
+		setupB.bind(tr)
 	}
 	// i18n is optional: no folder means every t(...) renders its own key. A
 	// broken catalog is reported but does not stop the window from loading.
