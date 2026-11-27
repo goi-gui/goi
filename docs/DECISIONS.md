@@ -3096,3 +3096,17 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   a file with no imports to a few kilobytes and makes a single interpreter per
   file cheap enough that sharing one across files would save nothing worth the
   cross-file collisions. A missing or non-stdlib import fails at Eval as before.
+- **One shared interpreter, one package per setup file, compiled on first
+  use.** A design with many setup files was paying a full Yaegi interpreter for
+  each, and fmt makes every one compile its generic sources again: 100 files
+  cost ~97 MB. Each file is now its own Yaegi package (`goi0`, `goi1`) in one
+  interpreter, so imports and fmt generics are compiled once; a file's names
+  stay private without renaming anything. Compiling waits for the first `For`
+  of that file, so a page that shows ten of a hundred fragments pays for ten.
+  100 files with fmt measure ~9.5 MB and an 11 ms build instead of 97 MB and
+  170 ms; 100 files with 10 used cost ~1.8 MB.
+- **Lazy setup errors surface after the tree is built.** `New` no longer
+  evaluates setup, so a broken block is reported by `Registry.Err` (checked by
+  `ui` and `goicheck`) and an event that calls a missing function reports the
+  compile error. `goicheck` calls `CompileAll` so a checker still names a broken
+  block that no element reads.

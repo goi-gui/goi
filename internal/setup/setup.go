@@ -1,5 +1,5 @@
-// Package setup runs a .goi file's `setup` block with Yaegi and exposes its
-// declarations to the page's expressions.
+// Package setup runs the `setup` blocks of a design with one shared Yaegi
+// interpreter and exposes their declarations to the page's expressions.
 package setup
 
 import (
@@ -17,10 +17,12 @@ import (
 	"github.com/traefik/yaegi/interp"
 )
 
-// Registry holds one interpreter per design file and fragment instance. A
-// file's names are visible only to its own elements; every call of a fragment
-// gets independent setup state.
+// Registry holds the setup of one design: one shared interpreter, one Yaegi
+// package per file, and one state struct per fragment instance. A file's names
+// are visible only to its own elements; every call of a fragment gets
+// independent setup state. A file is compiled on first use.
 type Registry struct {
+	m *machine
 	// scopes holds the entry scope, lazy instance scopes and materialized
 	// private scopes. A lazy scope is replaced by its private scope on first
 	// stateful call.
@@ -33,11 +35,26 @@ type Registry struct {
 	programs map[string]*program
 	// templates are one setup body per source file for the fallback path.
 	templates map[string]*template
+	// err is the first compile error seen while resolving setup lazily.
+	err error
 	// Live-tree callbacks, copied into scopes created after Bind.
 	data    func(string) (any, bool)
 	version func() uint64
 	call    func(string, []any) (any, error)
 }
+
+// errScope stands in for a file whose setup failed to compile. Its functions
+// still report the error when an event calls one.
+type errScope struct {
+	p   *program
+	err error
+}
+
+func (e *errScope) Value(string) (any, bool) { return nil, false }
+
+func (e *errScope) HasFunc(name string) bool { return e.p.funcs[name] }
+
+func (e *errScope) Call(string, []any) (any, bool, error) { return nil, true, e.err }
 
 // lazyScope is a fragment instance that has not mutated its setup state yet.
 // Reads share base; the first function call creates a private interpreter (or
@@ -77,38 +94,70 @@ type Scope struct {
 	hasBridge bool
 }
 
-// New evaluates every setup block. A broken block is an error naming the file
-// and the line inside it, so LoadWindow can report it like a design error.
+// New registers every setup block and creates the shared machine. Compiling a
+// block waits for its first use; Err reports a broken one after the tree has
+// been built, and CompileAll checks them eagerly (goicheck).
 func New(setups []syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape) (*Registry, error) {
 	r := &Registry{
+		m:         newMachine(),
 		scopes:    map[string]tree.SetupScope{},
 		bases:     map[string]*Scope{},
 		baseRefs:  map[string]int{},
 		programs:  map[string]*program{},
 		templates: map[string]*template{},
 	}
+	seen := map[string]bool{}
 	for _, st := range setups {
-		if _, duplicate := r.templates[st.Src]; duplicate {
+		if seen[st.Src] {
 			return nil, fmt.Errorf("%s: setup may appear only once per file", st.Src)
 		}
-		if p, err := newProgram(st, vars, shapes); err == nil {
+		seen[st.Src] = true
+		if p, err := newProgram(st, vars, shapes, len(r.programs), r.m); err == nil {
 			r.programs[st.Src] = p
 			continue
 		}
 		r.templates[st.Src] = &template{setup: st, vars: vars, shapes: shapes}
-		sc, err := newScope(st, vars, shapes)
-		if err != nil {
-			return nil, err
-		}
-		r.bases[st.Src] = sc
-		r.scopes[scopeKey(st.Src, "")] = sc
 	}
 	return r, nil
 }
 
+// Err is the first setup compile error from a lazily compiled file.
+func (r *Registry) Err() error {
+	if r == nil {
+		return nil
+	}
+	return r.err
+}
+
+func (r *Registry) fail(err error) {
+	if r != nil && r.err == nil {
+		r.err = err
+	}
+}
+
+// CompileAll evaluates every setup file now. goicheck uses it to report a
+// broken block even when no element reads its names.
+func (r *Registry) CompileAll() error {
+	if r == nil {
+		return nil
+	}
+	for _, p := range r.programs {
+		if err := p.compile(); err != nil {
+			r.fail(err)
+			return err
+		}
+	}
+	for src := range r.templates {
+		if r.baseFor(src) == nil {
+			return r.err
+		}
+	}
+	return r.err
+}
+
 func newScope(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape) (*Scope, error) {
 	i := interp.New(interp.Options{})
-	if err := useImports(i, st.Code); err != nil {
+	if err := useImports(i, st.Code, map[string]bool{}); err != nil {
 		return nil, evalError(st, err)
 	}
 	s := &Scope{i: i, hasBridge: len(vars) > 0, synced: ^uint64(0)}
@@ -141,8 +190,13 @@ func (r *Registry) Bind(tr *tree.Tree) {
 	r.data = tr.Data
 	r.version = tr.DataVersion
 	r.call = tr.CallBridge
+	if r.m != nil {
+		r.m.data = r.data
+		r.m.version = r.version
+		r.m.call = r.call
+	}
 	for _, p := range r.programs {
-		p.bind(tr)
+		p.synced = ^uint64(0)
 	}
 	for _, sc := range r.scopes {
 		switch x := sc.(type) {
@@ -272,6 +326,12 @@ func (r *Registry) For(src, scope string) tree.SetupScope {
 		return sc
 	}
 	if p := r.programs[src]; p != nil {
+		if err := p.compile(); err != nil {
+			r.fail(err)
+			sc := &errScope{p: p, err: err}
+			r.scopes[key] = sc
+			return sc
+		}
 		inst := p.newInstance()
 		if inst == nil {
 			return nil
@@ -302,6 +362,7 @@ func (r *Registry) baseFor(src string) *Scope {
 	}
 	sc, err := newScope(t.setup, t.vars, t.shapes)
 	if err != nil {
+		r.fail(err)
 		return nil
 	}
 	r.bind(sc)

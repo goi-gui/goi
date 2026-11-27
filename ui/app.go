@@ -253,6 +253,12 @@ func (a *App) LoadWindow(entry string) (*Window, error) {
 	if err != nil {
 		return nil, fmt.Errorf("goi: %s: %w", name, err)
 	}
+	if setupB.err != nil {
+		if err := setupB.err(); err != nil {
+			logg().Error(logCtx, "ui: setup failed", "file", name, "error", err)
+			return nil, fmt.Errorf("goi: %s: %w", name, err)
+		}
+	}
 	if setupB.bind != nil {
 		setupB.bind(tr)
 	}

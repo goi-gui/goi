@@ -100,6 +100,13 @@ func main() {
 			fail = true
 			continue
 		}
+		// The app compiles a setup file on first use; a checker reports a
+		// broken block even when no element reads its names.
+		if err := setups.CompileAll(); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %v\n", file, err)
+			fail = true
+			continue
+		}
 		tr, err := tree.Build(b.File, &tree.Hooks{Setup: setups.For})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %v\n", file, err)

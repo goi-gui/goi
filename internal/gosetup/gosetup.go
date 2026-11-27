@@ -63,7 +63,7 @@ func Analyze(code string) *Analysis {
 // the `bridge` value, so setup code that reads a variable or calls a handler
 // type-checks.
 func AnalyzeWithBridge(code string, vars []syntax.DataVar, shapes []syntax.DataShape) *Analysis {
-	pre, decl := bridgeParts(vars, shapes)
+	pre, decl := bridgeParts(vars, shapes, "goisetup")
 	return analyze(code, prefix+pre+code+"\n"+decl, len(prefix)+len(pre))
 }
 
@@ -308,23 +308,41 @@ func (a *Analysis) keywordItems(word string) []Item {
 // BridgeSource is the Go source a setup scope evaluates: the user body plus a
 // generated `bridge` value and methods for the design's declarations.
 func BridgeSource(code string, vars []syntax.DataVar, shapes []syntax.DataShape) string {
-	pre, decl := bridgeParts(vars, shapes)
+	return BridgeSourcePkg(code, vars, shapes, "goisetup")
+}
+
+// BridgeSourcePkg is BridgeSource with a named synthetic package, so several
+// setup files in one interpreter can each bind their own Data and Call.
+func BridgeSourcePkg(code string, vars []syntax.DataVar, shapes []syntax.DataShape, pkg string) string {
+	pre, decl := bridgeParts(vars, shapes, pkg)
 	return pre + code + "\n" + decl
 }
 
 // BridgePrelude is the generated import a setup program needs for bridge access.
 func BridgePrelude(vars []syntax.DataVar) string {
-	pre, _ := bridgeParts(vars, nil)
+	pre, _ := bridgeParts(vars, nil, "goisetup")
+	return pre
+}
+
+// BridgePreludePkg is BridgePrelude with a named synthetic package.
+func BridgePreludePkg(vars []syntax.DataVar, pkg string) string {
+	pre, _ := bridgeParts(vars, nil, pkg)
 	return pre
 }
 
 // BridgeDecls is the generated bridge value and its methods.
 func BridgeDecls(vars []syntax.DataVar, shapes []syntax.DataShape) string {
-	_, decl := bridgeParts(vars, shapes)
+	_, decl := bridgeParts(vars, shapes, "goisetup")
 	return decl
 }
 
-func bridgeParts(vars []syntax.DataVar, shapes []syntax.DataShape) (pre, decl string) {
+// BridgeDeclsPkg is BridgeDecls with a named synthetic package.
+func BridgeDeclsPkg(vars []syntax.DataVar, shapes []syntax.DataShape, pkg string) string {
+	_, decl := bridgeParts(vars, shapes, pkg)
+	return decl
+}
+
+func bridgeParts(vars []syntax.DataVar, shapes []syntax.DataShape, pkg string) (pre, decl string) {
 	_ = shapes
 	if len(vars) == 0 {
 		return "", ""
@@ -338,24 +356,22 @@ func bridgeParts(vars []syntax.DataVar, shapes []syntax.DataShape) (pre, decl st
 				result = " " + goType(*v.Type.Result)
 			}
 			fmt.Fprintf(&methods, "func (b goiBridge) %s(%s)%s {\n", v.Name, params, result)
-			call := "goisetup.Call(" + strconv.Quote(v.Name) + args + ")"
+			call := pkg + ".Call(" + strconv.Quote(v.Name) + args + ")"
 			if v.Type.Result == nil {
 				fmt.Fprintf(&methods, "\tif _, err := %s; err != nil { panic(err) }\n", call)
 			} else {
 				fmt.Fprintf(&methods, "\tv, err := %s\n\tif err != nil { panic(err) }\n\treturn %s\n",
-					call, bridgeValue(*v.Type.Result, "v"))
+					call, bridgeValue(*v.Type.Result, "v", pkg))
 			}
 			methods.WriteString("}\n")
 			continue
 		}
 		gt := goType(v.Type)
 		fmt.Fprintf(&fields, "\t%s %s\n", v.Name, gt)
-		fmt.Fprintf(&sync, "\tif v, ok := goisetup.Data(%q); ok { b.%s = %s }\n",
-			v.Name, v.Name, bridgeValue(v.Type, "v"))
+		fmt.Fprintf(&sync, "\tif v, ok := "+pkg+".Data(%q); ok { b.%s = %s }\n",
+			v.Name, v.Name, bridgeValue(v.Type, "v", pkg))
 	}
-	pre = `import goisetup "goisetup"
-
-`
+	pre = "import " + pkg + " \"" + pkg + "\"\n\n"
 	decl = "type goiBridge struct {\n" + fields.String() + "}\n\n" +
 		"var bridge goiBridge\n\n" +
 		"func (b *goiBridge) goiSync() {\n" + sync.String() + "}\n\n" +
@@ -395,21 +411,21 @@ func goType(t syntax.Type) string {
 	return "any"
 }
 
-func bridgeValue(t syntax.Type, v string) string {
+func bridgeValue(t syntax.Type, v string, pkg string) string {
 	switch t.Kind {
 	case syntax.TypeScalar:
 		switch t.Name {
 		case "string":
-			return "goisetup.AsString(" + v + ")"
+			return pkg + ".AsString(" + v + ")"
 		case "bool":
-			return "goisetup.AsBool(" + v + ")"
+			return pkg + ".AsBool(" + v + ")"
 		case "color", "uint32":
-			return "goisetup.AsUint32(" + v + ")"
+			return pkg + ".AsUint32(" + v + ")"
 		case "int", "int8", "int16", "int32", "int64",
 			"uint", "uint8", "uint16", "uint64", "uintptr", "byte", "rune":
-			return "goisetup.AsInt(" + v + ")"
+			return pkg + ".AsInt(" + v + ")"
 		case "float32", "float64":
-			return "goisetup.AsFloat(" + v + ")"
+			return pkg + ".AsFloat(" + v + ")"
 		}
 	}
 	return v

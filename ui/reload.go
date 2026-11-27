@@ -139,6 +139,12 @@ func (a *App) applyReload(f *syntax.File) error {
 		logg().Error(logCtx, "ui: hot reload failed", "error", err)
 		return fmt.Errorf("goi: reload: %w", err)
 	}
+	if setupB.err != nil {
+		if err := setupB.err(); err != nil {
+			logg().Error(logCtx, "ui: setup failed", "error", err)
+			return fmt.Errorf("goi: reload: %w", err)
+		}
+	}
 	a.loadImages(tr)
 	a.loadMedia(tr)
 	if setupB.bind != nil {

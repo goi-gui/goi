@@ -13,21 +13,26 @@ import (
 
 	"github.com/goi-gui/goi/internal/gosetup"
 	"github.com/goi-gui/goi/internal/syntax"
-	"github.com/goi-gui/goi/internal/tree"
 	"github.com/traefik/yaegi/interp"
 )
 
-// program is one setup file compiled once. Every fragment instance is a pair
-// of closures over local variables, not another interpreter.
+// program is one setup file compiled once into the shared machine. Every
+// fragment instance is a pair of closures over local variables, not another
+// interpreter.
 type program struct {
-	i         *interp.Interpreter
-	newFn     reflect.Value
+	m         *machine
+	st        syntax.Setup
+	code      string
+	src       string
+	pkg       string
+	bridgePkg string
 	funcs     map[string]bool
 	hasBridge bool
-	data      func(string) (any, bool)
-	version   func() uint64
-	call      func(string, []any) (any, error)
-	synced    uint64
+
+	newFn      reflect.Value
+	compiled   bool
+	compileErr error
+	synced     uint64
 }
 
 type programInstance struct {
@@ -36,18 +41,43 @@ type programInstance struct {
 	call  reflect.Value
 }
 
-func newProgram(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape) (*program, error) {
-	src, err := programSource(st.Code, vars, shapes)
+func newProgram(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape, index int, m *machine) (*program, error) {
+	bridgePkg := fmt.Sprintf("goisetup%d", index)
+	src, err := programSource(st.Code, vars, shapes, bridgePkg)
 	if err != nil {
 		return nil, err
 	}
-	i := interp.New(interp.Options{})
-	if err := useImports(i, st.Code); err != nil {
-		return nil, evalError(st, err)
+	p := &program{
+		m:         m,
+		st:        st,
+		code:      st.Code,
+		src:       src,
+		pkg:       fmt.Sprintf("goi%d", index),
+		bridgePkg: bridgePkg,
+		hasBridge: len(vars) > 0,
+		synced:    ^uint64(0),
 	}
-	p := &program{i: i, hasBridge: len(vars) > 0, synced: ^uint64(0)}
-	i.Use(interp.Exports{
-		"goisetup/goisetup": {
+	p.funcs, _ = functionNames(st.Code)
+	return p, nil
+}
+
+// compile evaluates this file in the shared machine on first use. A design
+// with a hundred fragments only pays for the ones the page actually shows.
+func (p *program) compile() error {
+	if p == nil {
+		return nil
+	}
+	if p.compiled {
+		return p.compileErr
+	}
+	p.compiled = true
+	m := p.m
+	if err := useImports(m.i, p.code, m.registered); err != nil {
+		p.compileErr = evalError(p.st, err)
+		return p.compileErr
+	}
+	if err := m.i.Use(interp.Exports{
+		p.bridgePkg + "/" + p.bridgePkg: {
 			"Data":     reflect.ValueOf(p.bridgeData),
 			"Call":     reflect.ValueOf(p.bridgeCall),
 			"AsString": reflect.ValueOf(asString),
@@ -56,17 +86,21 @@ func newProgram(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShap
 			"AsFloat":  reflect.ValueOf(asFloat),
 			"AsUint32": reflect.ValueOf(asUint32),
 		},
-	})
-	if _, err := i.Eval(src); err != nil {
-		return nil, evalError(st, err)
+	}); err != nil {
+		p.compileErr = err
+		return err
 	}
-	v, err := i.Eval("goiNewSetup")
+	if _, err := m.i.Eval("package " + p.pkg + "\n" + p.src); err != nil {
+		p.compileErr = evalError(p.st, err)
+		return p.compileErr
+	}
+	v, err := m.i.Eval(p.pkg + ".goiNewSetup")
 	if err != nil || !v.IsValid() || v.Kind() != reflect.Func {
-		return nil, fmt.Errorf("%s: setup made no instance factory", st.Src)
+		p.compileErr = fmt.Errorf("%s: setup made no instance factory", p.st.Src)
+		return p.compileErr
 	}
 	p.newFn = v
-	p.funcs, _ = functionNames(st.Code)
-	return p, nil
+	return nil
 }
 
 func (p *program) newInstance() *programInstance {
@@ -89,43 +123,32 @@ func (p *program) newInstance() *programInstance {
 	return &programInstance{p: p, value: v, call: c}
 }
 
-func (p *program) bind(tr *tree.Tree) {
-	if p == nil || tr == nil {
-		return
-	}
-	p.data = tr.Data
-	p.version = tr.DataVersion
-	p.call = tr.CallBridge
-	p.synced = ^uint64(0)
-	_ = p.syncBridge()
-}
-
 func (p *program) bridgeData(name string) (any, bool) {
-	if p == nil || p.data == nil {
+	if p == nil || p.m.data == nil {
 		return nil, false
 	}
-	return p.data(name)
+	return p.m.data(name)
 }
 
 func (p *program) bridgeCall(name string, args ...any) (any, error) {
-	if p == nil || p.call == nil {
+	if p == nil || p.m.call == nil {
 		return nil, fmt.Errorf("setup bridge is not bound to a window yet")
 	}
-	v, err := p.call(name, args)
+	v, err := p.m.call(name, args)
 	_ = p.syncBridge()
 	return v, err
 }
 
 func (p *program) syncBridge() error {
-	if p == nil || !p.hasBridge || p.version == nil {
+	if p == nil || !p.hasBridge || p.m.version == nil {
 		return nil
 	}
-	v := p.version()
+	v := p.m.version()
 	if v == p.synced {
 		return nil
 	}
 	p.synced = v
-	if _, err := p.i.Eval("(&bridge).goiSync()"); err != nil {
+	if _, err := p.m.i.Eval(p.pkg + ".goiSyncBridge()"); err != nil {
 		return fmt.Errorf("setup bridge: %w", err)
 	}
 	return nil
@@ -173,7 +196,7 @@ func (p *programInstance) Call(name string, args []any) (any, bool, error) {
 // programSource turns top-level setup declarations into one closure factory.
 // Package variables become locals of goiNewSetup, so every call captures its
 // own state while the interpreter compiles the file once.
-func programSource(code string, vars []syntax.DataVar, shapes []syntax.DataShape) (string, error) {
+func programSource(code string, vars []syntax.DataVar, shapes []syntax.DataShape, bridgePkg string) (string, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "_.go", "package setup\n"+code, parser.ParseComments)
 	if err != nil {
@@ -274,10 +297,10 @@ func programSource(code string, vars []syntax.DataVar, shapes []syntax.DataShape
 	}
 
 	var b strings.Builder
-	if pre := gosetup.BridgePrelude(vars); pre != "" {
+	if pre := gosetup.BridgePreludePkg(vars, bridgePkg); pre != "" {
 		b.WriteString(pre)
 	} else if needsGoisetup {
-		b.WriteString("import goisetup \"goisetup\"\n\n")
+		b.WriteString("import " + bridgePkg + " \"" + bridgePkg + "\"\n\n")
 	}
 	for _, imp := range imports {
 		b.WriteString(imp)
@@ -291,8 +314,11 @@ func programSource(code string, vars []syntax.DataVar, shapes []syntax.DataShape
 		b.WriteString(decl)
 		b.WriteString("\n")
 	}
-	b.WriteString(gosetup.BridgeDecls(vars, shapes))
+	b.WriteString(gosetup.BridgeDeclsPkg(vars, shapes, bridgePkg))
 	b.WriteString("\n")
+	if len(vars) > 0 {
+		b.WriteString("func goiSyncBridge() { (&bridge).goiSync() }\n\n")
+	}
 	b.WriteString("type goiSetup struct {\nValue func(string) any\nCall func(string, []any) (any, error)\n}\n\n")
 	b.WriteString("func goiNewSetup() *goiSetup {\n")
 	for _, decl := range varDecls {
@@ -323,7 +349,7 @@ func programSource(code string, vars []syntax.DataVar, shapes []syntax.DataShape
 
 	b.WriteString("call := func(goiName string, goiArgs []any) (any, error) {\nswitch goiName {\n")
 	for _, fn := range funcs {
-		call, err := callCase(fn)
+		call, err := callCase(fn, bridgePkg)
 		if err != nil {
 			return "", err
 		}
@@ -360,7 +386,7 @@ func nodeText(fset *token.FileSet, n ast.Node) (string, error) {
 	return b.String(), nil
 }
 
-func callCase(fn *ast.FuncDecl) (string, error) {
+func callCase(fn *ast.FuncDecl, bridgePkg string) (string, error) {
 	var params []*ast.Field
 	if fn.Type.Params != nil {
 		params = fn.Type.Params.List
@@ -372,7 +398,7 @@ func callCase(fn *ast.FuncDecl) (string, error) {
 		if !ok {
 			return "", fmt.Errorf("setup function %s has a non-primitive parameter", fn.Name.Name)
 		}
-		conv, ok := argConversion(typ.Name, fmt.Sprintf("goiArgs[%d]", index))
+		conv, ok := argConversion(typ.Name, fmt.Sprintf("goiArgs[%d]", index), bridgePkg)
 		if !ok {
 			return "", fmt.Errorf("setup function %s has an unsupported parameter %s", fn.Name.Name, typ.Name)
 		}
@@ -392,16 +418,16 @@ func callCase(fn *ast.FuncDecl) (string, error) {
 	return fmt.Sprintf("case %q:\n%s\nreturn nil, nil\n", fn.Name.Name, call), nil
 }
 
-func argConversion(name, expr string) (string, bool) {
+func argConversion(name, expr, bridgePkg string) (string, bool) {
 	switch name {
 	case "string":
-		return "goisetup.AsString(" + expr + ")", true
+		return bridgePkg + ".AsString(" + expr + ")", true
 	case "bool":
-		return "goisetup.AsBool(" + expr + ")", true
+		return bridgePkg + ".AsBool(" + expr + ")", true
 	case "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint64", "uintptr", "byte", "rune":
-		return "goisetup.AsInt(" + expr + ")", true
+		return bridgePkg + ".AsInt(" + expr + ")", true
 	case "float32", "float64":
-		return "goisetup.AsFloat(" + expr + ")", true
+		return bridgePkg + ".AsFloat(" + expr + ")", true
 	case "any":
 		return expr, true
 	}
