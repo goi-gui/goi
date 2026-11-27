@@ -22,6 +22,9 @@ func Dump(f *File) string {
 	for _, v := range f.Vars {
 		fmt.Fprintf(&b, "bridge %s %s\n", v.Name, v.Type.String())
 	}
+	for _, st := range f.Setups {
+		fmt.Fprintf(&b, "setup %q\n", st.Code)
+	}
 	for _, sh := range f.Shapes {
 		fmt.Fprintf(&b, "type %s\n", sh.Name)
 		for _, fl := range sh.Fields {

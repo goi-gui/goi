@@ -2,6 +2,10 @@ package schema
 
 import (
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/scanner"
+	"go/token"
 	"regexp"
 	"sort"
 	"strings"
@@ -47,6 +51,7 @@ func validateFile(f *syntax.File, entry bool) (*Result, syntax.Diagnostics) {
 	if _, ok := Lookup(f.Root.Name); !ok {
 		v.elementUnknown(f.Root)
 	}
+	v.setupFuncs, v.setupValues = setupDecls(f)
 	v.checkData()
 	v.checkProps()
 	v.walk(f.Root, "")
@@ -99,6 +104,10 @@ type validator struct {
 	// loopDepth is non-zero inside a for body, where continue and break are
 	// legal.
 	loopDepth int
+	// setupFuncs and setupValues are the names a file's setup blocks declare,
+	// so a value can call or read them where a literal would be expected.
+	setupFuncs  map[string]bool
+	setupValues map[string]bool
 }
 
 func (v *validator) add(at, end syntax.Pos, msg, hint string) {
@@ -563,6 +572,9 @@ func (v *validator) checkForRange(blk *syntax.Block) (keyShape, valShape *syntax
 	if !ok {
 		switch x := blk.Range.(type) {
 		case *syntax.Ident:
+			if v.setupValues[x.Val] {
+				return nil, nil, intType(), nil // `range items`
+			}
 			if v.lookupLoopType(x.Val) != nil || v.lookupLoopVar(x.Val) != nil {
 				return nil, nil, intType(), nil // `range imageList`
 			}
@@ -664,6 +676,11 @@ func (v *validator) checkValue(e *syntax.Element, p *syntax.Property, pd *Prop) 
 // checkEntryValue checks one value inside a map or modifier entry, where a
 // nested modifier is legal.
 func (v *validator) checkEntryValue(e *syntax.Element, pd *Prop, val syntax.Value) {
+	// A setup variable is a value whose Go type is checked by the interpreter;
+	// accepting its name here keeps the schema from calling a number a string.
+	if id, ok := val.(*syntax.Ident); ok && v.setupValues[id.Val] {
+		return
+	}
 	switch x := val.(type) {
 	case *syntax.Map:
 		v.checkMap(e, pd, x)
@@ -1266,10 +1283,17 @@ var builtinSigs = map[string]struct {
 
 // checkBuiltin validates a call in a value position: the name is a builtin, the
 // argument count fits, and each argument can be a value. len and cap accept a
-// list, which no other value position does.
+// list, which no other value position does. A function a setup block declares is
+// accepted too; its body and arguments are the interpreter's concern.
 func (v *validator) checkBuiltin(e *syntax.Element, call *syntax.Call) {
 	at := call.At
 	end := at + syntax.Pos(len(call.Name)+2)
+	if v.setupFuncs[call.Name] {
+		for _, a := range call.Args {
+			v.checkRefs(e, anyProp, a)
+		}
+		return
+	}
 	sig, ok := builtinSigs[call.Name]
 	if !ok {
 		names := make([]string, 0, len(builtinSigs))
@@ -1299,6 +1323,89 @@ func (v *validator) checkBuiltin(e *syntax.Element, call *syntax.Call) {
 	for _, a := range call.Args {
 		v.checkRefs(e, argProp, a)
 	}
+}
+
+// SetupDiagnostics parses setup bodies with Go's parser and maps the errors back
+// to their .goi positions. The interpreter still owns type and runtime errors;
+// this covers the syntax the language server can report immediately.
+func SetupDiagnostics(f *syntax.File) syntax.Diagnostics {
+	if f == nil || len(f.Setups) == 0 {
+		return nil
+	}
+	const prefix = "package setup\n"
+	var out syntax.Diagnostics
+	for _, st := range f.Setups {
+		_, err := parser.ParseFile(token.NewFileSet(), "_.go", prefix+st.Code, parser.AllErrors)
+		if err == nil {
+			continue
+		}
+		list, ok := err.(scanner.ErrorList)
+		if !ok {
+			out = append(out, syntax.Diagnostic{Src: st.Src, Pos: st.Body, End: st.Body + 1, Message: err.Error()})
+			continue
+		}
+		starts := setupLineStarts(st.Code)
+		for _, item := range list {
+			// go/parser sees `package setup` as line 1, so the body's first
+			// line is line 2. Column is already a byte offset within that line.
+			line := item.Pos.Line - 2
+			if line < 0 {
+				line = 0
+			}
+			base := 0
+			if line < len(starts) {
+				base = starts[line]
+			}
+			off := base + item.Pos.Column - 1
+			pos := st.Body + syntax.Pos(off)
+			out = append(out, syntax.Diagnostic{Src: st.Src, Pos: pos, End: pos + 1, Message: item.Msg})
+		}
+	}
+	return out
+}
+
+// setupLineStarts returns the byte offset of each line in a setup body.
+func setupLineStarts(s string) []int {
+	starts := []int{0}
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\n' {
+			starts = append(starts, i+1)
+		}
+	}
+	return starts
+}
+
+// setupDecls collects the top-level functions and values a file's setup blocks
+// declare. A broken block is reported by the interpreter at load; validation
+// only needs the names it can read.
+func setupDecls(f *syntax.File) (funcs, values map[string]bool) {
+	if f == nil || len(f.Setups) == 0 {
+		return nil, nil
+	}
+	funcs, values = map[string]bool{}, map[string]bool{}
+	for _, st := range f.Setups {
+		pf, err := parser.ParseFile(token.NewFileSet(), "_.go", "package setup\n"+st.Code, parser.SkipObjectResolution)
+		if err != nil {
+			continue
+		}
+		for _, d := range pf.Decls {
+			switch d := d.(type) {
+			case *ast.FuncDecl:
+				if d.Recv == nil {
+					funcs[d.Name.Name] = true
+				}
+			case *ast.GenDecl:
+				for _, spec := range d.Specs {
+					if vs, ok := spec.(*ast.ValueSpec); ok {
+						for _, name := range vs.Names {
+							values[name.Name] = true
+						}
+					}
+				}
+			}
+		}
+	}
+	return funcs, values
 }
 
 // condName names the property a call was found in, for a diagnostic.
@@ -1594,6 +1701,11 @@ func (v *validator) checkEventCall(e *syntax.Element, ev EventDef, p *syntax.Pro
 	if !ok {
 		return // already reported where the property was read
 	}
+	if call.Callee == nil {
+		v.add(call.At, call.At+syntax.Pos(len(call.Name)+2),
+			fmt.Sprintf("%s.%s: a handler call needs bridge. or an element id", e.Name, p.Name), "")
+		return
+	}
 	at := call.Callee.At
 	end := at + syntax.Pos(len(call.Callee.ID)+1+len(call.Callee.Prop))
 	if call.Callee.ID == "props" {
@@ -1629,6 +1741,10 @@ func (v *validator) checkEventCall(e *syntax.Element, ev EventDef, p *syntax.Pro
 	}
 	if call.Callee.ID != "bridge" && call.Callee.ID != "data" {
 		// An event may drive an element by id: `onClick: spin.pause()`.
+		if call.Callee == nil {
+			v.add(at, end, fmt.Sprintf("%s.%s: a handler call needs bridge. or an element id", e.Name, p.Name), "")
+			return
+		}
 		if call.Callee.ID == "props" {
 			return
 		}

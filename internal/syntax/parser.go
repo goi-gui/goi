@@ -29,6 +29,9 @@ func ParseNamed(src []byte, name string) (*File, Diagnostics) {
 	f, diag := Parse(src)
 	if f != nil {
 		f.Src = name
+		for i := range f.Setups {
+			f.Setups[i].Src = name
+		}
 		markSrc(f.Root, name)
 	}
 	return f, diag
@@ -177,6 +180,8 @@ func (p *parser) parseFile() *File {
 			p.parseData(f)
 		case t.text == "type":
 			p.parseData(f)
+		case t.text == "setup":
+			p.parseSetup(f)
 		default:
 			// An element that happens to start the file.
 			root := p.parseElement()
@@ -418,6 +423,39 @@ func (p *parser) parseFuncArgs() ([]Field, bool) {
 			return nil, false
 		}
 	}
+}
+
+// parseSetup reads `setup { ... }` and keeps its Go source raw. The lexer has
+// already captured the body as one token, because the .goi grammar does not
+// tokenize Go operators and rune literals.
+func (p *parser) parseSetup(f *File) {
+	kw := p.next()
+	if len(f.Setups) > 0 {
+		p.errorf(kw, "setup may appear only once per file")
+	}
+	if p.peek().kind != tokLBrace {
+		p.errorf(p.peek(), "expected '{' after setup")
+		p.sync()
+		return
+	}
+	p.next()
+	body := p.peek()
+	if body.kind != tokRaw {
+		p.errorf(body, "expected Go source in the setup block")
+		p.sync()
+		return
+	}
+	p.next()
+	if p.peek().kind != tokRBrace {
+		p.errorf(p.peek(), "expected '}' to close setup")
+		p.sync()
+		return
+	}
+	closeTok := p.next()
+	line, _ := lineStarts(p.src).locate(body.pos)
+	f.Setups = append(f.Setups, Setup{
+		At: kw.pos, Body: body.pos, End: closeTok.end, Line: line, Code: body.text,
+	})
 }
 
 // parseData reads either the variables block (`bridge { loading bool }`, also

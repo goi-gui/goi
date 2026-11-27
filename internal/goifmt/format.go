@@ -13,6 +13,7 @@
 package goifmt
 
 import (
+	"go/format"
 	"strconv"
 	"strings"
 
@@ -68,6 +69,9 @@ func (p *printer) document() {
 	if len(p.file.Shapes) > 0 && p.file.Shapes[0].NameAt < first {
 		first = p.file.Shapes[0].NameAt
 	}
+	if len(p.file.Setups) > 0 && p.file.Setups[0].At < first {
+		first = p.file.Setups[0].At
+	}
 	p.headerComments(first)
 
 	wrote := false
@@ -113,6 +117,13 @@ func (p *printer) document() {
 			p.b.WriteString("}\n")
 		})
 	}
+	for _, st := range p.file.Setups {
+		st := st
+		section(func() {
+			p.commentsBefore(st.At)
+			p.setupBlock(st)
+		})
+	}
 	if wrote {
 		p.b.WriteString("\n")
 	}
@@ -126,6 +137,43 @@ func (p *printer) headerComments(first syntax.Pos) {
 	if p.ci > 0 {
 		p.b.WriteString("\n")
 	}
+}
+
+// setupBlock writes the raw Go body through go/format, indented one level.
+func (p *printer) setupBlock(st syntax.Setup) {
+	p.b.WriteString("setup {\n")
+	p.depth++
+	body := formatSetup(st.Code)
+	for _, line := range strings.Split(body, "\n") {
+		if line == "" {
+			p.b.WriteString("\n")
+			continue
+		}
+		p.indent()
+		p.b.WriteString(line)
+		p.b.WriteString("\n")
+	}
+	p.depth--
+	p.commentsTo(st.End)
+	p.b.WriteString("}\n")
+}
+
+// formatSetup formats a setup body with gofmt. A body with a Go syntax error
+// is left as written, so goifmt never destroys a half-typed block.
+func formatSetup(code string) string {
+	body := strings.TrimSpace(code)
+	if body == "" {
+		return ""
+	}
+	out, err := format.Source([]byte("package setup\n\n" + body + "\n"))
+	if err != nil {
+		return strings.TrimRight(code, "\n")
+	}
+	text := string(out)
+	if i := strings.Index(text, "\n\n"); i >= 0 {
+		text = text[i+2:]
+	}
+	return strings.TrimRight(text, "\n")
 }
 
 // --------------------------------------------------------------- declarations

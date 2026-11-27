@@ -3058,3 +3058,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   type's zero value and reported as a warning naming the bridge variable. A
   condition arm's `visible` is written as derived state, not a Go write, so the
   carry-over ignores it and the new design evaluates its own condition.
+- **A `setup` block is page-scoped Go, interpreted by Yaegi.** It holds
+  package-level `var`/`const`/`type`/`func` declarations (not `:=`) and is
+  evaluated once per load. The tree resolves its names by `Element.Src`, so a
+  fragment's helpers stay with the fragment and two files may reuse a name.
+  Setup functions are values, not event handlers; the interpreter exposes the
+  standard library but not application packages. A reload re-evaluates the
+  block, so setup state resets while Go state outside Bind does not.

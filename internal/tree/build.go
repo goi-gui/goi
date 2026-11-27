@@ -98,6 +98,8 @@ type Tree struct {
 	bridge *Bridge
 	// report receives runtime errors, when the app supplied Hooks.Error.
 	report func(error)
+	// setup resolves a file's setup block, when the app supplied Hooks.Setup.
+	setup func(string) SetupScope
 	// post queues work on the UI goroutine for a Terminal reader.
 	post func(func())
 	// window runs a window control a design called through an event.
@@ -188,6 +190,7 @@ func Build(f *syntax.File, hooks *Hooks) (*Tree, error) {
 		t.report = hooks.Error
 		t.post = hooks.Post
 		t.window = hooks.Window
+		t.setup = hooks.Setup
 	}
 	// A bridge variable starts at its type's zero value, so a design that reads
 	// one before Go sets it still has a value.

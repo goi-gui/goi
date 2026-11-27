@@ -46,6 +46,8 @@ const (
 	tokLBracket
 	tokRBracket
 	tokError
+	// tokRaw is the uninterpreted Go source inside a setup block.
+	tokRaw
 )
 
 type token struct {
@@ -66,6 +68,9 @@ type lexer struct {
 	// comments records every comment with its span, so the formatter can put
 	// it back where the design wrote it. The parser ignores them.
 	comments []Comment
+	// depth counts open braces, so a setup keyword inside an element is read as
+	// an ordinary identifier rather than a raw block.
+	depth int
 }
 
 func newLexer(src []byte) *lexer {
@@ -91,9 +96,17 @@ func (l *lexer) run() ([]token, Diagnostics) {
 		c := l.src[l.off]
 		switch {
 		case c == '{':
+			if l.depth == 0 && l.setupAhead() {
+				l.lexSetup(start)
+				continue
+			}
+			l.depth++
 			l.off++
 			l.emit(token{kind: tokLBrace, pos: Pos(start), end: Pos(l.off)})
 		case c == '}':
+			if l.depth > 0 {
+				l.depth--
+			}
 			l.off++
 			l.emit(token{kind: tokRBrace, pos: Pos(start), end: Pos(l.off)})
 		case c == ':' && l.off+1 < len(l.src) && l.src[l.off+1] == '=':
@@ -237,6 +250,93 @@ func (l *lexer) run() ([]token, Diagnostics) {
 }
 
 func (l *lexer) emit(t token) { l.toks = append(l.toks, t) }
+
+// setupAhead reports whether the previous token is the setup keyword and the
+// next body starts here.
+func (l *lexer) setupAhead() bool {
+	n := len(l.toks)
+	return n > 0 && l.toks[n-1].kind == tokIdent && l.toks[n-1].text == "setup"
+}
+
+// lexSetup captures a setup body as raw Go source. The .goi lexer does not know
+// Go operators or rune literals, so the body must not be tokenized by it.
+func (l *lexer) lexSetup(open int) {
+	l.off++ // '{'
+	l.emit(token{kind: tokLBrace, pos: Pos(open), end: Pos(l.off)})
+	start := l.off
+	end, ok := l.scanSetupBody()
+	l.emit(token{kind: tokRaw, pos: Pos(start), end: Pos(end), text: string(l.src[start:end])})
+	if !ok {
+		l.fail(open, len(l.src), "unterminated setup block")
+		l.off = len(l.src)
+		return
+	}
+	l.off = end + 1 // the closing '}'
+	l.emit(token{kind: tokRBrace, pos: Pos(end), end: Pos(l.off)})
+}
+
+// scanSetupBody finds the '}' that closes a setup block, skipping Go strings,
+// runes, raw strings and comments. It returns the index of that brace.
+func (l *lexer) scanSetupBody() (int, bool) {
+	depth := 1
+	for i := l.off; i < len(l.src); {
+		switch l.src[i] {
+		case '{':
+			depth++
+			i++
+		case '}':
+			depth--
+			if depth == 0 {
+				return i, true
+			}
+			i++
+		case '"', '\'':
+			q := l.src[i]
+			i++
+			for i < len(l.src) {
+				if l.src[i] == '\\' {
+					i += 2
+					continue
+				}
+				if l.src[i] == q || l.src[i] == '\n' {
+					i++
+					break
+				}
+				i++
+			}
+		case '`':
+			i++
+			for i < len(l.src) && l.src[i] != '`' {
+				i++
+			}
+			if i < len(l.src) {
+				i++
+			}
+		case '/':
+			if i+1 < len(l.src) && l.src[i+1] == '/' {
+				i += 2
+				for i < len(l.src) && l.src[i] != '\n' {
+					i++
+				}
+				continue
+			}
+			if i+1 < len(l.src) && l.src[i+1] == '*' {
+				i += 2
+				for i+1 < len(l.src) && !(l.src[i] == '*' && l.src[i+1] == '/') {
+					i++
+				}
+				if i+1 < len(l.src) {
+					i += 2
+				}
+				continue
+			}
+			i++
+		default:
+			i++
+		}
+	}
+	return len(l.src), false
+}
 
 // endsValue reports whether the last emitted token can end a value, which makes
 // a following '-' a subtraction rather than a negative sign.

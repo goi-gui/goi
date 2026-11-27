@@ -1595,3 +1595,33 @@ func TestParseColorOpacityRange(t *testing.T) {
 		}
 	}
 }
+
+// TestParseRawSetup keeps Go's braces, strings and comments out of the .goi
+// lexer: the setup body is one raw token, not an element body.
+func TestParseRawSetup(t *testing.T) {
+	src := `setup {
+	var quoted = "}"
+	var raw = "` + "`{`" + `"
+	func brace() string { return "}" }
+	// a comment with }
+	/* and a block } */
+}
+
+Window { Text { text: brace() } }`
+	f, diag := Parse([]byte(src))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	if len(f.Setups) != 1 {
+		t.Fatalf("setups = %d", len(f.Setups))
+	}
+	st := f.Setups[0]
+	for _, want := range []string{`var quoted = "}"`, "`{`", "func brace()", "/* and a block } */"} {
+		if !strings.Contains(st.Code, want) {
+			t.Errorf("setup code lost %q:\n%s", want, st.Code)
+		}
+	}
+	if f.Root == nil || f.Root.Name != "Window" {
+		t.Fatalf("root = %v", f.Root)
+	}
+}

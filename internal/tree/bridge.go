@@ -86,6 +86,10 @@ func (b *Bridge) Call(name string, args []any) error {
 	return nil
 }
 
+// BridgeArg converts one design value to a Go parameter type, using the same
+// rules as a bridge handler. Setup calls use it for interpreted functions.
+func BridgeArg(v any, want reflect.Type) (reflect.Value, error) { return bridgeArg(v, want) }
+
 // bridgeArg converts one design value to the Go parameter type. A number may
 // feed an int, a float or a string; the declaration promised a type but Go may
 // spell it more precisely.
@@ -143,6 +147,9 @@ func (t *Tree) bindEvent(b *NodeBase, name string, v syntax.Value) error {
 	call, ok := v.(*syntax.Call)
 	if !ok {
 		return fmt.Errorf("%s.%s: expected a handler call", b.node.Kind(), name)
+	}
+	if call.Callee == nil {
+		return fmt.Errorf("%s.%s: a setup function is a value, not an event handler", b.node.Kind(), name)
 	}
 	// `window.close()` drives the live window; window is a reserved name, not
 	// an element id.
@@ -286,7 +293,7 @@ func bridgeComponent(b *NodeBase) *Component {
 // fire evaluates the call's arguments at event time and invokes the handler.
 // The identifier `event` is the event's own payload.
 func (t *Tree) fire(b *NodeBase, name string, call *syntax.Call, payload any) {
-	c := evalCtx{tree: t, sc: b.scope}
+	c := evalCtx{tree: t, sc: b.scope, src: nodeSource(b)}
 	args := make([]any, len(call.Args))
 	for i, a := range call.Args {
 		if id, ok := a.(*syntax.Ident); ok && id.Val == "event" {

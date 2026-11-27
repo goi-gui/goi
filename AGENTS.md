@@ -87,7 +87,10 @@ Tests that enforce the above: `TestEveryComponentValidates`,
 
 - `.goi` has no scripting: `if`/`else`, `for … range` and `switch … case` only
   choose which children show or repeat, and an expression picks a value
-  (`app.dark ? "light_mode" : "dark_mode"`). Behaviour belongs in Go.
+  (`app.dark ? "light_mode" : "dark_mode"`). Behaviour belongs in Go. The one
+  exception is a file's optional `setup { … }` block: pure Go declarations
+  interpreted by Yaegi, scoped to that file and meant for value helpers, not
+  events or app logic.
 - A list comes from `for … range` over a bridge slice, whose rows are rebuilt by
   `ui.SetData`; `ui.Instantiate`/`ui.Fill` are for a fixed set of children.
 - Colours as M3 role names (`theme.primary`, `theme.surfaceContainer`,

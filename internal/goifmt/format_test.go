@@ -589,3 +589,20 @@ func TestFormatKeepsColorOpacity(t *testing.T) {
 		}
 	}
 }
+
+// TestSetupStaysInTheFormattedFile keeps a setup block from being dropped: the
+// formatter prints its Go body through gofmt.
+func TestSetupStaysInTheFormattedFile(t *testing.T) {
+	src := `setup {
+var name="Kaan"
+func greet(n string) string{return "Hi, "+n}
+}
+
+Window { Text { text: greet(name) } }`
+	got := string(Source([]byte(src)))
+	for _, want := range []string{"setup {", `var name = "Kaan"`, `func greet(n string) string {`, "greet(name)"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("formatted file lost %q:\n%s", want, got)
+		}
+	}
+}

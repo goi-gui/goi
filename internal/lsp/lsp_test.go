@@ -3270,3 +3270,24 @@ func framedJSON(t *testing.T, framed []byte) map[string]json.RawMessage {
 	}
 	return body
 }
+
+// TestDiagnosticsLandInSetup proves a Go syntax error inside setup is reported
+// at the setup line, not as a .goi property error.
+func TestDiagnosticsLandInSetup(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "setup {\n\tvar name = )\n}\n\nWindow { }\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	diags := c.diagnostics(uri)
+	if len(diags) == 0 {
+		t.Fatal("a broken setup block produced no diagnostic")
+	}
+	if !strings.Contains(diags[0].Message, "expected") {
+		t.Fatalf("message = %q", diags[0].Message)
+	}
+	if diags[0].Range.Start.Line != 1 {
+		t.Fatalf("range start = %+v, want the setup line", diags[0].Range.Start)
+	}
+}

@@ -22,8 +22,10 @@ type condBranch struct {
 	// shows inside a shown outer arm.
 	parent *condBranch
 	// scope is the loop scope the arm was built in, so a condition can read
-	// its {#each} variable.
+	// its {#each} variable. src is the file the block was written in, for a
+	// setup name used in the condition.
 	scope *scope
+	src   string
 	nodes []*NodeBase
 	// own is each node's own `visible` literal, so the toggling never loses a
 	// row that the design hid on purpose.
@@ -41,7 +43,7 @@ func (t *Tree) buildBlock(blk *syntax.Block, parent *NodeBase, hooks *Hooks, out
 		for i, br := range blk.Branches {
 			cb := &condBranch{
 				subject: blk.Subject, cases: cases, isSwitch: true,
-				arm: i, parent: outer, scope: t.scope,
+				arm: i, parent: outer, scope: t.scope, src: blk.Src,
 			}
 			t.conds = append(t.conds, cb)
 			if err := t.buildMembers(br.Members, parent, hooks, cb); err != nil {
@@ -58,7 +60,7 @@ func (t *Tree) buildBlock(blk *syntax.Block, parent *NodeBase, hooks *Hooks, out
 	}
 	arm := 0
 	for _, br := range blk.Branches {
-		cb := &condBranch{conds: conds, arm: -1, parent: outer, scope: t.scope}
+		cb := &condBranch{conds: conds, arm: -1, parent: outer, scope: t.scope, src: blk.Src}
 		if br.Cond != nil {
 			cb.arm = arm
 			arm++
@@ -110,7 +112,7 @@ func (t *Tree) chainOK(cb *condBranch) bool {
 	}
 	first := -1
 	for i, cond := range cb.conds {
-		c := evalCtx{tree: t, sc: cb.scope}
+		c := evalCtx{tree: t, sc: cb.scope, src: cb.src}
 		v, ok := c.eval(cond, 0)
 		if b, isBool := v.(bool); ok && isBool && b {
 			first = i
@@ -125,7 +127,7 @@ func (t *Tree) chainOK(cb *condBranch) bool {
 // same loose comparison a `==` in a design uses, so a string case matches a
 // string bridge value and a number case a number.
 func (t *Tree) switchArm(cb *condBranch) int {
-	c := evalCtx{tree: t, sc: cb.scope}
+	c := evalCtx{tree: t, sc: cb.scope, src: cb.src}
 	if subject, ok := c.eval(cb.subject, 0); ok {
 		for i, vals := range cb.cases {
 			for _, v := range vals {

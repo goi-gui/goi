@@ -31,6 +31,9 @@ type File struct {
 	// Vars is the `bridge { ... }` block: the app's variables, which Go sets and
 	// a design reads in conditions, values and for loops.
 	Vars []DataVar
+	// Setups holds the `setup { ... }` blocks, one per file. Code is the Go
+	// source between the braces, kept verbatim for the interpreter.
+	Setups []Setup
 	// Shapes is one `type Name { ... }` per row type a for loop can walk.
 	Shapes []DataShape
 	// Fragment records a `$children` slot. A file that has one is a fragment
@@ -69,6 +72,17 @@ func (f *File) CommentAt(pos Pos) *Comment {
 // IsFragment reports whether the file is meant to be imported rather than
 // opened as a window: it declares props or a `$children` slot.
 func (f *File) IsFragment() bool { return len(f.Props) > 0 || f.Fragment }
+
+// Setup is one `setup { ... }` block: Go declarations whose names are visible
+// to the elements of the file it was written in.
+type Setup struct {
+	Src string
+	// At is the `setup` keyword, Body is the first byte after `{`, and End is
+	// just past the closing `}`. Line is the 1-based line Body starts on.
+	At, Body, End Pos
+	Line          int
+	Code          string
+}
 
 // Import is `import Sidebar "./Sidebar.goi"`, or `import "./Sidebar.goi"`
 // when the alias follows the file's base name.

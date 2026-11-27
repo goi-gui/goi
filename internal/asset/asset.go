@@ -76,6 +76,11 @@ func Load(fsys fs.FS, name string) (*Bundle, syntax.Diagnostics) {
 			seen[v.Name] = bridgeDecl{v: v, src: entry}
 		}
 	}
+	// Setups stay per file: their names are visible only to the elements
+	// written in that file, and the tree resolves them by Element.Src.
+	for _, name := range l.order {
+		expanded.Setups = append(expanded.Setups, l.files[name].Setups...)
+	}
 	type shapeDecl struct {
 		v   syntax.DataShape
 		src string

@@ -69,6 +69,13 @@ func isColorRef(v syntax.Value) bool {
 // expression. Expressions are recorded for the frame loop instead of stored in
 // the property cell directly.
 func (b *NodeBase) applyValue(name string, v syntax.Value) bool {
+	// A bare name that a setup block declared is a value, not an enum or a
+	// string literal, so it has to be re-read with the other expressions.
+	if id, ok := v.(*syntax.Ident); ok && b.tree != nil {
+		if _, ok := b.tree.setupValue(nodeSource(b), id.Val); ok {
+			return b.setExpr(name, v)
+		}
+	}
 	// A colour reference is a literal for the cell, though it reads like a
 	// reference: the resolver keeps it as a role and rewrites it per theme.
 	if r, ok := v.(*syntax.Ref); ok && (r.ID == "theme" || r.ID == "customColor") {
@@ -452,7 +459,7 @@ func (b *NodeBase) applyExpressions() {
 		if r, ok := spec.value.(*syntax.Ref); ok && (r.ID == "theme" || r.ID == "customColor") {
 			continue
 		}
-		c := evalCtx{tree: b.tree, sc: b.scope}
+		c := evalCtx{tree: b.tree, sc: b.scope, src: nodeSource(b)}
 		if v, ok := c.evalSpec(b, spec, 0); ok {
 			b.writeExpr(spec.name, v)
 		}
@@ -489,7 +496,7 @@ func (b *NodeBase) ResolveSize(availW, availH float64) {
 			b.writeNumber(spec.name, p.Val/100*scale)
 			continue
 		}
-		c := evalCtx{tree: b.tree, sc: b.scope}
+		c := evalCtx{tree: b.tree, sc: b.scope, src: nodeSource(b)}
 		if v, ok := c.evalSpec(b, spec, scale); ok {
 			if f, ok := v.(float64); ok {
 				b.writeNumber(spec.name, f)
@@ -522,8 +529,10 @@ type refKey struct {
 type evalCtx struct {
 	tree *Tree
 	// sc is the loop scope of the node being evaluated, so `row.title` reads
-	// the {#each} item.
-	sc *scope
+	// the {#each} item. src is the file the expression was written in, so a
+	// bare name can resolve against that file's setup block.
+	sc  *scope
+	src string
 	// seen is the chain of references being evaluated, which is what stops a
 	// cycle. The chain is shallow, so a slice scan beats a map and the tree
 	// lends its scratch buffer: an expression pass allocates nothing.
@@ -560,9 +569,13 @@ func (c *evalCtx) eval(v syntax.Value, percent float64) (any, bool) {
 	case *syntax.Duration:
 		return x.Val, true
 	case *syntax.Ident:
-		// A bare name is a loop variable when one is in scope; otherwise it is
-		// the literal word an enum or a string property reads.
+		// A bare name is a loop variable when one is in scope, then a setup
+		// variable from the same file; otherwise it is the literal word an enum
+		// or a string property reads.
 		if v, ok := scopeVar(c.sc, x.Val); ok {
+			return v, true
+		}
+		if v, ok := c.tree.setupValue(c.src, x.Val); ok {
 			return v, true
 		}
 		return x.Val, true
@@ -603,6 +616,9 @@ func (c *evalCtx) eval(v syntax.Value, percent float64) (any, bool) {
 	case *syntax.Ref:
 		return c.evalRef(x)
 	case *syntax.Call:
+		if v, ok := c.evalSetupCall(x, percent); ok {
+			return v, true
+		}
 		return c.evalBuiltin(x, percent)
 	case *syntax.List:
 		// Each item is an ordinary value, so a list can mix a bridge variable
@@ -680,6 +696,26 @@ func (c *evalCtx) evalBinary(x *syntax.Binary, percent float64) (any, bool) {
 // the ones that allocate, mutate or touch the process (append, make, new, copy,
 // delete, clear, close, panic, print, println, recover, complex, real, imag)
 // have no meaning in a value that is re-read every frame.
+// evalSetupCall resolves a bare function name against the file's setup scope.
+// found is false for a builtin, which the caller then tries.
+func (c *evalCtx) evalSetupCall(call *syntax.Call, percent float64) (any, bool) {
+	if c.tree == nil || c.src == "" {
+		return nil, false
+	}
+	if !c.tree.setupHasFunc(c.src, call.Name) {
+		return nil, false
+	}
+	args := make([]any, len(call.Args))
+	for i, a := range call.Args {
+		v, ok := c.eval(a, percent)
+		if !ok {
+			return nil, true
+		}
+		args[i] = v
+	}
+	return c.tree.setupCall(c.src, call.Name, args)
+}
+
 func (c *evalCtx) evalBuiltin(call *syntax.Call, percent float64) (any, bool) {
 	switch call.Name {
 	case "formatf":
@@ -1080,6 +1116,11 @@ func (c *evalCtx) evalRef(r *syntax.Ref) (any, bool) {
 			return normalizeData(v)
 		}
 		return nil, false
+	}
+	if v, ok := c.tree.setupValue(c.src, r.ID); ok {
+		if v, ok := dataValue(v, r.Prop); ok {
+			return v, true
+		}
 	}
 	n, ok := c.tree.ByID(r.ID)
 	if !ok {

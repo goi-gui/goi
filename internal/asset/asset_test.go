@@ -881,3 +881,40 @@ Column { }`,
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// TestSetupsStayWithTheirFile keeps a setup block attached to the file that
+// wrote it when imports are expanded into one design.
+func TestSetupsStayWithTheirFile(t *testing.T) {
+	dir := design(t, map[string]string{
+		"Main.goi": `import Part "./Part.goi"
+
+setup {
+	var name = "main"
+}
+
+Window { Part { title: "x" } }`,
+		"Part.goi": `props {
+	title string
+}
+
+setup {
+	var name = "part"
+}
+
+Column { Text { text: props.title } }`,
+	})
+	b, diag := Load(os.DirFS(dir), "Main.goi")
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	if len(b.File.Setups) != 2 {
+		t.Fatalf("setups = %d, want one per file", len(b.File.Setups))
+	}
+	seen := map[string]bool{}
+	for _, st := range b.File.Setups {
+		seen[st.Src] = true
+	}
+	if !seen["Main.goi"] || !seen["Part.goi"] {
+		t.Fatalf("setup sources = %v", seen)
+	}
+}

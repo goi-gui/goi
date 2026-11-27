@@ -50,6 +50,7 @@ func (s *Server) validate(d *document) {
 	// The editor never requires a Window root: a design split into pages has
 	// many roots, and the runtime is where the entry point is checked.
 	_, vdiag := schema.Validate(bundle.File)
+	vdiag = append(vdiag, schema.SetupDiagnostics(bundle.File)...)
 	s.publishDiagSet(d, idx, vdiag, bundle)
 }
 

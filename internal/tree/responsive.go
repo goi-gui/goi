@@ -169,7 +169,7 @@ func (b *NodeBase) resolveModifier(v syntax.Value, width float64) syntax.Value {
 		return b.resolveModifier(chosen, width)
 	case syntax.ModifierConditional:
 		var fallback syntax.Value
-		c := evalCtx{tree: b.tree, sc: b.scope}
+		c := evalCtx{tree: b.tree, sc: b.scope, src: nodeSource(b)}
 		for _, e := range m.Entries {
 			if e.Cond == nil {
 				fallback = e.Value

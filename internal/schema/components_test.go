@@ -502,3 +502,31 @@ func TestEventCallsPopoverMethods(t *testing.T) {
 		}
 	}
 }
+
+// TestSetupNamesAreDesignValues lets a setup variable feed a typed property and
+// a setup function be called where a builtin would otherwise be required.
+func TestSetupNamesAreDesignValues(t *testing.T) {
+	src := `setup {
+	var w = 120
+
+	func label(s string) string {
+		return "Hi, " + s
+	}
+}
+
+Window { Column {
+	Text { text: label("Kaan") width: w }
+} }`
+	if _, diag := validate(t, src); !diag.Empty() {
+		t.Fatalf("setup names were rejected: %v", diag)
+	}
+
+	event := `setup {
+	func reset() {}
+}
+
+Window { Button { onClick: reset() } }`
+	if _, diag := validate(t, event); diag.Empty() {
+		t.Fatal("a setup function was accepted as an event handler")
+	}
+}

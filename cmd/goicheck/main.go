@@ -22,6 +22,7 @@ import (
 	"github.com/goi-gui/goi/internal/m3"
 	"github.com/goi-gui/goi/internal/paint"
 	"github.com/goi-gui/goi/internal/schema"
+	"github.com/goi-gui/goi/internal/setup"
 	"github.com/goi-gui/goi/internal/syntax"
 	"github.com/goi-gui/goi/internal/text"
 	"github.com/goi-gui/goi/internal/tree"
@@ -93,7 +94,13 @@ func main() {
 				Members: []syntax.Member{body.Root}}
 			b.File = &preview
 		}
-		tr, err := tree.Build(b.File, nil)
+		setups, err := setup.New(b.File.Setups)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %v\n", file, err)
+			fail = true
+			continue
+		}
+		tr, err := tree.Build(b.File, &tree.Hooks{Setup: setups.For})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %v\n", file, err)
 			fail = true
