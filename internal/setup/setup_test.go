@@ -5,7 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/goi-gui/goi/internal/gosetup"
 	"github.com/goi-gui/goi/internal/syntax"
+	"github.com/traefik/yaegi/stdlib"
 )
 
 func parse(t *testing.T, src string) *syntax.File {
@@ -316,5 +318,92 @@ Window {}`)
 	v, _, err := sc.Call("total", nil)
 	if err != nil || fmt.Sprint(v) != "1" {
 		t.Fatalf("total = %v, %v", v, err)
+	}
+}
+
+func TestSetupImportsUsedPackagesAndDropsUnusedOnes(t *testing.T) {
+	f := parse(t, `setup {
+	import "strings"
+
+	func label() string { return fmt.Sprintf("%d", 7) }
+}
+
+Window {}`)
+	r, err := New(f.Setups, f.Vars, f.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := r.programs[f.Src]
+	if p == nil {
+		t.Fatalf("setup did not compile to a program: %v", r.Err())
+	}
+	paths := map[string]bool{}
+	for _, im := range p.imports {
+		paths[im.Path] = true
+	}
+	if !paths["fmt"] || paths["strings"] {
+		t.Fatalf("imports = %v", p.imports)
+	}
+	v, found, err := r.For(f.Src, "").Call("label", nil)
+	if err != nil || !found || v != "7" {
+		t.Fatalf("label = %v, %v, %v", v, found, err)
+	}
+}
+
+func TestSetupDoesNotImportAShadowedName(t *testing.T) {
+	f := parse(t, `setup {
+	type box struct{ n int }
+	func label() int {
+		fmt := box{n: 4}
+		return fmt.n
+	}
+}
+
+Window {}`)
+	r, err := New(f.Setups, f.Vars, f.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := r.programs[f.Src]
+	if p == nil {
+		t.Fatalf("setup did not compile to a program: %v", r.Err())
+	}
+	if len(p.imports) != 0 {
+		t.Fatalf("a local fmt was imported: %v", p.imports)
+	}
+	if v, _, err := r.For(f.Src, "").Call("label", nil); err != nil || fmt.Sprint(v) != "4" {
+		t.Fatalf("label = %v, %v", v, err)
+	}
+}
+
+func TestSetupAutoImportFallsBackWithTheInterpreter(t *testing.T) {
+	f := parse(t, `setup {
+	import "sort"
+
+	var seen int
+
+	type T struct{ n int }
+	func (x T) Label() string { return fmt.Sprintf("%d/%d", x.n, seen) }
+	func label() string { return T{n: 3}.Label() }
+}
+
+Window {}`)
+	r, err := New(f.Setups, f.Vars, f.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.programs[f.Src] != nil {
+		t.Fatal("a state-reading method stayed on the shared program")
+	}
+	if v, _, err := r.For(f.Src, "").Call("label", nil); err != nil || v != "3/0" {
+		t.Fatalf("label = %v, %v", v, err)
+	}
+}
+
+func TestStdPackageTableMatchesYaegi(t *testing.T) {
+	for name, p := range gosetup.StdPackages() {
+		if _, ok := stdlib.Symbols[p+"/"+name]; !ok {
+			t.Fatalf("std package %q maps to %q, which the interpreter does not have", name, p)
+		}
 	}
 }

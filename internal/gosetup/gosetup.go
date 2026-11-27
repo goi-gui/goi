@@ -56,15 +56,19 @@ type Analysis struct {
 // analysis when the parser produced a file, so completion keeps working while a
 // line is incomplete.
 func Analyze(code string) *Analysis {
-	return analyze(code, prefix+code, len(prefix))
+	body, imports := PrepareImports(code)
+	block := ImportBlock(imports)
+	return analyze(code, prefix+block+body, len(prefix)+len(block))
 }
 
 // AnalyzeWithBridge is Analyze with the design's bridge declarations exposed as
 // the `bridge` value, so setup code that reads a variable or calls a handler
 // type-checks.
 func AnalyzeWithBridge(code string, vars []syntax.DataVar, shapes []syntax.DataShape) *Analysis {
+	body, imports := PrepareImports(code)
 	pre, decl := bridgeParts(vars, shapes, "goisetup")
-	return analyze(code, prefix+pre+code+"\n"+decl, len(prefix)+len(pre))
+	block := ImportBlock(imports)
+	return analyze(code, prefix+block+pre+body+"\n"+decl, len(prefix)+len(block)+len(pre))
 }
 
 func analyze(code, source string, base int) *Analysis {

@@ -156,8 +156,9 @@ func (r *Registry) CompileAll() error {
 }
 
 func newScope(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape) (*Scope, error) {
+	body, imports := gosetup.PrepareImports(st.Code)
 	i := interp.New(interp.Options{})
-	if err := useImports(i, st.Code, map[string]bool{}); err != nil {
+	if err := useImports(i, imports, map[string]bool{}); err != nil {
 		return nil, evalError(st, err)
 	}
 	s := &Scope{i: i, hasBridge: len(vars) > 0, synced: ^uint64(0)}
@@ -172,13 +173,13 @@ func newScope(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape)
 			"AsUint32": reflect.ValueOf(asUint32),
 		},
 	})
-	src := gosetup.BridgePrelude(vars) + "\n//line " + st.Src + ":" + strconv.Itoa(st.Line) + "\n" +
-		st.Code + "\n//line _.go:1\n" + gosetup.BridgeDecls(vars, shapes)
+	src := gosetup.ImportBlock(imports) + gosetup.BridgePrelude(vars) + "\n//line " + st.Src + ":" + strconv.Itoa(st.Line) + "\n" +
+		body + "\n//line _.go:1\n" + gosetup.BridgeDecls(vars, shapes)
 	if _, err := i.Eval(src); err != nil {
 		return nil, evalError(st, err)
 	}
-	s.names, _ = declaredNames(st.Code)
-	s.stateful, _ = statefulFuncs(st.Code)
+	s.names, _ = declaredNames(body)
+	s.stateful, _ = statefulFuncs(body)
 	return s, nil
 }
 

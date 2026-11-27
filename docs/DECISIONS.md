@@ -3131,3 +3131,13 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   interpreted converter builds the typed value because unexported shape fields
   cannot be set through Go reflection. Handler return values are normalized the
   same way.
+- **Setup manages imports instead of requiring them.** `fmt.Println` with no
+  import failed, and an explicit import the body stopped using failed too. The
+  code is parsed once: every selector whose base is a package name is resolved
+  through a table of the standard packages the interpreter can run, missing
+  imports are added, and imports no selector uses are dropped. The table is
+  derived from Yaegi's stdlib and names two packages share resolve to the
+  common pick. Import declarations are blanked with spaces but keep their
+  newlines, so diagnostic offsets and `//line` mapping still point into the
+  original body. The same pass feeds the type checker, so the editor completes
+  `fmt.` without an import.

@@ -26,6 +26,7 @@ type program struct {
 	src       string
 	pkg       string
 	bridgePkg string
+	imports   []gosetup.Import
 	funcs     map[string]bool
 	hasBridge bool
 
@@ -43,15 +44,17 @@ type programInstance struct {
 
 func newProgram(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape, index int, m *machine) (*program, error) {
 	bridgePkg := fmt.Sprintf("goisetup%d", index)
-	src, err := programSource(st, vars, shapes, bridgePkg)
+	body, imports := gosetup.PrepareImports(st.Code)
+	src, err := programSource(st, body, imports, vars, shapes, bridgePkg)
 	if err != nil {
 		return nil, err
 	}
 	p := &program{
 		m:         m,
 		st:        st,
-		code:      st.Code,
+		code:      body,
 		src:       src,
+		imports:   imports,
 		pkg:       fmt.Sprintf("goi%d", index),
 		bridgePkg: bridgePkg,
 		hasBridge: len(vars) > 0,
@@ -72,7 +75,7 @@ func (p *program) compile() error {
 	}
 	p.compiled = true
 	m := p.m
-	if err := useImports(m.i, p.code, m.registered); err != nil {
+	if err := useImports(m.i, p.imports, m.registered); err != nil {
 		p.compileErr = evalError(p.st, err)
 		return p.compileErr
 	}
@@ -200,13 +203,13 @@ func (p *programInstance) Call(name string, args []any) (any, bool, error) {
 // programSource turns top-level setup declarations into one closure factory.
 // Package variables become locals of goiNewSetup, so every call captures its
 // own state while the interpreter compiles the file once.
-func programSource(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape, bridgePkg string) (string, error) {
+func programSource(st syntax.Setup, body string, imports []gosetup.Import, vars []syntax.DataVar, shapes []syntax.DataShape, bridgePkg string) (string, error) {
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, "_.go", "package setup\n"+st.Code, parser.ParseComments)
+	f, err := parser.ParseFile(fset, "_.go", "package setup\n"+body, parser.ParseComments)
 	if err != nil {
 		return "", err
 	}
-	var imports, consts, types, varDecls []programDecl
+	var consts, types, varDecls []programDecl
 	var funcs, methods []*ast.FuncDecl
 	var varNodes []*ast.GenDecl
 	var values []string
@@ -228,8 +231,6 @@ func programSource(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataS
 			}
 			block := programDecl{text: text, line: fset.Position(d.Pos()).Line}
 			switch d.Tok {
-			case token.IMPORT:
-				imports = append(imports, block)
 			case token.CONST:
 				consts = append(consts, block)
 				for _, spec := range d.Specs {
@@ -322,15 +323,11 @@ func programSource(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataS
 
 	pre, decl := gosetup.BridgeParts(vars, shapes, bridgePkg)
 	var b strings.Builder
+	b.WriteString(gosetup.ImportBlock(imports))
 	if pre != "" {
 		b.WriteString(pre)
 	} else if needsGoisetup {
 		b.WriteString("import " + bridgePkg + " \"" + bridgePkg + "\"\n\n")
-	}
-	for _, imp := range imports {
-		writeLine(&b, st, imp.line)
-		b.WriteString(imp.text)
-		b.WriteString("\n")
 	}
 	for _, decl := range consts {
 		writeLine(&b, st, decl.line)

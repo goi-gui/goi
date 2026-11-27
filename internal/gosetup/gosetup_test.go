@@ -117,3 +117,15 @@ Window { }`))
 		t.Fatalf("a bridge list did not type-check as []ticket: %v", ds)
 	}
 }
+
+func TestAutoImportAndUnusedImportOffsets(t *testing.T) {
+	code := "import \"strings\"\n\nfunc label() string { return fmt.Sprintf(\"%d\", 1) }\n\nfunc broken() int { return missing }\n"
+	a := Analyze(code)
+	ds := a.Diagnostics()
+	if len(ds) != 1 || !strings.Contains(ds[0].Msg, "undefined: missing") {
+		t.Fatalf("diagnostics = %v", ds)
+	}
+	if want := strings.Index(code, "missing"); ds[0].Offset != want {
+		t.Fatalf("offset = %d, want %d", ds[0].Offset, want)
+	}
+}
