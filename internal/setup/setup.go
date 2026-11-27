@@ -189,6 +189,7 @@ func newScope(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape)
 			"AsInt":    reflect.ValueOf(asInt),
 			"AsFloat":  reflect.ValueOf(asFloat),
 			"AsUint32": reflect.ValueOf(asUint32),
+			"Field":    reflect.ValueOf(rowField),
 		},
 	})
 	src := gosetup.ImportBlock(imports) + gosetup.BridgePrelude(vars) + "\n//line " + st.Src + ":" + strconv.Itoa(st.Line) + "\n" +

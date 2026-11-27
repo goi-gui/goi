@@ -62,6 +62,20 @@ func bridgeDataValue(v any) any {
 	return v
 }
 
+// rowField reads a row by its design name: exact first, then ignoring case.
+// A Go field such as ID normalizes to "iD", while the design may spell it "ID".
+func rowField(m map[string]any, name string) any {
+	if v, ok := m[name]; ok {
+		return v
+	}
+	for k, v := range m {
+		if strings.EqualFold(k, name) {
+			return v
+		}
+	}
+	return nil
+}
+
 // bridgeFieldName is the design-side name of a struct field: its `goi` tag when
 // it has one, otherwise the field name with a lower first letter.
 func bridgeFieldName(f reflect.StructField) string {

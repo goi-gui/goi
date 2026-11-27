@@ -444,7 +444,7 @@ func (c *convGen) conv(t syntax.Type) string {
 		b.WriteString("r, _ := v.(map[string]any)\n")
 		fmt.Fprintf(&b, "return %s{\n", shape.Name)
 		for _, f := range shape.Fields {
-			fmt.Fprintf(&b, "%s: %s,\n", f.Name, c.expr(f.Type, fmt.Sprintf("r[%q]", f.Name)))
+			fmt.Fprintf(&b, "%s: %s,\n", f.Name, c.expr(f.Type, fmt.Sprintf("%s.Field(r, %q)", c.pkg, f.Name)))
 		}
 		b.WriteString("}\n}\n")
 	}

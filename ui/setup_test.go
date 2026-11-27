@@ -462,3 +462,99 @@ Window { Text { id: label text: label() } }`), "Main.goi")
 		t.Fatalf("closed = %v, %v", v, ok)
 	}
 }
+
+// TestSetupBridgeFieldsIgnoreCase keeps a Go field named ID readable when the
+// design spells the shape field ID and the default mapping produces "iD".
+func TestSetupBridgeFieldsIgnoreCase(t *testing.T) {
+	f, diag := syntax.ParseNamed([]byte(`bridge {
+	users []User
+}
+
+type User {
+	ID   string
+	Name string
+}
+
+setup {
+	func first() string {
+		for _, u := range bridge.users {
+			return u.ID + "/" + u.Name
+		}
+		return ""
+	}
+}
+
+Window { }`), "Main.goi")
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	scopes, err := setup.New(f.Setups, f.Vars, f.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := tree.Build(f, &tree.Hooks{Setup: scopes.For})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopes.Bind(tr)
+	tr.SetData("users", []struct {
+		ID   string
+		Name string
+	}{{ID: "1", Name: "Ada"}})
+	sc := scopes.For("Main.goi", "")
+	if v, _, err := sc.Call("first", nil); err != nil || v != "1/Ada" {
+		t.Fatalf("first = %v, %v", v, err)
+	}
+	tr.SetData("users", []map[string]any{{"ID": "2", "Name": "Bob"}})
+	if v, _, err := sc.Call("first", nil); err != nil || v != "2/Bob" {
+		t.Fatalf("first from a map = %v, %v", v, err)
+	}
+}
+
+// TestSetupBridgeFieldsIgnoreCaseFallsBack covers the same matching through the
+// interpreter path.
+func TestSetupBridgeFieldsIgnoreCaseFallsBack(t *testing.T) {
+	f, diag := syntax.ParseNamed([]byte(`bridge {
+	users []User
+}
+
+type User {
+	ID   string
+	Name string
+}
+
+setup {
+	var seen int
+
+	type T struct{ n int }
+	func (x T) Plus() int { return x.n + seen }
+
+	func first() string {
+		for _, u := range bridge.users {
+			return u.ID + "/" + u.Name
+		}
+		return ""
+	}
+}
+
+Window { }`), "Main.goi")
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	scopes, err := setup.New(f.Setups, f.Vars, f.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := tree.Build(f, &tree.Hooks{Setup: scopes.For})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopes.Bind(tr)
+	tr.SetData("users", []struct {
+		ID   string
+		Name string
+	}{{ID: "3", Name: "Grace"}})
+	if v, _, err := scopes.For("Main.goi", "").Call("first", nil); err != nil || v != "3/Grace" {
+		t.Fatalf("first = %v, %v", v, err)
+	}
+}

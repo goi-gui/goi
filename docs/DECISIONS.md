@@ -3151,3 +3151,9 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   creation order and unmount in reverse, and a pending mount is dropped when the
   registry stops. Heavy work belongs in a Go bridge handler, which can use a goroutine
   and post its result.
+- **A shape field matches a row key ignoring case.** A Go field `ID` normalizes
+  to the design name `iD`, while a design may spell the shape field `ID`; an
+  exact map lookup silently returned the zero value. Generated converters now
+  call a Go helper that tries the exact key, then `strings.EqualFold`, which is
+  the same order the tree's expression reader uses. This covers structs without
+  a `goi` tag and maps that keep their own key spelling.

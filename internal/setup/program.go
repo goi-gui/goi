@@ -90,6 +90,7 @@ func (p *program) compile() error {
 			"AsInt":    reflect.ValueOf(asInt),
 			"AsFloat":  reflect.ValueOf(asFloat),
 			"AsUint32": reflect.ValueOf(asUint32),
+			"Field":    reflect.ValueOf(rowField),
 		},
 	}); err != nil {
 		p.compileErr = err
