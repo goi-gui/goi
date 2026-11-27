@@ -803,3 +803,83 @@ Window {
 		t.Fatalf("toggle should show the if arm")
 	}
 }
+
+// TestSetupLifecycleFollowsVisibility mounts a fragment only while its if arm
+// is shown and unmounts it when the arm hides it.
+func TestSetupLifecycleFollowsVisibility(t *testing.T) {
+	fsys := fstest.MapFS{
+		"Main.goi": {Data: []byte(`import Part "./Part.goi"
+setup {
+	var show bool
+	func toggle() { show = !show }
+}
+Window { Column {
+	if show { Part {} }
+} }`)},
+		"Part.goi": {Data: []byte(`setup {
+	var mounted bool
+	var count int
+	func onMount() { mounted = true }
+	func onUnmount() { mounted = false }
+}
+Text { text: formatf("%d", count) }`)},
+	}
+	b, err := loadBundle(fsys, "Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopes, err := setup.New(b.File.Setups, b.File.Vars, b.File.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sb := setupBuild{
+		hook: scopes.For, bind: scopes.Bind, err: scopes.Err,
+		instance: scopes.Note, visible: scopes.SetVisible,
+		start: scopes.Start, stop: scopes.Unmount,
+	}
+	tr, err := tree.Build(b.File, &tree.Hooks{Setup: sb.hook, Visibility: sb.visible})
+	if err != nil {
+		t.Fatal(err)
+	}
+	noteSetups(sb, tr)
+	sb.bind(tr)
+	a := newHeadlessApp()
+	a.startSetups(sb)
+	for i := 0; i < 8; i++ {
+		a.drainPosted()
+	}
+	partScope := ""
+	for _, n := range tr.All() {
+		if base := n.Base(); base != nil && base.AST != nil && base.AST.Src == "Part.goi" {
+			partScope = base.AST.Scope
+			break
+		}
+	}
+	if partScope == "" {
+		t.Fatal("no Part scope")
+	}
+	mounted := func() string {
+		v, _ := scopes.For("Part.goi", partScope).Value("mounted")
+		return fmt.Sprint(v)
+	}
+	if got := mounted(); got != "false" {
+		t.Fatalf("hidden fragment mounted: %s", got)
+	}
+	if _, _, err := scopes.For("Main.goi", "").Call("toggle", nil); err != nil {
+		t.Fatal(err)
+	}
+	tr.ApplyExpressions()
+	for i := 0; i < 8; i++ {
+		a.drainPosted()
+	}
+	if got := mounted(); got != "true" {
+		t.Fatalf("shown fragment did not mount: %s", got)
+	}
+	if _, _, err := scopes.For("Main.goi", "").Call("toggle", nil); err != nil {
+		t.Fatal(err)
+	}
+	tr.ApplyExpressions()
+	if got := mounted(); got != "false" {
+		t.Fatalf("hidden fragment did not unmount: %s", got)
+	}
+}

@@ -3149,7 +3149,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   posts, so loading and the first paint never wait), unmount while the old tree
   is still current. They are hidden from the expression engine, mount in
   creation order and unmount in reverse, and a pending mount is dropped when the
-  registry stops. Heavy work belongs in a Go bridge handler, which can use a goroutine
+  registry stops. A fragment inside a hidden if arm is not mounted: the tree
+  reports every fragment root's shown state after a condition pass, and the
+  registry mounts on true and unmounts on false. An instance created by an
+  expression while hidden stays compiled but never runs onMount. Heavy work belongs in a Go bridge handler, which can use a goroutine
   and post its result.
 - **A shape field matches a row key ignoring case.** A Go field `ID` normalizes
   to the design name `iD`, while a design may spell the shape field `ID`; an

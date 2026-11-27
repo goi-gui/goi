@@ -55,6 +55,9 @@ type Hooks struct {
 	// Setup returns the interpreted scope of one design file and fragment
 	// instance, or nil when it declares no setup block.
 	Setup func(src, scope string) SetupScope
+	// Visibility reports whether a fragment instance is inside a shown arm.
+	// It runs when the tree is built and whenever a condition changes.
+	Visibility func(src, scope string, visible bool)
 }
 
 // NodeBase holds the state every node shares: identity, tree links, layout result

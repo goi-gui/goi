@@ -105,6 +105,12 @@ type Tree struct {
 	report func(error)
 	// setup resolves a file's setup block, when the app supplied Hooks.Setup.
 	setup func(string, string) SetupScope
+	// visibility reports a fragment's shown state to the setup registry.
+	visibility func(src, scope string, visible bool)
+	// scopeRoots finds the root node of each fragment instance and
+	// scopeVisible remembers the last reported state.
+	scopeRoots   map[string]*NodeBase
+	scopeVisible map[string]bool
 	// post queues work on the UI goroutine for a Terminal reader.
 	post func(func())
 	// window runs a window control a design called through an event.
@@ -190,12 +196,20 @@ func Build(f *syntax.File, hooks *Hooks) (*Tree, error) {
 	if f == nil || f.Root == nil {
 		return nil, fmt.Errorf("tree: no root element")
 	}
-	t := &Tree{ids: map[string]Node{}, instances: map[string]*NodeBase{}, bridge: &Bridge{}, building: true}
+	t := &Tree{
+		ids:          map[string]Node{},
+		instances:    map[string]*NodeBase{},
+		scopeRoots:   map[string]*NodeBase{},
+		scopeVisible: map[string]bool{},
+		bridge:       &Bridge{},
+		building:     true,
+	}
 	if hooks != nil {
 		t.report = hooks.Error
 		t.post = hooks.Post
 		t.window = hooks.Window
 		t.setup = hooks.Setup
+		t.visibility = hooks.Visibility
 	}
 	// A bridge variable starts at its type's zero value, so a design that reads
 	// one before Go sets it still has a value.
@@ -243,6 +257,7 @@ func Build(f *syntax.File, hooks *Hooks) (*Tree, error) {
 	// Blocks show their first matching arm from the start, so a headless build
 	// and the first frame agree before any expression has run.
 	t.applyConds()
+	t.syncScopeVisibility()
 	t.clearDirty()
 	return t, nil
 }
@@ -286,9 +301,14 @@ func (t *Tree) build(el *syntax.Element, parent *NodeBase, hooks *Hooks) (Node, 
 	b.tree = t
 	b.scope = t.scope
 	b.AST = el
-	if el.Scope != "" && len(el.InstanceProps) > 0 {
-		b.instanceProps = el.InstanceProps
-		t.instances[el.Scope] = b
+	if el.Scope != "" {
+		if parent == nil || parent.AST == nil || parent.AST.Scope != el.Scope {
+			t.scopeRoots[el.Scope] = b
+		}
+		if len(el.InstanceProps) > 0 {
+			b.instanceProps = el.InstanceProps
+			t.instances[el.Scope] = b
+		}
 	}
 	b.properties() // wires every Prop cell to b before any value is written
 	applyDefaults(b, def)

@@ -98,8 +98,9 @@ Tests that enforce the above: `TestEveryComponentValidates`,
   `i.Use(stdlib.Symbols)` costs ~1.3 MB per interpreter and fmt recompiles its
   generic sources on every Use. Setup code can read `bridge.` values and call
   bridge handlers, and a fragment's `props.name` values. `onMount` and
-  `onUnmount` are framework hooks: once per instance, on the UI goroutine, after
-  the first painted frame and on teardown.
+  `onUnmount` are framework hooks: on the UI goroutine, mount when the instance
+  is shown (after the first painted frame) and unmount when a condition hides
+  it or the design is torn down.
 - A list comes from `for … range` over a bridge slice, whose rows are rebuilt by
   `ui.SetData`; `ui.Instantiate`/`ui.Fill` are for a fixed set of children.
 - Colours as M3 role names (`theme.primary`, `theme.surfaceContainer`,

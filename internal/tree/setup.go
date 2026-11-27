@@ -108,3 +108,31 @@ func (t *Tree) InstanceProps(scope string) map[string]any {
 	}
 	return out
 }
+
+// syncScopeVisibility reports every fragment instance whose shown state
+// changed, so a hidden instance can unmount and a shown one mount.
+func (t *Tree) syncScopeVisibility() {
+	if t == nil || t.visibility == nil {
+		return
+	}
+	for scope, b := range t.scopeRoots {
+		visible := visibleNode(b)
+		if prev, ok := t.scopeVisible[scope]; ok && prev == visible {
+			continue
+		}
+		t.scopeVisible[scope] = visible
+		if b.AST != nil {
+			t.visibility(b.AST.Src, scope, visible)
+		}
+	}
+}
+
+// visibleNode reports whether b and every ancestor are shown.
+func visibleNode(b *NodeBase) bool {
+	for ; b != nil; b = b.parent {
+		if !b.Visible() {
+			return false
+		}
+	}
+	return true
+}

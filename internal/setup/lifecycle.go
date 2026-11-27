@@ -54,6 +54,9 @@ func (r *Registry) Start(post func(func()), report func(error)) {
 	r.post = post
 	r.report = report
 	for _, sc := range r.order {
+		if r.visibilityKnown && !r.visible[sc] {
+			continue
+		}
 		r.schedule(sc)
 	}
 }
@@ -92,10 +95,16 @@ func (r *Registry) schedule(sc tree.SetupScope) {
 	if sc == nil || !r.started || r.stopped || r.mounted[sc] || r.queued[sc] {
 		return
 	}
+	if r.visibilityKnown && !r.visible[sc] {
+		return
+	}
 	r.queued[sc] = true
 	run := func() {
 		delete(r.queued, sc)
 		if r.stopped || r.mounted[sc] {
+			return
+		}
+		if r.visibilityKnown && !r.visible[sc] {
 			return
 		}
 		r.mounted[sc] = true
@@ -106,6 +115,39 @@ func (r *Registry) schedule(sc tree.SetupScope) {
 		return
 	}
 	run()
+}
+
+// SetVisible mounts an instance when its fragment is shown and unmounts it when
+// a condition hides it. A hidden instance is not created until it is shown.
+func (r *Registry) SetVisible(src, scope string, visible bool) {
+	if r == nil || scope == "" {
+		return
+	}
+	r.visibilityKnown = true
+	key := scopeKey(src, scope)
+	sc := r.scopes[key]
+	if visible {
+		if sc == nil {
+			sc = r.For(src, scope)
+		}
+		if sc == nil {
+			return
+		}
+		r.visible[sc] = true
+		if r.started {
+			r.schedule(sc)
+		}
+		return
+	}
+	if sc == nil {
+		return
+	}
+	r.visible[sc] = false
+	delete(r.queued, sc)
+	if r.mounted[sc] {
+		delete(r.mounted, sc)
+		r.hook(sc, "onUnmount")
+	}
 }
 
 func (r *Registry) hook(sc tree.SetupScope, name string) {

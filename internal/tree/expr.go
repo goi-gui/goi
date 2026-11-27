@@ -292,6 +292,7 @@ func (t *Tree) ApplyExpressions() {
 	// Block conditions may read the same properties; both passes use the
 	// values as they are now, so they run together.
 	t.applyConds()
+	t.syncScopeVisibility()
 	// A modifier's condition reads the values this pass just wrote, so the
 	// resolved property stays in the same frame.
 	t.applyModifiers()

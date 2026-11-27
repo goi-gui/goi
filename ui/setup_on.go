@@ -22,6 +22,7 @@ func loadSetups(f *syntax.File) (setupBuild, error) {
 		bind:     r.Bind,
 		err:      r.Err,
 		instance: r.Note,
+		visible:  r.SetVisible,
 		start:    r.Start,
 		stop:     r.Unmount,
 	}, nil

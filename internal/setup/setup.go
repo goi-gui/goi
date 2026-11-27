@@ -46,8 +46,12 @@ type Registry struct {
 	order   []tree.SetupScope
 	queued  map[tree.SetupScope]bool
 	mounted map[tree.SetupScope]bool
-	started bool
-	stopped bool
+	// visible tracks the fragments an if or a hidden ancestor currently shows.
+	// visibilityKnown keeps a design without visibility hooks mounting all.
+	visible         map[tree.SetupScope]bool
+	visibilityKnown bool
+	started         bool
+	stopped         bool
 	// post queues a mount on the UI goroutine; report surfaces a hook panic.
 	post   func(func())
 	report func(error)
@@ -127,6 +131,7 @@ func New(setups []syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape
 		hookSrc:   map[string]bool{},
 		queued:    map[tree.SetupScope]bool{},
 		mounted:   map[tree.SetupScope]bool{},
+		visible:   map[tree.SetupScope]bool{},
 	}
 	seen := map[string]bool{}
 	for _, st := range setups {
@@ -433,6 +438,9 @@ func (r *Registry) For(src, scope string) tree.SetupScope {
 			return nil
 		}
 		r.scopes[key] = inst
+		if scope == "" {
+			r.visible[inst] = true
+		}
 		r.track(inst)
 		return inst
 	}
@@ -446,6 +454,7 @@ func (r *Registry) For(src, scope string) tree.SetupScope {
 	}
 	if scope == "" {
 		base.propGet = get
+		r.visible[base] = true
 		r.track(base)
 		return base
 	}
