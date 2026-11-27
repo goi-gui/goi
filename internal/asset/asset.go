@@ -360,6 +360,12 @@ func Preview(f *syntax.File) (*syntax.File, syntax.Diagnostics) {
 	if diag := substitute(root, props, f.Src, &out); !diag.Empty() {
 		return nil, diag
 	}
+	if len(props) > 0 {
+		root.InstanceProps = make(map[string]syntax.InstanceProp, len(props))
+		for name, v := range props {
+			root.InstanceProps[name] = syntax.InstanceProp{Value: copyValue(v), Src: f.Src}
+		}
+	}
 	out.Root = root
 	return &out, nil
 }
@@ -585,6 +591,16 @@ func (l *loader) instance(target string, call *syntax.Element, callerAliases map
 	}
 
 	body := copyElement(f.Root)
+	if len(props) > 0 {
+		body.InstanceProps = make(map[string]syntax.InstanceProp, len(props))
+		for name, v := range props {
+			src := f.Src
+			if _, ok := passed[name]; ok {
+				src = call.Src
+			}
+			body.InstanceProps[name] = syntax.InstanceProp{Value: copyValue(v), Src: src}
+		}
+	}
 	l.nextScope++
 	setScope(body, fmt.Sprintf("%s#%d", target, l.nextScope))
 	if diag := slotLens(body, counts, target); !diag.Empty() {
@@ -905,14 +921,26 @@ func applyOverrides(el *syntax.Element, props []*syntax.Property) {
 // not share AST pointers.
 func copyElement(el *syntax.Element) *syntax.Element {
 	out := &syntax.Element{
-		Name:     el.Name,
-		NameAt:   el.NameAt,
-		Open:     el.Open,
-		Close:    el.Close,
-		Src:      el.Src,
-		Scope:    el.Scope,
-		Members:  copyMembers(el.Members),
-		Resolved: el.Resolved,
+		Name:          el.Name,
+		NameAt:        el.NameAt,
+		Open:          el.Open,
+		Close:         el.Close,
+		Src:           el.Src,
+		Scope:         el.Scope,
+		Members:       copyMembers(el.Members),
+		Resolved:      el.Resolved,
+		InstanceProps: copyInstanceProps(el.InstanceProps),
+	}
+	return out
+}
+
+func copyInstanceProps(in map[string]syntax.InstanceProp) map[string]syntax.InstanceProp {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]syntax.InstanceProp, len(in))
+	for name, ip := range in {
+		out[name] = ip
 	}
 	return out
 }

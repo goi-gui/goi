@@ -142,9 +142,7 @@ func (p *programInstance) callHook(name string) error {
 	if !f.IsValid() || f.IsNil() {
 		return nil
 	}
-	if err := p.p.syncBridge(); err != nil {
-		return err
-	}
+	p.sync()
 	var callErr error
 	func() {
 		defer func() {
@@ -182,6 +180,7 @@ func (s *Scope) callHook(name string) error {
 	if err != nil || !fn.IsValid() {
 		return err
 	}
+	s.syncProps()
 	if err := s.syncBridge(); err != nil {
 		return err
 	}
@@ -210,4 +209,24 @@ func (s *Scope) hookFn(name string) (reflect.Value, error) {
 		return reflect.Value{}, fmt.Errorf("setup %s must take no parameters and return nothing", name)
 	}
 	return fn, nil
+}
+
+// propGetter reads the props of one instance when setup code asks. The tree is
+// bound after the build, so the getter is lazy: a prop may name a loop variable
+// or a bridge value that changed since the node was built.
+func (r *Registry) propGetter(scope string) func() map[string]any {
+	return func() map[string]any {
+		if r == nil || r.tr == nil || scope == "" {
+			return nil
+		}
+		m := r.tr.InstanceProps(scope)
+		if m == nil {
+			return nil
+		}
+		out := make(map[string]any, len(m))
+		for name, v := range m {
+			out[name] = bridgeDataValue(v)
+		}
+		return out
+	}
 }

@@ -16,6 +16,9 @@ import (
 type Tree struct {
 	Root *Window
 	ids  map[string]Node
+	// instances finds the node a fragment instance was built from, so setup can
+	// resolve the props that instance passed.
+	instances map[string]*NodeBase
 	// modifierNodes lists the nodes with at least one responsive, conditional
 	// or state value, which the frame pass evaluates.
 	modifierNodes []*NodeBase
@@ -187,7 +190,7 @@ func Build(f *syntax.File, hooks *Hooks) (*Tree, error) {
 	if f == nil || f.Root == nil {
 		return nil, fmt.Errorf("tree: no root element")
 	}
-	t := &Tree{ids: map[string]Node{}, bridge: &Bridge{}, building: true}
+	t := &Tree{ids: map[string]Node{}, instances: map[string]*NodeBase{}, bridge: &Bridge{}, building: true}
 	if hooks != nil {
 		t.report = hooks.Error
 		t.post = hooks.Post
@@ -283,6 +286,10 @@ func (t *Tree) build(el *syntax.Element, parent *NodeBase, hooks *Hooks) (Node, 
 	b.tree = t
 	b.scope = t.scope
 	b.AST = el
+	if el.Scope != "" && len(el.InstanceProps) > 0 {
+		b.instanceProps = el.InstanceProps
+		t.instances[el.Scope] = b
+	}
 	b.properties() // wires every Prop cell to b before any value is written
 	applyDefaults(b, def)
 	b.hooks = hooks

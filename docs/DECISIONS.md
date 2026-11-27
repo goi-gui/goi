@@ -3157,3 +3157,12 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   call a Go helper that tries the exact key, then `strings.EqualFold`, which is
   the same order the tree's expression reader uses. This covers structs without
   a `goi` tag and maps that keep their own key spelling.
+- **A fragment's props are readable in setup as `props.name`.** Asset
+  expansion already substitutes `props.x` into the fragment body, but setup code
+  needs the values as Go values. The expanded root keeps the passed expressions
+  and the file they came from; the tree evaluates them lazily in the caller's
+  loop scope, because a prop may name a loop variable or a bridge value. Each
+  instance's generated `props` value is refreshed before a setup call, so a
+  bridge-backed prop follows `ui.SetData`. The interpreter fallback materializes
+  an instance that has props, because one shared base cannot hold per-instance
+  values.

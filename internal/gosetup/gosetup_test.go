@@ -70,7 +70,7 @@ func doSomething() {
 	fileName := bridge.getFileName()
 	bridge.onSave(fileName)
 	fmt.Println(bridge.content)
-}`, f.Vars, f.Shapes)
+}`, f.Vars, f.Shapes, f.Props)
 	if ds := a.Diagnostics(); len(ds) != 0 {
 		t.Fatalf("bridge access did not type-check: %v", ds)
 	}
@@ -112,7 +112,7 @@ Window { }`))
 		_ = t.title
 	}
 	return n
-}`, f.Vars, f.Shapes)
+}`, f.Vars, f.Shapes, f.Props)
 	if ds := a.Diagnostics(); len(ds) != 0 {
 		t.Fatalf("a bridge list did not type-check as []ticket: %v", ds)
 	}
@@ -127,5 +127,30 @@ func TestAutoImportAndUnusedImportOffsets(t *testing.T) {
 	}
 	if want := strings.Index(code, "missing"); ds[0].Offset != want {
 		t.Fatalf("offset = %d, want %d", ds[0].Offset, want)
+	}
+}
+
+func TestPropsAreVisibleToSetup(t *testing.T) {
+	f, diag := syntax.Parse([]byte(`props {
+	title string
+	count int
+}
+
+Window { }`))
+	if !diag.Empty() {
+		t.Fatal(diag)
+	}
+	code := `func label() string { return props.title + fmt.Sprint(props.count) }`
+	a := AnalyzeWithBridge(code, f.Vars, f.Shapes, f.Props)
+	if ds := a.Diagnostics(); len(ds) != 0 {
+		t.Fatalf("props did not type-check: %v", ds)
+	}
+	at := strings.LastIndex(code, "props.") + len("props.")
+	labels := map[string]bool{}
+	for _, item := range a.Complete(at) {
+		labels[item.Label] = true
+	}
+	if !labels["title"] || !labels["count"] {
+		t.Fatalf("props completion = %v", labels)
 	}
 }

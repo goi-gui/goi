@@ -558,3 +558,177 @@ Window { }`), "Main.goi")
 		t.Fatalf("first = %v, %v", v, err)
 	}
 }
+
+// TestSetupReadsProps makes the values a fragment instance passed readable as
+// props.name in its setup code.
+func TestSetupReadsProps(t *testing.T) {
+	fsys := fstest.MapFS{
+		"Main.goi": {Data: []byte(`import Part "./Part.goi"
+Window { Column {
+	Part { title: "A" count: 2 }
+	Part { title: "B" count: 3 }
+} }`)},
+		"Part.goi": {Data: []byte(`props { title string count int }
+
+setup {
+	func label() string { return fmt.Sprintf("%s:%d", props.title, props.count) }
+}
+
+Text { text: label() }`)},
+	}
+	b, err := loadBundle(fsys, "Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopes, err := setup.New(b.File.Setups, b.File.Vars, b.File.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := tree.Build(b.File, &tree.Hooks{Setup: scopes.For})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopes.Bind(tr)
+	tr.ApplyExpressions()
+	var got []string
+	for _, n := range tr.All() {
+		if txt, ok := n.(*Text); ok {
+			got = append(got, txt.Text.Get())
+		}
+	}
+	if len(got) != 2 || got[0] != "A:2" || got[1] != "B:3" {
+		t.Fatalf("texts = %v", got)
+	}
+}
+
+// TestSetupReadsPropsFallsBack covers props through the interpreter path.
+func TestSetupReadsPropsFallsBack(t *testing.T) {
+	fsys := fstest.MapFS{
+		"Main.goi": {Data: []byte(`import Part "./Part.goi"
+Window { Column {
+	Part { title: "A" count: 2 }
+	Part { title: "B" count: 3 }
+} }`)},
+		"Part.goi": {Data: []byte(`props { title string count int }
+
+setup {
+	var seen int
+
+	type T struct{ n int }
+	func (x T) Plus() int { return x.n + seen }
+
+	func label() string { return fmt.Sprintf("%s:%d", props.title, props.count) }
+}
+
+Text { text: label() }`)},
+	}
+	b, err := loadBundle(fsys, "Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopes, err := setup.New(b.File.Setups, b.File.Vars, b.File.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := tree.Build(b.File, &tree.Hooks{Setup: scopes.For})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopes.Bind(tr)
+	tr.ApplyExpressions()
+	var got []string
+	for _, n := range tr.All() {
+		if txt, ok := n.(*Text); ok {
+			got = append(got, txt.Text.Get())
+		}
+	}
+	if len(got) != 2 || got[0] != "A:2" || got[1] != "B:3" {
+		t.Fatalf("texts = %v", got)
+	}
+}
+
+// TestSetupPropsFollowBridge checks that a prop passed as a bridge value is
+// resolved when setup runs, not once at build time.
+func TestSetupPropsFollowBridge(t *testing.T) {
+	fsys := fstest.MapFS{
+		"Main.goi": {Data: []byte(`import Part "./Part.goi"
+bridge { name string }
+Window { Part { title: bridge.name } }`)},
+		"Part.goi": {Data: []byte(`props { title string }
+setup {
+	func label() string { return props.title }
+}
+Text { text: label() }`)},
+	}
+	b, err := loadBundle(fsys, "Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopes, err := setup.New(b.File.Setups, b.File.Vars, b.File.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := tree.Build(b.File, &tree.Hooks{Setup: scopes.For})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopes.Bind(tr)
+	tr.SetData("name", "Zed")
+	tr.ApplyExpressions()
+	for _, n := range tr.All() {
+		if txt, ok := n.(*Text); ok {
+			if got := txt.Text.Get(); got != "Zed" {
+				t.Fatalf("text = %q", got)
+			}
+			return
+		}
+	}
+	t.Fatal("no Text")
+}
+
+// TestSetupPropsKeepListTypes covers a prop passed from a bridge list, which
+// setup reads through the shape it declared.
+func TestSetupPropsKeepListTypes(t *testing.T) {
+	fsys := fstest.MapFS{
+		"Main.goi": {Data: []byte(`import Part "./Part.goi"
+bridge { users []User }
+type User { name string }
+Window { Part { users: bridge.users } }`)},
+		"Part.goi": {Data: []byte(`props { users []User }
+setup {
+	func summary() string {
+		if len(props.users) == 0 {
+			return "none"
+		}
+		return fmt.Sprintf("%d:%s", len(props.users), props.users[0].name)
+	}
+}
+Text { text: summary() }`)},
+	}
+	b, err := loadBundle(fsys, "Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopes, err := setup.New(b.File.Setups, b.File.Vars, b.File.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := tree.Build(b.File, &tree.Hooks{Setup: scopes.For})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopes.Bind(tr)
+	tr.SetData("users", []struct {
+		Name string `goi:"name"`
+	}{{Name: "Ada"}, {Name: "Grace"}})
+	tr.ApplyExpressions()
+	for _, n := range tr.All() {
+		if txt, ok := n.(*Text); ok {
+			if got := txt.Text.Get(); got != "2:Ada" {
+				t.Fatalf("text = %q", got)
+			}
+			return
+		}
+	}
+	t.Fatal("no Text")
+}

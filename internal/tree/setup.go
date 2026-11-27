@@ -85,3 +85,26 @@ func nodeSource(b *NodeBase) string {
 	}
 	return b.AST.Src
 }
+
+// InstanceProps resolves the props a fragment instance passed, in the caller's
+// context. A prop may name a loop variable or a bridge value, so it is read
+// when setup asks rather than once at build.
+func (t *Tree) InstanceProps(scope string) map[string]any {
+	if t == nil || scope == "" {
+		return nil
+	}
+	b := t.instances[scope]
+	if b == nil || len(b.instanceProps) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(b.instanceProps))
+	for name, ip := range b.instanceProps {
+		c := evalCtx{tree: t, sc: b.scope, src: ip.Src, scopeID: scope}
+		// A bridge list is read raw, so setup can turn its struct rows into the
+		// shape types the way it does for a bridge variable.
+		if v, ok := c.rawValue(ip.Value); ok {
+			out[name] = v
+		}
+	}
+	return out
+}

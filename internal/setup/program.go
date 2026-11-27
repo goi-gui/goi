@@ -37,11 +37,12 @@ type program struct {
 }
 
 type programInstance struct {
-	p       *program
-	value   reflect.Value
-	call    reflect.Value
-	mount   reflect.Value
-	unmount reflect.Value
+	p         *program
+	value     reflect.Value
+	call      reflect.Value
+	mount     reflect.Value
+	unmount   reflect.Value
+	syncProps reflect.Value
 }
 
 func newProgram(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape, index int, m *machine) (*program, error) {
@@ -109,11 +110,11 @@ func (p *program) compile() error {
 	return nil
 }
 
-func (p *program) newInstance() *programInstance {
+func (p *program) newInstance(get func() map[string]any) *programInstance {
 	if p == nil || !p.newFn.IsValid() {
 		return nil
 	}
-	out := p.newFn.Call(nil)
+	out := p.newFn.Call([]reflect.Value{reflect.ValueOf(get)})
 	if len(out) != 1 || !out[0].IsValid() {
 		return nil
 	}
@@ -127,11 +128,12 @@ func (p *program) newInstance() *programInstance {
 		return nil
 	}
 	return &programInstance{
-		p:       p,
-		value:   v,
-		call:    c,
-		mount:   state.FieldByName("Mount"),
-		unmount: state.FieldByName("Unmount"),
+		p:         p,
+		value:     v,
+		call:      c,
+		mount:     state.FieldByName("Mount"),
+		unmount:   state.FieldByName("Unmount"),
+		syncProps: state.FieldByName("SyncProps"),
 	}
 }
 
@@ -170,11 +172,19 @@ func (p *program) syncBridge() error {
 	return nil
 }
 
+// sync refreshes props and the bridge before one interpreted call.
+func (p *programInstance) sync() {
+	if p != nil && p.syncProps.IsValid() && !p.syncProps.IsNil() {
+		p.syncProps.Call(nil)
+	}
+	_ = p.p.syncBridge()
+}
+
 func (p *programInstance) Value(name string) (any, bool) {
 	if p == nil || !p.value.IsValid() {
 		return nil, false
 	}
-	_ = p.p.syncBridge()
+	p.sync()
 	out := p.value.Call([]reflect.Value{reflect.ValueOf(name)})
 	if len(out) != 1 || !out[0].IsValid() || !out[0].CanInterface() {
 		return nil, false
@@ -190,9 +200,7 @@ func (p *programInstance) Call(name string, args []any) (any, bool, error) {
 	if p == nil || !p.call.IsValid() || !p.p.funcs[name] {
 		return nil, false, nil
 	}
-	if err := p.p.syncBridge(); err != nil {
-		return nil, true, err
-	}
+	p.sync()
 	if args == nil {
 		args = []any{}
 	}
@@ -343,7 +351,7 @@ func programSource(st syntax.Setup, body string, imports []gosetup.Import, vars 
 		}
 	}
 
-	pre, decl := gosetup.BridgeParts(vars, shapes, bridgePkg)
+	pre, decl := gosetup.BridgeParts(vars, shapes, st.Props, bridgePkg)
 	var b strings.Builder
 	b.WriteString(gosetup.ImportBlock(imports))
 	if pre != "" {
@@ -375,8 +383,13 @@ func programSource(st syntax.Setup, body string, imports []gosetup.Import, vars 
 	if len(vars) > 0 {
 		b.WriteString("func goiSyncBridge() { (&bridge).goiSync() }\n\n")
 	}
-	b.WriteString("type goiSetup struct {\nValue func(string) any\nCall func(string, []any) (any, error)\nMount func()\nUnmount func()\n}\n\n")
-	b.WriteString("func goiNewSetup() *goiSetup {\n")
+	b.WriteString("type goiSetup struct {\nValue func(string) any\nCall func(string, []any) (any, error)\nMount func()\nUnmount func()\nSyncProps func()\n}\n\n")
+	b.WriteString("func goiNewSetup(goiGet func() map[string]any) *goiSetup {\n")
+	b.WriteString("syncProps := func() {}\n")
+	if len(st.Props) > 0 {
+		b.WriteString("syncProps = func() { goiSetProps(goiGet()) }\n")
+	}
+	b.WriteString("syncProps()\n")
 	for _, decl := range varDecls {
 		writeLine(&b, st, decl.line)
 		b.WriteString(decl.text)
@@ -433,7 +446,7 @@ func programSource(st syntax.Setup, body string, imports []gosetup.Import, vars 
 		b.WriteString(call)
 	}
 	b.WriteString("}\nreturn nil, nil\n}\n")
-	b.WriteString("return &goiSetup{Value: value, Call: call, Mount: goiMount, Unmount: goiUnmount}\n}\n")
+	b.WriteString("return &goiSetup{Value: value, Call: call, Mount: goiMount, Unmount: goiUnmount, SyncProps: syncProps}\n}\n")
 
 	out, err := format.Source([]byte(b.String()))
 	if err != nil {

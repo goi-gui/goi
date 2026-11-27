@@ -64,9 +64,9 @@ func Analyze(code string) *Analysis {
 // AnalyzeWithBridge is Analyze with the design's bridge declarations exposed as
 // the `bridge` value, so setup code that reads a variable or calls a handler
 // type-checks.
-func AnalyzeWithBridge(code string, vars []syntax.DataVar, shapes []syntax.DataShape) *Analysis {
+func AnalyzeWithBridge(code string, vars []syntax.DataVar, shapes []syntax.DataShape, props []syntax.Prop) *Analysis {
 	body, imports := PrepareImports(code)
-	pre, decl := bridgeParts(vars, shapes, "goisetup")
+	pre, decl := bridgeParts(vars, shapes, props, "goisetup")
 	block := ImportBlock(imports)
 	return analyze(code, prefix+block+pre+body+"\n"+decl, len(prefix)+len(block)+len(pre))
 }
@@ -311,37 +311,37 @@ func (a *Analysis) keywordItems(word string) []Item {
 
 // BridgeSource is the Go source a setup scope evaluates: the user body plus a
 // generated `bridge` value and methods for the design's declarations.
-func BridgeSource(code string, vars []syntax.DataVar, shapes []syntax.DataShape) string {
-	return BridgeSourcePkg(code, vars, shapes, "goisetup")
+func BridgeSource(code string, vars []syntax.DataVar, shapes []syntax.DataShape, props []syntax.Prop) string {
+	return BridgeSourcePkg(code, vars, shapes, props, "goisetup")
 }
 
 // BridgeSourcePkg is BridgeSource with a named synthetic package, so several
 // setup files in one interpreter can each bind their own Data and Call.
-func BridgeSourcePkg(code string, vars []syntax.DataVar, shapes []syntax.DataShape, pkg string) string {
-	pre, decl := bridgeParts(vars, shapes, pkg)
+func BridgeSourcePkg(code string, vars []syntax.DataVar, shapes []syntax.DataShape, props []syntax.Prop, pkg string) string {
+	pre, decl := bridgeParts(vars, shapes, props, pkg)
 	return pre + code + "\n" + decl
 }
 
 // BridgePrelude is the generated import a setup program needs for bridge access.
-func BridgePrelude(vars []syntax.DataVar) string {
-	pre, _ := bridgeParts(vars, nil, "goisetup")
+func BridgePrelude(vars []syntax.DataVar, props []syntax.Prop) string {
+	pre, _ := bridgeParts(vars, nil, props, "goisetup")
 	return pre
 }
 
 // BridgeDecls is the generated bridge value and its methods.
-func BridgeDecls(vars []syntax.DataVar, shapes []syntax.DataShape) string {
-	_, decl := bridgeParts(vars, shapes, "goisetup")
+func BridgeDecls(vars []syntax.DataVar, shapes []syntax.DataShape, props []syntax.Prop) string {
+	_, decl := bridgeParts(vars, shapes, props, "goisetup")
 	return decl
 }
 
 // BridgeParts is the import and declarations a setup program needs, generated
 // once because the shape converters are not cheap to write twice.
-func BridgeParts(vars []syntax.DataVar, shapes []syntax.DataShape, pkg string) (pre, decl string) {
-	return bridgeParts(vars, shapes, pkg)
+func BridgeParts(vars []syntax.DataVar, shapes []syntax.DataShape, props []syntax.Prop, pkg string) (pre, decl string) {
+	return bridgeParts(vars, shapes, props, pkg)
 }
 
-func bridgeParts(vars []syntax.DataVar, shapes []syntax.DataShape, pkg string) (pre, decl string) {
-	if len(vars) == 0 && len(shapes) == 0 {
+func bridgeParts(vars []syntax.DataVar, shapes []syntax.DataShape, props []syntax.Prop, pkg string) (pre, decl string) {
+	if len(vars) == 0 && len(shapes) == 0 && len(props) == 0 {
 		return "", ""
 	}
 	shapeMap := make(map[string]*syntax.DataShape, len(shapes))
@@ -357,6 +357,20 @@ func bridgeParts(vars []syntax.DataVar, shapes []syntax.DataShape, pkg string) (
 		types.WriteString("}\n\n")
 	}
 	conv := &convGen{shapes: shapeMap, pkg: pkg, names: map[string]string{}}
+	var propDecl strings.Builder
+	if len(props) > 0 {
+		propDecl.WriteString("type goiProps struct {\n")
+		for _, pr := range props {
+			fmt.Fprintf(&propDecl, "\t%s %s\n", pr.Name, goType(pr.Type, shapeMap))
+		}
+		propDecl.WriteString("}\n\nvar props goiProps\n\n")
+		propDecl.WriteString("func goiSetProps(m map[string]any) {\n")
+		for _, pr := range props {
+			fmt.Fprintf(&propDecl, "props.%s = %s\n", pr.Name,
+				conv.expr(pr.Type, fmt.Sprintf("%s.Field(m, %q)", pkg, pr.Name)))
+		}
+		propDecl.WriteString("}\n\n")
+	}
 	var fields, sync, methods strings.Builder
 	for _, v := range vars {
 		if v.Type.Kind == syntax.TypeFunc {
@@ -380,10 +394,10 @@ func bridgeParts(vars []syntax.DataVar, shapes []syntax.DataShape, pkg string) (
 		fmt.Fprintf(&sync, "\tif v, ok := "+pkg+".Data(%q); ok { b.%s = %s }\n",
 			v.Name, v.Name, conv.expr(v.Type, "v"))
 	}
-	if len(vars) > 0 {
+	if len(vars) > 0 || len(props) > 0 {
 		pre = "import " + pkg + " \"" + pkg + "\"\n\n"
 	}
-	decl = types.String() + conv.funcsString() +
+	decl = types.String() + conv.funcsString() + propDecl.String() +
 		"type goiBridge struct {\n" + fields.String() + "}\n\n" +
 		"var bridge goiBridge\n\n" +
 		"func (b *goiBridge) goiSync() {\n" + sync.String() + "}\n\n" +

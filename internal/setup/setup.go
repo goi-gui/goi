@@ -37,6 +37,8 @@ type Registry struct {
 	templates map[string]*template
 	// err is the first compile error seen while resolving setup lazily.
 	err error
+	// tr resolves the props a fragment instance passed.
+	tr *tree.Tree
 	// hookSrc marks files that declare onMount or onUnmount.
 	hookSrc map[string]bool
 	// order is every instance created, so mounts and unmounts have a stable
@@ -77,6 +79,7 @@ type lazyScope struct {
 	key     string
 	base    *Scope
 	private *Scope
+	propGet func() map[string]any
 }
 
 type template struct {
@@ -104,6 +107,10 @@ type Scope struct {
 	// synced is the last DataVersion copied into the interpreted bridge.
 	synced    uint64
 	hasBridge bool
+	// propGet resolves this scope's props; setProps writes the generated props
+	// value before an interpreted call.
+	propGet  func() map[string]any
+	setProps reflect.Value
 }
 
 // New registers every setup block and creates the shared machine. Compiling a
@@ -192,10 +199,15 @@ func newScope(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape)
 			"Field":    reflect.ValueOf(rowField),
 		},
 	})
-	src := gosetup.ImportBlock(imports) + gosetup.BridgePrelude(vars) + "\n//line " + st.Src + ":" + strconv.Itoa(st.Line) + "\n" +
-		body + "\n//line _.go:1\n" + gosetup.BridgeDecls(vars, shapes)
+	src := gosetup.ImportBlock(imports) + gosetup.BridgePrelude(vars, st.Props) + "\n//line " + st.Src + ":" + strconv.Itoa(st.Line) + "\n" +
+		body + "\n//line _.go:1\n" + gosetup.BridgeDecls(vars, shapes, st.Props)
 	if _, err := i.Eval(src); err != nil {
 		return nil, evalError(st, err)
+	}
+	if len(st.Props) > 0 {
+		if v, err := i.Eval("goiSetProps"); err == nil && v.IsValid() && v.Kind() == reflect.Func {
+			s.setProps = v
+		}
 	}
 	s.names, _ = declaredNames(body)
 	s.stateful, _ = statefulFuncs(body)
@@ -209,6 +221,7 @@ func (r *Registry) Bind(tr *tree.Tree) {
 	if r == nil || tr == nil {
 		return
 	}
+	r.tr = tr
 	r.data = tr.Data
 	r.version = tr.DataVersion
 	r.call = tr.CallBridge
@@ -236,6 +249,17 @@ func (r *Registry) bind(sc *Scope) {
 	sc.call = r.call
 	sc.synced = ^uint64(0)
 	_ = sc.syncBridge()
+}
+
+func (s *Scope) syncProps() {
+	if s == nil || !s.setProps.IsValid() || s.propGet == nil {
+		return
+	}
+	m := s.propGet()
+	if m == nil {
+		m = map[string]any{}
+	}
+	s.setProps.Call([]reflect.Value{reflect.ValueOf(m)})
 }
 
 func (s *Scope) bridgeData(name string) (any, bool) {
@@ -404,7 +428,7 @@ func (r *Registry) For(src, scope string) tree.SetupScope {
 			r.scopes[key] = sc
 			return sc
 		}
-		inst := p.newInstance()
+		inst := p.newInstance(r.propGetter(scope))
 		if inst == nil {
 			return nil
 		}
@@ -416,12 +440,17 @@ func (r *Registry) For(src, scope string) tree.SetupScope {
 	if base == nil {
 		return nil
 	}
+	var get func() map[string]any
+	if t := r.templates[src]; t != nil && len(t.setup.Props) > 0 {
+		get = r.propGetter(scope)
+	}
 	if scope == "" {
+		base.propGet = get
 		r.track(base)
 		return base
 	}
 	r.baseRefs[src]++
-	l := &lazyScope{r: r, src: src, key: key, base: base}
+	l := &lazyScope{r: r, src: src, key: key, base: base, propGet: get}
 	r.scopes[key] = l
 	r.track(l)
 	return l
@@ -470,6 +499,13 @@ func (l *lazyScope) current() *Scope {
 }
 
 func (l *lazyScope) Value(name string) (any, bool) {
+	if l.propGet != nil {
+		sc, err := l.materialize()
+		if err != nil {
+			return nil, false
+		}
+		return sc.Value(name)
+	}
 	if sc := l.current(); sc != nil {
 		return sc.Value(name)
 	}
@@ -485,8 +521,9 @@ func (l *lazyScope) HasFunc(name string) bool {
 
 func (l *lazyScope) Call(name string, args []any) (any, bool, error) {
 	// A function that neither reads nor writes setup state can run on the
-	// shared base; there is nothing instance-specific to isolate.
-	if l.private == nil && l.base != nil && l.base.sharedFunc(name) {
+	// shared base; there is nothing instance-specific to isolate. Props are
+	// per instance, so a file that has them always uses its private state.
+	if l.propGet == nil && l.private == nil && l.base != nil && l.base.sharedFunc(name) {
 		return l.base.Call(name, args)
 	}
 	sc, err := l.materialize()
@@ -507,6 +544,7 @@ func (l *lazyScope) materialize() (*Scope, error) {
 		r.bases[l.src] = nil
 		delete(r.scopes, scopeKey(l.src, ""))
 		l.private = l.base
+		l.private.propGet = l.propGet
 		l.base = nil
 		r.scopes[l.key] = l.private
 		return l.private, nil
@@ -521,6 +559,7 @@ func (l *lazyScope) materialize() (*Scope, error) {
 		return nil, err
 	}
 	r.bind(sc)
+	sc.propGet = l.propGet
 	l.private = sc
 	l.base = nil
 	l.r.scopes[l.key] = sc
@@ -544,6 +583,7 @@ func (s *Scope) Value(name string) (any, bool) {
 	if v, ok := s.values[name]; ok {
 		return v.Interface(), true
 	}
+	s.syncProps()
 	_ = s.syncBridge()
 	v, err := s.i.Eval(name)
 	if err != nil || !v.IsValid() || !v.CanInterface() || v.Kind() == reflect.Func {
@@ -562,6 +602,7 @@ func (s *Scope) Call(name string, args []any) (result any, found bool, err error
 	if isLifecycle(name) {
 		return nil, false, nil
 	}
+	s.syncProps()
 	if err := s.syncBridge(); err != nil {
 		return nil, true, err
 	}

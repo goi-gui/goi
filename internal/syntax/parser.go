@@ -20,6 +20,9 @@ func Parse(src []byte) (*File, Diagnostics) {
 		return nil, p.diag
 	}
 	f.Comments = lx.comments
+	for i := range f.Setups {
+		f.Setups[i].Props = f.Props
+	}
 	return f, p.diag
 }
 

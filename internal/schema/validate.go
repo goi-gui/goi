@@ -1368,7 +1368,7 @@ func SetupDiagnostics(f *syntax.File) syntax.Diagnostics {
 	// Type-check the body with the compiler's own checker. It knows the
 	// standard library, which is what a setup block may import.
 	for _, st := range f.Setups {
-		for _, item := range gosetup.AnalyzeWithBridge(st.Code, f.Vars, f.Shapes).Diagnostics() {
+		for _, item := range gosetup.AnalyzeWithBridge(st.Code, f.Vars, f.Shapes, st.Props).Diagnostics() {
 			pos := st.Body + syntax.Pos(item.Offset)
 			out = append(out, syntax.Diagnostic{Src: st.Src, Pos: pos, End: pos + 1, Message: item.Msg})
 		}

@@ -1080,7 +1080,7 @@ func setupAt(file *syntax.File, off int) (syntax.Setup, bool) {
 
 // setupCompletionItems lists Go names at a position inside a setup body.
 func setupCompletionItems(st syntax.Setup, off int, file *syntax.File) []completionResult {
-	a := gosetup.AnalyzeWithBridge(st.Code, file.Vars, file.Shapes)
+	a := gosetup.AnalyzeWithBridge(st.Code, file.Vars, file.Shapes, st.Props)
 	items := a.Complete(off - int(st.Body))
 	out := make([]completionResult, 0, len(items))
 	for _, item := range items {

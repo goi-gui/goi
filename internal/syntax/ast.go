@@ -82,6 +82,9 @@ type Setup struct {
 	At, Body, End Pos
 	Line          int
 	Code          string
+	// Props is the owning file's props block, so setup code can read the
+	// values its fragment instance passed.
+	Props []Prop
 }
 
 // Import is `import Sidebar "./Sidebar.goi"`, or `import "./Sidebar.goi"`
@@ -334,6 +337,18 @@ type Element struct {
 	// not resolve it again, or a child written in one file could be read as a
 	// fragment call of the file it was passed into.
 	Resolved bool
+	// InstanceProps holds the values this fragment instance passed for its
+	// props block. Asset expansion fills it on the fragment's root; setup reads
+	// them per instance.
+	InstanceProps map[string]InstanceProp
+}
+
+// InstanceProp is one prop value a fragment instance passed.
+type InstanceProp struct {
+	Value Value
+	// Src is the file the value was written in, so a reference to that file's
+	// setup resolves there.
+	Src string
 }
 
 // Props returns the element's properties in source order.
