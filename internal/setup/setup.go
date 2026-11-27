@@ -29,8 +29,9 @@ type Scope struct {
 	i *interp.Interpreter
 	// names are the declarations the body wrote, so an enum literal in a
 	// property does not pay an interpreter lookup on every frame.
-	names map[string]bool
-	funcs map[string]reflect.Value
+	names  map[string]bool
+	values map[string]reflect.Value
+	funcs  map[string]reflect.Value
 }
 
 // New evaluates every setup block. A broken block is an error naming the file
@@ -81,10 +82,17 @@ func (s *Scope) Value(name string) (any, bool) {
 	if s.names != nil && !s.names[name] {
 		return nil, false
 	}
+	if v, ok := s.values[name]; ok {
+		return v.Interface(), true
+	}
 	v, err := s.i.Eval(name)
 	if err != nil || !v.IsValid() || !v.CanInterface() || v.Kind() == reflect.Func {
 		return nil, false
 	}
+	if s.values == nil {
+		s.values = map[string]reflect.Value{}
+	}
+	s.values[name] = v
 	return v.Interface(), true
 }
 
