@@ -3089,3 +3089,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   cannot express (methods, variadic functions, non-primitive parameters,
   initializers that call setup functions) keep the interpreter path with
   copy-on-write state, so setup semantics do not depend on the rewrite.
+- **A setup interpreter loads only the packages the setup file imports.**
+  `i.Use(stdlib.Symbols)` copies the whole table into every interpreter, about
+  1.3 MB of live heap per setup file, whether the block imports anything or not.
+  The import list is parsed and only those packages are registered, which drops
+  a file with no imports to a few kilobytes and makes a single interpreter per
+  file cheap enough that sharing one across files would save nothing worth the
+  cross-file collisions. A missing or non-stdlib import fails at Eval as before.

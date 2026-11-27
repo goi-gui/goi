@@ -15,7 +15,6 @@ import (
 	"github.com/goi-gui/goi/internal/syntax"
 	"github.com/goi-gui/goi/internal/tree"
 	"github.com/traefik/yaegi/interp"
-	"github.com/traefik/yaegi/stdlib"
 )
 
 // Registry holds one interpreter per design file and fragment instance. A
@@ -109,7 +108,9 @@ func New(setups []syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape
 
 func newScope(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape) (*Scope, error) {
 	i := interp.New(interp.Options{})
-	i.Use(stdlib.Symbols)
+	if err := useImports(i, st.Code); err != nil {
+		return nil, evalError(st, err)
+	}
 	s := &Scope{i: i, hasBridge: len(vars) > 0, synced: ^uint64(0)}
 	i.Use(interp.Exports{
 		"goisetup/goisetup": {

@@ -83,10 +83,12 @@ Window {}`)
 // forces because the shared program only compiles plain functions.
 func TestLazyScopeSharesPureCalls(t *testing.T) {
 	f := parse(t, `setup {
+	import "strings"
+
 	var count int
 
 	func inc() { count++ }
-	func greet(n string) string { return "Hi, " + n }
+	func greet(n string) string { return "Hi, " + strings.TrimSpace(n) }
 
 	type T struct{ n int }
 
@@ -102,8 +104,8 @@ Window {}`)
 	if !ok {
 		t.Fatal("a fragment instance was not lazy")
 	}
-	if _, found, err := sc.Call("greet", []any{"Ada"}); err != nil || !found {
-		t.Fatalf("greet = %v, %v", found, err)
+	if v, found, err := sc.Call("greet", []any{" Ada "}); err != nil || !found || v != "Hi, Ada" {
+		t.Fatalf("greet = %v, %v, %v", v, found, err)
 	}
 	if sc.private != nil {
 		t.Fatal("a pure function copied the interpreter")

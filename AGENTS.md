@@ -93,8 +93,9 @@ Tests that enforce the above: `TestEveryComponentValidates`,
   meant for value helpers and small local actions, not app logic. One
   interpreter per file serves every instance; each instance only carries its
   variables. Unsupported bodies fall back to a per-instance interpreter with
-  copy-on-write state. Setup code can read `bridge.` values and call bridge
-  handlers.
+  copy-on-write state. Each interpreter registers only the stdlib packages the
+  setup file imports; `i.Use(stdlib.Symbols)` costs ~1.3 MB per file. Setup
+  code can read `bridge.` values and call bridge handlers.
 - A list comes from `for … range` over a bridge slice, whose rows are rebuilt by
   `ui.SetData`; `ui.Instantiate`/`ui.Fill` are for a fixed set of children.
 - Colours as M3 role names (`theme.primary`, `theme.surfaceContainer`,

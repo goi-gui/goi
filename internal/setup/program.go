@@ -15,7 +15,6 @@ import (
 	"github.com/goi-gui/goi/internal/syntax"
 	"github.com/goi-gui/goi/internal/tree"
 	"github.com/traefik/yaegi/interp"
-	"github.com/traefik/yaegi/stdlib"
 )
 
 // program is one setup file compiled once. Every fragment instance is a pair
@@ -43,7 +42,9 @@ func newProgram(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShap
 		return nil, err
 	}
 	i := interp.New(interp.Options{})
-	i.Use(stdlib.Symbols)
+	if err := useImports(i, st.Code); err != nil {
+		return nil, evalError(st, err)
+	}
 	p := &program{i: i, hasBridge: len(vars) > 0, synced: ^uint64(0)}
 	i.Use(interp.Exports{
 		"goisetup/goisetup": {
