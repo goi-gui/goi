@@ -3291,3 +3291,66 @@ func TestDiagnosticsLandInSetup(t *testing.T) {
 		t.Fatalf("range start = %+v, want the setup line", diags[0].Range.Start)
 	}
 }
+
+// TestCompletionOffersSetupNames checks both halves: a setup declaration is
+// offered as a property value, and Go names complete inside the block.
+func TestCompletionOffersSetupNames(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := `setup {
+	var count = 1
+
+	func greet(n string) string { return n }
+}
+
+Window { Column {
+	Text { text: }
+} }
+`
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	list := completionAt(t, c, uri, src, "text: ")
+	labels := map[string]bool{}
+	for _, it := range list.Items {
+		labels[it.Label] = true
+	}
+	if !labels["count"] || !labels["greet(…)"] {
+		t.Fatalf("setup values missing from a property: %v", list.Items)
+	}
+
+	setupSrc := `setup {
+	var count = 1
+
+	func greet(n string) string { return n }
+
+	gr
+}
+
+Window {}
+`
+	setupURI := writeDesign(t, dir, "setup.goi", setupSrc)
+	c.openDoc(setupURI, setupSrc)
+	list = completionAt(t, c, setupURI, setupSrc, "\tgr")
+	labels = map[string]bool{}
+	for _, it := range list.Items {
+		labels[it.Label] = true
+	}
+	if !labels["greet"] {
+		t.Fatalf("setup body completion missing greet: %v", list.Items)
+	}
+}
+
+// TestSetupTypeErrorsAreReported keeps the compiler check wired to the editor.
+func TestSetupTypeErrorsAreReported(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "setup {\n\tvar count int = \"not a number\"\n}\n\nWindow { }\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	diags := c.diagnostics(uri)
+	if len(diags) == 0 || !strings.Contains(diags[0].Message, "cannot use") {
+		t.Fatalf("setup type error was not reported: %v", diags)
+	}
+}

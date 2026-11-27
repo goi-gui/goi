@@ -12,6 +12,7 @@ import (
 
 	"github.com/goi-gui/goi/internal/componentdef"
 	"github.com/goi-gui/goi/internal/csscolor"
+	"github.com/goi-gui/goi/internal/gosetup"
 	"github.com/goi-gui/goi/internal/m3"
 	"github.com/goi-gui/goi/internal/syntax"
 )
@@ -1358,6 +1359,14 @@ func SetupDiagnostics(f *syntax.File) syntax.Diagnostics {
 			}
 			off := base + item.Pos.Column - 1
 			pos := st.Body + syntax.Pos(off)
+			out = append(out, syntax.Diagnostic{Src: st.Src, Pos: pos, End: pos + 1, Message: item.Msg})
+		}
+	}
+	// Type-check the body with the compiler's own checker. It knows the
+	// standard library, which is what a setup block may import.
+	for _, st := range f.Setups {
+		for _, item := range gosetup.Analyze(st.Code).Diagnostics() {
+			pos := st.Body + syntax.Pos(item.Offset)
 			out = append(out, syntax.Diagnostic{Src: st.Src, Pos: pos, End: pos + 1, Message: item.Msg})
 		}
 	}

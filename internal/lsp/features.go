@@ -14,6 +14,7 @@ import (
 	"github.com/goi-gui/goi/internal/componentdef"
 	"github.com/goi-gui/goi/internal/csscolor"
 	"github.com/goi-gui/goi/internal/goifmt"
+	"github.com/goi-gui/goi/internal/gosetup"
 	"github.com/goi-gui/goi/internal/highlight"
 	"github.com/goi-gui/goi/internal/m3"
 	"github.com/goi-gui/goi/internal/schema"
@@ -204,6 +205,12 @@ func (s *Server) completion(raw json.RawMessage) any {
 		line = line[i+1:]
 	}
 
+	file, _ := syntax.Parse(d.text)
+	// A setup body is Go, not design syntax: hand it to the Go scope instead
+	// of offering elements and properties.
+	if st, ok := setupAt(file, off); ok {
+		return completionList{Items: setupCompletionItems(st, off)}
+	}
 	// A block string is a document: nothing in it is a property or a value, so
 	// a popup there would only interrupt the prose.
 	if insideBlockString(d.text, off) {
@@ -215,7 +222,6 @@ func (s *Server) completion(raw json.RawMessage) any {
 
 	items := []completionResult{}
 	incomplete := false
-	file, _ := syntax.Parse(d.text)
 	prop, keys := enclosingProperty(file, d.text, off)
 	ref := enclosingRef(before)
 	// refStart is where the whole reference begins, so an item can replace
@@ -1059,6 +1065,101 @@ func walkElementsIn(e *syntax.Element, fn func(*syntax.Block)) {
 
 // valueItems offers the values a property accepts. The bool reports that the
 // list was cut short, so the client asks again as the user types.
+// setupAt reports the setup block containing off.
+func setupAt(file *syntax.File, off int) (syntax.Setup, bool) {
+	if file == nil {
+		return syntax.Setup{}, false
+	}
+	for _, st := range file.Setups {
+		if off >= int(st.Body) && off <= int(st.Body)+len(st.Code) {
+			return st, true
+		}
+	}
+	return syntax.Setup{}, false
+}
+
+// setupCompletionItems lists Go names at a position inside a setup body.
+func setupCompletionItems(st syntax.Setup, off int) []completionResult {
+	a := gosetup.Analyze(st.Code)
+	items := a.Complete(off - int(st.Body))
+	out := make([]completionResult, 0, len(items))
+	for _, item := range items {
+		out = append(out, completionResult{
+			Label:         item.Label,
+			Kind:          setupKind(item.Kind),
+			Detail:        item.Detail,
+			Documentation: &doc{Kind: "markdown", Value: "**" + item.Label + "**\n\n" + setupKindName(item.Kind) + " declared in this file's `setup` block."},
+		})
+	}
+	return out
+}
+
+// setupValueItems lists the declarations of the setup block that owns off.
+// A fragment's elements see only the fragment's setup; an entry page sees its
+// own.
+func setupValueItems(file *syntax.File, off int) []completionResult {
+	if file == nil {
+		return nil
+	}
+	src := ""
+	if el := elementAt(file, off); el != nil {
+		src = el.Src
+	}
+	var out []completionResult
+	for _, st := range file.Setups {
+		if src != "" && st.Src != src {
+			continue
+		}
+		a := gosetup.Analyze(st.Code)
+		for _, sym := range a.Symbols() {
+			item := completionResult{
+				Label:         sym.Name,
+				Kind:          setupKind(sym.Kind),
+				Detail:        "setup · " + sym.Detail,
+				Documentation: &doc{Kind: "markdown", Value: "**" + sym.Name + "**\n\nA " + setupKindName(sym.Kind) + " declared in this file's setup block."},
+			}
+			if sym.Kind == "function" {
+				item.Label += "(…)"
+				item.InsertText = sym.Name + "("
+			}
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func setupKind(kind string) int {
+	switch kind {
+	case "function":
+		return kindFunction
+	case "variable":
+		return kindVariable
+	case "constant":
+		return kindConstant
+	case "type":
+		return kindClass
+	case "package":
+		return kindFolder
+	default:
+		return kindKeyword
+	}
+}
+
+func setupKindName(kind string) string {
+	switch kind {
+	case "function":
+		return "function"
+	case "type":
+		return "type"
+	case "constant":
+		return "constant"
+	case "package":
+		return "package"
+	default:
+		return "variable"
+	}
+}
+
 func valueItems(file *syntax.File, prop string, src []byte, off int, prefix string, inString bool, frag *syntax.Prop) ([]completionResult, bool) {
 	elName := enclosingElementName(file, src, off)
 	el, ok := schema.Lookup(elName)
@@ -1067,7 +1168,7 @@ func valueItems(file *syntax.File, prop string, src []byte, off int, prefix stri
 	if !ok {
 		// A fragment instance: its props are not in the schema, so the values
 		// offered are the ones any value position has.
-		return fragmentValueItems(file, prop, frag, prefix), false
+		return append(fragmentValueItems(file, prop, frag, prefix), setupValueItems(file, off)...), false
 	}
 	if pd := el.Prop(prop); pd != nil {
 		switch {
@@ -1135,6 +1236,7 @@ func valueItems(file *syntax.File, prop string, src []byte, off int, prefix stri
 				"a document can be indented with the element around it."},
 		})
 	}
+	out = append(out, setupValueItems(file, off)...)
 	if _, ok := schema.Event(prop); ok && el.HasEvent(prop) {
 		for _, f := range file.Props {
 			if f.Type.Kind != syntax.TypeFunc {
