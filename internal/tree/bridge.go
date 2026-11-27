@@ -149,11 +149,12 @@ func (t *Tree) bindEvent(b *NodeBase, name string, v syntax.Value) error {
 		return fmt.Errorf("%s.%s: expected a handler call", b.node.Kind(), name)
 	}
 	if call.Callee == nil {
-		return fmt.Errorf("%s.%s: a setup function is a value, not an event handler", b.node.Kind(), name)
-	}
-	// `window.close()` drives the live window; window is a reserved name, not
-	// an element id.
-	if call.Callee.ID == "window" {
+		if !t.setupHasFunc(nodeSource(b), call.Name) {
+			return fmt.Errorf("%s.%s: setup has no function %q", b.node.Kind(), name, call.Name)
+		}
+	} else if call.Callee.ID == "window" {
+		// `window.close()` drives the live window; window is a reserved name,
+		// not an element id.
 		if !schema.WindowMethod(call.Callee.Prop) {
 			return fmt.Errorf("%s.%s: window has no method %q", b.node.Kind(), name, call.Callee.Prop)
 		}
@@ -295,6 +296,10 @@ func bridgeComponent(b *NodeBase) *Component {
 func (t *Tree) fire(b *NodeBase, name string, call *syntax.Call, payload any) {
 	c := evalCtx{tree: t, sc: b.scope, src: nodeSource(b)}
 	args := make([]any, len(call.Args))
+	callee := call.Name
+	if call.Callee != nil {
+		callee = call.Callee.Prop
+	}
 	for i, a := range call.Args {
 		if id, ok := a.(*syntax.Ident); ok && id.Val == "event" {
 			args[i] = payload
@@ -310,10 +315,16 @@ func (t *Tree) fire(b *NodeBase, name string, call *syntax.Call, payload any) {
 		}
 		v, ok := c.eval(a, 0)
 		if !ok {
-			t.bridgeErr(fmt.Errorf("goi: %s.%s: cannot evaluate argument %d of %s", b.node.Kind(), name, i+1, call.Callee.Prop))
+			t.bridgeErr(fmt.Errorf("goi: %s.%s: cannot evaluate argument %d of %s", b.node.Kind(), name, i+1, callee))
 			return
 		}
 		args[i] = v
+	}
+	if call.Callee == nil {
+		if _, found := t.setupCall(nodeSource(b), call.Name, args); !found {
+			t.bridgeErr(fmt.Errorf("goi: setup has no function %q", call.Name))
+		}
+		return
 	}
 	if call.Callee.ID == "window" {
 		t.callWindowMethod(call.Callee.Prop, args)

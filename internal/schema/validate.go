@@ -1702,8 +1702,14 @@ func (v *validator) checkEventCall(e *syntax.Element, ev EventDef, p *syntax.Pro
 		return // already reported where the property was read
 	}
 	if call.Callee == nil {
-		v.add(call.At, call.At+syntax.Pos(len(call.Name)+2),
-			fmt.Sprintf("%s.%s: a handler call needs bridge. or an element id", e.Name, p.Name), "")
+		if !v.setupFuncs[call.Name] {
+			v.add(call.At, call.At+syntax.Pos(len(call.Name)+2),
+				fmt.Sprintf("%s.%s: %q is not a setup function; an event needs bridge., an element id or a setup function", e.Name, p.Name, call.Name), "")
+			return
+		}
+		for _, a := range call.Args {
+			v.checkRefs(e, anyProp, a)
+		}
 		return
 	}
 	at := call.Callee.At

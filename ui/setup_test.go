@@ -83,3 +83,47 @@ Column { Text { id: inner text: name } }`)},
 		t.Fatalf("fragment text = %q", got)
 	}
 }
+
+// TestSetupFunctionsRunFromEvents drives the counter shape: the block owns the
+// state, event calls mutate it, and the next expression pass reads the new value.
+func TestSetupFunctionsRunFromEvents(t *testing.T) {
+	f, diag := syntax.ParseNamed([]byte(`setup {
+	var count = 0
+
+	func increase() { count++ }
+	func decrease() { count-- }
+}
+
+Window { Column {
+	Text { id: value text: formatf("%d", count) }
+	Button { id: inc label: "+" onClick: increase() }
+	Button { id: dec label: "-" onClick: decrease() }
+} }`), "Main.goi")
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	scopes, err := setup.New(f.Setups)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := tree.Build(f, &tree.Hooks{Setup: scopes.For})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr.ApplyExpressions()
+	win := &Window{tree: tr}
+	if got := MustByID[*Text](win, "value").Text.Get(); got != "0" {
+		t.Fatalf("initial text = %q", got)
+	}
+	MustByID[*Button](win, "inc").Click.Emit(ClickEvent{})
+	MustByID[*Button](win, "inc").Click.Emit(ClickEvent{})
+	tr.ApplyExpressions()
+	if got := MustByID[*Text](win, "value").Text.Get(); got != "2" {
+		t.Fatalf("text after two increases = %q", got)
+	}
+	MustByID[*Button](win, "dec").Click.Emit(ClickEvent{})
+	tr.ApplyExpressions()
+	if got := MustByID[*Text](win, "value").Text.Get(); got != "1" {
+		t.Fatalf("text after a decrease = %q", got)
+	}
+}

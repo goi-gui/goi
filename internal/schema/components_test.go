@@ -526,7 +526,11 @@ Window { Column {
 }
 
 Window { Button { onClick: reset() } }`
-	if _, diag := validate(t, event); diag.Empty() {
-		t.Fatal("a setup function was accepted as an event handler")
+	if _, diag := validate(t, event); !diag.Empty() {
+		t.Fatalf("setup event function was rejected: %v", diag)
+	}
+	missing := `Window { Button { onClick: reset() } }`
+	if _, diag := validate(t, missing); diag.Empty() {
+		t.Fatal("an undeclared setup event function was accepted")
 	}
 }

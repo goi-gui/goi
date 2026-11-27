@@ -3062,6 +3062,7 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   package-level `var`/`const`/`type`/`func` declarations (not `:=`) and is
   evaluated once per load. The tree resolves its names by `Element.Src`, so a
   fragment's helpers stay with the fragment and two files may reuse a name.
-  Setup functions are values, not event handlers; the interpreter exposes the
-  standard library but not application packages. A reload re-evaluates the
-  block, so setup state resets while Go state outside Bind does not.
+  A setup function is a value and may be an event handler; its return is
+  ignored. The interpreter exposes the standard library but not application
+  packages. A reload re-evaluates the block, so setup state resets while Go
+  state outside Bind does not.
