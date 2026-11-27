@@ -185,10 +185,8 @@ func (p *programInstance) callHook(name string) error {
 		return nil
 	}
 	p.sync()
-	var before map[string]any
 	if p.p.writesBridge {
-		before = p.bridgeValues()
-		defer p.flushBridge(before)
+		defer p.p.flushLocal()
 	}
 	var callErr error
 	func() {
@@ -231,10 +229,8 @@ func (s *Scope) callHook(name string) error {
 	if err := s.syncBridge(); err != nil {
 		return err
 	}
-	var before map[string]any
 	if s.writesBridge {
-		before = s.bridgeValues()
-		defer s.flushBridge(before)
+		defer s.flushLocal()
 	}
 	var callErr error
 	func() {

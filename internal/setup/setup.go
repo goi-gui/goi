@@ -121,6 +121,7 @@ type Scope struct {
 	// set writes a bridge assignment from setup back to the tree.
 	set   func(string, any)
 	flush reflect.Value
+	last  map[string]any
 }
 
 // New registers every setup block and creates the shared machine. Compiling a
@@ -282,15 +283,24 @@ func (s *Scope) bridgeValues() map[string]any {
 	return m
 }
 
-func (s *Scope) flushBridge(before map[string]any) {
-	if before == nil {
+func (s *Scope) flushLocal() {
+	if s == nil || s.set == nil {
 		return
 	}
-	for name, v := range s.bridgeValues() {
-		if !reflect.DeepEqual(before[name], v) && s.set != nil {
+	after := s.bridgeValues()
+	if after == nil {
+		return
+	}
+	if s.last == nil {
+		s.last = after
+		return
+	}
+	for name, v := range after {
+		if !reflect.DeepEqual(s.last[name], v) {
 			s.set(name, v)
 		}
 	}
+	s.last = after
 }
 
 func (s *Scope) syncProps() {
@@ -319,6 +329,7 @@ func (s *Scope) bridgeCall(name string, args ...any) (any, error) {
 	if s == nil || s.call == nil {
 		return nil, fmt.Errorf("setup bridge is not bound to a window yet")
 	}
+	s.flushLocal()
 	v, err := s.call(name, args)
 	_ = s.syncBridge()
 	return bridgeDataValue(v), err
@@ -336,6 +347,7 @@ func (s *Scope) syncBridge() error {
 	if _, err := s.i.Eval("(&bridge).goiSync()"); err != nil {
 		return fmt.Errorf("setup bridge: %w", err)
 	}
+	s.last = s.bridgeValues()
 	return nil
 }
 
@@ -652,10 +664,8 @@ func (s *Scope) Call(name string, args []any) (result any, found bool, err error
 	if err := s.syncBridge(); err != nil {
 		return nil, true, err
 	}
-	var before map[string]any
 	if s.writesBridge {
-		before = s.bridgeValues()
-		defer s.flushBridge(before)
+		defer s.flushLocal()
 	}
 	fn, ok := s.fn(name)
 	if !ok {

@@ -3189,3 +3189,10 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   back to rows in interpreted code, because Go cannot read the unexported shape
   fields the setup package declares. Bridge data is design-wide, so every
   fragment instance sees the write.
+- **A pending bridge assignment is flushed before a handler call.** A setup
+  function that writes a bridge value and then calls a handler exposed a race:
+  the handler's `SetData` bumps the data version, and the sync after the call
+  copied the old tree value back over the assignment before the flush saw it.
+  Bridge handlers now publish the pending fields first, then run; the post-call
+  sync refreshes what the handler changed. The snapshot is kept per program (or
+  per interpreter scope in the fallback) rather than per fragment instance.

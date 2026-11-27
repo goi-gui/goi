@@ -1236,3 +1236,47 @@ Window { Text { id: value text: formatf("%v", bridge.ready) } }`), "Main.goi")
 		t.Fatalf("ready = %q", v)
 	}
 }
+
+// TestSetupBridgeWriteSurvivesHandlerData is the logout case: setup assigns a
+// bridge value and then calls a handler that writes different data. The
+// handler's data refresh must not overwrite the pending assignment.
+func TestSetupBridgeWriteSurvivesHandlerData(t *testing.T) {
+	f, diag := syntax.ParseNamed([]byte(`bridge {
+	loggedout bool
+	activePage string
+	onLogout func()
+}
+
+setup {
+	func logout() {
+		bridge.loggedout = true
+		bridge.onLogout()
+	}
+}
+
+Window { Text { id: page text: bridge.activePage } }`), "Main.goi")
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	scopes, err := setup.New(f.Setups, f.Vars, f.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := tree.Build(f, &tree.Hooks{Setup: scopes.For})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopes.Bind(tr)
+	if err := tr.SetHandler("onLogout", func() { tr.SetData("activePage", "auth") }); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := scopes.For("Main.goi", "").Call("logout", nil); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := tr.Data("loggedout"); v != true {
+		t.Fatalf("loggedout = %v", v)
+	}
+	if v, _ := tr.Data("activePage"); v != "auth" {
+		t.Fatalf("activePage = %v", v)
+	}
+}

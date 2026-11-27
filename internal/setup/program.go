@@ -38,6 +38,8 @@ type program struct {
 	compiled   bool
 	compileErr error
 	synced     uint64
+	flush      reflect.Value
+	last       map[string]any
 }
 
 type programInstance struct {
@@ -47,7 +49,6 @@ type programInstance struct {
 	mount     reflect.Value
 	unmount   reflect.Value
 	syncProps reflect.Value
-	flush     reflect.Value
 }
 
 func newProgram(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape, index int, m *machine) (*program, error) {
@@ -114,6 +115,9 @@ func (p *program) compile() error {
 		return p.compileErr
 	}
 	p.newFn = v
+	if fv, err := m.i.Eval(p.pkg + ".goiFlush"); err == nil && fv.IsValid() && fv.Kind() == reflect.Func {
+		p.flush = fv
+	}
 	return nil
 }
 
@@ -141,7 +145,6 @@ func (p *program) newInstance(get func() map[string]any) *programInstance {
 		mount:     state.FieldByName("Mount"),
 		unmount:   state.FieldByName("Unmount"),
 		syncProps: state.FieldByName("SyncProps"),
-		flush:     state.FieldByName("Flush"),
 	}
 }
 
@@ -160,6 +163,9 @@ func (p *program) bridgeCall(name string, args ...any) (any, error) {
 	if p == nil || p.m.call == nil {
 		return nil, fmt.Errorf("setup bridge is not bound to a window yet")
 	}
+	// Publish a local bridge assignment before the handler can change data and
+	// make the next sync overwrite it.
+	p.flushLocal()
 	v, err := p.m.call(name, args)
 	_ = p.syncBridge()
 	return bridgeDataValue(v), err
@@ -177,7 +183,41 @@ func (p *program) syncBridge() error {
 	if _, err := p.m.i.Eval(p.pkg + ".goiSyncBridge()"); err != nil {
 		return fmt.Errorf("setup bridge: %w", err)
 	}
+	p.last = p.bridgeValues()
 	return nil
+}
+
+func (p *program) bridgeValues() map[string]any {
+	if p == nil || !p.flush.IsValid() {
+		return nil
+	}
+	out := p.flush.Call(nil)
+	if len(out) != 1 || !out[0].IsValid() || !out[0].CanInterface() {
+		return nil
+	}
+	m, _ := out[0].Interface().(map[string]any)
+	return m
+}
+
+// flushLocal writes the bridge fields setup assigned back to the tree.
+func (p *program) flushLocal() {
+	if p == nil || p.m == nil || p.m.set == nil {
+		return
+	}
+	after := p.bridgeValues()
+	if after == nil {
+		return
+	}
+	if p.last == nil {
+		p.last = after
+		return
+	}
+	for name, v := range after {
+		if !reflect.DeepEqual(p.last[name], v) {
+			p.m.set(name, v)
+		}
+	}
+	p.last = after
 }
 
 // sync refreshes props and the bridge before one interpreted call.
@@ -204,40 +244,13 @@ func (p *programInstance) HasFunc(name string) bool {
 	return p != nil && p.p != nil && p.p.funcs[name]
 }
 
-func (p *programInstance) bridgeValues() map[string]any {
-	if p == nil || !p.flush.IsValid() || p.flush.IsNil() {
-		return nil
-	}
-	out := p.flush.Call(nil)
-	if len(out) != 1 || !out[0].IsValid() || !out[0].CanInterface() {
-		return nil
-	}
-	m, _ := out[0].Interface().(map[string]any)
-	return m
-}
-
-// flushBridge writes the bridge fields setup assigned back to the tree. The
-// generated flush returns every data field as a row the tree can store.
-func (p *programInstance) flushBridge(before map[string]any) {
-	if before == nil {
-		return
-	}
-	for name, v := range p.bridgeValues() {
-		if !reflect.DeepEqual(before[name], v) && p.p.m.set != nil {
-			p.p.m.set(name, v)
-		}
-	}
-}
-
 func (p *programInstance) Call(name string, args []any) (any, bool, error) {
 	if p == nil || !p.call.IsValid() || !p.p.funcs[name] {
 		return nil, false, nil
 	}
 	p.sync()
-	var before map[string]any
 	if p.p.writesBridge {
-		before = p.bridgeValues()
-		defer p.flushBridge(before)
+		defer p.p.flushLocal()
 	}
 	if args == nil {
 		args = []any{}
