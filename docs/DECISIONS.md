@@ -3141,3 +3141,13 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   newlines, so diagnostic offsets and `//line` mapping still point into the
   original body. The same pass feeds the type checker, so the editor completes
   `fmt.` without an import.
+- **`onMount` and `onUnmount` are framework hooks, not design functions.**
+  Setup code runs on the UI goroutine and Yaegi is not goroutine-safe, so
+  running every function on its own goroutine would serialize on the
+  interpreter and put bridge handlers on the wrong thread. The hooks run once
+  per instance, on the UI goroutine: mount after the first painted frame (two
+  posts, so loading and the first paint never wait), unmount while the old tree
+  is still current. They are hidden from the expression engine, mount in
+  creation order and unmount in reverse, and a pending mount is dropped when the
+  registry stops. Heavy work belongs in a Go bridge handler, which can use a goroutine
+  and post its result.

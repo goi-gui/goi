@@ -37,9 +37,11 @@ type program struct {
 }
 
 type programInstance struct {
-	p     *program
-	value reflect.Value
-	call  reflect.Value
+	p       *program
+	value   reflect.Value
+	call    reflect.Value
+	mount   reflect.Value
+	unmount reflect.Value
 }
 
 func newProgram(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape, index int, m *machine) (*program, error) {
@@ -123,7 +125,13 @@ func (p *program) newInstance() *programInstance {
 	if !v.IsValid() || !c.IsValid() {
 		return nil
 	}
-	return &programInstance{p: p, value: v, call: c}
+	return &programInstance{
+		p:       p,
+		value:   v,
+		call:    c,
+		mount:   state.FieldByName("Mount"),
+		unmount: state.FieldByName("Unmount"),
+	}
 }
 
 func (p *program) bridgeData(name string) (any, bool) {
@@ -211,6 +219,7 @@ func programSource(st syntax.Setup, body string, imports []gosetup.Import, vars 
 	}
 	var consts, types, varDecls []programDecl
 	var funcs, methods []*ast.FuncDecl
+	hooks := map[string]*ast.FuncDecl{}
 	var varNodes []*ast.GenDecl
 	var values []string
 	for _, d := range f.Decls {
@@ -218,6 +227,14 @@ func programSource(st syntax.Setup, body string, imports []gosetup.Import, vars 
 		case *ast.FuncDecl:
 			if d.Recv != nil {
 				methods = append(methods, d)
+				continue
+			}
+			if isLifecycle(d.Name.Name) {
+				if (d.Type.Params != nil && len(d.Type.Params.List) > 0) ||
+					(d.Type.Results != nil && len(d.Type.Results.List) > 0) {
+					return "", fmt.Errorf("setup %s must take no parameters and return nothing", d.Name.Name)
+				}
+				hooks[d.Name.Name] = d
 				continue
 			}
 			if d.Type.Results != nil && len(d.Type.Results.List) > 1 {
@@ -264,6 +281,9 @@ func programSource(st syntax.Setup, body string, imports []gosetup.Import, vars 
 	for _, m := range methods {
 		taken = append(taken, m.Name.Name)
 	}
+	for name := range hooks {
+		taken = append(taken, name)
+	}
 	// A method lives at package level, where the factory's variables and
 	// functions are not visible; one that reads them keeps the interpreter.
 	varNames := map[string]bool{}
@@ -309,7 +329,8 @@ func programSource(st syntax.Setup, body string, imports []gosetup.Import, vars 
 	for _, name := range taken {
 		// The factory below uses these names for its own locals.
 		switch name {
-		case "goiSetup", "goiNewSetup", "value", "call", "goiName", "goiArgs", "goiRest", "goiArg":
+		case "goiSetup", "goiNewSetup", "value", "call", "goiName", "goiArgs", "goiRest", "goiArg",
+			"goiMount", "goiUnmount":
 			return "", fmt.Errorf("setup name %s collides with the generated program", name)
 		}
 	}
@@ -353,7 +374,7 @@ func programSource(st syntax.Setup, body string, imports []gosetup.Import, vars 
 	if len(vars) > 0 {
 		b.WriteString("func goiSyncBridge() { (&bridge).goiSync() }\n\n")
 	}
-	b.WriteString("type goiSetup struct {\nValue func(string) any\nCall func(string, []any) (any, error)\n}\n\n")
+	b.WriteString("type goiSetup struct {\nValue func(string) any\nCall func(string, []any) (any, error)\nMount func()\nUnmount func()\n}\n\n")
 	b.WriteString("func goiNewSetup() *goiSetup {\n")
 	for _, decl := range varDecls {
 		writeLine(&b, st, decl.line)
@@ -377,6 +398,24 @@ func programSource(st syntax.Setup, body string, imports []gosetup.Import, vars 
 		writeLine(&b, st, fset.Position(fn.Pos()).Line)
 		fmt.Fprintf(&b, "%s = %s\n", fn.Name.Name, text)
 	}
+	b.WriteString("var goiMount func()\nvar goiUnmount func()\n")
+	for _, name := range []string{"onMount", "onUnmount"} {
+		fn := hooks[name]
+		if fn == nil {
+			continue
+		}
+		lit := &ast.FuncLit{Type: fn.Type, Body: fn.Body}
+		text, err := nodeText(fset, lit)
+		if err != nil {
+			return "", err
+		}
+		writeLine(&b, st, fset.Position(fn.Pos()).Line)
+		local := "goiMount"
+		if name == "onUnmount" {
+			local = "goiUnmount"
+		}
+		fmt.Fprintf(&b, "%s = %s\n", local, text)
+	}
 
 	b.WriteString("value := func(goiName string) any {\nswitch goiName {\n")
 	for _, name := range values {
@@ -392,7 +431,8 @@ func programSource(st syntax.Setup, body string, imports []gosetup.Import, vars 
 		}
 		b.WriteString(call)
 	}
-	b.WriteString("}\nreturn nil, nil\n}\nreturn &goiSetup{Value: value, Call: call}\n}\n")
+	b.WriteString("}\nreturn nil, nil\n}\n")
+	b.WriteString("return &goiSetup{Value: value, Call: call, Mount: goiMount, Unmount: goiUnmount}\n}\n")
 
 	out, err := format.Source([]byte(b.String()))
 	if err != nil {
@@ -423,7 +463,7 @@ func functionNames(code string) (map[string]bool, error) {
 	}
 	out := map[string]bool{}
 	for _, d := range f.Decls {
-		if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil {
+		if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil && !isLifecycle(fn.Name.Name) {
 			out[fn.Name.Name] = true
 		}
 	}

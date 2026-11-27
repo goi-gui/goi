@@ -21,6 +21,11 @@ type App struct {
 	mu     sync.Mutex
 	posted []func()
 
+	// setupStop releases the current design's setup instances; setupGen
+	// cancels a mount queued by a design that has since been replaced.
+	setupStop func()
+	setupGen  int
+
 	win    *Window
 	assets fs.FS
 	// picked holds the files the user chose with PickFiles this session, keyed
@@ -253,6 +258,7 @@ func (a *App) LoadWindow(entry string) (*Window, error) {
 	if err != nil {
 		return nil, fmt.Errorf("goi: %s: %w", name, err)
 	}
+	noteSetups(setupB, tr)
 	if setupB.err != nil {
 		if err := setupB.err(); err != nil {
 			logg().Error(logCtx, "ui: setup failed", "file", name, "error", err)
@@ -288,6 +294,7 @@ func (a *App) LoadWindow(entry string) (*Window, error) {
 			w.height = int(f)
 		}
 	}
+	a.stopSetups()
 	a.win, a.assets, a.path = w, assets, name
 	w.noteMissingFonts(tr)
 	a.themes = map[string]*Theme{"light": m3.Light(), "dark": m3.Dark()}
@@ -297,6 +304,7 @@ func (a *App) LoadWindow(entry string) (*Window, error) {
 	if err := a.initWindow(w); err != nil {
 		return nil, err
 	}
+	a.startSetups(setupB)
 	logg().Debug(logCtx, "ui: window loaded", "file", name, "took", time.Since(start).String())
 	// An embedded design has no directory to watch; reload needs the disk.
 	if _, ok := watchRoot(assets); defaultHotReload && ok {
@@ -515,6 +523,7 @@ func (a *App) Run() error {
 // Close releases the file watcher and platform resources. Run calls it on exit;
 // call it yourself only when you never call Run.
 func (a *App) Close() {
+	a.stopSetups()
 	// The decoders are child processes: leaving them running would keep the
 	// sound playing after the window is gone.
 	a.closeMedia()

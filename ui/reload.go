@@ -139,6 +139,7 @@ func (a *App) applyReload(f *syntax.File) error {
 		logg().Error(logCtx, "ui: hot reload failed", "error", err)
 		return fmt.Errorf("goi: reload: %w", err)
 	}
+	noteSetups(setupB, tr)
 	if setupB.err != nil {
 		if err := setupB.err(); err != nil {
 			logg().Error(logCtx, "ui: setup failed", "error", err)
@@ -154,7 +155,11 @@ func (a *App) applyReload(f *syntax.File) error {
 	if a.win != nil {
 		a.win.noteMissingFonts(tr)
 	}
+	// The old design's instances unmount while its tree is still current; the
+	// new tree mounts after the swap, once its first frame is painted.
+	a.stopSetups()
 	a.swapTree(tr)
+	a.startSetups(setupB)
 	logg().Debug(logCtx, "ui: hot reload", "file", a.path, "took", time.Since(start).String())
 	return nil
 }

@@ -37,6 +37,18 @@ type Registry struct {
 	templates map[string]*template
 	// err is the first compile error seen while resolving setup lazily.
 	err error
+	// hookSrc marks files that declare onMount or onUnmount.
+	hookSrc map[string]bool
+	// order is every instance created, so mounts and unmounts have a stable
+	// order. queued and mounted track the lifecycle of one instance.
+	order   []tree.SetupScope
+	queued  map[tree.SetupScope]bool
+	mounted map[tree.SetupScope]bool
+	started bool
+	stopped bool
+	// post queues a mount on the UI goroutine; report surfaces a hook panic.
+	post   func(func())
+	report func(error)
 	// Live-tree callbacks, copied into scopes created after Bind.
 	data    func(string) (any, bool)
 	version func() uint64
@@ -105,6 +117,9 @@ func New(setups []syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape
 		baseRefs:  map[string]int{},
 		programs:  map[string]*program{},
 		templates: map[string]*template{},
+		hookSrc:   map[string]bool{},
+		queued:    map[tree.SetupScope]bool{},
+		mounted:   map[tree.SetupScope]bool{},
 	}
 	seen := map[string]bool{}
 	for _, st := range setups {
@@ -112,6 +127,9 @@ func New(setups []syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape
 			return nil, fmt.Errorf("%s: setup may appear only once per file", st.Src)
 		}
 		seen[st.Src] = true
+		if setupHooks(st.Code) {
+			r.hookSrc[st.Src] = true
+		}
 		if p, err := newProgram(st, vars, shapes, len(r.programs), r.m); err == nil {
 			r.programs[st.Src] = p
 			continue
@@ -390,6 +408,7 @@ func (r *Registry) For(src, scope string) tree.SetupScope {
 			return nil
 		}
 		r.scopes[key] = inst
+		r.track(inst)
 		return inst
 	}
 	base := r.baseFor(src)
@@ -397,11 +416,13 @@ func (r *Registry) For(src, scope string) tree.SetupScope {
 		return nil
 	}
 	if scope == "" {
+		r.track(base)
 		return base
 	}
 	r.baseRefs[src]++
 	l := &lazyScope{r: r, src: src, key: key, base: base}
 	r.scopes[key] = l
+	r.track(l)
 	return l
 }
 
@@ -537,6 +558,9 @@ func (s *Scope) Value(name string) (any, bool) {
 // Call invokes a setup function. found is false when the name is not a
 // function, which lets the expression engine fall back to its builtins.
 func (s *Scope) Call(name string, args []any) (result any, found bool, err error) {
+	if isLifecycle(name) {
+		return nil, false, nil
+	}
 	if err := s.syncBridge(); err != nil {
 		return nil, true, err
 	}
@@ -599,6 +623,9 @@ func (s *Scope) sharedFunc(name string) bool {
 // HasFunc reports whether name is a setup function, without evaluating its
 // arguments.
 func (s *Scope) HasFunc(name string) bool {
+	if isLifecycle(name) {
+		return false
+	}
 	_, ok := s.fn(name)
 	return ok
 }

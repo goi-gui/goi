@@ -407,3 +407,58 @@ Window { }`), "Main.goi")
 		t.Fatalf("first = %v, %v", v, err)
 	}
 }
+
+// TestSetupLifecycleRunsAfterLoad covers the app side: onMount is queued after
+// the first frame, updates state, and onUnmount runs when the design is
+// replaced.
+func TestSetupLifecycleRunsAfterLoad(t *testing.T) {
+	f, diag := syntax.ParseNamed([]byte(`setup {
+	var ready bool
+	var closed bool
+
+	func onMount() { ready = true }
+	func onUnmount() { closed = true }
+	func label() string {
+		if ready {
+			return "ready"
+		}
+		return "waiting"
+	}
+}
+
+Window { Text { id: label text: label() } }`), "Main.goi")
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	scopes, err := setup.New(f.Setups, f.Vars, f.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sb := setupBuild{
+		hook: scopes.For, bind: scopes.Bind, err: scopes.Err,
+		instance: scopes.Note, start: scopes.Start, stop: scopes.Unmount,
+	}
+	tr, err := tree.Build(f, &tree.Hooks{Setup: sb.hook})
+	if err != nil {
+		t.Fatal(err)
+	}
+	noteSetups(sb, tr)
+	if err := sb.err(); err != nil {
+		t.Fatal(err)
+	}
+	sb.bind(tr)
+	a := newHeadlessApp()
+	a.startSetups(sb)
+	label := MustByID[*Text](&Window{tree: tr}, "label")
+	for i := 0; i < 10 && label.Text.Get() != "ready"; i++ {
+		a.drainPosted()
+		tr.ApplyExpressions()
+	}
+	if got := label.Text.Get(); got != "ready" {
+		t.Fatalf("label = %q, mounted after %d pumps", got, 10)
+	}
+	a.stopSetups()
+	if v, ok := scopes.For("Main.goi", "").Value("closed"); !ok || fmt.Sprint(v) != "true" {
+		t.Fatalf("closed = %v, %v", v, ok)
+	}
+}

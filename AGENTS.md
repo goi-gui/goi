@@ -97,7 +97,8 @@ Tests that enforce the above: `TestEveryComponentValidates`,
   copy-on-write state. Register only the stdlib packages a file imports:
   `i.Use(stdlib.Symbols)` costs ~1.3 MB per interpreter and fmt recompiles its
   generic sources on every Use. Setup code can read `bridge.` values and call
-  bridge handlers.
+  bridge handlers. `onMount` and `onUnmount` are framework hooks: once per
+  instance, on the UI goroutine, after the first painted frame and on teardown.
 - A list comes from `for … range` over a bridge slice, whose rows are rebuilt by
   `ui.SetData`; `ui.Instantiate`/`ui.Fill` are for a fixed set of children.
 - Colours as M3 role names (`theme.primary`, `theme.surfaceContainer`,

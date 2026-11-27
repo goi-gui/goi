@@ -407,3 +407,111 @@ func TestStdPackageTableMatchesYaegi(t *testing.T) {
 		}
 	}
 }
+
+func TestSetupLifecycleMountsEachInstanceOnce(t *testing.T) {
+	f := parse(t, `setup {
+	var mounted bool
+	var order string
+
+	func onMount() {
+		mounted = true
+		order += "m"
+	}
+	func onUnmount() { order += "u" }
+	func state() string { return fmt.Sprintf("%v/%s", mounted, order) }
+}
+
+Window {}`)
+	r, err := New(f.Setups, f.Vars, f.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := r.For(f.Src, "a")
+	b := r.For(f.Src, "b")
+	if _, found, _ := a.Call("onMount", nil); found || a.HasFunc("onMount") {
+		t.Fatal("onMount is visible to the design")
+	}
+	var posts []func()
+	r.Start(func(fn func()) { posts = append(posts, fn) }, func(err error) { t.Error(err) })
+	if len(posts) != 2 {
+		t.Fatalf("queued %d mounts, want 2", len(posts))
+	}
+	for len(posts) > 0 {
+		fn := posts[0]
+		posts = posts[1:]
+		fn()
+	}
+	if v, _, _ := a.Call("state", nil); v != "true/m" {
+		t.Fatalf("a = %v", v)
+	}
+	if v, _, _ := b.Call("state", nil); v != "true/m" {
+		t.Fatalf("b = %v", v)
+	}
+	r.Unmount()
+	if v, _, _ := a.Call("state", nil); v != "true/mu" {
+		t.Fatalf("a after unmount = %v", v)
+	}
+}
+
+func TestSetupLifecycleFallsBackWithTheInterpreter(t *testing.T) {
+	f := parse(t, `setup {
+	var mounted bool
+
+	type T struct{ n int }
+	func (x T) Plus() int {
+		if mounted {
+			return x.n
+		}
+		return 0
+	}
+
+	func onMount() { mounted = true }
+	func value() int { return T{n: 7}.Plus() }
+}
+
+Window {}`)
+	r, err := New(f.Setups, f.Vars, f.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.programs[f.Src] != nil {
+		t.Fatal("a state-reading method stayed on the shared program")
+	}
+	sc := r.For(f.Src, "x")
+	var posts []func()
+	r.Start(func(fn func()) { posts = append(posts, fn) }, func(err error) { t.Error(err) })
+	for len(posts) > 0 {
+		fn := posts[0]
+		posts = posts[1:]
+		fn()
+	}
+	if v, _, _ := sc.Call("value", nil); fmt.Sprint(v) != "7" {
+		t.Fatalf("value = %v", v)
+	}
+	r.Unmount()
+}
+
+func TestSetupLifecycleMountsAScopeOnlyUsedForHooks(t *testing.T) {
+	f := parse(t, `setup {
+	var mounted bool
+	func onMount() { mounted = true }
+}
+
+Window {}`)
+	r, err := New(f.Setups, f.Vars, f.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Note(f.Src, "frag#1")
+	var posts []func()
+	r.Start(func(fn func()) { posts = append(posts, fn) }, func(err error) { t.Error(err) })
+	for len(posts) > 0 {
+		fn := posts[0]
+		posts = posts[1:]
+		fn()
+	}
+	sc := r.For(f.Src, "frag#1")
+	if v, ok := sc.Value("mounted"); !ok || fmt.Sprint(v) != "true" {
+		t.Fatalf("mounted = %v, %v", v, ok)
+	}
+}

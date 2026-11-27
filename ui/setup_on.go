@@ -18,8 +18,11 @@ func loadSetups(f *syntax.File) (setupBuild, error) {
 		return setupBuild{}, err
 	}
 	return setupBuild{
-		hook: func(src, scope string) tree.SetupScope { return r.For(src, scope) },
-		bind: r.Bind,
-		err:  r.Err,
+		hook:     func(src, scope string) tree.SetupScope { return r.For(src, scope) },
+		bind:     r.Bind,
+		err:      r.Err,
+		instance: r.Note,
+		start:    r.Start,
+		stop:     r.Unmount,
 	}, nil
 }
