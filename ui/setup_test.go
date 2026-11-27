@@ -732,3 +732,74 @@ Text { text: summary() }`)},
 	}
 	t.Fatal("no Text")
 }
+
+// TestSetupValuesInBlocks lets a setup variable drive if, switch and for.
+func TestSetupValuesInBlocks(t *testing.T) {
+	f, diag := syntax.ParseNamed([]byte(`setup {
+	var show bool
+	var mode = "b"
+	var items = []string{"x", "y"}
+
+	func toggle() { show = !show }
+}
+
+Window {
+	Column {
+		if show {
+			Text { text: "on" }
+		}
+		switch mode {
+			case "a":
+				Text { text: "mode-a" }
+			case "b":
+				Text { text: "mode-b" }
+		}
+		for _, item := range items {
+			Text { text: item }
+		}
+	}
+}`), "Main.goi")
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	scopes, err := setup.New(f.Setups, f.Vars, f.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := tree.Build(f, &tree.Hooks{Setup: scopes.For})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopes.Bind(tr)
+	tr.ApplyExpressions()
+	find := func(text string) *Text {
+		for _, n := range tr.All() {
+			if txt, ok := n.(*Text); ok && txt.Text.Get() == text {
+				return txt
+			}
+		}
+		return nil
+	}
+	if on := find("on"); on == nil || on.Visible() {
+		t.Fatalf("the if arm should start hidden: %v", on != nil)
+	}
+	if a := find("mode-a"); a == nil || a.Visible() {
+		t.Fatalf("mode-a should be hidden")
+	}
+	if b := find("mode-b"); b == nil || !b.Visible() {
+		t.Fatalf("mode-b should be shown")
+	}
+	if x := find("x"); x == nil || !x.Visible() {
+		t.Fatalf("the for loop should build x")
+	}
+	if y := find("y"); y == nil || !y.Visible() {
+		t.Fatalf("the for loop should build y")
+	}
+	if _, _, err := scopes.For("Main.goi", "").Call("toggle", nil); err != nil {
+		t.Fatal(err)
+	}
+	tr.ApplyExpressions()
+	if on := find("on"); on == nil || !on.Visible() {
+		t.Fatalf("toggle should show the if arm")
+	}
+}

@@ -108,7 +108,7 @@ type validator struct {
 	// setupFuncs and setupValues are the names a file's setup blocks declare,
 	// so a value can call or read them where a literal would be expected.
 	setupFuncs  map[string]bool
-	setupValues map[string]bool
+	setupValues map[string]*syntax.Type
 }
 
 func (v *validator) add(at, end syntax.Pos, msg, hint string) {
@@ -576,8 +576,23 @@ func (v *validator) checkForRange(blk *syntax.Block) (keyShape, valShape *syntax
 	if !ok {
 		switch x := blk.Range.(type) {
 		case *syntax.Ident:
-			if v.setupValues[x.Val] {
-				return nil, nil, intType(), nil // `range items`
+			if t, ok := v.setupValues[x.Val]; ok {
+				if t == nil {
+					return nil, nil, intType(), nil // a setup value whose type is not known here
+				}
+				switch t.Kind {
+				case syntax.TypeSlice, syntax.TypeMap:
+					return nil, shapeFor(t.Elem, v.file), keyTypeOf(t), valueTypeOf(t, v.file)
+				case syntax.TypeScalar:
+					switch t.Name {
+					case "int", "int8", "int16", "int32", "int64",
+						"uint", "uint8", "uint16", "uint32", "uint64", "uintptr", "byte", "rune":
+						return nil, nil, intType(), nil
+					}
+				}
+				v.add(at, end, fmt.Sprintf("cannot range over %s: it is %s, not a slice, a map or a number",
+					x.Val, t.String()), "")
+				return nil, nil, nil, nil
 			}
 			if v.lookupLoopType(x.Val) != nil || v.lookupLoopVar(x.Val) != nil {
 				return nil, nil, intType(), nil // `range imageList`
@@ -656,9 +671,22 @@ func edgeOf(val syntax.Value) string {
 // checkCond accepts the value types that can produce a bool. A bare identifier
 // or a string is a value, not a condition, and would silently never be true.
 func (v *validator) checkCond(br syntax.Branch) {
-	switch br.Cond.(type) {
+	switch x := br.Cond.(type) {
 	case *syntax.Bool, *syntax.Unary, *syntax.Binary, *syntax.Ternary, *syntax.Ref:
-	case *syntax.Ident, *syntax.String, *syntax.Number, *syntax.Color, *syntax.Percent:
+	case *syntax.Ident:
+		// A setup variable is typed by the interpreter; a known non-bool is
+		// never true, so reject it here. An unknown initializer is left to Go.
+		if t, ok := v.setupValues[x.Val]; ok {
+			if t == nil || (t.Kind == syntax.TypeScalar && t.Name == "bool") {
+				return
+			}
+			v.add(br.Cond.Pos(), br.Cond.Pos()+1,
+				fmt.Sprintf("an if condition must be a bool: %s is %s", x.Val, t.String()), "")
+			return
+		}
+		v.add(br.Cond.Pos(), br.Cond.Pos()+1,
+			"an if condition must be a bool: a comparison, app.dark, bridge.loading or an id.prop that is a bool", "")
+	case *syntax.String, *syntax.Number, *syntax.Color, *syntax.Percent:
 		v.add(br.Cond.Pos(), br.Cond.Pos()+1,
 			"an if condition must be a bool: a comparison, app.dark, bridge.loading or an id.prop that is a bool", "")
 	}
@@ -682,8 +710,10 @@ func (v *validator) checkValue(e *syntax.Element, p *syntax.Property, pd *Prop) 
 func (v *validator) checkEntryValue(e *syntax.Element, pd *Prop, val syntax.Value) {
 	// A setup variable is a value whose Go type is checked by the interpreter;
 	// accepting its name here keeps the schema from calling a number a string.
-	if id, ok := val.(*syntax.Ident); ok && v.setupValues[id.Val] {
-		return
+	if id, ok := val.(*syntax.Ident); ok {
+		if _, exists := v.setupValues[id.Val]; exists {
+			return
+		}
 	}
 	switch x := val.(type) {
 	case *syntax.Map:
@@ -1390,11 +1420,11 @@ func setupLineStarts(s string) []int {
 // setupDecls collects the top-level functions and values a file's setup blocks
 // declare. A broken block is reported by the interpreter at load; validation
 // only needs the names it can read.
-func setupDecls(f *syntax.File) (funcs, values map[string]bool) {
+func setupDecls(f *syntax.File) (funcs map[string]bool, values map[string]*syntax.Type) {
 	if f == nil || len(f.Setups) == 0 {
 		return nil, nil
 	}
-	funcs, values = map[string]bool{}, map[string]bool{}
+	funcs, values = map[string]bool{}, map[string]*syntax.Type{}
 	for _, st := range f.Setups {
 		pf, err := parser.ParseFile(token.NewFileSet(), "_.go", "package setup\n"+st.Code, parser.SkipObjectResolution)
 		if err != nil {
@@ -1409,8 +1439,12 @@ func setupDecls(f *syntax.File) (funcs, values map[string]bool) {
 			case *ast.GenDecl:
 				for _, spec := range d.Specs {
 					if vs, ok := spec.(*ast.ValueSpec); ok {
+						typ := goSetupType(vs.Type)
+						if typ == nil {
+							typ = goSetupValueType(vs.Values)
+						}
 						for _, name := range vs.Names {
-							values[name.Name] = true
+							values[name.Name] = typ
 						}
 					}
 				}
@@ -2207,4 +2241,58 @@ func boolishValue(v syntax.Value) bool {
 		return true
 	}
 	return false
+}
+
+// goSetupType turns a Go type expression in a setup declaration into the
+// design's type shape, so a block condition or a loop range can be checked
+// without running the interpreter. nil means "not known here".
+func goSetupType(e ast.Expr) *syntax.Type {
+	switch x := e.(type) {
+	case *ast.Ident:
+		return &syntax.Type{Kind: syntax.TypeScalar, Name: x.Name}
+	case *ast.ArrayType:
+		elem := goSetupType(x.Elt)
+		if elem == nil {
+			return nil
+		}
+		return &syntax.Type{Kind: syntax.TypeSlice, Elem: elem}
+	case *ast.MapType:
+		key, ok := x.Key.(*ast.Ident)
+		if !ok {
+			return nil
+		}
+		elem := goSetupType(x.Value)
+		if elem == nil {
+			return nil
+		}
+		return &syntax.Type{Kind: syntax.TypeMap, Name: key.Name, Elem: elem}
+	}
+	return nil
+}
+
+// goSetupValueType infers the type of a setup value from its initializer when
+// it has no written type: the common `var ready = true` or `var items =
+// []string{}` forms.
+func goSetupValueType(values []ast.Expr) *syntax.Type {
+	if len(values) == 0 {
+		return nil
+	}
+	switch x := values[0].(type) {
+	case *ast.BasicLit:
+		switch x.Kind {
+		case token.STRING:
+			return &syntax.Type{Kind: syntax.TypeScalar, Name: "string"}
+		case token.INT:
+			return &syntax.Type{Kind: syntax.TypeScalar, Name: "int"}
+		case token.FLOAT:
+			return &syntax.Type{Kind: syntax.TypeScalar, Name: "float64"}
+		}
+	case *ast.Ident:
+		if x.Name == "true" || x.Name == "false" {
+			return &syntax.Type{Kind: syntax.TypeScalar, Name: "bool"}
+		}
+	case *ast.CompositeLit:
+		return goSetupType(x.Type)
+	}
+	return nil
 }

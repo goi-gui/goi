@@ -534,3 +534,37 @@ Window { Button { onClick: reset() } }`
 		t.Fatal("an undeclared setup event function was accepted")
 	}
 }
+
+// TestSetupValuesInBlocks lets a setup variable drive if, switch and for.
+func TestSetupValuesInBlocks(t *testing.T) {
+	src := `setup {
+	var show bool
+	var mode = "b"
+	var items = []string{"x", "y"}
+}
+
+Window { Column {
+	if show {
+		Text { text: "on" }
+	}
+	switch mode {
+		case "a":
+			Text { text: "a" }
+		case "b":
+			Text { text: "b" }
+	}
+	for _, item := range items {
+		Text { text: item }
+	}
+} }`
+	if _, diag := validate(t, src); !diag.Empty() {
+		t.Fatalf("setup values in blocks were rejected: %v", diag)
+	}
+	bad := `setup {
+	var count = 3
+}
+Window { if count { Text { text: "no" } } }`
+	if _, diag := validate(t, bad); diag.Empty() {
+		t.Fatal("a non-bool setup value was accepted as an if condition")
+	}
+}

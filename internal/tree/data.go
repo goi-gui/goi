@@ -289,6 +289,7 @@ func (t *Tree) buildFor(blk *syntax.Block, parent *NodeBase, hooks *Hooks) error
 		key:    blk.LoopKey(),
 		val:    blk.LoopVal(),
 		rng:    blk.Range,
+		src:    blk.Src,
 		parent: parent,
 		at:     len(parent.kids),
 		scope:  t.scope,
