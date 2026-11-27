@@ -130,8 +130,8 @@ CGO_ENABLED=0 go build -tags "nofakecgo all" ./...
 ```
 
 Optional features (`emoji`, `svg`, `markdown`, `code`, `mermaid`, `net`,
-`terminal`) are opt-in; `all` enables every one. File dialogs and `Notify` need
-no tag. See
+`terminal`, `setup`) are opt-in; `all` enables every one. File dialogs and
+`Notify` need no tag. See
 [Building](https://goi.kaanksc.com/guide/build/) for the SDL3 package names per
 platform, the tag table and the memory knobs.
 

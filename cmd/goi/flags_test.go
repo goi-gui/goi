@@ -161,3 +161,27 @@ func TestResolveFlagsAutoDetectsTerminal(t *testing.T) {
 		t.Fatalf("tags = %v, want the terminal font", flags.Tags)
 	}
 }
+
+func TestResolveFlagsAutoDetectsSetup(t *testing.T) {
+	dir := flagProject(t, `setup {
+	var name = "Kaan"
+}
+
+Window { Text { text: name } }`, "name: app\n")
+	flags, err := resolveFlags(dir, "assets", []string{"auto"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(flags.Tags, []string{"setup"}) {
+		t.Fatalf("tags = %v, want setup", flags.Tags)
+	}
+
+	plain := flagProject(t, `Window { }`, "name: app\n")
+	flags, err = resolveFlags(plain, "assets", []string{"auto"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(flags.Tags) != 0 {
+		t.Fatalf("setup was detected without a block: %v", flags.Tags)
+	}
+}

@@ -10,7 +10,6 @@ import (
 	"github.com/goi-gui/goi/internal/asset"
 	"github.com/goi-gui/goi/internal/hotreload"
 	"github.com/goi-gui/goi/internal/i18n"
-	"github.com/goi-gui/goi/internal/setup"
 	"github.com/goi-gui/goi/internal/syntax"
 	"github.com/goi-gui/goi/internal/tree"
 )
@@ -120,7 +119,7 @@ func (a *App) applyReload(f *syntax.File) error {
 	start := time.Now()
 	// The old tree's native views belong to the old nodes.
 	a.closeWebviews()
-	setups, err := setup.New(f.Setups)
+	setupHook, err := loadSetups(f.Setups)
 	if err != nil {
 		logg().Error(logCtx, "ui: setup failed", "file", a.path, "error", err)
 		return fmt.Errorf("goi: reload: %w", err)
@@ -128,7 +127,7 @@ func (a *App) applyReload(f *syntax.File) error {
 	hooks := &tree.Hooks{
 		Marked: a.markDirty, Error: a.reportError, Media: a.mediaRequest, Window: a.windowRequest, Post: a.Post,
 		Warn:  func(msg string) { logg().Warn(logCtx, "ui: hot reload: "+msg) },
-		Setup: setups.For,
+		Setup: setupHook,
 	}
 	// Seed the build with the values SetData stored, so conditions, loops and
 	// expressions all see the app's state from the first frame.

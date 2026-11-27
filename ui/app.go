@@ -11,7 +11,6 @@ import (
 	"github.com/goi-gui/goi/internal/img"
 	"github.com/goi-gui/goi/internal/m3"
 	"github.com/goi-gui/goi/internal/mermaid"
-	"github.com/goi-gui/goi/internal/setup"
 	"github.com/goi-gui/goi/internal/svg"
 	"github.com/goi-gui/goi/internal/tree"
 )
@@ -242,14 +241,14 @@ func (a *App) LoadWindow(entry string) (*Window, error) {
 		logg().Error(logCtx, "ui: design failed to load", "file", name, "error", err)
 		return nil, err
 	}
-	setups, err := setup.New(b.File.Setups)
+	setupHook, err := loadSetups(b.File.Setups)
 	if err != nil {
 		logg().Error(logCtx, "ui: setup failed", "file", name, "error", err)
 		return nil, fmt.Errorf("goi: %s: %w", name, err)
 	}
 	tr, err := tree.Build(b.File, &tree.Hooks{
 		Marked: a.markDirty, Error: a.reportError, Media: a.mediaRequest, Window: a.windowRequest, Post: a.Post,
-		Setup: setups.For,
+		Setup: setupHook,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("goi: %s: %w", name, err)
