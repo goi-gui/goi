@@ -226,13 +226,13 @@ func (c *Component) one(kind, name string) NamedProp {
 	b := &c.NodeBase
 	switch name {
 	case "label":
-		return StringProp(b, "label", &c.Label)
+		return LayoutStringProp(b, "label", &c.Label)
 	case "supporting":
-		return StringProp(b, "supporting", &c.Supporting)
+		return LayoutStringProp(b, "supporting", &c.Supporting)
 	case "text":
-		return StringProp(b, "text", &c.Text)
+		return LayoutStringProp(b, "text", &c.Text)
 	case "placeholder":
-		return StringProp(b, "placeholder", &c.Placeholder)
+		return LayoutStringProp(b, "placeholder", &c.Placeholder)
 	case "icon":
 		return LayoutStringProp(b, "icon", &c.Icon)
 	case "leadingIcon":
@@ -308,7 +308,7 @@ func (c *Component) one(kind, name string) NamedProp {
 	case "mainAxisAlign":
 		return EnumProp(b, "mainAxisAlign", DirtyLayout, &c.MainAlign, MainAxisValues)
 	}
-	return StringProp(b, name, &c.Label)
+	return LayoutStringProp(b, name, &c.Label)
 }
 
 // propsFor lists the shared M3 properties each component accepts.

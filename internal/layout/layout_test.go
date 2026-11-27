@@ -1190,3 +1190,57 @@ func TestAutoSizeTransitionStartsFromTheRenderedSize(t *testing.T) {
 		t.Fatalf("restored width = %v, want %v", w, rest)
 	}
 }
+
+type changingText struct{ text string }
+
+func (c *changingText) Value(string) (any, bool) { return nil, false }
+
+func (c *changingText) HasFunc(name string) bool { return name == "label" }
+
+func (c *changingText) Call(string, []any) (any, bool, error) { return c.text, true, nil }
+
+// TestTextRelayoutsWhenExpressionChanges is the counter's two-digit value: a
+// changing text must ask for layout, or an auto-width Text keeps its old box.
+func TestTextRelayoutsWhenExpressionChanges(t *testing.T) {
+	f, diag := syntax.ParseNamed([]byte(`Window {
+	Row {
+		Text { id: n text: label() role: displayLarge }
+	}
+}`), "Main.goi")
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	text := &changingText{text: "1"}
+	tr, err := tree.Build(f, &tree.Hooks{Setup: func(src, scope string) tree.SetupScope {
+		return text
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr.ApplyExpressions()
+	n, ok := tr.ByID("n")
+	if !ok {
+		t.Fatal("no text")
+	}
+	label, ok := n.(*tree.Text)
+	if !ok {
+		t.Fatalf("node = %T", n)
+	}
+	e := New(nil)
+	e.Layout(tr.Root, 600, 300)
+	before := label.Base().Bounds().W
+	label.Base().ClearDirty()
+	text.text = "14"
+	tr.ApplyExpressions()
+	if got := label.Text.Get(); got != "14" {
+		t.Fatalf("text = %q", got)
+	}
+	kind, dirty := label.Base().Dirty()
+	if !dirty || kind != tree.DirtyLayout {
+		t.Fatalf("dirty = %v, %v; want layout", kind, dirty)
+	}
+	e.Layout(tr.Root, 600, 300)
+	if after := label.Base().Bounds().W; after <= before {
+		t.Fatalf("text width = %v, was %v", after, before)
+	}
+}

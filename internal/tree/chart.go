@@ -160,7 +160,7 @@ func (*ChartSeries) Kind() string { return "ChartSeries" }
 
 func (s *ChartSeries) namedProps() []NamedProp {
 	return append(commonProps(&s.NodeBase, 4),
-		StringProp(&s.NodeBase, "label", &s.Label),
+		LayoutStringProp(&s.NodeBase, "label", &s.Label),
 		ListPropOf(&s.NodeBase, "values", DirtyLayout, &s.Values),
 		ListPropOf(&s.NodeBase, "colors", DirtyPaint, &s.Colors),
 		ColorProp(&s.NodeBase, "color", DirtyPaint, &s.Color),

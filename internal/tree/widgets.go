@@ -76,7 +76,7 @@ func commonProps(b *NodeBase, extra int) []NamedProp {
 		NumberProp(b, "radiusTopRight", DirtyPaint, &b.radiusTopRight),
 		NumberProp(b, "radiusBottomRight", DirtyPaint, &b.radiusBottomRight),
 		NumberProp(b, "radiusBottomLeft", DirtyPaint, &b.radiusBottomLeft),
-		StringProp(b, "fontFamily", &b.fontFamily),
+		LayoutStringProp(b, "fontFamily", &b.fontFamily),
 		NamedShadow(b, "shadow", &b.shadow),
 		BoolProp(b, "visible", DirtyLayout, &b.visible),
 		BoolProp(b, "ripple", DirtyPaint, &b.ripple),
@@ -807,7 +807,7 @@ func (t *Text) Kind() string { return "Text" }
 func (t *Text) namedProps() []NamedProp {
 	return append(
 		commonProps(&t.NodeBase, 15),
-		StringProp(&t.NodeBase, "text", &t.Text),
+		LayoutStringProp(&t.NodeBase, "text", &t.Text),
 		NumberProp(&t.NodeBase, "fontSize", DirtyLayout, &t.FontSize),
 		ColorProp(&t.NodeBase, "color", DirtyPaint, &t.Color),
 		EnumProp(&t.NodeBase, "align", DirtyLayout, &t.Align, AlignValues),
