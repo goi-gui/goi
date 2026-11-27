@@ -515,3 +515,54 @@ Window {}`)
 		t.Fatalf("mounted = %v, %v", v, ok)
 	}
 }
+
+// TestSetupSharedMachineAndImports covers the memory work: one interpreter is
+// shared by every file, a file compiles on first use, and only the packages a
+// file imports are registered.
+func TestSetupSharedMachineAndImports(t *testing.T) {
+	setups := []syntax.Setup{
+		{Src: "A.goi", Code: `func label() string { return fmt.Sprintf("%d", 1) }`},
+		{Src: "B.goi", Code: `import "strings"
+
+var n int
+func clean(s string) string { return strings.TrimSpace(s) }`},
+		{Src: "C.goi", Code: `var count int
+func inc() { count++ }`},
+	}
+	r, err := New(setups, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b, c := r.programs["A.goi"], r.programs["B.goi"], r.programs["C.goi"]
+	if a == nil || b == nil || c == nil {
+		t.Fatal("a setup did not compile to a program")
+	}
+	if a.m != b.m || b.m != c.m {
+		t.Fatal("files did not share one machine")
+	}
+	if a.compiled || b.compiled || c.compiled {
+		t.Fatal("a file compiled before first use")
+	}
+	sa := r.For("A.goi", "")
+	if v, _, err := sa.Call("label", nil); err != nil || v != "1" {
+		t.Fatalf("label = %v, %v", v, err)
+	}
+	if !a.compiled || b.compiled || c.compiled {
+		t.Fatal("first use compiled the wrong files")
+	}
+	if !a.m.registered["fmt/fmt"] {
+		t.Fatal("fmt was not registered for the file that uses it")
+	}
+	before := len(a.m.registered)
+	sc := r.For("C.goi", "x")
+	if _, _, err := sc.Call("inc", nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.m.registered) != before {
+		t.Fatal("a file with no imports registered another package")
+	}
+	clean := r.For("B.goi", "")
+	if v, _, err := clean.Call("clean", []any{"  x "}); err != nil || v != "x" {
+		t.Fatalf("clean = %v, %v", v, err)
+	}
+}
