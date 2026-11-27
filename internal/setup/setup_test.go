@@ -78,3 +78,34 @@ Window {}`)
 		t.Fatalf("error = %v", err)
 	}
 }
+
+func TestLazyScopeSharesPureCalls(t *testing.T) {
+	f := parse(t, `setup {
+	var count int
+
+	func inc() { count++ }
+	func greet(n string) string { return "Hi, " + n }
+}
+
+Window {}`)
+	r, err := New(f.Setups, f.Vars, f.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc, ok := r.For(f.Src, "Main.goi#1").(*lazyScope)
+	if !ok {
+		t.Fatal("a fragment instance was not lazy")
+	}
+	if _, found, err := sc.Call("greet", []any{"Ada"}); err != nil || !found {
+		t.Fatalf("greet = %v, %v", found, err)
+	}
+	if sc.private != nil {
+		t.Fatal("a pure function copied the interpreter")
+	}
+	if _, found, err := sc.Call("inc", nil); err != nil || !found {
+		t.Fatalf("inc = %v, %v", found, err)
+	}
+	if sc.private == nil {
+		t.Fatal("a stateful function stayed on the shared base")
+	}
+}

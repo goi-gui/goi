@@ -233,9 +233,15 @@ Column {
 	if len(buttons) != 3 || len(texts) != 3 {
 		t.Fatalf("buttons=%d texts=%d, want three each", len(buttons), len(texts))
 	}
-	for _, btn := range buttons {
-		btn.Click.Emit(ClickEvent{})
+	// The first instance gets its own interpreter; the other two still share
+	// the untouched base and must stay at zero.
+	buttons[0].Click.Emit(ClickEvent{})
+	tr.ApplyExpressions()
+	if got := []string{texts[0].Text.Get(), texts[1].Text.Get(), texts[2].Text.Get()}; got[0] != "1" || got[1] != "0" || got[2] != "0" {
+		t.Fatalf("after first click = %v", got)
 	}
+	buttons[1].Click.Emit(ClickEvent{})
+	buttons[2].Click.Emit(ClickEvent{})
 	tr.ApplyExpressions()
 	for i, text := range texts {
 		if got := text.Text.Get(); got != "1" {

@@ -90,7 +90,8 @@ Tests that enforce the above: `TestEveryComponentValidates`,
   (`app.dark ? "light_mode" : "dark_mode"`). Behaviour belongs in Go. The one
   exception is a file's optional `setup { … }` block: Go declarations
   interpreted by Yaegi, scoped to that file and to each fragment instance, and
-  meant for value helpers and small local actions, not app logic. Setup code
+  meant for value helpers and small local actions, not app logic. Instance
+  state is copy-on-write; pure helpers share the file's interpreter. Setup code
   can read `bridge.` values and call bridge handlers.
 - A list comes from `for … range` over a bridge slice, whose rows are rebuilt by
   `ui.SetData`; `ui.Instantiate`/`ui.Fill` are for a fixed set of children.

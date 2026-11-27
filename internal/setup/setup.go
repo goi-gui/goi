@@ -22,17 +22,31 @@ import (
 // file's names are visible only to its own elements; every call of a fragment
 // gets independent setup state.
 type Registry struct {
-	scopes map[string]*Scope
-	// templates are one setup body per source file. A fragment instance gets a
-	// fresh interpreter from its template.
+	// scopes holds the entry scope, lazy instance scopes and materialized
+	// private scopes. A lazy scope is replaced by its private scope on first
+	// stateful call.
+	scopes map[string]tree.SetupScope
+	// bases are the shared read-only scopes, one per setup file.
+	bases map[string]*Scope
+	// baseRefs counts lazy instances still reading their base.
+	baseRefs map[string]int
+	// templates are one setup body per source file.
 	templates map[string]*template
-	// baseUsed marks a source whose eager scope now belongs to its first
-	// fragment instance. The next instance gets a clone.
-	baseUsed map[string]bool
 	// Live-tree callbacks, copied into scopes created after Bind.
 	data    func(string) (any, bool)
 	version func() uint64
 	call    func(string, []any) (any, error)
+}
+
+// lazyScope is a fragment instance that has not mutated its setup state yet.
+// Reads share base; the first function call creates a private interpreter (or
+// claims base when it is the last reader).
+type lazyScope struct {
+	r       *Registry
+	src     string
+	key     string
+	base    *Scope
+	private *Scope
 }
 
 type template struct {
@@ -48,9 +62,10 @@ type Scope struct {
 	i *interp.Interpreter
 	// names are the declarations the body wrote, so an enum literal in a
 	// property does not pay an interpreter lookup on every frame.
-	names  map[string]bool
-	values map[string]reflect.Value
-	funcs  map[string]reflect.Value
+	names    map[string]bool
+	stateful map[string]bool
+	values   map[string]reflect.Value
+	funcs    map[string]reflect.Value
 
 	// The bridge callbacks are attached after the tree exists.
 	data    func(string) (any, bool)
@@ -64,7 +79,12 @@ type Scope struct {
 // New evaluates every setup block. A broken block is an error naming the file
 // and the line inside it, so LoadWindow can report it like a design error.
 func New(setups []syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape) (*Registry, error) {
-	r := &Registry{scopes: map[string]*Scope{}, templates: map[string]*template{}, baseUsed: map[string]bool{}}
+	r := &Registry{
+		scopes:    map[string]tree.SetupScope{},
+		bases:     map[string]*Scope{},
+		baseRefs:  map[string]int{},
+		templates: map[string]*template{},
+	}
 	for _, st := range setups {
 		if _, duplicate := r.templates[st.Src]; duplicate {
 			return nil, fmt.Errorf("%s: setup may appear only once per file", st.Src)
@@ -74,10 +94,8 @@ func New(setups []syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape
 		if err != nil {
 			return nil, err
 		}
+		r.bases[st.Src] = sc
 		r.scopes[scopeKey(st.Src, "")] = sc
-		if st.Src == "" {
-			r.baseUsed[st.Src] = true
-		}
 	}
 	return r, nil
 }
@@ -101,6 +119,7 @@ func newScope(st syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape)
 		return nil, evalError(st, err)
 	}
 	s.names, _ = declaredNames(st.Code)
+	s.stateful, _ = statefulFuncs(st.Code)
 	return s, nil
 }
 
@@ -115,7 +134,12 @@ func (r *Registry) Bind(tr *tree.Tree) {
 	r.version = tr.DataVersion
 	r.call = tr.CallBridge
 	for _, sc := range r.scopes {
-		r.bind(sc)
+		switch x := sc.(type) {
+		case *Scope:
+			r.bind(x)
+		case *lazyScope:
+			x.bind()
+		}
 	}
 }
 
@@ -234,19 +258,24 @@ func (r *Registry) For(src, scope string) tree.SetupScope {
 	}
 	key := scopeKey(src, scope)
 	if sc := r.scopes[key]; sc != nil {
-		if scope == "" {
-			r.baseUsed[src] = true
-		}
 		return sc
 	}
-	// The eager scope of a fragment file is not used by any entry element; let
-	// its first instance take it instead of paying for an unused interpreter.
-	if scope != "" && !r.baseUsed[src] {
-		if sc := r.scopes[scopeKey(src, "")]; sc != nil {
-			r.baseUsed[src] = true
-			r.scopes[key] = sc
-			return sc
-		}
+	base := r.baseFor(src)
+	if base == nil {
+		return nil
+	}
+	if scope == "" {
+		return base
+	}
+	r.baseRefs[src]++
+	l := &lazyScope{r: r, src: src, key: key, base: base}
+	r.scopes[key] = l
+	return l
+}
+
+func (r *Registry) baseFor(src string) *Scope {
+	if sc := r.bases[src]; sc != nil {
+		return sc
 	}
 	t := r.templates[src]
 	if t == nil {
@@ -257,8 +286,94 @@ func (r *Registry) For(src, scope string) tree.SetupScope {
 		return nil
 	}
 	r.bind(sc)
-	r.scopes[key] = sc
+	r.bases[src] = sc
+	r.baseRefs[src] = 0
+	r.scopes[scopeKey(src, "")] = sc
 	return sc
+}
+
+func (l *lazyScope) bind() {
+	if l.private != nil {
+		l.r.bind(l.private)
+		return
+	}
+	if l.base != nil {
+		l.r.bind(l.base)
+	}
+}
+
+// current is the scope reads use. It never mutates a shared base.
+func (l *lazyScope) current() *Scope {
+	if l.private != nil {
+		return l.private
+	}
+	if l.base != nil {
+		return l.base
+	}
+	l.base = l.r.baseFor(l.src)
+	return l.base
+}
+
+func (l *lazyScope) Value(name string) (any, bool) {
+	if sc := l.current(); sc != nil {
+		return sc.Value(name)
+	}
+	return nil, false
+}
+
+func (l *lazyScope) HasFunc(name string) bool {
+	if sc := l.current(); sc != nil {
+		return sc.HasFunc(name)
+	}
+	return false
+}
+
+func (l *lazyScope) Call(name string, args []any) (any, bool, error) {
+	// A function that neither reads nor writes setup state can run on the
+	// shared base; there is nothing instance-specific to isolate.
+	if l.private == nil && l.base != nil && l.base.sharedFunc(name) {
+		return l.base.Call(name, args)
+	}
+	sc, err := l.materialize()
+	if err != nil {
+		return nil, true, err
+	}
+	return sc.Call(name, args)
+}
+
+func (l *lazyScope) materialize() (*Scope, error) {
+	if l.private != nil {
+		return l.private, nil
+	}
+	r := l.r
+	if r.baseRefs[l.src] <= 1 {
+		// The last reader takes the shared interpreter as its private state.
+		r.baseRefs[l.src] = 0
+		r.bases[l.src] = nil
+		delete(r.scopes, scopeKey(l.src, ""))
+		l.private = l.base
+		l.base = nil
+		r.scopes[l.key] = l.private
+		return l.private, nil
+	}
+	r.baseRefs[l.src]--
+	t := r.templates[l.src]
+	if t == nil {
+		return nil, fmt.Errorf("%s: setup instance is no longer available", l.src)
+	}
+	sc, err := newScope(t.setup, t.vars, t.shapes)
+	if err != nil {
+		return nil, err
+	}
+	r.bind(sc)
+	l.private = sc
+	l.base = nil
+	l.r.scopes[l.key] = sc
+	if r.baseRefs[l.src] == 0 {
+		r.bases[l.src] = nil
+		delete(r.scopes, scopeKey(l.src, ""))
+	}
+	return sc, nil
 }
 
 // Value reads a setup variable. It is evaluated on every read so a function
@@ -342,6 +457,12 @@ func (s *Scope) Call(name string, args []any) (result any, found bool, err error
 	}
 }
 
+// sharedFunc reports whether a function uses no setup variable, directly or
+// through another setup function, and may run on the shared base.
+func (s *Scope) sharedFunc(name string) bool {
+	return s != nil && s.stateful != nil && !s.stateful[name]
+}
+
 // HasFunc reports whether name is a setup function, without evaluating its
 // arguments.
 func (s *Scope) HasFunc(name string) bool {
@@ -399,6 +520,77 @@ func declaredNames(code string) (map[string]bool, error) {
 		}
 	}
 	return names, nil
+}
+
+// statefulFuncs marks the functions that read or write a package-level setup
+// variable, directly or by calling another such function. A shared Lazy scope
+// can call a pure function without copying the interpreter.
+func statefulFuncs(code string) (map[string]bool, error) {
+	f, err := parser.ParseFile(token.NewFileSet(), "_.go", "package setup\n"+code, 0)
+	if err != nil {
+		return nil, err
+	}
+	vars := map[string]bool{}
+	funcs := map[string]bool{}
+	for _, d := range f.Decls {
+		switch d := d.(type) {
+		case *ast.GenDecl:
+			if d.Tok != token.VAR {
+				continue
+			}
+			for _, spec := range d.Specs {
+				if vs, ok := spec.(*ast.ValueSpec); ok {
+					for _, name := range vs.Names {
+						vars[name.Name] = true
+					}
+				}
+			}
+		case *ast.FuncDecl:
+			if d.Recv == nil {
+				funcs[d.Name.Name] = true
+			}
+		}
+	}
+	stateful := map[string]bool{}
+	calls := map[string][]string{}
+	for _, d := range f.Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if !ok || fn.Recv != nil || fn.Body == nil {
+			continue
+		}
+		direct := false
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			switch x := n.(type) {
+			case *ast.Ident:
+				if vars[x.Name] {
+					direct = true
+				}
+			case *ast.CallExpr:
+				if id, ok := x.Fun.(*ast.Ident); ok {
+					calls[fn.Name.Name] = append(calls[fn.Name.Name], id.Name)
+				}
+			}
+			return true
+		})
+		if direct {
+			stateful[fn.Name.Name] = true
+		}
+	}
+	for changed := true; changed; {
+		changed = false
+		for name, called := range calls {
+			if !stateful[name] {
+				continue
+			}
+			for _, c := range called {
+				if funcs[c] && !stateful[c] {
+					stateful[c] = true
+					changed = true
+				}
+			}
+		}
+	}
+	return stateful, nil
 }
 
 // evalError turns Yaegi's synthetic _.go position into the file and line the

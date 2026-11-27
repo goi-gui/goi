@@ -3074,3 +3074,9 @@ read the scale off a freshly allocated `Theme`; on the gallery page that was
   `Bridge.CallValue` as event calls, and setup remains scoped to its file and
   to each fragment instance. Two calls of one fragment therefore get separate
   interpreters and separate state.
+- **Setup instance state is copy-on-write.** A fragment instance reads its
+  file's shared interpreter until a setup function that reads or writes a setup
+  variable runs; then it gets a private copy. Pure functions stay on the shared
+  interpreter. This keeps three untouched counters at one interpreter, while
+  each clicked counter remains independent. The shared interpreter is reclaimed
+  once its last reader has a private copy or the other readers are gone.
