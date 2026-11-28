@@ -64,6 +64,67 @@ func TestSnapTargetsFollowAlignAndPadding(t *testing.T) {
 	}
 }
 
+// TestSnapTargetsFollowChildPadding insets a child's own snap edges when the
+// child names scrollPadding, the way CSS scroll-margin does. A design that
+// writes the inset on the card instead of the scroller still snaps to it.
+func TestSnapTargetsFollowChildPadding(t *testing.T) {
+	tr := snapTree(t, `Window { Column {
+		id: page
+		scroll: true
+		scrollSnapType: mandatory
+		width: 200
+		height: 300
+
+		for range 3 {
+			Rectangle {
+				width:           200
+				height:          200
+				scrollSnapAlign: start
+				scrollPadding:   10
+			}
+		}
+	} }`, 200, 300)
+	got := pageBase(t, tr).SnapTargets(tree.AxisY)
+	want := []float64{0, 190, 300}
+	if len(got) != len(want) {
+		t.Fatalf("targets = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("targets = %v, want %v", got, want)
+		}
+	}
+
+	tr = snapTree(t, `Window { Row {
+		id: page
+		scroll: true
+		scrollSnapType: mandatory
+		width: 300
+		height: 100
+
+		for range 3 {
+			Rectangle {
+				width:           200
+				height:          100
+				scrollSnapAlign: end
+				scrollPadding:   10
+			}
+		}
+	} }`, 300, 100)
+	got = pageBase(t, tr).SnapTargets(tree.AxisX)
+	// End edges are at 200, 400 and 600: 200-300+10 = -90 clamps to 0,
+	// 400-300+10 = 110, and 600-300+10 = 310 clamps to the end at 300.
+	want = []float64{0, 110, 300}
+	if len(got) != len(want) {
+		t.Fatalf("end targets = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("end targets = %v, want %v", got, want)
+		}
+	}
+}
+
 // TestSnapAlignCenterAndEnd checks the other two edges a child can name.
 func TestSnapAlignCenterAndEnd(t *testing.T) {
 	tr := snapTree(t, `Window { Row {

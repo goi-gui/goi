@@ -732,8 +732,10 @@ const SnapProximity = 0.25
 // SnapTargets lists the offsets along axis where a child's snap area lines up
 // with the viewport, sorted and clamped to what the content allows. A child's
 // scrollSnapAlign picks the edge: start, center or end, inset by scrollPadding
-// for the two edges the padding can move. Children that do not scroll with the
-// content (a sticky table header) and invisible ones are skipped.
+// for the two edges the padding can move. The container's padding insets the
+// snapport, and a child's own scrollPadding insets that child's snap edges the
+// way CSS scroll-margin does. Children that do not scroll with the content (a
+// sticky table header) and invisible ones are skipped.
 func (b *NodeBase) SnapTargets(axis Axis) []float64 {
 	if !b.scrollsOn(axis) {
 		return nil
@@ -757,14 +759,17 @@ func (b *NodeBase) SnapTargets(axis Axis) []float64 {
 		if axis == AxisX {
 			lo, size = k.Bounds().X, k.Bounds().W
 		}
+		inset := pad + k.Base().SnapPadding()
 		var off float64
 		switch k.Base().SnapAlign() {
 		case "start":
-			off = lo - viewStart - pad
+			off = lo - viewStart - inset
 		case "center":
+			// A symmetric inset moves both the child and the snapport centre,
+			// so it cancels here, the same as CSS.
 			off = lo + size/2 - viewStart - view/2
 		case "end":
-			off = lo + size - viewStart - view + pad
+			off = lo + size - viewStart - view + inset
 		default:
 			continue
 		}
