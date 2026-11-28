@@ -216,6 +216,34 @@ func TestSliderDrawsExpressiveTrack(t *testing.T) {
 	}
 }
 
+// TestSliderReadOnlyHidesTheThumb keeps a read-only slider a value display: no
+// handle to grab, and no gap left where one would sit.
+func TestSliderReadOnlyHidesTheThumb(t *testing.T) {
+	l := m3list(t, `Window { Slider { value: 0.5 min: 0 max: 1 width: 200 readOnly: true } }`)
+	col := m3.Light().Colors
+	var active, inactive [4]float32
+	for _, op := range l.Ops {
+		if op.Kind != Fill {
+			continue
+		}
+		if op.Color == col.Primary && op.Rect[2] == 4 && op.Rect[3] == 44 {
+			t.Fatalf("read-only slider drew a thumb: %v", op.Rect)
+		}
+		switch {
+		case op.Color == col.Primary && op.Rect[3] == 16:
+			active = op.Rect
+		case op.Color == col.SecondaryContainer && op.Rect[3] == 16:
+			inactive = op.Rect
+		}
+	}
+	if active[2] == 0 || inactive[2] == 0 {
+		t.Fatalf("track missing:\n%s", l.Dump())
+	}
+	if active[0]+active[2] != inactive[0] {
+		t.Fatalf("track keeps a thumb gap: active=%v inactive=%v", active, inactive)
+	}
+}
+
 func TestSliderHandleNarrowsWhenPressed(t *testing.T) {
 	tr, diag := tree.BuildSource([]byte(`Window { Slider { value: 0.5 width: 200 } }`), nil)
 	if !diag.Empty() {

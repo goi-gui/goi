@@ -1287,6 +1287,9 @@ func (l *List) paintSlider(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	frac := fracOf(c.Value.Get())
 
 	handleAt := func(p float64, grabbed bool) {
+		if c.ReadOnly.Get() {
+			return // a read-only slider shows the value, not a thumb to drag
+		}
 		thick := handleMain
 		if c.Focused || (c.Pressed && grabbed) {
 			thick = 2
@@ -1307,15 +1310,19 @@ func (l *List) paintSlider(c *tree.Component, r tree.Rect, clip tree.Rect) {
 	}
 	pressed := func(i int) bool { return s != nil && s.Grab == i }
 	// Every segment stops `gap` away from the handle edge, so the handle has
-	// clear space around it.
-	const edge = handleMain/2 + gap
+	// clear space around it. A read-only slider has no handle, so the track is
+	// one continuous bar.
+	edge := handleMain/2 + gap
+	if c.ReadOnly.Get() {
+		edge = 0
+	}
 
 	// aStart/aEnd are the active segment in main-axis distance. iLeftEnd and
 	// iRightStart are the inactive segments at the two ends; the icons sit in
 	// those caps until a thumb leaves too little room, then move into the fill.
 	var aStart, aEnd, iLeftEnd, iRightStart float64
 	tipP, tipV := math.NaN(), 0.0
-	showTip := s != nil && s.ShowTooltip.Get() && !c.Disabled.Get() && (c.Hover || c.Pressed)
+	showTip := s != nil && s.ShowTooltip.Get() && !c.Disabled.Get() && !c.ReadOnly.Get() && (c.Hover || c.Pressed)
 
 	switch variant(c, "standard") {
 	case "range":
