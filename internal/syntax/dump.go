@@ -192,6 +192,8 @@ func dumpValue(v Value) string {
 		return strconv.FormatFloat(v.Val, 'g', -1, 64) + "%"
 	case *Ref:
 		return v.Text()
+	case *Index:
+		return dumpValue(v.Base) + "[" + dumpValue(v.Key) + "]"
 	case *Call:
 		parts := make([]string, len(v.Args))
 		for i, a := range v.Args {

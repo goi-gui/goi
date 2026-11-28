@@ -2128,39 +2128,61 @@ func (p *parser) parseTerm() (Value, bool) {
 			// A bare call is a builtin: formatf, today the only one.
 			return p.parseBuiltin(id.text, id.pos)
 		}
+		var term Value
 		if p.peek().kind != tokDot {
-			return &Ident{At: id.pos, Val: id.text}, true
-		}
-		p.next()
-		prop := p.peek()
-		if prop.kind != tokIdent {
-			p.errorf(prop, "expected a property name after '.'")
-			return nil, false
-		}
-		p.next()
-		ref := &Ref{At: id.pos, ID: id.text, Prop: prop.text}
-		for p.peek().kind == tokDot {
+			term = &Ident{At: id.pos, Val: id.text}
+		} else {
 			p.next()
-			field := p.peek()
-			if field.kind != tokIdent {
-				p.errorf(field, "expected a field name after '.'")
+			prop := p.peek()
+			if prop.kind != tokIdent {
+				p.errorf(prop, "expected a property name after '.'")
 				return nil, false
 			}
 			p.next()
-			ref.Path = append(ref.Path, field.text)
-		}
-		if p.peek().kind == tokLParen {
-			if len(ref.Path) > 0 {
-				p.errorf(p.peek(), "a call cannot follow a field: call the handler itself")
-				return nil, false
+			ref := &Ref{At: id.pos, ID: id.text, Prop: prop.text}
+			for p.peek().kind == tokDot {
+				p.next()
+				field := p.peek()
+				if field.kind != tokIdent {
+					p.errorf(field, "expected a field name after '.'")
+					return nil, false
+				}
+				p.next()
+				ref.Path = append(ref.Path, field.text)
 			}
-			return p.parseCall(ref)
+			if p.peek().kind == tokLParen {
+				if len(ref.Path) > 0 {
+					p.errorf(p.peek(), "a call cannot follow a field: call the handler itself")
+					return nil, false
+				}
+				return p.parseCall(ref)
+			}
+			term = ref
 		}
-		return ref, true
+		return p.parseIndexes(term)
 	default:
 		p.errorf(t, "expected a value or reference")
 		return nil, false
 	}
+}
+
+// parseIndexes reads the `[key]` suffixes after a name, so `map[k]` and
+// `list[0]` read one entry of a value the design already has.
+func (p *parser) parseIndexes(term Value) (Value, bool) {
+	for p.peek().kind == tokLBracket {
+		open := p.next()
+		key, ok := p.parseExpr()
+		if !ok {
+			return nil, false
+		}
+		if p.peek().kind != tokRBracket {
+			p.errorf(p.peek(), "expected ']' to close the index")
+			return nil, false
+		}
+		p.next()
+		term = &Index{At: open.pos, Base: term, Key: key}
+	}
+	return term, true
 }
 
 // parseList reads `[42, 27, 18]`: a property whose value is a list. A trailing

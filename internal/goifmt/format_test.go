@@ -612,6 +612,15 @@ func TestFormatKeepsLargeIntegerLiterals(t *testing.T) {
 	}
 }
 
+func TestFormatKeepsIndex(t *testing.T) {
+	src := `Window {
+	Text { text: formatf("%.1f", bridge.temps[k]) }
+}`
+	if got := string(Source([]byte(src))); !strings.Contains(got, "bridge.temps[k]") {
+		t.Fatalf("index lost:\n%s", got)
+	}
+}
+
 func TestFormatKeepsNestedFieldPath(t *testing.T) {
 	src := `Window {
 	Text { text: bridge.device.Name }

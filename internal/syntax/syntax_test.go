@@ -183,6 +183,26 @@ Window {
 	}
 }
 
+func TestParseIndexValue(t *testing.T) {
+	src := `Window {
+	Column {
+		for k, v := range bridge.Names {
+			Text { text: formatf("%s %s", k, bridge.Names[k]) }
+		}
+	}
+}`
+	f, diag := Parse([]byte(src))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	if got := Dump(f); !strings.Contains(got, "bridge.Names[k]") {
+		t.Fatalf("dump lost the index:\n%s", got)
+	}
+	if _, diag := Parse([]byte(`Window { Text { text: bridge.Names[k } }`)); diag.Empty() {
+		t.Fatal("an unclosed index was accepted")
+	}
+}
+
 func TestParseExpressionDiagnostics(t *testing.T) {
 	for _, src := range []string{
 		"A { w: box.width / }",

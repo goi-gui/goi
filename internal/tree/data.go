@@ -222,6 +222,8 @@ func mentions(v syntax.Value, name string) bool {
 	switch x := v.(type) {
 	case *syntax.Ref:
 		return (x.ID == "bridge" || x.ID == "data") && x.Prop == name
+	case *syntax.Index:
+		return mentions(x.Base, name) || mentions(x.Key, name)
 	case *syntax.Call:
 		for _, a := range x.Args {
 			if mentions(a, name) {

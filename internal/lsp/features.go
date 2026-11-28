@@ -2774,6 +2774,9 @@ func refAt(file *syntax.File, off int) *syntax.Ref {
 			if off >= start && off <= end && found == nil {
 				found = x
 			}
+		case *syntax.Index:
+			val(x.Base)
+			val(x.Key)
 		case *syntax.Call:
 			// The callee is a ref too: `spin.pause` is what hover explains.
 			if x.Callee != nil {

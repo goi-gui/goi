@@ -81,6 +81,9 @@ func walkValues(body *syntax.Element, fn func(*syntax.Ref)) {
 		switch x := v.(type) {
 		case *syntax.Ref:
 			fn(x)
+		case *syntax.Index:
+			val(x.Base)
+			val(x.Key)
 		case *syntax.Call:
 			for _, a := range x.Args {
 				val(a)

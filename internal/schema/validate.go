@@ -868,8 +868,8 @@ func (v *validator) checkPropRef(e *syntax.Element, pd *Prop, x *syntax.Ref, at,
 		}
 		return
 	case syntax.TypeSlice, syntax.TypeMap:
-		if pd == lenProp {
-			return // len and cap take a list
+		if pd == lenProp || free {
+			return // len and cap take a list; an index reads one entry
 		}
 		if pd.Type == TypeList && listSliceFits(*ft, pd.Elem) {
 			return
@@ -1258,6 +1258,10 @@ func (v *validator) checkNumeric(e *syntax.Element, pd *Prop, val syntax.Value) 
 		return true
 	case *syntax.Ref:
 		return true // the target is checked in walkRefs, after every id exists
+	case *syntax.Index:
+		// A map or a list entry is a value of its container's element type,
+		// which the checker does not resolve here; the runtime reads it.
+		return true
 	case *syntax.Call:
 		// A setup function is typed by its Go result; formatf and t build a
 		// string, so they are not numbers here. An unknown result is left to
@@ -1373,7 +1377,7 @@ func isExprValue(v syntax.Value) bool {
 	switch v.(type) {
 	// A builtin call is a value too: `width: max(120, min(window.width / 3, 480))`
 	// is evaluated at runtime like any other expression.
-	case *syntax.Ref, *syntax.Binary, *syntax.Unary, *syntax.Ternary, *syntax.Call:
+	case *syntax.Ref, *syntax.Index, *syntax.Binary, *syntax.Unary, *syntax.Ternary, *syntax.Call:
 		return true
 	}
 	return false
@@ -1703,6 +1707,9 @@ func (v *validator) checkRefs(e *syntax.Element, pd *Prop, val syntax.Value) {
 		v.checkRefs(e, pd, x.Else)
 	case *syntax.Call:
 		v.checkBuiltin(e, x)
+	case *syntax.Index:
+		v.checkRefs(e, anyProp, x.Base)
+		v.checkRefs(e, anyProp, x.Key)
 	case *syntax.Ref:
 		if pd == nil {
 			return
@@ -2132,8 +2139,8 @@ func (v *validator) checkDataRef(e *syntax.Element, pd *Prop, x *syntax.Ref, at,
 			fmt.Sprintf("%s.%s: %s is a handler; call it in an event", e.Name, pd.Name, x.Text()), "")
 		return
 	case syntax.TypeSlice, syntax.TypeMap:
-		if pd == lenProp {
-			return // len and cap take a list
+		if pd == lenProp || free {
+			return // len and cap take a list; an index reads one entry
 		}
 		if pd.Type == TypeList && listSliceFits(*ft, pd.Elem) {
 			return
@@ -2269,6 +2276,8 @@ func valueHasPercent(val syntax.Value) bool {
 				return true
 			}
 		}
+	case *syntax.Index:
+		return valueHasPercent(x.Base) || valueHasPercent(x.Key)
 	case *syntax.Map:
 		for _, entry := range x.Entries {
 			if valueHasPercent(entry.Value) {
@@ -2320,6 +2329,8 @@ func kindName(val syntax.Value) string {
 		return "an expression"
 	case syntax.CallKind:
 		return "a handler call"
+	case syntax.IndexKind:
+		return "an index expression"
 	}
 	return "an unknown value"
 }
@@ -2379,7 +2390,7 @@ func scrollAlignValue(v syntax.Value) bool {
 // It is what lets `expand(split.expanded)` pass while `expand(3)` does not.
 func boolishValue(v syntax.Value) bool {
 	switch v.(type) {
-	case *syntax.Ref, *syntax.Binary, *syntax.Unary, *syntax.Ternary, *syntax.Call:
+	case *syntax.Ref, *syntax.Index, *syntax.Binary, *syntax.Unary, *syntax.Ternary, *syntax.Call:
 		return true
 	}
 	return false

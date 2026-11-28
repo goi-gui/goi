@@ -208,6 +208,42 @@ Window {
 	}
 }
 
+// TestIndexReadsAMapEntry checks `map[key]` inside a loop and with a string
+// literal, including a map held by a shape field.
+func TestIndexReadsAMapEntry(t *testing.T) {
+	tr, diag := BuildSource([]byte(`bridge {
+	Device Device
+}
+type Device { Temps map[string]float64 }
+Window {
+	Column {
+		for k, v := range bridge.Device.Temps {
+			Text { id: row text: formatf("%s=%.1f/%.1f", k, v, bridge.Device.Temps[k]) }
+		}
+		Text { id: door text: formatf("%.1f", bridge.Device.Temps["door"]) }
+	}
+}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	tr.SetData("Device", map[string]any{
+		"temps": map[string]float64{"cpu": 42.5, "door": 21},
+	})
+	tr.ApplyExpressions()
+	found := false
+	for _, s := range texts(tr) {
+		if s == "cpu=42.5/42.5" || s == "door=21.0/21.0" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("texts = %v", texts(tr))
+	}
+	if got, _ := tr.ids["door"].Base().PropValue("text"); got != "21.0" {
+		t.Fatalf("literal key = %v", got)
+	}
+}
+
 // TestGoBuiltins covers the pure Go builtins a design can call: len and cap
 // count a string, a list and a map, and min and max work over numbers and
 // strings.

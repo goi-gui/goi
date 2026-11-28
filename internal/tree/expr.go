@@ -3,6 +3,7 @@ package tree
 import (
 	"fmt"
 	"math"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -28,7 +29,7 @@ type exprSpec struct {
 // literal write.
 func isExpression(v syntax.Value) bool {
 	switch x := v.(type) {
-	case *syntax.Percent, *syntax.Ref, *syntax.Binary, *syntax.Unary, *syntax.Ternary:
+	case *syntax.Percent, *syntax.Ref, *syntax.Index, *syntax.Binary, *syntax.Unary, *syntax.Ternary:
 		return true
 	case *syntax.Call:
 		// A builtin call such as formatf is a value; a handler call is only
@@ -632,6 +633,8 @@ func (c *evalCtx) eval(v syntax.Value, percent float64) (any, bool) {
 		return c.evalBinary(x, percent)
 	case *syntax.Ref:
 		return c.evalRef(x)
+	case *syntax.Index:
+		return c.evalIndex(x, percent)
 	case *syntax.Call:
 		if v, ok := c.evalSetupCall(x, percent); ok {
 			return v, true
@@ -649,6 +652,84 @@ func (c *evalCtx) eval(v syntax.Value, percent float64) (any, bool) {
 			out[i] = v
 		}
 		return out, true
+	}
+	return nil, false
+}
+
+// evalIndex reads one entry of a list or a string-keyed map. The base is read
+// raw, so a map field of a shape keeps its Go type instead of being turned into
+// a value the expression engine has no shape for.
+func (c *evalCtx) evalIndex(x *syntax.Index, percent float64) (any, bool) {
+	base, ok := c.rawValue(x.Base)
+	if !ok {
+		return nil, false
+	}
+	key, ok := c.eval(x.Key, percent)
+	if !ok {
+		return nil, false
+	}
+	return indexValue(base, key)
+}
+
+// indexValue reads key from base. A map key is a string, a list index is a
+// number, and a missing entry or an out-of-range index leaves the property at
+// its previous value.
+func indexValue(base, key any) (any, bool) {
+	if base == nil || key == nil {
+		return nil, false
+	}
+	rv := reflect.ValueOf(base)
+	for rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
+		if rv.IsNil() {
+			return nil, false
+		}
+		rv = rv.Elem()
+	}
+	switch rv.Kind() {
+	case reflect.Map:
+		if rv.Type().Key().Kind() != reflect.String {
+			return nil, false
+		}
+		s, ok := key.(string)
+		if !ok {
+			return nil, false
+		}
+		kv := reflect.New(rv.Type().Key()).Elem()
+		kv.SetString(s)
+		v := rv.MapIndex(kv)
+		if !v.IsValid() {
+			return nil, false
+		}
+		return indexResult(v.Interface())
+	case reflect.Slice, reflect.Array:
+		f, ok := key.(float64)
+		if !ok {
+			return nil, false
+		}
+		i := int(f)
+		if i < 0 || i >= rv.Len() {
+			return nil, false
+		}
+		return indexResult(rv.Index(i).Interface())
+	}
+	return nil, false
+}
+
+// indexResult turns one entry into an expression value. A nested map or struct
+// stays raw so a second index or a field can read it.
+func indexResult(v any) (any, bool) {
+	if n, ok := normalizeData(v); ok {
+		return n, true
+	}
+	rv := reflect.ValueOf(v)
+	for rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
+		if rv.IsNil() {
+			return nil, false
+		}
+		rv = rv.Elem()
+	}
+	if rv.IsValid() && (rv.Kind() == reflect.Map || rv.Kind() == reflect.Struct) {
+		return v, true
 	}
 	return nil, false
 }

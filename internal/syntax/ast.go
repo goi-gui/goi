@@ -467,6 +467,7 @@ const (
 	SlotRefKind
 	DurationKind
 	ThemeTransitionKind
+	IndexKind
 )
 
 // Value is a property literal. The concrete type is one of *String,
@@ -661,6 +662,20 @@ type Ref struct {
 	Alpha    float64
 	HasAlpha bool
 }
+
+// Index is `map[key]` or `list[i]`, a read of one entry of a value the design
+// already names. The map is a string-keyed one, as a bridge map is.
+type Index struct {
+	At   Pos
+	Base Value
+	Key  Value
+}
+
+// Kind implements Value.
+func (*Index) Kind() ValueKind { return IndexKind }
+
+// Pos implements Value.
+func (x *Index) Pos() Pos { return x.At }
 
 // SlotRef is `$name` in a value, the argument of len: it counts the elements an
 // instance passed to that slot. It is only legal inside a fragment, and the

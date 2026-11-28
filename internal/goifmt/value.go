@@ -251,6 +251,8 @@ func printInner(v syntax.Value) string {
 		return x.Val
 	case *syntax.Percent:
 		return numberText(x.Val) + "%"
+	case *syntax.Index:
+		return printInner(x.Base) + "[" + printInner(x.Key) + "]"
 	case *syntax.Ref:
 		s := x.ID
 		if x.Prop != "" {

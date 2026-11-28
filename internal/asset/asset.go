@@ -943,6 +943,10 @@ func substValue(v syntax.Value, props map[string]syntax.Value, src, from, caller
 		then, tc, diag := substValue(x.Then, props, src, from, callerSrc, callerScope, diag)
 		els, ec, diag := substValue(x.Else, props, src, from, callerSrc, callerScope, diag)
 		return &syntax.Ternary{At: x.At, Cond: cond, Then: then, Else: els}, cc || tc || ec, diag
+	case *syntax.Index:
+		base, bc, diag := substValue(x.Base, props, src, from, callerSrc, callerScope, diag)
+		key, kc, diag := substValue(x.Key, props, src, from, callerSrc, callerScope, diag)
+		return &syntax.Index{At: x.At, Base: base, Key: key}, bc || kc, diag
 	}
 	return v, false, diag
 }
@@ -1090,6 +1094,8 @@ func copyValue(v syntax.Value) syntax.Value {
 		return &syntax.Unary{At: x.At, Op: x.Op, X: copyValue(x.X)}
 	case *syntax.Ternary:
 		return &syntax.Ternary{At: x.At, Cond: copyValue(x.Cond), Then: copyValue(x.Then), Else: copyValue(x.Else)}
+	case *syntax.Index:
+		return &syntax.Index{At: x.At, Base: copyValue(x.Base), Key: copyValue(x.Key)}
 	case *syntax.Call:
 		args := make([]syntax.Value, len(x.Args))
 		for i, a := range x.Args {

@@ -558,6 +558,7 @@ func TestDataValidation(t *testing.T) {
 		"bridge { rows []row }\ntype row { a string }\nWindow {\n\tColumn {\n\t\tfor i, r := range bridge.rows {\n\t\t\tText { text: r.a }\n\t\t\tText { text: formatf(\"%d\", i) }\n\t\t}\n\t}\n}",
 		"bridge { flag bool }\nWindow {\n\tColumn {\n\t\tif bridge.flag {\n\t\t\tText { text: \"on\" }\n\t\t}\n\t}\n}",
 		"bridge { count int }\nWindow {\n\tColumn {\n\t\tText { text: formatf(\"%d items\", bridge.count) }\n\t}\n}",
+		"bridge { temps map[string]float64 }\nWindow {\n\tColumn {\n\t\tText { text: formatf(\"%.1f\", bridge.temps[\"cpu\"]) }\n\t\tLinearProgress { value: bridge.temps[\"cpu\"] }\n\t}\n}",
 		"bridge { device Row }\ntype Row { name string\n apps []App }\ntype App { name string }\nWindow {\n\tColumn {\n\t\tText { text: bridge.device.name }\n\t\tText { text: formatf(\"%d\", len(bridge.device.apps)) }\n\t\tfor _, installed := range bridge.device.apps {\n\t\t\tText { text: installed.name }\n\t\t}\n\t}\n}",
 		"props { device Row }\ntype Row { name string\n apps []App }\ntype App { name string }\nColumn {\n\tText { text: props.device.name }\n\tText { text: formatf(\"%d\", len(props.device.apps)) }\n\tfor _, installed := range props.device.apps {\n\t\tText { text: installed.name }\n\t}\n}",
 	}

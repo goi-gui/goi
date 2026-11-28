@@ -112,7 +112,7 @@ func isColorRefValue(v syntax.Value) bool {
 // known once it runs, so the checker cannot judge the item itself.
 func dynamicValue(v syntax.Value) bool {
 	switch v.(type) {
-	case *syntax.Ref, *syntax.Call, *syntax.Binary, *syntax.Unary, *syntax.Ternary:
+	case *syntax.Ref, *syntax.Index, *syntax.Call, *syntax.Binary, *syntax.Unary, *syntax.Ternary:
 		return true
 	}
 	return false
