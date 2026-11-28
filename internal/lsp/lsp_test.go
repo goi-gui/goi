@@ -532,9 +532,9 @@ func TestCompletionOffersGlobalMembers(t *testing.T) {
 	}
 }
 
-// TestConditionalSnippetPutsTheConditionOnTheLeft keeps the example valid: an
-// entry is `condition: value`, and the tabstop must land on the condition.
-func TestConditionalSnippetPutsTheConditionOnTheLeft(t *testing.T) {
+// TestConditionalInsertsNoSnippet keeps the keyword bare: an example entry
+// would guess a value the property may not take.
+func TestConditionalInsertsNoSnippet(t *testing.T) {
 	c := newClient(t)
 	c.initializeWithSnippets(true)
 	dir := t.TempDir()
@@ -545,8 +545,8 @@ func TestConditionalSnippetPutsTheConditionOnTheLeft(t *testing.T) {
 		if it.Label != "conditional" {
 			continue
 		}
-		if !strings.Contains(it.InsertText, "${1:app.dark}: ${0:true}") {
-			t.Fatalf("conditional snippet = %q", it.InsertText)
+		if it.InsertText != "conditional " || it.Snippet != "" {
+			t.Fatalf("conditional inserts %q (snippet %q)", it.InsertText, it.Snippet)
 		}
 		return
 	}

@@ -3526,7 +3526,6 @@ func modifierItems() []completionResult {
 		{
 			Label: "conditional", Kind: kindKeyword, Detail: "modifier",
 			InsertText: "conditional ",
-			Snippet:    "conditional {\n\t${1:app.dark}: ${0:true}\n}",
 			Documentation: &doc{Kind: "markdown", Value: "**conditional { bridge.isWide: 10 default: 4 }**\n\n" +
 				"The first true condition picks the value, and `default` is the fallback when none " +
 				"is true. Write entries as `condition: value`."},
