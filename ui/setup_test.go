@@ -1280,3 +1280,21 @@ Window { Text { id: page text: bridge.activePage } }`), "Main.goi")
 		t.Fatalf("activePage = %v", v)
 	}
 }
+
+// TestSetupScheduleRequestsAFrame keeps a mount from waiting for the next
+// input: each queued hop must mark the tree dirty before it sleeps.
+func TestSetupScheduleRequestsAFrame(t *testing.T) {
+	a := newHeadlessApp()
+	sb := setupBuild{start: func(func(func()), func(error)) {}}
+	a.startSetups(sb)
+	a.needsFrame = false
+	a.drainPosted()
+	if !a.needsFrame {
+		t.Fatal("the second mount hop did not request a frame")
+	}
+	a.needsFrame = false
+	a.setupPost(func() {})
+	if !a.needsFrame {
+		t.Fatal("a later mount did not request a frame")
+	}
+}

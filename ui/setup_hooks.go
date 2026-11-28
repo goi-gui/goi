@@ -72,6 +72,9 @@ func (a *App) startSetups(b setupBuild) {
 			}
 			b.start(a.setupPost, a.reportError)
 		})
+		// The second post needs a frame even when the platform wake event is
+		// missed; without it a mount waits for the next input.
+		a.markDirty(tree.DirtyLayout)
 	})
 }
 
@@ -81,6 +84,9 @@ func (a *App) setupPost(fn func()) {
 	if fn == nil {
 		return
 	}
+	// Ask for the frame now: a post queued during a frame would otherwise wait
+	// for a wake event that the idle loop may not receive.
+	a.markDirty(tree.DirtyLayout)
 	a.Post(func() {
 		fn()
 		a.markDirty(tree.DirtyLayout)
