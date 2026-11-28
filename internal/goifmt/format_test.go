@@ -592,6 +592,26 @@ func TestFormatKeepsColorOpacity(t *testing.T) {
 
 // TestSetupStaysInTheFormattedFile keeps a setup block from being dropped: the
 // formatter prints its Go body through gofmt.
+// TestFormatKeepsLargeIntegerLiterals keeps a byte count readable. The old
+// writer used the shortest float form, which turned 652664832 into
+// 6.52664832e+08, a token the design lexer cannot read back.
+func TestFormatKeepsLargeIntegerLiterals(t *testing.T) {
+	src := `Window {
+	Text { text: getMemoryUsage(652664832, 4031442944) }
+	Column { gap: 652664832 width: 0.00001 }
+}`
+	got := string(Source([]byte(src)))
+	if !strings.Contains(got, "getMemoryUsage(652664832, 4031442944)") {
+		t.Fatalf("integer arguments lost their form:\n%s", got)
+	}
+	if !strings.Contains(got, "652664832") || !strings.Contains(got, "0.00001") {
+		t.Fatalf("numbers lost their form:\n%s", got)
+	}
+	if strings.Contains(got, "e+") || strings.Contains(got, "e-") {
+		t.Fatalf("formatter wrote an exponent:\n%s", got)
+	}
+}
+
 func TestFormatKeepsNestedFieldPath(t *testing.T) {
 	src := `Window {
 	Text { text: bridge.device.Name }

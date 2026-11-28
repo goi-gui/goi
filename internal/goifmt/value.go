@@ -2,6 +2,7 @@ package goifmt
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -195,6 +196,39 @@ func printPrec(v syntax.Value, parent int) string {
 	return s
 }
 
+// numberText writes a number without an exponent: a token such as 652664832
+// must stay that, not 6.52664832e+08 or 1e-05, which the lexer cannot read
+// back. The shortest round-trip digits keep 0.1 as 0.1.
+func numberText(v float64) string {
+	return strconv.FormatFloat(v, 'f', -1, 64)
+}
+
+// numberTextPrec is numberText rounded to prec significant digits, which is
+// what a converted rotate angle needs: 1.57rad becomes 89.95437deg, not the
+// full binary expansion.
+func numberTextPrec(v float64, prec int) string {
+	if v == 0 {
+		return "0"
+	}
+	exp := int(math.Floor(math.Log10(math.Abs(v))))
+	places := prec - 1 - exp
+	if places < 0 {
+		places = 0
+	}
+	if places > 100 {
+		places = 100
+	}
+	s := strconv.FormatFloat(v, 'f', places, 64)
+	if strings.Contains(s, ".") {
+		s = strings.TrimRight(s, "0")
+		s = strings.TrimSuffix(s, ".")
+	}
+	if s == "-0" {
+		s = "0"
+	}
+	return s
+}
+
 func printInner(v syntax.Value) string {
 	switch x := v.(type) {
 	case nil:
@@ -202,12 +236,12 @@ func printInner(v syntax.Value) string {
 	case *syntax.String:
 		return quote(x.Val)
 	case *syntax.Number:
-		return strconv.FormatFloat(x.Val, 'g', -1, 64)
+		return numberText(x.Val)
 	case *syntax.Bool:
 		return strconv.FormatBool(x.Val)
 	case *syntax.Color:
 		if x.HasOpacity {
-			return fmt.Sprintf("#%06x / %s", x.RGBA>>8, strconv.FormatFloat(x.Opacity, 'g', -1, 64))
+			return fmt.Sprintf("#%06x / %s", x.RGBA>>8, numberText(x.Opacity))
 		}
 		if x.RGBA&0xFF == 0xFF {
 			return fmt.Sprintf("#%06x", x.RGBA>>8)
@@ -216,7 +250,7 @@ func printInner(v syntax.Value) string {
 	case *syntax.Ident:
 		return x.Val
 	case *syntax.Percent:
-		return strconv.FormatFloat(x.Val, 'g', -1, 64) + "%"
+		return numberText(x.Val) + "%"
 	case *syntax.Ref:
 		s := x.ID
 		if x.Prop != "" {
@@ -226,7 +260,7 @@ func printInner(v syntax.Value) string {
 			s += "." + f
 		}
 		if x.HasAlpha {
-			s += " / " + strconv.FormatFloat(x.Alpha, 'g', -1, 64)
+			s += " / " + numberText(x.Alpha)
 		}
 		return s
 	case *syntax.SlotRef:
@@ -299,7 +333,7 @@ func printInner(v syntax.Value) string {
 		if x.X == 1 && x.Y == 1 && x.Z == 1 {
 			return "none"
 		}
-		num := func(v float64) string { return strconv.FormatFloat(v, 'g', -1, 64) }
+		num := numberText
 		if x.Z != 1 {
 			return num(x.X) + " " + num(x.Y) + " " + num(x.Z)
 		}
@@ -312,7 +346,7 @@ func printInner(v syntax.Value) string {
 		// value. Seven significant digits is as fine as the radians the painter
 		// stores can resolve, and it keeps `1.57rad` from becoming
 		// `89.95437383553926deg`.
-		num := func(v float64) string { return strconv.FormatFloat(v, 'g', 7, 64) }
+		num := func(v float64) string { return numberTextPrec(v, 7) }
 		if x.Axis == "" && x.Vector == [3]float64{} && x.Angle == 0 {
 			return "none"
 		}
@@ -366,7 +400,7 @@ func quote(s string) string {
 // printShadowLayer writes one shadow the way CSS writes it, omitting the parts
 // the design left out.
 func printShadowLayer(l syntax.ShadowLayer) string {
-	num := func(v float64) string { return strconv.FormatFloat(v, 'g', -1, 64) }
+	num := numberText
 	parts := []string{num(l.X), num(l.Y)}
 	if l.Blur != 0 || l.Spread != 0 {
 		parts = append(parts, num(l.Blur))
