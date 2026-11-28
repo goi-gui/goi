@@ -203,7 +203,7 @@ var pageAssetExts = map[string]bool{
 	".html": true, ".css": true, ".js": true, ".mjs": true, ".map": true,
 	".json": true, ".wasm": true, ".webmanifest": true, ".txt": true,
 	".svg": true, ".png": true, ".jpg": true, ".jpeg": true, ".gif": true,
-	".webp": true, ".avif": true, ".ico": true, ".woff": true, ".woff2": true,
+	".webp": true, ".avif": true, ".jxl": true, ".ico": true, ".woff": true, ".woff2": true,
 	".ttf": true, ".otf": true, ".mp3": true, ".mp4": true, ".webm": true,
 	".wav": true, ".ogg": true,
 }

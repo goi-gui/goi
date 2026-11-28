@@ -11,7 +11,8 @@ import (
 	_ "image/jpeg" // register
 	_ "image/png"  // register
 
-	_ "golang.org/x/image/webp" // register
+	webp "github.com/SeriousBug/webp-go-pure"
+	"github.com/gen2brain/jxl"
 )
 
 // Data is a decoded image: tightly packed RGBA, straight (not premultiplied)
@@ -25,14 +26,43 @@ type Data struct {
 	Gen int
 }
 
-// Decode reads a PNG, JPEG, GIF or WebP. Anything else is an error naming the
-// format, so a typo in a path does not look like a decode failure.
+// Decode reads a PNG, JPEG, GIF, WebP or JPEG XL. Anything else is an error
+// naming the format, so a typo in a path does not look like a decode failure.
 func Decode(b []byte) (*Data, error) {
+	if isWebP(b) {
+		im, err := webp.Decode(b)
+		if err != nil {
+			return nil, fmt.Errorf("img: decode webp: %w", err)
+		}
+		return &Data{W: im.Width, H: im.Height, Pix: im.RGBA}, nil
+	}
+	if isJXL(b) {
+		src, err := jxl.Decode(bytes.NewReader(b))
+		if err != nil {
+			return nil, fmt.Errorf("img: decode jxl: %w", err)
+		}
+		return FromImage(src), nil
+	}
 	src, _, err := image.Decode(bytes.NewReader(b))
 	if err != nil {
 		return nil, fmt.Errorf("img: decode: %w", err)
 	}
 	return FromImage(src), nil
+}
+
+// isWebP reports whether b starts with the RIFF/WEBP header. The decoder adds
+// both still and animated WebP, which image.Decode does not know about.
+func isWebP(b []byte) bool {
+	return len(b) >= 12 && string(b[:4]) == "RIFF" && string(b[8:12]) == "WEBP"
+}
+
+// isJXL reports whether b is a JPEG XL codestream or container. The decoder
+// registers with image.Decode too, but a format check keeps the error clear.
+func isJXL(b []byte) bool {
+	if len(b) >= 2 && b[0] == 0xFF && b[1] == 0x0A {
+		return true
+	}
+	return len(b) >= 12 && string(b[:12]) == "\x00\x00\x00\x0cJXL \x0d\x0a\x87\x0a"
 }
 
 // FromImage converts any decoded image into the renderer's pixel format, which

@@ -7,6 +7,8 @@ import (
 	"image/color"
 	"image/png"
 	"testing"
+
+	"github.com/gen2brain/jxl"
 )
 
 func TestDecodePNGAndScale(t *testing.T) {
@@ -63,6 +65,33 @@ func TestDecodeWebP(t *testing.T) {
 	}
 	if first, anim, err := DecodeAnimated(b); err != nil || anim != nil || first.W != 4 {
 		t.Fatalf("DecodeAnimated = %v,%v,%v, want a still WebP", first, anim, err)
+	}
+}
+
+// TestDecodeJXL round-trips a still JPEG XL through the decoder a design uses.
+func TestDecodeJXL(t *testing.T) {
+	src := image.NewNRGBA(image.Rect(0, 0, 4, 3))
+	for y := 0; y < 3; y++ {
+		for x := 0; x < 4; x++ {
+			src.Set(x, y, color.NRGBA{R: 200, G: 40, B: 10, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := jxl.Encode(&buf, src, jxl.EncodeOptions{Lossless: true}); err != nil {
+		t.Fatal(err)
+	}
+	d, err := Decode(buf.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.W != 4 || d.H != 3 || len(d.Pix) != 4*3*4 {
+		t.Fatalf("decoded %dx%d with %d bytes", d.W, d.H, len(d.Pix))
+	}
+	if d.Pix[0] != 200 || d.Pix[1] != 40 || d.Pix[2] != 10 || d.Pix[3] != 255 {
+		t.Fatalf("pixel = %v", d.Pix[:4])
+	}
+	if first, anim, err := DecodeAnimated(buf.Bytes()); err != nil || anim != nil || first.W != 4 {
+		t.Fatalf("DecodeAnimated = %v,%v,%v, want a still JPEG XL", first, anim, err)
 	}
 }
 

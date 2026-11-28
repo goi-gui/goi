@@ -2,6 +2,7 @@ package img
 
 import (
 	"bytes"
+	"encoding/base64"
 	"image"
 	"image/color"
 	"image/gif"
@@ -58,6 +59,34 @@ func TestDecodeAnimatedGIF(t *testing.T) {
 	}
 	if i, done := anim.FrameAt(60 * time.Millisecond); i != 1 || done {
 		t.Fatalf("at 60ms = frame %d done=%v, want the second frame", i, done)
+	}
+}
+
+// TestDecodeAnimatedWebP decodes a two-frame lossless animation and checks the
+// player's view: both canvases, the delays and the repeat count.
+func TestDecodeAnimatedWebP(t *testing.T) {
+	b, err := base64.StdEncoding.DecodeString("UklGRoQAAABXRUJQVlA4WAoAAAACAAAAAwAAAwAAQU5JTQYAAAAAAAAAAgBBTk1GKAAAAAAAAAAAAAMAAAMAADIAAAJWUDhMDwAAAC8DwAAABxD9j/4HIqL/AQBBTk1GKAAAAAAAAAAAAAMAAAMAAEYAAABWUDhMDwAAAC8DwAAABxDR//4HIqL/AQA=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, anim, err := DecodeAnimated(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.W != 4 || first.H != 4 || first.Pix[0] != 255 || first.Pix[2] != 0 {
+		t.Fatalf("first frame = %dx%d %v", first.W, first.H, first.Pix[:4])
+	}
+	if anim == nil || len(anim.Frames) != 2 {
+		t.Fatalf("animation = %#v", anim)
+	}
+	if anim.Frames[0].Delay != 50*time.Millisecond || anim.Frames[1].Delay != 70*time.Millisecond {
+		t.Fatalf("delays = %v, %v", anim.Frames[0].Delay, anim.Frames[1].Delay)
+	}
+	if anim.Loop != 3 {
+		t.Fatalf("loop = %d, want three passes", anim.Loop)
+	}
+	if p := anim.Frames[1].Pix; p[0] != 0 || p[2] != 255 {
+		t.Fatalf("second frame = %v", p[:4])
 	}
 }
 

@@ -758,7 +758,8 @@ func (a *App) tickAnimations(dt float64) (changed bool, wait time.Duration) {
 	return changed, wait
 }
 
-// tickImage advances one GIF or APNG and reports whether its pixels changed,
+// tickImage advances one animation (GIF, APNG, WebP or JPEG XL) and reports
+// whether its pixels changed,
 // plus how long until its next frame is due.
 func tickImage(im *tree.Image, step time.Duration) (bool, time.Duration) {
 	if im.Anim == nil || im.Paused.Get() || im.Data == nil {

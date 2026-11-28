@@ -8,6 +8,8 @@ import (
 	"image/gif"
 	"time"
 
+	webp "github.com/SeriousBug/webp-go-pure"
+	"github.com/gen2brain/jxl"
 	"github.com/kettek/apng"
 )
 
@@ -85,7 +87,7 @@ const (
 )
 
 // DecodeAnimated decodes an image file. anim is non-nil only for an animated
-// GIF or APNG, and first is its first frame either way.
+// GIF, APNG, WebP or JPEG XL, and first is its first frame either way.
 func DecodeAnimated(b []byte) (first *Data, anim *Anim, err error) {
 	if a, ok := decodeGIF(b); ok {
 		return animFirst(a), a, nil
@@ -99,11 +101,83 @@ func DecodeAnimated(b []byte) (first *Data, anim *Anim, err error) {
 			return animFirst(a), a, nil
 		}
 	}
+	if isWebP(b) {
+		return decodeWebP(b)
+	}
+	if isJXL(b) {
+		return decodeJXL(b)
+	}
 	d, err := Decode(b)
 	if err != nil {
 		return nil, nil, err
 	}
 	return d, nil, nil
+}
+
+// decodeWebP returns the animation, or nil when the file is a still WebP. The
+// decoder hands back composited RGBA canvases, so the frames need no work.
+func decodeWebP(b []byte) (*Data, *Anim, error) {
+	a, err := webp.DecodeAnimation(b)
+	if err != nil {
+		im, derr := webp.Decode(b)
+		if derr != nil {
+			return nil, nil, fmt.Errorf("webp: %w", err)
+		}
+		return &Data{W: im.Width, H: im.Height, Pix: im.RGBA}, nil, nil
+	}
+	if len(a.Frames) == 0 {
+		return nil, nil, fmt.Errorf("webp: no frames")
+	}
+	first := &Data{W: a.Width, H: a.Height, Pix: a.Frames[0].RGBA}
+	if len(a.Frames) < 2 {
+		return first, nil, nil
+	}
+	if len(a.Frames) > maxAnimFrames || len(a.Frames)*a.Width*a.Height*4 > maxAnimBytes {
+		return first, nil, nil
+	}
+	frames := make([]AnimFrame, len(a.Frames))
+	for i, f := range a.Frames {
+		delay := time.Duration(f.Duration) * time.Millisecond
+		if delay <= 0 {
+			delay = 100 * time.Millisecond
+		}
+		frames[i] = AnimFrame{Pix: f.RGBA, Delay: delay}
+	}
+	// LoopCount is how many times the animation repeats after the first pass.
+	loop := 0
+	if a.LoopCount > 0 {
+		loop = int(a.LoopCount) + 1
+	}
+	return first, &Anim{W: a.Width, H: a.Height, Frames: frames, Loop: loop}, nil
+}
+
+// decodeJXL returns the animation, or nil when the file is a still JPEG XL.
+func decodeJXL(b []byte) (*Data, *Anim, error) {
+	x, err := jxl.DecodeAll(bytes.NewReader(b))
+	if err != nil {
+		return nil, nil, fmt.Errorf("jxl: %w", err)
+	}
+	if len(x.Image) == 0 {
+		return nil, nil, fmt.Errorf("jxl: no frames")
+	}
+	first := FromImage(x.Image[0])
+	if len(x.Image) < 2 {
+		return first, nil, nil
+	}
+	bd := x.Image[0].Bounds()
+	if len(x.Image) > maxAnimFrames || len(x.Image)*bd.Dx()*bd.Dy()*4 > maxAnimBytes {
+		return first, nil, nil
+	}
+	frames := make([]AnimFrame, len(x.Image))
+	for i, src := range x.Image {
+		delay := time.Duration(x.Delay[i] * float64(time.Second))
+		if delay <= 0 {
+			delay = 100 * time.Millisecond
+		}
+		frames[i] = AnimFrame{Pix: FromImage(src).Pix, Delay: delay}
+	}
+	// Loops follows the codestream: 0 plays forever, otherwise that many passes.
+	return first, &Anim{W: bd.Dx(), H: bd.Dy(), Frames: frames, Loop: x.Loops}, nil
 }
 
 // animFirst is an animation's first frame as a still bitmap, which is what the

@@ -4,6 +4,7 @@ go 1.27.3
 
 require (
 	github.com/Broderick-Westrope/pele-go/raster v0.3.0
+	github.com/SeriousBug/webp-go-pure v1.2.0
 	github.com/Zyko0/go-sdl3 v0.1.4
 	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/charmbracelet/huh v1.0.0
@@ -11,6 +12,7 @@ require (
 	github.com/ebitengine/purego v0.11.3
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/gen2brain/beeep v0.12.0
+	github.com/gen2brain/jxl v0.2.2
 	github.com/go-text/typesetting v0.3.5
 	github.com/godbus/dbus/v5 v5.2.4
 	github.com/gogpu/gputypes v0.9.2

@@ -6,6 +6,8 @@ github.com/Broderick-Westrope/pele-go/raster v0.3.0 h1:ROaGzpDk1tBYWp/H3MG1d+N8l
 github.com/Broderick-Westrope/pele-go/raster v0.3.0/go.mod h1:Cggj36XZ3RmCyecw8kPzyoINNHxTI/b9iDqRyBGC5vE=
 github.com/MakeNowJust/heredoc v1.0.0 h1:cXCdzVdstXyiTqTvfqk9SDHpKNjxuom+DOlyEeQ4pzQ=
 github.com/MakeNowJust/heredoc v1.0.0/go.mod h1:mG5amYoWBHf8vpLOuehzbGGw0EHxpZZ6lCpQ4fNJ8LE=
+github.com/SeriousBug/webp-go-pure v1.2.0 h1:vNfaUavQ2pPoOL/JHhEn83g/6ln9TyIzIc2oYFN8/nM=
+github.com/SeriousBug/webp-go-pure v1.2.0/go.mod h1:fqCT8wRyNoJx+CQxMvzFpjZq2Vv7ztOdXYqbmK+xRmU=
 github.com/Zyko0/go-sdl3 v0.1.4 h1:gqEmtgZKVTF+ch+XKgacODw7bBgUqZWDUS0CvjjOgxQ=
 github.com/Zyko0/go-sdl3 v0.1.4/go.mod h1:pnJeEnZgR5w7fO4SEE1q1rDMSzu8Xz+uLwBgkEtmgYs=
 github.com/Zyko0/purego-gen v0.0.2 h1:V7YERu8PkMTxmyskhliA/73TN8+ey2dCGgQspWasdH8=
@@ -87,6 +89,8 @@ github.com/gabriel-vasile/mimetype v1.4.16 h1:5izNFuvA37st1dDRAcA7TtmngBmRgiIPDm
 github.com/gabriel-vasile/mimetype v1.4.16/go.mod h1:3oFFwxX8kTklZwzIl2aQEDZT0lKY8xH92ST88bAwba4=
 github.com/gen2brain/beeep v0.12.0 h1:KyondU7iPZYfsK/gHFJl6fQtJ4S5H5N4dB8gpUCTR5w=
 github.com/gen2brain/beeep v0.12.0/go.mod h1:HuQstdC406AWwB5wrBE76nQhUohEYHNrGKFDevWdLxg=
+github.com/gen2brain/jxl v0.2.2 h1:Lq2F88CkWIPmhUIANthY3W2UfYMeq7NjciKnNC9c6qU=
+github.com/gen2brain/jxl v0.2.2/go.mod h1:8TXnWS8wDSmYunyyhUgl5LYPiBsrWIDD02OmgOMFtrE=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=
 github.com/go-logr/logr v1.4.4 h1:tG4xh9yMsRCAiodLVTxyrkzSZ9+o0L1Kg/+cPVcbP/8=
 github.com/go-logr/logr v1.4.4/go.mod h1:9T104GzyrTigFIr8wt5mBrctHMim0Nb2HLGrmQ40KvY=
