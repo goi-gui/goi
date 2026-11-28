@@ -347,6 +347,10 @@ func comp(n tree.Node) *tree.Component {
 	return nil
 }
 
+// readOnly reports whether a component shows its value without letting input
+// change it.
+func readOnly(c *tree.Component) bool { return c != nil && c.ReadOnly.Get() }
+
 // interactive reports whether a component kind reacts to the pointer.
 func interactive(n tree.Node) bool {
 	switch n.Kind() {
@@ -1145,7 +1149,7 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 	// The dial is dragged, not clicked once: the press moves the hand to the
 	// pointer and every move follows, so any minute is reachable.
 	if button == 0 {
-		if n, c, tp := i.pickDialAt(hit, x, y); n != nil {
+		if n, c, tp := i.pickDialAt(hit, x, y); n != nil && !readOnly(c) {
 			i.setKbd(n)
 			i.pickNode, i.pickField = n, c.PickerField
 			i.resetPick(tp)
@@ -1156,7 +1160,7 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 	// A colour picker's square and hue bar are dragged the same way: the press
 	// picks the point and every move follows, clamped to that control.
 	if button == 0 {
-		if n, mode, ok := colorAt(hit, x, y); ok {
+		if n, mode, ok := colorAt(hit, x, y); ok && !readOnly(comp(n)) {
 			i.scrollNode = nil
 			i.setKbd(n)
 			i.colorNode, i.colorMode = n, mode
@@ -1202,7 +1206,7 @@ func (i *interactor) MouseDown(x, y float64, button int, shift bool) {
 		if c := comp(hit); c != nil {
 			c.Pressed = true
 			c.Base().MarkDirty(tree.DirtyPaint)
-			if hit.Kind() == "Slider" {
+			if hit.Kind() == "Slider" && !readOnly(c) {
 				i.dragging = true
 				i.grabSlider(hit, x, y)
 				i.drag(x, y)
@@ -1314,7 +1318,7 @@ func (i *interactor) MouseUp(x, y float64, button int) {
 	}
 
 	hit := i.hit(x, y)
-	if target.Kind() == "Slider" {
+	if target.Kind() == "Slider" && !readOnly(c) {
 		i.markDirty()
 		return
 	}
@@ -1371,9 +1375,15 @@ func (i *interactor) activate(n tree.Node, c *tree.Component, x, y float64) {
 	}
 	switch n.Kind() {
 	case "Checkbox", "Switch":
+		if readOnly(c) {
+			break
+		}
 		c.Checked.Set(!c.Checked.Get())
 		c.Toggle.Emit(c.Checked.Get())
 	case "RadioButton":
+		if readOnly(c) {
+			break
+		}
 		if !c.Checked.Get() {
 			c.Checked.Set(true)
 			c.Toggle.Emit(true)
@@ -1423,11 +1433,17 @@ func (i *interactor) activate(n tree.Node, c *tree.Component, x, y float64) {
 	case "NavigationItem":
 		i.activateDestination(n, c)
 	case "DatePicker":
-		i.pickDate(n, c, x, y)
+		if !readOnly(c) {
+			i.pickDate(n, c, x, y)
+		}
 	case "TimePicker":
-		i.pickTime(n, c, x, y)
+		if !readOnly(c) {
+			i.pickTime(n, c, x, y)
+		}
 	case "ColorPicker":
-		i.pickColorAction(n, x, y)
+		if !readOnly(c) {
+			i.pickColorAction(n, x, y)
+		}
 	}
 	c.Click.Emit(tree.ClickEvent{X: x, Y: y})
 	i.markDirty()
@@ -1694,6 +1710,9 @@ func paragraphBounds(s string, idx int) (int, int) {
 // pickDate reads the click against the same layout the painter used: the
 // arrows move the month, a day cell becomes the value.
 func (i *interactor) pickDate(n tree.Node, c *tree.Component, x, y float64) {
+	if readOnly(c) {
+		return
+	}
 	d := paint.DateLayoutOf(absoluteRect(n), c.Text.Get(), c.PickerMonth)
 	switch {
 	case hitRect(d.Prev, x, y):
@@ -1714,6 +1733,9 @@ func (i *interactor) pickDate(n tree.Node, c *tree.Component, x, y float64) {
 // pickTime sets the hour or the minutes from where the dial was clicked, and
 // hands the dial over: hour first, then minutes.
 func (i *interactor) pickTime(n tree.Node, c *tree.Component, x, y float64) {
+	if readOnly(c) {
+		return
+	}
 	tp, _ := n.(*tree.TimePicker)
 	r := absoluteRect(n)
 	format := 12
@@ -1797,6 +1819,9 @@ func (i *interactor) pickDialAt(hit tree.Node, x, y float64) (tree.Node, *tree.C
 // pickAt moves the time to the pointer's angle on the dial. The field stays
 // where it was, so dragging the minutes does not jump back to the hour.
 func (i *interactor) pickAt(n tree.Node, c *tree.Component, tp *tree.TimePicker, x, y float64) {
+	if readOnly(c) {
+		return
+	}
 	format := 12
 	if tp.HourFormat.Get() == 24 {
 		format = 24
@@ -1814,6 +1839,9 @@ func (i *interactor) pickAt(n tree.Node, c *tree.Component, tp *tree.TimePicker,
 // finishPick ends a dial drag: the hour hands over to the minutes, the minutes
 // stay put, and the value is reported once, on release.
 func (i *interactor) finishPick(n tree.Node, c *tree.Component, tp *tree.TimePicker) {
+	if readOnly(c) {
+		return
+	}
 	if i.pickField == 0 {
 		c.PickerField = 1
 	} else {
@@ -1952,7 +1980,7 @@ func (i *interactor) dragColor(x, y float64) {
 		return
 	}
 	c := comp(n)
-	if c == nil {
+	if c == nil || readOnly(c) {
 		return
 	}
 	cl := paint.ColorLayoutOf(absoluteRect(n))
@@ -1982,7 +2010,7 @@ func (i *interactor) colorKey(n tree.Node, k tree.Key, mods tree.Mods) bool {
 		return false
 	}
 	c := comp(n)
-	if c == nil {
+	if c == nil || readOnly(c) {
 		return false
 	}
 	step := 1.0
@@ -2047,6 +2075,9 @@ func (i *interactor) resetPick(tp *tree.TimePicker) {
 
 // setPickHalf switches the time between AM and PM, keeping the 12-hour reading.
 func (i *interactor) setPickHalf(c *tree.Component, am bool) {
+	if readOnly(c) {
+		return
+	}
 	h, m := clockOf(c.Text.Get())
 	h %= 12
 	if !am {
@@ -2083,7 +2114,7 @@ func clampPick(v, lo, hi int) int {
 func (i *interactor) pickTimeDigit(n tree.Node, d int) bool {
 	c := comp(n)
 	tp, _ := n.(*tree.TimePicker)
-	if c == nil || tp == nil || c.Variant.Get() != "input" {
+	if c == nil || tp == nil || c.Variant.Get() != "input" || readOnly(c) {
 		return false
 	}
 	if tp.PickDigits >= 2 {
@@ -2136,7 +2167,7 @@ func (i *interactor) pickerText(text string) bool {
 func (i *interactor) pickerKey(n tree.Node, k tree.Key, mods tree.Mods) bool {
 	c := comp(n)
 	tp, _ := n.(*tree.TimePicker)
-	if c == nil || tp == nil {
+	if c == nil || tp == nil || readOnly(c) {
 		return false
 	}
 	h, m := clockOf(c.Text.Get())
@@ -3744,7 +3775,7 @@ const sliderStep = 0.05
 // whether it consumed the key. Shift makes an arrow jump ten steps.
 func (i *interactor) sliderKey(n tree.Node, k tree.Key, mods tree.Mods) bool {
 	c := comp(n)
-	if c == nil {
+	if c == nil || readOnly(c) {
 		return false
 	}
 	lo, hi := c.Min.Get(), c.Max.Get()
@@ -3956,6 +3987,9 @@ func textField(c *tree.Component) *tree.TextField {
 // field reports the colour only once the text parses, so a half-typed hex does
 // not reach the app.
 func (i *interactor) applyEdit(f *tree.Component, s string, caret int) {
+	if readOnly(f) {
+		return
+	}
 	f.Text.Set(s)
 	f.Caret = caret
 	f.ClearSelection()
@@ -3978,6 +4012,9 @@ func (i *interactor) drag(x, y float64) {
 		return
 	}
 	c := comp(i.pressed)
+	if readOnly(c) {
+		return
+	}
 	box := absoluteRect(i.pressed)
 	s, _ := i.pressed.(*tree.Slider)
 	frac := sliderFracFor(s, box, x, y)

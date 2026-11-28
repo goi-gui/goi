@@ -61,6 +61,9 @@ type Component struct {
 
 	// State.
 	Disabled Prop[bool]
+	// ReadOnly shows the value and blocks input from changing it. Unlike
+	// Disabled it keeps the component's own look.
+	ReadOnly Prop[bool]
 	Checked  Prop[bool]
 	Selected Prop[bool]
 	Expanded Prop[bool]
@@ -170,6 +173,7 @@ func newComponent() Component {
 		Variant:            newProp(nil, "variant", DirtyPaint, ""),
 		Thickness:          newProp(nil, "thickness", DirtyLayout, 0.0),
 		Disabled:           newProp(nil, "disabled", DirtyPaint, false),
+		ReadOnly:           newProp(nil, "readOnly", DirtyPaint, false),
 		Checked:            newProp(nil, "checked", DirtyPaint, false),
 		// A selected chip or segment shows a check in place of its leading icon,
 		// which changes its width, so this one is a layout change.
@@ -275,6 +279,8 @@ func (c *Component) one(kind, name string) NamedProp {
 		return EnumProp(b, "variant", dirty, &c.Variant, componentdef.EnumValuesFor(kind, "variant"))
 	case "disabled":
 		return BoolProp(b, "disabled", DirtyPaint, &c.Disabled)
+	case "readOnly":
+		return BoolProp(b, "readOnly", DirtyPaint, &c.ReadOnly)
 	case "checked":
 		return BoolProp(b, "checked", DirtyPaint, &c.Checked)
 	case "selected":
