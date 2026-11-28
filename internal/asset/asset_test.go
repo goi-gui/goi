@@ -936,3 +936,64 @@ func TestCopyValueKeepsFieldPath(t *testing.T) {
 		t.Fatal("copy shares the path slice with the original")
 	}
 }
+
+// TestNestedPropBecomesANestedReference turns `props.device.Name` into the
+// caller's value followed by the same field, so a fragment reads inside the
+// shape the caller passed.
+func TestNestedPropBecomesANestedReference(t *testing.T) {
+	dir := design(t, map[string]string{
+		"Main.goi": `import Part "./Part.goi"
+
+bridge {
+	selectedDevice Device
+}
+
+type Device { Name string }
+
+Window { Part { device: bridge.selectedDevice } }`,
+		"Part.goi": `props {
+	device Device
+}
+
+type Device { Name string }
+
+Column { Text { text: props.device.Name } }`,
+	})
+	b, diag := Load(os.DirFS(dir), "Main.goi")
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	var got string
+	syntax.WalkElements(b.File.Root, func(e *syntax.Element) {
+		if e.Name != "Text" {
+			return
+		}
+		for _, p := range e.Props() {
+			if p.Name != "text" {
+				continue
+			}
+			if r, ok := p.Value.(*syntax.Ref); ok {
+				got = r.Text()
+			}
+		}
+	})
+	if got != "bridge.selectedDevice.Name" {
+		t.Fatalf("text reference = %q", got)
+	}
+}
+
+// TestWalkValueKeepsASetupName walks a value the caller names in its own setup
+// block, which is not a bridge reference but still holds fields.
+func TestWalkValueKeepsASetupName(t *testing.T) {
+	got, _, diag := walkValue(
+		&syntax.Ident{Val: "settings"},
+		&syntax.Ref{ID: "props", Prop: "device", Path: []string{"Name", "ID"}},
+		"Part.goi", "Main.goi", nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	ref, ok := got.(*syntax.Ref)
+	if !ok || ref.Text() != "settings.Name.ID" {
+		t.Fatalf("walked value = %#v", got)
+	}
+}

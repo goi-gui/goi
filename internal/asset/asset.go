@@ -828,6 +828,28 @@ func walkMembers(members []syntax.Member, props map[string]syntax.Value, from st
 	}
 }
 
+// walkValue turns `props.device.Name` into the caller's value followed by the
+// same fields: a bridge reference keeps its own path, and a setup value becomes
+// a reference to the name the caller wrote.
+func walkValue(got syntax.Value, x *syntax.Ref, src, from string, diag syntax.Diagnostics) (syntax.Value, bool, syntax.Diagnostics) {
+	switch g := got.(type) {
+	case *syntax.Ref:
+		out := copyValue(g).(*syntax.Ref)
+		out.Path = append(out.Path, x.Path...)
+		return out, true, diag
+	case *syntax.Ident:
+		ref := &syntax.Ref{At: g.At, ID: g.Val, Prop: x.Path[0], Path: append([]string(nil), x.Path[1:]...)}
+		return ref, true, diag
+	}
+	diag = append(diag, syntax.Diagnostic{
+		Pos:     x.At,
+		End:     x.End(),
+		Src:     src,
+		Message: fmt.Sprintf("props.%s is walked field by field, but %s passed a value with no fields", x.Prop, from),
+	})
+	return x, false, diag
+}
+
 // substValue returns a value with every `props.name` reference replaced. changed
 // reports that a caller value now sits in the tree, so the enclosing property or
 // block resolves setup names in the caller's file.
@@ -835,15 +857,6 @@ func substValue(v syntax.Value, props map[string]syntax.Value, src, from, caller
 	switch x := v.(type) {
 	case *syntax.Ref:
 		if x.ID != "props" {
-			return x, false, diag
-		}
-		if len(x.Path) > 0 {
-			diag = append(diag, syntax.Diagnostic{
-				Pos:     x.At,
-				End:     x.End(),
-				Src:     src,
-				Message: fmt.Sprintf("props.%s cannot be walked field by field: pass %s as its own prop", x.Prop, x.Path[len(x.Path)-1]),
-			})
 			return x, false, diag
 		}
 		got, ok := props[x.Prop]
@@ -867,6 +880,9 @@ func substValue(v syntax.Value, props map[string]syntax.Value, src, from, caller
 		}
 		// Copy: the value belongs to the caller (or to the fragment's default),
 		// and the expansion rewrites ids and references in place.
+		if len(x.Path) > 0 {
+			return walkValue(got, x, src, from, diag)
+		}
 		return copyValue(got), true, diag
 	case *syntax.Call:
 		callee := x.Callee

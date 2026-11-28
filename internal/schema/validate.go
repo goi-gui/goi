@@ -835,11 +835,6 @@ func (v *validator) checkPropRef(e *syntax.Element, pd *Prop, x *syntax.Ref, at,
 		v.add(at, end, fmt.Sprintf("%s.%s has no value: only an imported fragment receives props", x.ID, x.Prop), "")
 		return
 	}
-	if len(x.Path) > 0 {
-		v.add(at, end,
-			fmt.Sprintf("%s.%s: a prop cannot be walked field by field; pass %s as its own prop", e.Name, pd.Name, x.Text()), "")
-		return
-	}
 	pr := v.file.Prop(x.Prop)
 	if pr == nil {
 		v.add(at, end,
@@ -852,29 +847,55 @@ func (v *validator) checkPropRef(e *syntax.Element, pd *Prop, x *syntax.Ref, at,
 			fmt.Sprintf("%s.%s cannot come from a prop: an id names a node once", e.Name, pd.Name), "")
 		return
 	}
-	switch pr.Type.Kind {
+	ft := &pr.Type
+	if len(x.Path) > 0 {
+		field, sh, missing := resolveFieldPath(v.file, ft, x.Path)
+		if field == nil {
+			v.add(at, end, pathDiagnostic(x, ft, sh, missing), pathSuggestion(sh, missing))
+			return
+		}
+		ft = &field.Type
+	}
+	nested := len(x.Path) > 0
+	switch ft.Kind {
 	case syntax.TypeFunc:
-		v.add(at, end,
-			fmt.Sprintf("%s.%s: props.%s is a handler; call it in an event, as onClick: props.%s(...)", e.Name, pd.Name, pr.Name, pr.Name), "")
+		if nested {
+			v.add(at, end,
+				fmt.Sprintf("%s.%s: %s is a handler; call it in an event", e.Name, pd.Name, x.Text()), "")
+		} else {
+			v.add(at, end,
+				fmt.Sprintf("%s.%s: props.%s is a handler; call it in an event, as onClick: props.%s(...)", e.Name, pd.Name, pr.Name, pr.Name), "")
+		}
 		return
 	case syntax.TypeSlice, syntax.TypeMap:
 		if pd == lenProp {
 			return // len and cap take a list
 		}
-		if pd.Type == TypeList && listSliceFits(pr.Type, pd.Elem) {
+		if pd.Type == TypeList && listSliceFits(*ft, pd.Elem) {
 			return
 		}
-		v.add(at, end,
-			fmt.Sprintf("%s.%s: props.%s is not a value; walk it with for i, row := range props.%s", e.Name, pd.Name, pr.Name, pr.Name), "")
+		if nested {
+			v.add(at, end,
+				fmt.Sprintf("%s.%s: %s is not a value; walk it with for i, row := range %s",
+					e.Name, pd.Name, x.Text(), x.Text()), "")
+		} else {
+			v.add(at, end,
+				fmt.Sprintf("%s.%s: props.%s is not a value; walk it with for i, row := range props.%s", e.Name, pd.Name, pr.Name, pr.Name), "")
+		}
 		return
 	}
-	ft, ok := TypeOf(&pr.Type)
+	vft, ok := TypeOf(ft)
 	if !ok || free {
 		return
 	}
-	if !typesFit(ft, pd.Type) {
-		v.add(at, end,
-			fmt.Sprintf("%s.%s: prop %q is %s, not %s", e.Name, pd.Name, x.Prop, typeName(ft), typeName(pd.Type)), "")
+	if !typesFit(vft, pd.Type) {
+		if nested {
+			v.add(at, end,
+				fmt.Sprintf("%s.%s: %s is %s, not %s", e.Name, pd.Name, x.Text(), typeName(vft), typeName(pd.Type)), "")
+		} else {
+			v.add(at, end,
+				fmt.Sprintf("%s.%s: prop %q is %s, not %s", e.Name, pd.Name, x.Prop, typeName(vft), typeName(pd.Type)), "")
+		}
 	}
 }
 

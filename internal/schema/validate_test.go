@@ -529,6 +529,7 @@ func TestDataValidation(t *testing.T) {
 		"bridge { flag bool }\nWindow {\n\tColumn {\n\t\tif bridge.flag {\n\t\t\tText { text: \"on\" }\n\t\t}\n\t}\n}",
 		"bridge { count int }\nWindow {\n\tColumn {\n\t\tText { text: formatf(\"%d items\", bridge.count) }\n\t}\n}",
 		"bridge { device Row }\ntype Row { name string\n apps []App }\ntype App { name string }\nWindow {\n\tColumn {\n\t\tText { text: bridge.device.name }\n\t\tText { text: formatf(\"%d\", len(bridge.device.apps)) }\n\t\tfor _, installed := range bridge.device.apps {\n\t\t\tText { text: installed.name }\n\t\t}\n\t}\n}",
+		"props { device Row }\ntype Row { name string\n apps []App }\ntype App { name string }\nColumn {\n\tText { text: props.device.name }\n\tText { text: formatf(\"%d\", len(props.device.apps)) }\n\tfor _, installed := range props.device.apps {\n\t\tText { text: installed.name }\n\t}\n}",
 	}
 	for _, src := range good {
 		if _, diag := validate(t, src); !diag.Empty() {

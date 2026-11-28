@@ -554,6 +554,18 @@ func TestCompletionOffersShapeFields(t *testing.T) {
 	if labels["theme"] || labels["width"] {
 		t.Fatalf("unrelated members leaked into shape fields: %v", labels)
 	}
+
+	// A prop walks its declared type too.
+	part := "props {\n\tdevice Device\n}\ntype Device {\n\tName string\n}\nColumn {\n\tText { text: props.device. }\n}\n"
+	uri2 := writeDesign(t, dir, "part.goi", part)
+	c.openDoc(uri2, part)
+	labels = map[string]bool{}
+	for _, it := range completionAt(t, c, uri2, part, "props.device.").Items {
+		labels[it.Label] = true
+	}
+	if !labels["Name"] {
+		t.Fatalf("Device.Name missing from prop fields: %v", labels)
+	}
 }
 
 func TestCompletionOffersEnumValues(t *testing.T) {

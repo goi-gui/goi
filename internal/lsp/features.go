@@ -785,23 +785,29 @@ func nestedRefItems(file *syntax.File, src []byte, off int, path []string) []com
 }
 
 // shapeAtPath resolves the shape a dotted path holds, so completion can list its
-// fields. A bridge value names a declared type, a loop variable holds a row, and
-// every later segment is a shape field. A prop is passed as its own value, so it
-// does not walk.
+// fields. A bridge value or a prop names a declared type, a loop variable holds a
+// row, and every later segment is a shape field.
 func shapeAtPath(file *syntax.File, src []byte, off int, path []string) *syntax.DataShape {
 	if file == nil || len(path) == 0 {
 		return nil
 	}
 	switch path[0] {
-	case "bridge", "data":
+	case "bridge", "data", "props":
 		if len(path) < 2 {
 			return nil
 		}
-		dv := file.Var(path[1])
-		if dv == nil {
+		var t *syntax.Type
+		if path[0] == "props" {
+			if pr := file.Prop(path[1]); pr != nil {
+				t = &pr.Type
+			}
+		} else if dv := file.Var(path[1]); dv != nil {
+			t = &dv.Type
+		}
+		if t == nil {
 			return nil
 		}
-		return shapeInPath(file, shapeOfType(file, &dv.Type), path[2:])
+		return shapeInPath(file, shapeOfType(file, t), path[2:])
 	}
 	return shapeInPath(file, loopShapeAt(file, src, off, path[0]), path[1:])
 }
