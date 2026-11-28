@@ -1017,8 +1017,15 @@ func TestProgressVariants(t *testing.T) {
 	if got := count(normal, rotated); got != 0 {
 		t.Fatalf("a normal bar drew %d wave segments", got)
 	}
-	if got := count(normal, stop); got != 1 {
-		t.Fatalf("a normal bar drew %d stop dots, want 1", got)
+	if got := count(normal, stop); got != 0 {
+		t.Fatalf("a normal bar drew %d stop dots, want none", got)
+	}
+	for _, op := range normal.Ops {
+		if op.Kind == Fill && op.Color == col.SecondaryContainer && op.Rect[3] == 4 {
+			if got := op.Rect[0] + op.Rect[2]; got != 300 {
+				t.Fatalf("the track ends at %v, want the bar's edge at 300", got)
+			}
+		}
 	}
 
 	wavy := m3list(t, `Window { LinearProgress { variant: wavy value: 0.6 width: 300 } }`)
@@ -1028,8 +1035,8 @@ func TestProgressVariants(t *testing.T) {
 	if got := count(wavy, caps); got != 2 {
 		t.Fatalf("a wavy bar drew %d caps, want 2", got)
 	}
-	if got := count(wavy, stop); got != 1 {
-		t.Fatalf("a wavy bar drew %d stop dots, want 1", got)
+	if got := count(wavy, stop); got != 0 {
+		t.Fatalf("a wavy bar drew %d stop dots, want none", got)
 	}
 
 	ring := m3list(t, `Window { CircularProgress { variant: wavy value: 0.6 } }`)

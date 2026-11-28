@@ -2470,14 +2470,11 @@ func (l *List) paintLinearProgress(c *tree.Component, r tree.Rect, clip tree.Rec
 	if w > 0 {
 		start += gapFor(trackH)
 	}
-	// The track stops short of the end to leave room for the stop indicator.
-	end := tr.Right() - 8
-	if rem := end - start; rem > 0 {
+	// The track runs to the end of the bar; the design asks for no stop
+	// indicator dot at the far end.
+	if rem := tr.Right() - start; rem > 0 {
 		l.fillRect(tree.Rect{X: start, Y: tr.Y, W: rem, H: tr.H}, col.SecondaryContainer, trackH/2, 0, 0, clip)
 	}
-	// The stop indicator is the dot at the far end of the track, which is what
-	// tells a determinate bar where its scale ends.
-	l.fillRect(tree.Rect{X: tr.Right() - 4, Y: tr.Y + tr.H/2 - 2, W: 4, H: 4}, col.OnSurfaceVariant, 2, 0, 0, clip)
 }
 
 // gapFor is the space between the active part and the track: a stroke's width,
