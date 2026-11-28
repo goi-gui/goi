@@ -51,6 +51,74 @@ Window { Text { text: greet(name) } }`)
 	}
 }
 
+// TestSetupFunctionTypedNumbers converts an argument into the parameter's own
+// numeric type. The generated call used to pass the interpreter's int to a
+// uint parameter, which fails to compile even though the setup is valid Go.
+func TestSetupFunctionTypedNumbers(t *testing.T) {
+	f := parse(t, `setup {
+	func env(v uint) string {
+		switch v {
+		case 1:
+			return "Inside"
+		case 2:
+			return "Outside"
+		default:
+			return "Unknown"
+		}
+	}
+
+	func signed(v int8) int8       { return v }
+	func wide(v int64) int64       { return v }
+	func short(v int16) int16      { return v }
+	func tiny(v int32) int32       { return v }
+	func small(v uint8) uint8      { return v }
+	func medium(v uint16) uint16   { return v }
+	func huge(v uint64) uint64     { return v }
+	func pointer(v uintptr) uintptr { return v }
+	func letter(v byte) byte       { return v }
+	func symbol(v rune) rune       { return v }
+	func ratio(v float32) float32  { return v }
+	func factor(v float64) float64 { return v }
+	func many(v ...uint8) uint8    { return v[0] }
+}
+
+Window { }`)
+	r, err := New(f.Setups, f.Vars, f.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc := r.For(f.Src, "")
+	if sc == nil {
+		t.Fatal("no scope for the file")
+	}
+	if v, found, err := sc.Call("env", []any{2}); err != nil || !found || v != "Outside" {
+		t.Fatalf("env = %v, %v, %v", v, found, err)
+	}
+	for name, tc := range map[string]struct {
+		arg  any
+		want string
+	}{
+		"signed":  {-3, "-3"},
+		"wide":    {7, "7"},
+		"short":   {7, "7"},
+		"tiny":    {7, "7"},
+		"small":   {7, "7"},
+		"medium":  {7, "7"},
+		"huge":    {7, "7"},
+		"pointer": {7, "7"},
+		"letter":  {7, "7"},
+		"symbol":  {7, "7"},
+		"ratio":   {7, "7"},
+		"factor":  {7, "7"},
+		"many":    {7, "7"},
+	} {
+		v, found, err := sc.Call(name, []any{tc.arg})
+		if err != nil || !found || fmt.Sprint(v) != tc.want {
+			t.Fatalf("%s = %v, %v, %v; want %s", name, v, found, err, tc.want)
+		}
+	}
+}
+
 func TestSetupLoadsOnlyItsFile(t *testing.T) {
 	f := parse(t, `setup {
 	var count = 3

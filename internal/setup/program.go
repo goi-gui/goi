@@ -670,9 +670,31 @@ func argConversion(name, expr, bridgePkg string) (string, bool) {
 		return bridgePkg + ".AsString(" + expr + ")", true
 	case "bool":
 		return bridgePkg + ".AsBool(" + expr + ")", true
-	case "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint64", "uintptr", "byte", "rune":
+	case "int":
 		return bridgePkg + ".AsInt(" + expr + ")", true
-	case "float32", "float64":
+	case "int8":
+		return "int8(" + bridgePkg + ".AsInt(" + expr + "))", true
+	case "int16":
+		return "int16(" + bridgePkg + ".AsInt(" + expr + "))", true
+	case "int32":
+		return "int32(" + bridgePkg + ".AsInt(" + expr + "))", true
+	case "int64":
+		return "int64(" + bridgePkg + ".AsInt(" + expr + "))", true
+	case "uint":
+		return "uint(" + bridgePkg + ".AsInt(" + expr + "))", true
+	case "uint8", "byte":
+		return "byte(" + bridgePkg + ".AsInt(" + expr + "))", true
+	case "uint16":
+		return "uint16(" + bridgePkg + ".AsInt(" + expr + "))", true
+	case "uint64":
+		return "uint64(" + bridgePkg + ".AsInt(" + expr + "))", true
+	case "uintptr":
+		return "uintptr(" + bridgePkg + ".AsInt(" + expr + "))", true
+	case "rune":
+		return "rune(" + bridgePkg + ".AsInt(" + expr + "))", true
+	case "float32":
+		return "float32(" + bridgePkg + ".AsFloat(" + expr + "))", true
+	case "float64":
 		return bridgePkg + ".AsFloat(" + expr + ")", true
 	case "any":
 		return expr, true
