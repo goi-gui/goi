@@ -10,6 +10,7 @@ type setupBuild struct {
 	bind     func(*tree.Tree)
 	err      func() error
 	instance func(string, string)
+	has      func(string, string) (bool, bool)
 	visible  func(string, string, bool)
 	start    func(func(func()), func(error))
 	stop     func()

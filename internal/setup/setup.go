@@ -91,6 +91,8 @@ type template struct {
 	setup  syntax.Setup
 	vars   []syntax.DataVar
 	shapes []syntax.DataShape
+	values map[string]bool
+	funcs  map[string]bool
 }
 
 func scopeKey(src, scope string) string { return src + "\x00" + scope }
@@ -153,9 +155,27 @@ func New(setups []syntax.Setup, vars []syntax.DataVar, shapes []syntax.DataShape
 			r.programs[st.Src] = p
 			continue
 		}
-		r.templates[st.Src] = &template{setup: st, vars: vars, shapes: shapes}
+		values, _ := valueNames(st.Code)
+		funcs, _ := functionNames(st.Code)
+		r.templates[st.Src] = &template{setup: st, vars: vars, shapes: shapes, values: values, funcs: funcs}
 	}
 	return r, nil
+}
+
+// Has reports whether a file declares a setup value or function with this name.
+// The tree asks before creating an instance, so a bare literal does not compile
+// or mount a file's setup just to find out it is not a setup name.
+func (r *Registry) Has(src, name string) (value, function bool) {
+	if r == nil || name == "" {
+		return false, false
+	}
+	if p := r.programs[src]; p != nil {
+		return p.values[name], p.funcs[name]
+	}
+	if t := r.templates[src]; t != nil {
+		return t.values[name], t.funcs[name]
+	}
+	return false, false
 }
 
 // Err is the first setup compile error from a lazily compiled file.

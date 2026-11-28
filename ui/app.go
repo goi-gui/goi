@@ -253,7 +253,7 @@ func (a *App) LoadWindow(entry string) (*Window, error) {
 	}
 	tr, err := tree.Build(b.File, &tree.Hooks{
 		Marked: a.markDirty, Error: a.reportError, Media: a.mediaRequest, Window: a.windowRequest, Post: a.Post,
-		Setup: setupB.hook, Visibility: setupB.visible,
+		Setup: setupB.hook, SetupHas: setupB.has, Visibility: setupB.visible,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("goi: %s: %w", name, err)

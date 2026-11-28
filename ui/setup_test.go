@@ -1298,3 +1298,78 @@ func TestSetupScheduleRequestsAFrame(t *testing.T) {
 		t.Fatal("a later mount did not request a frame")
 	}
 }
+
+// TestSetupBareWordsDoNotMountAFile is the device-list case: a hidden
+// fragment with bare literals such as `cursor: pointer` used to create its
+// setup scope just to ask whether the word was a setup value, and mounted
+// onMount before the fragment was shown.
+func TestSetupBareWordsDoNotMountAFile(t *testing.T) {
+	fsys := fstest.MapFS{
+		"Main.goi": {Data: []byte(`import Part "./Part.goi"
+bridge { page string }
+Window { switch bridge.page {
+	case "part":
+		Part {}
+} }`)},
+		"Part.goi": {Data: []byte(`setup {
+	var mounted bool
+	func onMount() { mounted = true }
+}
+Column {
+	cursor:     pointer
+	background: red
+	Text { text: "part" }
+}`)},
+	}
+	b, err := loadBundle(fsys, "Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopes, err := setup.New(b.File.Setups, b.File.Vars, b.File.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sb := setupBuild{
+		hook: scopes.For, has: scopes.Has, bind: scopes.Bind, err: scopes.Err,
+		instance: scopes.Note, visible: scopes.SetVisible,
+		start: scopes.Start, stop: scopes.Unmount,
+	}
+	tr, err := tree.Build(b.File, &tree.Hooks{Setup: sb.hook, SetupHas: sb.has, Visibility: sb.visible})
+	if err != nil {
+		t.Fatal(err)
+	}
+	noteSetups(sb, tr)
+	sb.bind(tr)
+	a := newHeadlessApp()
+	a.startSetups(sb)
+	for i := 0; i < 10; i++ {
+		a.drainPosted()
+		tr.ApplyExpressions()
+	}
+	partScope := ""
+	for _, n := range tr.All() {
+		if base := n.Base(); base != nil && base.AST != nil && base.AST.Src == "Part.goi" && base.AST.Scope != "" {
+			partScope = base.AST.Scope
+			break
+		}
+	}
+	if partScope == "" {
+		t.Fatal("no Part scope")
+	}
+	mounted := func() string {
+		v, _ := scopes.For("Part.goi", partScope).Value("mounted")
+		return fmt.Sprint(v)
+	}
+	if got := mounted(); got != "false" {
+		t.Fatalf("hidden Part mounted: %s", got)
+	}
+	tr.SetData("page", "part")
+	tr.ApplyExpressions()
+	for i := 0; i < 10; i++ {
+		a.drainPosted()
+		tr.ApplyExpressions()
+	}
+	if got := mounted(); got != "true" {
+		t.Fatalf("shown Part did not mount: %s", got)
+	}
+}

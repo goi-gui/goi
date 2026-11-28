@@ -127,7 +127,7 @@ func (a *App) applyReload(f *syntax.File) error {
 	hooks := &tree.Hooks{
 		Marked: a.markDirty, Error: a.reportError, Media: a.mediaRequest, Window: a.windowRequest, Post: a.Post,
 		Warn:  func(msg string) { logg().Warn(logCtx, "ui: hot reload: "+msg) },
-		Setup: setupB.hook, Visibility: setupB.visible,
+		Setup: setupB.hook, SetupHas: setupB.has, Visibility: setupB.visible,
 	}
 	// Seed the build with the values SetData stored, so conditions, loops and
 	// expressions all see the app's state from the first frame.

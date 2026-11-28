@@ -21,6 +21,11 @@ func (t *Tree) setupScope(src, scope string) SetupScope {
 // setupValue resolves a setup variable. A struct keeps its shape so a later
 // field access can read it; scalars use the same normalization as bridge data.
 func (t *Tree) setupValue(src, scope, name string) (any, bool) {
+	if t != nil && t.setupHas != nil {
+		if value, _ := t.setupHas(src, name); !value {
+			return nil, false
+		}
+	}
 	sc := t.setupScope(src, scope)
 	if sc == nil {
 		return nil, false
@@ -38,6 +43,11 @@ func (t *Tree) setupValue(src, scope, name string) (any, bool) {
 // setupHasFunc reports whether a bare call names a setup function, so the
 // evaluator does not evaluate its arguments a second time for a builtin.
 func (t *Tree) setupHasFunc(src, scope, name string) bool {
+	if t != nil && t.setupHas != nil {
+		if _, function := t.setupHas(src, name); !function {
+			return false
+		}
+	}
 	sc := t.setupScope(src, scope)
 	return sc != nil && sc.HasFunc(name)
 }

@@ -134,7 +134,7 @@ func main() {
 			fail = true
 			continue
 		}
-		tr, err := tree.Build(b.File, &tree.Hooks{Setup: setups.For})
+		tr, err := tree.Build(b.File, &tree.Hooks{Setup: setups.For, SetupHas: setups.Has})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %v\n", file, err)
 			fail = true

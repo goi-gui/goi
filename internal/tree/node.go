@@ -58,6 +58,9 @@ type Hooks struct {
 	// Visibility reports whether a fragment instance is inside a shown arm.
 	// It runs when the tree is built and whenever a condition changes.
 	Visibility func(src, scope string, visible bool)
+	// SetupHas reports whether a file declares a setup value or function with
+	// this name, so a bare literal does not create an instance just to ask.
+	SetupHas func(src, name string) (value, function bool)
 }
 
 // NodeBase holds the state every node shares: identity, tree links, layout result

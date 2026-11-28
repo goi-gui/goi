@@ -105,6 +105,9 @@ type Tree struct {
 	report func(error)
 	// setup resolves a file's setup block, when the app supplied Hooks.Setup.
 	setup func(string, string) SetupScope
+	// setupHas answers whether a name is a setup value or function without
+	// creating an instance.
+	setupHas func(src, name string) (value, function bool)
 	// visibility reports a fragment's shown state to the setup registry.
 	visibility func(src, scope string, visible bool)
 	// scopeRoots finds the root node of each fragment instance and
@@ -209,6 +212,7 @@ func Build(f *syntax.File, hooks *Hooks) (*Tree, error) {
 		t.post = hooks.Post
 		t.window = hooks.Window
 		t.setup = hooks.Setup
+		t.setupHas = hooks.SetupHas
 		t.visibility = hooks.Visibility
 	}
 	// A bridge variable starts at its type's zero value, so a design that reads
