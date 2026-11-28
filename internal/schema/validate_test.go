@@ -493,6 +493,36 @@ func TestBlockSamplesAreTheShippedDocs(t *testing.T) {
 	}
 }
 
+// TestSetupFunctionCallFeedsANumber lets a setup function's declared result
+// type decide whether its call can feed a number property. The call is not a
+// handler just because it is a call.
+func TestSetupFunctionCallFeedsANumber(t *testing.T) {
+	good := `bridge {
+	usage    uint
+	capacity uint
+}
+
+setup {
+	func percent(usage, capacity uint) float64 {
+		return float64(usage) / float64(capacity) * 100
+	}
+}
+
+Window { Column { LinearProgress { value: percent(bridge.usage, bridge.capacity) } } }`
+	if _, diag := validate(t, good); !diag.Empty() {
+		t.Fatalf("a float64 setup result was rejected: %v", diag.Format("<src>", []byte(good)))
+	}
+
+	bad := `setup {
+	func label() string { return "" }
+}
+
+Window { Column { LinearProgress { value: label() } } }`
+	if _, diag := validate(t, bad); diag.Empty() {
+		t.Fatal("a string setup result fed a number property")
+	}
+}
+
 // TestDataValidation checks the declarations and the two references a design can
 // make: `bridge.name` and a loop variable's field.
 func TestDataValidation(t *testing.T) {

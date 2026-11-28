@@ -107,7 +107,7 @@ type validator struct {
 	loopDepth int
 	// setupFuncs and setupValues are the names a file's setup blocks declare,
 	// so a value can call or read them where a literal would be expected.
-	setupFuncs  map[string]bool
+	setupFuncs  map[string]*syntax.Type
 	setupValues map[string]*syntax.Type
 }
 
@@ -1259,8 +1259,16 @@ func (v *validator) checkNumeric(e *syntax.Element, pd *Prop, val syntax.Value) 
 	case *syntax.Ref:
 		return true // the target is checked in walkRefs, after every id exists
 	case *syntax.Call:
-		// `width: max(120, window.width / 3)` is a number at runtime; formatf
-		// builds a string, so it is not one here.
+		// A setup function is typed by its Go result; formatf and t build a
+		// string, so they are not numbers here. An unknown result is left to
+		// the interpreter rather than reported as the wrong kind.
+		if t, ok := v.setupFuncs[x.Name]; ok {
+			if t == nil {
+				return true
+			}
+			ft, known := TypeOf(t)
+			return !known || typesFit(ft, TypeNumber)
+		}
 		switch x.Name {
 		case "len", "cap", "min", "max":
 			return true
@@ -1420,7 +1428,7 @@ var builtinSigs = map[string]struct {
 func (v *validator) checkBuiltin(e *syntax.Element, call *syntax.Call) {
 	at := call.At
 	end := at + syntax.Pos(len(call.Name)+2)
-	if v.setupFuncs[call.Name] {
+	if _, ok := v.setupFuncs[call.Name]; ok {
 		for _, a := range call.Args {
 			v.checkRefs(e, anyProp, a)
 		}
@@ -1518,11 +1526,11 @@ func setupLineStarts(s string) []int {
 // setupDecls collects the top-level functions and values a file's setup blocks
 // declare. A broken block is reported by the interpreter at load; validation
 // only needs the names it can read.
-func setupDecls(f *syntax.File) (funcs map[string]bool, values map[string]*syntax.Type) {
+func setupDecls(f *syntax.File) (funcs map[string]*syntax.Type, values map[string]*syntax.Type) {
 	if f == nil || len(f.Setups) == 0 {
 		return nil, nil
 	}
-	funcs, values = map[string]bool{}, map[string]*syntax.Type{}
+	funcs, values = map[string]*syntax.Type{}, map[string]*syntax.Type{}
 	for _, st := range f.Setups {
 		pf, err := parser.ParseFile(token.NewFileSet(), "_.go", "package setup\n"+st.Code, parser.SkipObjectResolution)
 		if err != nil {
@@ -1532,7 +1540,11 @@ func setupDecls(f *syntax.File) (funcs map[string]bool, values map[string]*synta
 			switch d := d.(type) {
 			case *ast.FuncDecl:
 				if d.Recv == nil {
-					funcs[d.Name.Name] = true
+					var result *syntax.Type
+					if d.Type.Results != nil && len(d.Type.Results.List) == 1 {
+						result = goSetupType(d.Type.Results.List[0].Type)
+					}
+					funcs[d.Name.Name] = result
 				}
 			case *ast.GenDecl:
 				for _, spec := range d.Specs {
@@ -1855,7 +1867,7 @@ func (v *validator) checkEventCall(e *syntax.Element, ev EventDef, p *syntax.Pro
 		return // already reported where the property was read
 	}
 	if call.Callee == nil {
-		if !v.setupFuncs[call.Name] {
+		if _, ok := v.setupFuncs[call.Name]; !ok {
 			v.add(call.At, call.At+syntax.Pos(len(call.Name)+2),
 				fmt.Sprintf("%s.%s: %q is not a setup function; an event needs bridge., an element id or a setup function", e.Name, p.Name, call.Name), "")
 			return
