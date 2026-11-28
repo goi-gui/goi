@@ -1373,3 +1373,81 @@ Column {
 		t.Fatalf("shown Part did not mount: %s", got)
 	}
 }
+
+// TestSetupSlotDoesNotStealTheScopeRoot is the device-list shape: a fragment
+// with a SearchBar slot whose icon is hidden by bridge data. The slot wrapper
+// is built in the same file with no scope, and it used to replace the
+// fragment's root, so showing the fragment did not mount it until the icon
+// showed too.
+func TestSetupSlotDoesNotStealTheScopeRoot(t *testing.T) {
+	fsys := fstest.MapFS{
+		"Main.goi": {Data: []byte(`import Part "./Part.goi"
+bridge {
+	page  string
+	query string
+}
+Window { switch bridge.page {
+	case "part":
+		Part {}
+} }`)},
+		"Part.goi": {Data: []byte(`setup {
+	var mounted bool
+	func onMount() { mounted = true }
+}
+Column {
+	SearchBar {
+		$trailing {
+			IconButton {
+				visible: bridge.query != ""
+				icon:    clear
+			}
+		}
+	}
+}`)},
+	}
+	b, err := loadBundle(fsys, "Main.goi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopes, err := setup.New(b.File.Setups, b.File.Vars, b.File.Shapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sb := setupBuild{
+		hook: scopes.For, has: scopes.Has, bind: scopes.Bind, err: scopes.Err,
+		instance: scopes.Note, visible: scopes.SetVisible,
+		start: scopes.Start, stop: scopes.Unmount,
+	}
+	tr, err := tree.Build(b.File, &tree.Hooks{Setup: sb.hook, SetupHas: sb.has, Visibility: sb.visible})
+	if err != nil {
+		t.Fatal(err)
+	}
+	noteSetups(sb, tr)
+	sb.bind(tr)
+	a := newHeadlessApp()
+	a.startSetups(sb)
+	mounted := func() string {
+		for _, n := range tr.All() {
+			if base := n.Base(); base != nil && base.AST != nil && base.AST.Src == "Part.goi" && base.AST.Scope != "" {
+				v, _ := scopes.For(base.AST.Src, base.AST.Scope).Value("mounted")
+				return fmt.Sprint(v)
+			}
+		}
+		return "missing"
+	}
+	drain := func() {
+		for i := 0; i < 10; i++ {
+			a.drainPosted()
+			tr.ApplyExpressions()
+		}
+	}
+	drain()
+	if got := mounted(); got != "false" {
+		t.Fatalf("hidden Part mounted: %s", got)
+	}
+	tr.SetData("page", "part")
+	drain()
+	if got := mounted(); got != "true" {
+		t.Fatalf("shown Part did not mount while its slot icon stayed hidden: %s", got)
+	}
+}

@@ -306,7 +306,10 @@ func (t *Tree) build(el *syntax.Element, parent *NodeBase, hooks *Hooks) (Node, 
 	b.scope = t.scope
 	b.AST = el
 	if el.Scope != "" {
-		if parent == nil || parent.AST == nil || parent.AST.Scope != el.Scope {
+		// A fragment's root is the first element whose parent belongs to
+		// another file. A slot wrapper is built in the same file with no
+		// scope of its own, so it must not replace the root.
+		if parent == nil || parent.AST == nil || parent.AST.Src != el.Src {
 			t.scopeRoots[el.Scope] = b
 		}
 		if len(el.InstanceProps) > 0 {
