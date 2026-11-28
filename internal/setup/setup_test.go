@@ -80,6 +80,7 @@ func TestSetupFunctionTypedNumbers(t *testing.T) {
 	func ratio(v float32) float32  { return v }
 	func factor(v float64) float64 { return v }
 	func many(v ...uint8) uint8    { return v[0] }
+	func pair(usage, capacity uint) uint { return usage*1000000 + capacity }
 }
 
 Window { }`)
@@ -94,6 +95,7 @@ Window { }`)
 	if v, found, err := sc.Call("env", []any{2}); err != nil || !found || v != "Outside" {
 		t.Fatalf("env = %v, %v, %v", v, found, err)
 	}
+	usageArg, capacityArg := any(1), any(2)
 	for name, tc := range map[string]struct {
 		arg  any
 		want string
@@ -112,6 +114,12 @@ Window { }`)
 		"factor":  {7, "7"},
 		"many":    {7, "7"},
 	} {
+		// Two names in one declaration take their own argument, not the first
+		// one twice: `usage, capacity uint` is the shape the termhub byte
+		// counter uses.
+		if v, found, err := sc.Call("pair", []any{usageArg, capacityArg}); err != nil || !found || fmt.Sprint(v) != "1000002" {
+			t.Fatalf("pair = %v, %v, %v", v, found, err)
+		}
 		v, found, err := sc.Call(name, []any{tc.arg})
 		if err != nil || !found || fmt.Sprint(v) != tc.want {
 			t.Fatalf("%s = %v, %v, %v; want %s", name, v, found, err, tc.want)

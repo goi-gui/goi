@@ -639,15 +639,17 @@ func callCase(fn *ast.FuncDecl, bridgePkg string) (string, error) {
 		if !ok {
 			return "", fmt.Errorf("setup function %s has a non-primitive parameter", fn.Name.Name)
 		}
-		conv, ok := argConversion(typ.Name, fmt.Sprintf("goiArgs[%d]", index), bridgePkg)
-		if !ok {
-			return "", fmt.Errorf("setup function %s has an unsupported parameter %s", fn.Name.Name, typ.Name)
-		}
 		n := len(field.Names)
 		if n == 0 {
 			n = 1
 		}
+		// One declaration may name several parameters (`usage, capacity uint`),
+		// and each takes the argument at its own position.
 		for j := 0; j < n; j++ {
+			conv, ok := argConversion(typ.Name, fmt.Sprintf("goiArgs[%d]", index), bridgePkg)
+			if !ok {
+				return "", fmt.Errorf("setup function %s has an unsupported parameter %s", fn.Name.Name, typ.Name)
+			}
 			args = append(args, conv)
 			index++
 		}
