@@ -191,7 +191,7 @@ func dumpValue(v Value) string {
 	case *Percent:
 		return strconv.FormatFloat(v.Val, 'g', -1, 64) + "%"
 	case *Ref:
-		return v.ID + "." + v.Prop
+		return v.Text()
 	case *Call:
 		parts := make([]string, len(v.Args))
 		for i, a := range v.Args {

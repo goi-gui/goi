@@ -532,6 +532,30 @@ func TestCompletionOffersGlobalMembers(t *testing.T) {
 	}
 }
 
+// TestCompletionOffersShapeFields completes a bridge value that holds a
+// declared type: `bridge.device.` lists the fields Device declares, and a
+// second dot walks one field further.
+func TestCompletionOffersShapeFields(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "bridge {\n\tdevice Device\n}\ntype Device {\n\tName string\n\tApps []App\n}\ntype App { Name string }\nWindow {\n\tColumn {\n\t\tText { text: bridge.device. }\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	labels := map[string]bool{}
+	for _, it := range completionAt(t, c, uri, src, "bridge.device.").Items {
+		labels[it.Label] = true
+	}
+	for _, want := range []string{"Name", "Apps"} {
+		if !labels[want] {
+			t.Fatalf("Device.%s missing from %v", want, labels)
+		}
+	}
+	if labels["theme"] || labels["width"] {
+		t.Fatalf("unrelated members leaked into shape fields: %v", labels)
+	}
+}
+
 func TestCompletionOffersEnumValues(t *testing.T) {
 	c := newClient(t)
 	dir := t.TempDir()

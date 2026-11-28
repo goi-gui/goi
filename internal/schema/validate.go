@@ -517,6 +517,15 @@ func (v *validator) walkFor(blk *syntax.Block, parent string) {
 	v.loopTypes = append(v.loopTypes, map[string]*syntax.Type{})
 	top := v.scopes[len(v.scopes)-1]
 	types := v.loopTypes[len(v.loopTypes)-1]
+	for _, lv := range []struct {
+		name string
+		at   syntax.Pos
+	}{{blk.LoopKey(), blk.KeyAt}, {blk.LoopVal(), blk.ValAt}} {
+		if reservedValueName(lv.name) {
+			v.add(lv.at, lv.at+syntax.Pos(len(lv.name)),
+				fmt.Sprintf("%q is a reserved name; a loop variable cannot shadow it", lv.name), "")
+		}
+	}
 	if k := blk.LoopKey(); k != "" {
 		if keyShape != nil {
 			top[k] = keyShape
@@ -564,6 +573,16 @@ func valueTypeOf(t *syntax.Type, f *syntax.File) *syntax.Type {
 	return t.Elem
 }
 
+// reservedValueName reports a name a reference reads as a namespace, so a loop
+// variable cannot take it.
+func reservedValueName(name string) bool {
+	switch name {
+	case "app", "window", "theme", "customColor", "bridge", "data", "props":
+		return true
+	}
+	return false
+}
+
 // checkForRange resolves `range X` and returns what the loop variables hold: a
 // shape for a row, a type for a scalar, and an int key for a slice or the key's
 // type for a map, Go's rule. A number range gives an int key and no value.
@@ -607,6 +626,7 @@ func (v *validator) checkForRange(blk *syntax.Block) (keyShape, valShape *syntax
 		v.add(at, end, "a for loop ranges over a list, a map or a number", "")
 		return nil, nil, nil, nil
 	}
+	var typ *syntax.Type
 	switch ref.ID {
 	case "bridge", "data":
 		dv := v.file.Var(ref.Prop)
@@ -615,15 +635,7 @@ func (v *validator) checkForRange(blk *syntax.Block) (keyShape, valShape *syntax
 				syntax.Suggest(ref.Prop, varNames(v.file)))
 			return nil, nil, nil, nil
 		}
-		if dv.Type.Kind == syntax.TypeScalar && isNumericType(dv.Type.Name) {
-			return nil, nil, intType(), nil // `for i := range bridge.count`
-		}
-		if dv.Type.Kind != syntax.TypeSlice && dv.Type.Kind != syntax.TypeMap {
-			v.add(at, end, fmt.Sprintf("cannot range over bridge.%s: it is %s, not a slice, a map or a number",
-				ref.Prop, dv.Type.String()), "")
-			return nil, nil, nil, nil
-		}
-		return nil, shapeFor(dv.Type.Elem, v.file), keyTypeOf(&dv.Type), valueTypeOf(&dv.Type, v.file)
+		typ = &dv.Type
 	case "props":
 		pr := v.file.Prop(ref.Prop)
 		if pr == nil {
@@ -631,28 +643,39 @@ func (v *validator) checkForRange(blk *syntax.Block) (keyShape, valShape *syntax
 				syntax.Suggest(ref.Prop, declaredPropNames(v.file)))
 			return nil, nil, nil, nil
 		}
-		if pr.Type.Kind == syntax.TypeScalar && isNumericType(pr.Type.Name) {
-			return nil, nil, intType(), nil // `for i := range props.count`
+		typ = &pr.Type
+	default:
+		if sh := v.lookupLoopVar(ref.ID); sh != nil {
+			for i := range sh.Fields {
+				if sh.Fields[i].Name != ref.Prop {
+					continue
+				}
+				typ = &sh.Fields[i].Type
+				break
+			}
 		}
-		if pr.Type.Kind != syntax.TypeSlice && pr.Type.Kind != syntax.TypeMap {
-			v.add(at, end, fmt.Sprintf("cannot range over props.%s: it is %s, not a slice, a map or a number",
-				ref.Prop, pr.Type.String()), "")
+	}
+	if typ == nil {
+		v.add(at, end, fmt.Sprintf("cannot range over %s", ref.Text()), "")
+		return nil, nil, nil, nil
+	}
+	if len(ref.Path) > 0 {
+		field, sh, missing := resolveFieldPath(v.file, typ, ref.Path)
+		if field == nil {
+			v.add(at, end, pathDiagnostic(ref, typ, sh, missing), pathSuggestion(sh, missing))
 			return nil, nil, nil, nil
 		}
-		return nil, shapeFor(pr.Type.Elem, v.file), keyTypeOf(&pr.Type), valueTypeOf(&pr.Type, v.file)
+		typ = &field.Type
 	}
-	if sh := v.lookupLoopVar(ref.ID); sh != nil {
-		// A field of a row that is itself a list.
-		for i := range sh.Fields {
-			if sh.Fields[i].Name != ref.Prop {
-				continue
-			}
-			ft := &sh.Fields[i].Type
-			return nil, shapeFor(ft.Elem, v.file), keyTypeOf(ft), valueTypeOf(ft, v.file)
-		}
+	if typ.Kind == syntax.TypeScalar && isNumericType(typ.Name) {
+		return nil, nil, intType(), nil // `for i := range bridge.count`
 	}
-	v.add(at, end, fmt.Sprintf("cannot range over %s.%s", ref.ID, ref.Prop), "")
-	return nil, nil, nil, nil
+	if typ.Kind != syntax.TypeSlice && typ.Kind != syntax.TypeMap {
+		v.add(at, end, fmt.Sprintf("cannot range over %s: it is %s, not a slice, a map or a number",
+			ref.Text(), typ.String()), "")
+		return nil, nil, nil, nil
+	}
+	return nil, shapeFor(typ.Elem, v.file), keyTypeOf(typ), valueTypeOf(typ, v.file)
 }
 
 // shapeFor resolves a type to the declared shape it names, or nil.
@@ -661,6 +684,55 @@ func shapeFor(t *syntax.Type, f *syntax.File) *syntax.DataShape {
 		return nil
 	}
 	return f.Shape(t.Name)
+}
+
+// resolveFieldPath walks the fields a reference names after its first one,
+// returning the field it ends on. A nil field also returns the shape and the
+// name it did not have, so the caller can suggest the real ones.
+func resolveFieldPath(f *syntax.File, t *syntax.Type, path []string) (field *syntax.DataField, sh *syntax.DataShape, missing string) {
+	for _, name := range path {
+		sh = shapeFor(t, f)
+		if sh == nil {
+			return nil, nil, name
+		}
+		field = nil
+		for i := range sh.Fields {
+			if sh.Fields[i].Name == name {
+				field = &sh.Fields[i]
+				break
+			}
+		}
+		if field == nil {
+			return nil, sh, name
+		}
+		t = &field.Type
+	}
+	return field, nil, ""
+}
+
+// fieldNames lists a shape's fields, for a "did you mean" hint.
+func fieldNames(sh *syntax.DataShape) []string {
+	if sh == nil {
+		return nil
+	}
+	out := make([]string, len(sh.Fields))
+	for i := range sh.Fields {
+		out[i] = sh.Fields[i].Name
+	}
+	return out
+}
+
+// pathDiagnostic explains the first field of a nested reference that did not
+// resolve.
+func pathDiagnostic(ref *syntax.Ref, t *syntax.Type, sh *syntax.DataShape, missing string) string {
+	if sh == nil {
+		return fmt.Sprintf("%s has no field %q: it is %s, not a declared type", ref.Text(), missing, t.String())
+	}
+	return fmt.Sprintf("%s has no field %q", ref.Text(), missing)
+}
+
+func pathSuggestion(sh *syntax.DataShape, missing string) string {
+	return syntax.Suggest(missing, fieldNames(sh))
 }
 
 // edgeOf returns a short text for a value, so a diagnostic can cover it.
@@ -761,6 +833,11 @@ func declaredPropNames(f *syntax.File) []string {
 func (v *validator) checkPropRef(e *syntax.Element, pd *Prop, x *syntax.Ref, at, end syntax.Pos, free bool) {
 	if v.entry {
 		v.add(at, end, fmt.Sprintf("%s.%s has no value: only an imported fragment receives props", x.ID, x.Prop), "")
+		return
+	}
+	if len(x.Path) > 0 {
+		v.add(at, end,
+			fmt.Sprintf("%s.%s: a prop cannot be walked field by field; pass %s as its own prop", e.Name, pd.Name, x.Text()), "")
 		return
 	}
 	pr := v.file.Prop(x.Prop)
@@ -1525,6 +1602,15 @@ func (v *validator) walkForRefs(blk *syntax.Block) {
 	v.loopTypes = append(v.loopTypes, map[string]*syntax.Type{})
 	top := v.scopes[len(v.scopes)-1]
 	types := v.loopTypes[len(v.loopTypes)-1]
+	for _, lv := range []struct {
+		name string
+		at   syntax.Pos
+	}{{blk.LoopKey(), blk.KeyAt}, {blk.LoopVal(), blk.ValAt}} {
+		if reservedValueName(lv.name) {
+			v.add(lv.at, lv.at+syntax.Pos(len(lv.name)),
+				fmt.Sprintf("%q is a reserved name; a loop variable cannot shadow it", lv.name), "")
+		}
+	}
 	if k := blk.LoopKey(); k != "" {
 		if keyShape != nil {
 			top[k] = keyShape
@@ -1589,7 +1675,7 @@ func (v *validator) checkRefs(e *syntax.Element, pd *Prop, val syntax.Value) {
 			return
 		}
 		at := x.At
-		end := at + syntax.Pos(len(x.ID)+1+len(x.Prop))
+		end := x.End()
 		free := pd == anyProp || pd == lenProp
 		// A colour reference is checked by checkLiteral, which knows the two
 		// namespaces; it is not an element id.
@@ -1992,28 +2078,42 @@ func (v *validator) checkDataRef(e *syntax.Element, pd *Prop, x *syntax.Ref, at,
 			syntax.Suggest(x.Prop, varNames(v.file)))
 		return
 	}
-	switch dv.Type.Kind {
-	case syntax.TypeFunc:
+	if dv.Type.Kind == syntax.TypeFunc {
 		v.add(at, end,
 			fmt.Sprintf("%s.%s: %s.%s is a handler; call it in an event such as onClick: bridge.%s(...)",
 				e.Name, pd.Name, x.ID, x.Prop, x.Prop), "")
+		return
+	}
+	ft := &dv.Type
+	if len(x.Path) > 0 {
+		field, sh, missing := resolveFieldPath(v.file, ft, x.Path)
+		if field == nil {
+			v.add(at, end, pathDiagnostic(x, ft, sh, missing), pathSuggestion(sh, missing))
+			return
+		}
+		ft = &field.Type
+	}
+	switch ft.Kind {
+	case syntax.TypeFunc:
+		v.add(at, end,
+			fmt.Sprintf("%s.%s: %s is a handler; call it in an event", e.Name, pd.Name, x.Text()), "")
 		return
 	case syntax.TypeSlice, syntax.TypeMap:
 		if pd == lenProp {
 			return // len and cap take a list
 		}
-		if pd.Type == TypeList && listSliceFits(dv.Type, pd.Elem) {
+		if pd.Type == TypeList && listSliceFits(*ft, pd.Elem) {
 			return
 		}
 		v.add(at, end,
-			fmt.Sprintf("%s.%s: %s.%s is not a value; walk it with for i, row := range %s.%s",
-				e.Name, pd.Name, x.ID, x.Prop, x.ID, x.Prop), "")
+			fmt.Sprintf("%s.%s: %s is not a value; walk it with for i, row := range %s",
+				e.Name, pd.Name, x.Text(), x.Text()), "")
 		return
 	}
-	ft, _ := TypeOf(&dv.Type)
-	if !free && !typesFit(ft, pd.Type) {
+	vft, _ := TypeOf(ft)
+	if !free && !typesFit(vft, pd.Type) {
 		v.add(at, end,
-			fmt.Sprintf("%s.%s: %s.%s is %s, not %s", e.Name, pd.Name, x.ID, x.Prop, typeName(ft), typeName(pd.Type)), "")
+			fmt.Sprintf("%s.%s: %s is %s, not %s", e.Name, pd.Name, x.Text(), typeName(vft), typeName(pd.Type)), "")
 	}
 }
 
@@ -2037,19 +2137,28 @@ func (v *validator) checkFieldRef(e *syntax.Element, pd *Prop, x *syntax.Ref, sh
 			syntax.Suggest(x.Prop, names))
 		return
 	}
-	if (field.Type.Kind == syntax.TypeSlice || field.Type.Kind == syntax.TypeMap) && pd != lenProp {
-		if pd.Type == TypeList && listSliceFits(field.Type, pd.Elem) {
+	ft := &field.Type
+	if len(x.Path) > 0 {
+		next, nsh, missing := resolveFieldPath(v.file, ft, x.Path)
+		if next == nil {
+			v.add(at, end, pathDiagnostic(x, ft, nsh, missing), pathSuggestion(nsh, missing))
+			return
+		}
+		ft = &next.Type
+	}
+	if (ft.Kind == syntax.TypeSlice || ft.Kind == syntax.TypeMap) && pd != lenProp {
+		if pd.Type == TypeList && listSliceFits(*ft, pd.Elem) {
 			return
 		}
 		v.add(at, end,
-			fmt.Sprintf("%s.%s: %s.%s is not a value; walk it with for i, row := range %s.%s",
-				e.Name, pd.Name, sh.Name, x.Prop, x.ID, x.Prop), "")
+			fmt.Sprintf("%s.%s: %s is not a value; walk it with for i, row := range %s",
+				e.Name, pd.Name, x.Text(), x.Text()), "")
 		return
 	}
-	ft, _ := TypeOf(&field.Type)
-	if !free && !typesFit(ft, pd.Type) {
+	vft, _ := TypeOf(ft)
+	if !free && !typesFit(vft, pd.Type) {
 		v.add(at, end,
-			fmt.Sprintf("%s.%s: %s.%s is %s, not %s", e.Name, pd.Name, sh.Name, x.Prop, typeName(ft), typeName(pd.Type)), "")
+			fmt.Sprintf("%s.%s: %s is %s, not %s", e.Name, pd.Name, x.Text(), typeName(vft), typeName(pd.Type)), "")
 	}
 }
 
@@ -2212,7 +2321,7 @@ func listItemLen(v syntax.Value) int {
 	case *syntax.Ident:
 		return len(x.Val)
 	case *syntax.Ref:
-		return len(x.ID) + 1 + len(x.Prop)
+		return int(x.End() - x.At)
 	}
 	return 1
 }

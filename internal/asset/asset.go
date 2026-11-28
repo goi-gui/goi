@@ -837,11 +837,20 @@ func substValue(v syntax.Value, props map[string]syntax.Value, src, from, caller
 		if x.ID != "props" {
 			return x, false, diag
 		}
+		if len(x.Path) > 0 {
+			diag = append(diag, syntax.Diagnostic{
+				Pos:     x.At,
+				End:     x.End(),
+				Src:     src,
+				Message: fmt.Sprintf("props.%s cannot be walked field by field: pass %s as its own prop", x.Prop, x.Path[len(x.Path)-1]),
+			})
+			return x, false, diag
+		}
 		got, ok := props[x.Prop]
 		if !ok {
 			diag = append(diag, syntax.Diagnostic{
 				Pos:     x.At,
-				End:     x.At + syntax.Pos(len(x.ID)+1+len(x.Prop)),
+				End:     x.End(),
 				Src:     src,
 				Message: fmt.Sprintf("%s has no prop %q", from, x.Prop),
 			})
@@ -850,7 +859,7 @@ func substValue(v syntax.Value, props map[string]syntax.Value, src, from, caller
 		if got == nil {
 			diag = append(diag, syntax.Diagnostic{
 				Pos:     x.At,
-				End:     x.At + syntax.Pos(len(x.ID)+1+len(x.Prop)),
+				End:     x.End(),
 				Src:     src,
 				Message: fmt.Sprintf("props.%s is not set: a slice or a map has no literal default, so %s must pass one", x.Prop, from),
 			})
@@ -1051,7 +1060,7 @@ func copyValue(v syntax.Value) syntax.Value {
 	case *syntax.String:
 		return &syntax.String{At: x.At, Val: x.Val}
 	case *syntax.Ref:
-		return &syntax.Ref{At: x.At, ID: x.ID, Prop: x.Prop, Alpha: x.Alpha, HasAlpha: x.HasAlpha}
+		return &syntax.Ref{At: x.At, ID: x.ID, Prop: x.Prop, Path: append([]string(nil), x.Path...), Alpha: x.Alpha, HasAlpha: x.HasAlpha}
 	case *syntax.Map:
 		out := &syntax.Map{At: x.At, Entries: make([]syntax.MapEntry, len(x.Entries))}
 		for i, entry := range x.Entries {
@@ -1072,7 +1081,7 @@ func copyValue(v syntax.Value) syntax.Value {
 		}
 		var callee *syntax.Ref
 		if x.Callee != nil {
-			callee = &syntax.Ref{At: x.Callee.At, ID: x.Callee.ID, Prop: x.Callee.Prop, Alpha: x.Callee.Alpha, HasAlpha: x.Callee.HasAlpha}
+			callee = &syntax.Ref{At: x.Callee.At, ID: x.Callee.ID, Prop: x.Callee.Prop, Path: append([]string(nil), x.Callee.Path...), Alpha: x.Callee.Alpha, HasAlpha: x.Callee.HasAlpha}
 		}
 		return &syntax.Call{At: x.At, Callee: callee, Name: x.Name, Args: args}
 	}

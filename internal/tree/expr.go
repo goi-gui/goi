@@ -903,7 +903,7 @@ func (c *evalCtx) rawValue(v syntax.Value) (any, bool) {
 	case "bridge", "data":
 		if c.tree != nil {
 			if got, ok := c.tree.vars[ref.Prop]; ok {
-				return got, true
+				return rawPath(got, ref.Path)
 			}
 		}
 		return nil, false
@@ -912,7 +912,7 @@ func (c *evalCtx) rawValue(v syntax.Value) (any, bool) {
 	}
 	if c.sc != nil {
 		if got, ok := scopeValueAll(c.sc, ref.ID, ref.Prop); ok {
-			return got, true
+			return rawPath(got, ref.Path)
 		}
 	}
 	return c.eval(v, 0)
@@ -1125,19 +1125,26 @@ func (c *evalCtx) evalRef(r *syntax.Ref) (any, bool) {
 	// A loop variable and the `data` block are values, not nodes.
 	if c.sc != nil {
 		if v, ok := scopeValue(c.sc, r.ID, r.Prop); ok {
-			return v, true
+			return dataPath(v, r.Path)
 		}
 	}
 	if r.ID == "data" || r.ID == "bridge" {
 		if v, ok := c.tree.vars[r.Prop]; ok {
+			if len(r.Path) > 0 {
+				return dataPath(v, r.Path)
+			}
 			return normalizeData(v)
 		}
 		return nil, false
 	}
 	if v, ok := c.tree.setupValue(c.src, c.scopeID, r.ID); ok {
 		if v, ok := dataValue(v, r.Prop); ok {
-			return v, true
+			return dataPath(v, r.Path)
 		}
+	}
+	if len(r.Path) > 0 {
+		// Only a shape value has fields; an element id does not.
+		return nil, false
 	}
 	n, ok := c.tree.ByID(r.ID)
 	if !ok {

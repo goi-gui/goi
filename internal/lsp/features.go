@@ -223,12 +223,12 @@ func (s *Server) completion(raw json.RawMessage) any {
 	items := []completionResult{}
 	incomplete := false
 	prop, keys := enclosingProperty(file, d.text, off)
-	ref := enclosingRef(before)
+	refPath, ref := enclosingRefPath(before)
 	// refStart is where the whole reference begins, so an item can replace
 	// `theme.pr` instead of inserting after it.
 	refStart := off - len(prefix)
 	if ref != "" {
-		refStart -= len(ref) + 1
+		refStart -= len(strings.Join(refPath, ".")) + 1
 	}
 
 	// A responsive map key, a prop declaration inside the `props` block, the
@@ -250,7 +250,11 @@ func (s *Server) completion(raw json.RawMessage) any {
 		incomplete = cut
 	}
 	if ref != "" {
-		items = append(items, refItems(file, d.text, off, ref)...)
+		if len(refPath) > 1 {
+			items = append(items, nestedRefItems(file, d.text, off, refPath)...)
+		} else {
+			items = append(items, refItems(file, d.text, off, ref)...)
+		}
 	}
 
 	// Member position: the line so far is only whitespace, we are right after an
@@ -735,23 +739,97 @@ func globalItems(ref string) []completionResult {
 	return out
 }
 
-// enclosingRef reports the reserved namespace the cursor is completing, given
-// the word prefix being typed and the text before it. `app.o` yields "app", and
-// so does `visible: app.` at the very start of a value.
-func enclosingRef(before []byte) string {
+// enclosingRefPath reports the dotted path the cursor is completing, given the
+// text before the word being typed: `bridge.device.` yields ["bridge","device"].
+// The second result is the last segment, which a one-dot reference uses as its
+// namespace.
+func enclosingRefPath(before []byte) ([]string, string) {
 	// Only the current line counts: a dot on an earlier line belongs to
 	// another value.
 	if i := lastIndexByte(before, '\n'); i >= 0 {
 		before = before[i+1:]
 	}
-	if i := lastIndexByte(before, '.'); i >= 0 {
-		start := i
+	end := lastIndexByte(before, '.')
+	if end < 0 {
+		return nil, ""
+	}
+	var segs []string
+	for {
+		start := end
 		for start > 0 && isWordByte(before[start-1]) {
 			start--
 		}
-		return string(before[start:i])
+		if start == end {
+			return nil, ""
+		}
+		segs = append(segs, string(before[start:end]))
+		if start == 0 || before[start-1] != '.' {
+			break
+		}
+		end = start - 1
 	}
-	return ""
+	for i, j := 0, len(segs)-1; i < j; i, j = i+1, j-1 {
+		segs[i], segs[j] = segs[j], segs[i]
+	}
+	return segs, segs[len(segs)-1]
+}
+
+// nestedRefItems completes a field of a shape value: `bridge.device.` offers the
+// fields Device declares, and a second dot walks one field further.
+func nestedRefItems(file *syntax.File, src []byte, off int, path []string) []completionResult {
+	sh := shapeAtPath(file, src, off, path)
+	if sh == nil {
+		return nil
+	}
+	return fieldItems(sh.Fields, strings.Join(path, "."), "Field of `"+sh.Name+"`.")
+}
+
+// shapeAtPath resolves the shape a dotted path holds, so completion can list its
+// fields. A bridge value names a declared type, a loop variable holds a row, and
+// every later segment is a shape field. A prop is passed as its own value, so it
+// does not walk.
+func shapeAtPath(file *syntax.File, src []byte, off int, path []string) *syntax.DataShape {
+	if file == nil || len(path) == 0 {
+		return nil
+	}
+	switch path[0] {
+	case "bridge", "data":
+		if len(path) < 2 {
+			return nil
+		}
+		dv := file.Var(path[1])
+		if dv == nil {
+			return nil
+		}
+		return shapeInPath(file, shapeOfType(file, &dv.Type), path[2:])
+	}
+	return shapeInPath(file, loopShapeAt(file, src, off, path[0]), path[1:])
+}
+
+// shapeOfType resolves a field type to the shape it names, if any.
+func shapeOfType(file *syntax.File, t *syntax.Type) *syntax.DataShape {
+	if t == nil || t.Kind != syntax.TypeScalar {
+		return nil
+	}
+	return file.Shape(t.Name)
+}
+
+// shapeInPath walks shape fields, returning the shape the last name holds.
+func shapeInPath(file *syntax.File, sh *syntax.DataShape, path []string) *syntax.DataShape {
+	for _, name := range path {
+		if sh == nil {
+			return nil
+		}
+		var next *syntax.Type
+		for i := range sh.Fields {
+			if sh.Fields[i].Name == name {
+				next = &sh.Fields[i].Type
+				break
+			}
+		}
+		sh = shapeOfType(file, next)
+	}
+	return sh
 }
 
 // refItems completes the member of a dotted reference: a reserved namespace

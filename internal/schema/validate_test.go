@@ -509,6 +509,9 @@ func TestDataValidation(t *testing.T) {
 		"bridge { rows []row }\ntype row { a string }\nWindow {\n\tColumn {\n\t\tText { text: bridge.rows }\n\t}\n}":                                                                    "walk it with for",
 		"bridge { flag bool }\nWindow {\n\tColumn {\n\t\tText { text: bridge.flag }\n\t}\n}":                                                                                            "is bool, not string",
 		"bridge { rows []row }\ntype row { a string }\nWindow {\n\tColumn {\n\t\tfor _, r := range bridge.rows {\n\t\t\tif r.a {\n\t\t\t\tText { text: \"x\" }\n\t\t\t}\n\t\t}\n\t}\n}": "is string, not bool",
+		"bridge { device Row }\ntype Row { name string }\nWindow {\n\tColumn {\n\t\tText { text: bridge.device.Nope }\n\t}\n}":                                                          "has no field",
+		"bridge { device Row }\ntype Row { name string }\nWindow {\n\tColumn {\n\t\tfor _, x := range bridge.device.name {\n\t\t\tText { text: x }\n\t\t}\n\t}\n}":                      "cannot range over",
+		"bridge { rows []row }\ntype row { a string }\nWindow {\n\tColumn {\n\t\tfor _, app := range bridge.rows {\n\t\t\tText { text: app.a }\n\t\t}\n\t}\n}":                          "reserved name",
 	}
 	for src, want := range bad {
 		_, diag := validate(t, src)
@@ -525,6 +528,7 @@ func TestDataValidation(t *testing.T) {
 		"bridge { rows []row }\ntype row { a string }\nWindow {\n\tColumn {\n\t\tfor i, r := range bridge.rows {\n\t\t\tText { text: r.a }\n\t\t\tText { text: formatf(\"%d\", i) }\n\t\t}\n\t}\n}",
 		"bridge { flag bool }\nWindow {\n\tColumn {\n\t\tif bridge.flag {\n\t\t\tText { text: \"on\" }\n\t\t}\n\t}\n}",
 		"bridge { count int }\nWindow {\n\tColumn {\n\t\tText { text: formatf(\"%d items\", bridge.count) }\n\t}\n}",
+		"bridge { device Row }\ntype Row { name string\n apps []App }\ntype App { name string }\nWindow {\n\tColumn {\n\t\tText { text: bridge.device.name }\n\t\tText { text: formatf(\"%d\", len(bridge.device.apps)) }\n\t\tfor _, installed := range bridge.device.apps {\n\t\t\tText { text: installed.name }\n\t\t}\n\t}\n}",
 	}
 	for _, src := range good {
 		if _, diag := validate(t, src); !diag.Empty() {

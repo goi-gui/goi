@@ -154,6 +154,35 @@ func TestParseExpressions(t *testing.T) {
 	}
 }
 
+func TestParseNestedFieldRef(t *testing.T) {
+	src := `bridge {
+	device Device
+}
+type Device {
+	Name string
+	Apps []App
+}
+type App { Name string }
+Window {
+	Column {
+		Text { text: bridge.device.Name }
+		for _, app := range bridge.device.Apps {
+			Text { text: app.Name }
+		}
+	}
+}`
+	f, diag := Parse([]byte(src))
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	if got := Dump(f); !strings.Contains(got, "text = bridge.device.Name") {
+		t.Fatalf("dump lost the field path:\n%s", got)
+	}
+	if _, diag := Parse([]byte(`Window { Text { text: bridge.device. } }`)); diag.Empty() {
+		t.Fatal("a trailing dot was accepted")
+	}
+}
+
 func TestParseExpressionDiagnostics(t *testing.T) {
 	for _, src := range []string{
 		"A { w: box.width / }",

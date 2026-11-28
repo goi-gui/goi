@@ -2139,7 +2139,21 @@ func (p *parser) parseTerm() (Value, bool) {
 		}
 		p.next()
 		ref := &Ref{At: id.pos, ID: id.text, Prop: prop.text}
+		for p.peek().kind == tokDot {
+			p.next()
+			field := p.peek()
+			if field.kind != tokIdent {
+				p.errorf(field, "expected a field name after '.'")
+				return nil, false
+			}
+			p.next()
+			ref.Path = append(ref.Path, field.text)
+		}
 		if p.peek().kind == tokLParen {
+			if len(ref.Path) > 0 {
+				p.errorf(p.peek(), "a call cannot follow a field: call the handler itself")
+				return nil, false
+			}
 			return p.parseCall(ref)
 		}
 		return ref, true

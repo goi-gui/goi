@@ -422,7 +422,7 @@ func (t *Tree) rangeValue(eb *eachBlock) (any, bool) {
 		switch ref.ID {
 		case "bridge", "data":
 			if v, ok := t.vars[ref.Prop]; ok {
-				return v, true
+				return rawPath(v, ref.Path)
 			}
 			return nil, false
 		case "props":
@@ -430,12 +430,43 @@ func (t *Tree) rangeValue(eb *eachBlock) (any, bool) {
 		}
 		if eb.scope != nil {
 			if v, ok := scopeValueAll(eb.scope, ref.ID, ref.Prop); ok {
-				return v, true
+				return rawPath(v, ref.Path)
 			}
 		}
 	}
 	c := evalCtx{tree: t, sc: eb.scope, src: eb.src, scopeID: eb.setupScope}
 	return c.eval(eb.rng, 0)
+}
+
+// dataPath walks the fields a reference names after its first one, so
+// bridge.device.Name reads inside the shape row the bridge holds. The steps
+// before the last stay raw, because a shape field is a map or a struct and only
+// the final value is turned into an expression value.
+func dataPath(item any, path []string) (any, bool) {
+	for i, field := range path {
+		if i == len(path)-1 {
+			return dataValue(item, field)
+		}
+		v, ok := rawField(item, field)
+		if !ok {
+			return nil, false
+		}
+		item = v
+	}
+	return item, true
+}
+
+// rawPath is dataPath without normalizing, so a loop can range over a list a
+// shape holds.
+func rawPath(item any, path []string) (any, bool) {
+	for _, field := range path {
+		v, ok := rawField(item, field)
+		if !ok {
+			return nil, false
+		}
+		item = v
+	}
+	return item, true
 }
 
 // scopeValueAll is dataValue without normalizing, so a list field of a row can

@@ -592,6 +592,15 @@ func TestFormatKeepsColorOpacity(t *testing.T) {
 
 // TestSetupStaysInTheFormattedFile keeps a setup block from being dropped: the
 // formatter prints its Go body through gofmt.
+func TestFormatKeepsNestedFieldPath(t *testing.T) {
+	src := `Window {
+	Text { text: bridge.device.Name }
+}`
+	if got := string(Source([]byte(src))); !strings.Contains(got, "bridge.device.Name") {
+		t.Fatalf("nested field path lost:\n%s", got)
+	}
+}
+
 func TestSetupStaysInTheFormattedFile(t *testing.T) {
 	src := `setup {
 var name="Kaan"

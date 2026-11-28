@@ -3,6 +3,7 @@ package tree
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -165,6 +166,45 @@ Window {
 	want = []string{"#0", "#1", "0:a", "1:b", "C0", "C1", "L0", "L1", "a", "b", "n0", "n1", "n2", "z=9"}
 	if got := sorted(); fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("after a map set: %v, want %v", got, want)
+	}
+}
+
+// TestNestedShapeFields reads a bridge value that holds a declared type and
+// ranges over a list inside it.
+func TestNestedShapeFields(t *testing.T) {
+	tr, diag := BuildSource([]byte(`bridge {
+	Device Device
+}
+type Device {
+	Name string
+	Apps []App
+}
+type App { Name string }
+Window {
+	Column {
+		Text { id: name text: bridge.Device.Name }
+		Text { id: count text: formatf("%d apps", len(bridge.Device.Apps)) }
+		for _, installed := range bridge.Device.Apps {
+			Text { id: app text: installed.Name }
+		}
+	}
+}`), nil)
+	if !diag.Empty() {
+		t.Fatalf("%v", diag)
+	}
+	tr.SetData("Device", map[string]any{
+		"name": "kiosk",
+		"apps": []map[string]any{{"name": "mail"}, {"name": "chat"}},
+	})
+	tr.ApplyExpressions()
+	if got, _ := tr.ids["name"].Base().PropValue("text"); got != "kiosk" {
+		t.Fatalf("name = %v", got)
+	}
+	if got, _ := tr.ids["count"].Base().PropValue("text"); got != "2 apps" {
+		t.Fatalf("count = %v", got)
+	}
+	if got := fmt.Sprint(texts(tr)); !strings.Contains(got, "mail") || !strings.Contains(got, "chat") {
+		t.Fatalf("apps = %v", texts(tr))
 	}
 }
 

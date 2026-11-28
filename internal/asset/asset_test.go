@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/goi-gui/goi/internal/schema"
+	"github.com/goi-gui/goi/internal/syntax"
 	"github.com/goi-gui/goi/internal/tree"
 )
 
@@ -916,5 +917,22 @@ Column { Text { text: props.title } }`,
 	}
 	if !seen["Main.goi"] || !seen["Part.goi"] {
 		t.Fatalf("setup sources = %v", seen)
+	}
+}
+
+// TestCopyValueKeepsFieldPath keeps the fields a bridge value is walked through
+// when an imported fragment's values are copied during expansion.
+func TestCopyValueKeepsFieldPath(t *testing.T) {
+	in := &syntax.Ref{ID: "bridge", Prop: "device", Path: []string{"Name"}}
+	out, ok := copyValue(in).(*syntax.Ref)
+	if !ok {
+		t.Fatal("copyValue returned another value type")
+	}
+	if out.Text() != "bridge.device.Name" {
+		t.Fatalf("copy = %q", out.Text())
+	}
+	out.Path[0] = "Other"
+	if in.Path[0] != "Name" {
+		t.Fatal("copy shares the path slice with the original")
 	}
 }

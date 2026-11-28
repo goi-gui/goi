@@ -647,11 +647,15 @@ type Percent struct {
 	Val float64
 }
 
-// Ref is `id.property`, a read of another element's property.
+// Ref is `id.property`, a read of another element's property. Path carries the
+// fields a shape value is walked through, so `bridge.device.Name` keeps reading
+// the shape row the bridge holds.
 type Ref struct {
 	At   Pos
 	ID   string
 	Prop string
+	// Path is every field after Prop, in the order written.
+	Path []string
 	// Alpha is a colour reference's `/ 0-100` opacity, and HasAlpha tells 0
 	// apart from "no suffix". Only theme and customColor references use it.
 	Alpha    float64
@@ -781,14 +785,33 @@ func (m *Modifier) Kind() ValueKind { return ModifierValueKind }
 
 // Pos implementations.
 
-func (s *String) Pos() Pos   { return s.At }
-func (n *Number) Pos() Pos   { return n.At }
-func (b *Bool) Pos() Pos     { return b.At }
-func (c *Color) Pos() Pos    { return c.At }
-func (i *Ident) Pos() Pos    { return i.At }
-func (m *Map) Pos() Pos      { return m.At }
-func (p *Percent) Pos() Pos  { return p.At }
-func (r *Ref) Pos() Pos      { return r.At }
+func (s *String) Pos() Pos  { return s.At }
+func (n *Number) Pos() Pos  { return n.At }
+func (b *Bool) Pos() Pos    { return b.At }
+func (c *Color) Pos() Pos   { return c.At }
+func (i *Ident) Pos() Pos   { return i.At }
+func (m *Map) Pos() Pos     { return m.At }
+func (p *Percent) Pos() Pos { return p.At }
+func (r *Ref) Pos() Pos     { return r.At }
+
+// Text is the reference as written: `bridge.selectedDevice.Name`.
+func (r *Ref) Text() string {
+	out := r.ID + "." + r.Prop
+	for _, f := range r.Path {
+		out += "." + f
+	}
+	return out
+}
+
+// End is the position just past the last field, so a diagnostic underlines the
+// whole reference.
+func (r *Ref) End() Pos {
+	n := len(r.ID) + 1 + len(r.Prop)
+	for _, f := range r.Path {
+		n += 1 + len(f)
+	}
+	return r.At + Pos(n)
+}
 func (b *Binary) Pos() Pos   { return b.At }
 func (u *Unary) Pos() Pos    { return u.At }
 func (t *Ternary) Pos() Pos  { return t.At }

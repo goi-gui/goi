@@ -222,6 +222,9 @@ func printInner(v syntax.Value) string {
 		if x.Prop != "" {
 			s += "." + x.Prop
 		}
+		for _, f := range x.Path {
+			s += "." + f
+		}
 		if x.HasAlpha {
 			s += " / " + strconv.FormatFloat(x.Alpha, 'g', -1, 64)
 		}
