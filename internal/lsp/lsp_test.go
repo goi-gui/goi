@@ -532,6 +532,63 @@ func TestCompletionOffersGlobalMembers(t *testing.T) {
 	}
 }
 
+// TestConditionalSnippetPutsTheConditionOnTheLeft keeps the example valid: an
+// entry is `condition: value`, and the tabstop must land on the condition.
+func TestConditionalSnippetPutsTheConditionOnTheLeft(t *testing.T) {
+	c := newClient(t)
+	c.initializeWithSnippets(true)
+	dir := t.TempDir()
+	src := "Window {\n\tRectangle {\n\t\tbackground: conditional\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+	for _, it := range completionAt(t, c, uri, src, "conditional").Items {
+		if it.Label != "conditional" {
+			continue
+		}
+		if !strings.Contains(it.InsertText, "${1:app.dark}: ${0:true}") {
+			t.Fatalf("conditional snippet = %q", it.InsertText)
+		}
+		return
+	}
+	t.Fatal("conditional missing from completion")
+}
+
+// TestCompletionOffersElementsInsideSwitchArm keeps a case body an ordinary
+// element body: only the header before the first arm holds case/default.
+func TestCompletionOffersElementsInsideSwitchArm(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "bridge {\n\tmode string\n}\nWindow {\n\tColumn {\n\t\tswitch bridge.mode {\n\t\tcase \"a\":\n\t\t\tTe\n\t\t}\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	labels := map[string]bool{}
+	for _, it := range completionAt(t, c, uri, src, "\t\t\tTe").Items {
+		labels[it.Label] = true
+	}
+	if !labels["Text"] {
+		t.Fatalf("Text missing inside a switch arm: %v", labels)
+	}
+}
+
+// TestCompletionOffersFieldsOfANestedLoop walks a list inside a bridge shape:
+// the loop variable holds the element type of that list, not its parent.
+func TestCompletionOffersFieldsOfANestedLoop(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	src := "bridge {\n\tdevice Device\n}\ntype Device {\n\tUsers []User\n}\ntype User {\n\tImgURL string\n}\nWindow {\n\tColumn {\n\t\tfor _, user := range bridge.device.Users {\n\t\t\tText { text: user. }\n\t\t}\n\t}\n}\n"
+	uri := writeDesign(t, dir, "main.goi", src)
+	c.openDoc(uri, src)
+
+	labels := map[string]bool{}
+	for _, it := range completionAt(t, c, uri, src, "user.").Items {
+		labels[it.Label] = true
+	}
+	if !labels["ImgURL"] {
+		t.Fatalf("nested loop fields = %v", labels)
+	}
+}
+
 // TestCompletionOffersShapeFields completes a bridge value that holds a
 // declared type: `bridge.device.` lists the fields Device declares, and a
 // second dot walks one field further.

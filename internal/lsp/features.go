@@ -274,8 +274,9 @@ func (s *Server) completion(raw json.RawMessage) any {
 	case prop == "" && keys == noKeys && beforeRoot(file, off):
 		// Before the root element only the file's own declarations are legal.
 		items = append(items, declItems()...)
-	case prop == "" && keys == noKeys && braceWord(d.text, off) == "switch":
-		// A switch body holds arms, not elements.
+	case prop == "" && keys == noKeys && switchHeaderAt(file, d.text, off):
+		// Before the first arm a switch body holds case and default; once an
+		// arm has started its body holds elements like any other.
 		items = append(items, switchArmItems()...)
 	case prop == "" && keys == noKeys && (trimmed == "" || strings.HasSuffix(trimmed, "{") || trimmed == prefix):
 		if imp, ok := s.fragmentAt(d, file, d.text, off); ok {
@@ -1117,17 +1118,81 @@ func rangeElemShape(file *syntax.File, blk *syntax.Block) *syntax.DataShape {
 	if !ok {
 		return nil
 	}
+	var t *syntax.Type
 	switch ref.ID {
 	case "bridge", "data":
-		if dv := file.Var(ref.Prop); dv != nil && dv.Type.Kind == syntax.TypeSlice {
-			return shapeOf(file, dv.Type.Elem)
+		if dv := file.Var(ref.Prop); dv != nil {
+			t = &dv.Type
 		}
 	case "props":
-		if pr := file.Prop(ref.Prop); pr != nil && pr.Type.Kind == syntax.TypeSlice {
-			return shapeOf(file, pr.Type.Elem)
+		if pr := file.Prop(ref.Prop); pr != nil {
+			t = &pr.Type
 		}
 	}
-	return nil
+	t = typeAtFieldPath(file, t, ref.Path)
+	if t == nil || t.Kind != syntax.TypeSlice {
+		return nil
+	}
+	return shapeOf(file, t.Elem)
+}
+
+// typeAtFieldPath walks the fields a reference names after its first one, so a
+// loop over `bridge.device.Users` holds a User.
+func typeAtFieldPath(file *syntax.File, t *syntax.Type, path []string) *syntax.Type {
+	for _, name := range path {
+		sh := shapeOf(file, t)
+		if sh == nil {
+			return nil
+		}
+		var next *syntax.Type
+		for i := range sh.Fields {
+			if fieldMatchesName(sh.Fields[i].Name, name) {
+				next = &sh.Fields[i].Type
+				break
+			}
+		}
+		if next == nil {
+			return nil
+		}
+		t = next
+	}
+	return t
+}
+
+// switchHeaderAt reports whether off sits in a switch body before its first
+// arm, where only case and default are legal. Inside an arm the body takes
+// elements, so completion must offer those instead.
+func switchHeaderAt(file *syntax.File, src []byte, off int) bool {
+	if braceWord(src, off) != "switch" {
+		return false
+	}
+	if file == nil || file.Root == nil {
+		return true
+	}
+	var best *syntax.Block
+	syntax.WalkElements(file.Root, func(e *syntax.Element) {
+		for _, m := range e.Members {
+			if b, ok := m.(*syntax.Block); ok {
+				walkBlocks(b, func(x *syntax.Block) {
+					if x.Kind != syntax.BlockSwitch || off <= int(x.At) || off > int(x.Close) {
+						return
+					}
+					if best == nil || int(x.At) > int(best.At) {
+						best = x
+					}
+				})
+			}
+		}
+	})
+	if best == nil {
+		return true
+	}
+	for _, br := range best.Branches {
+		if int(br.At) < off {
+			return false
+		}
+	}
+	return true
 }
 
 // shapeOf resolves a type to the declared shape it names.
@@ -3461,7 +3526,7 @@ func modifierItems() []completionResult {
 		{
 			Label: "conditional", Kind: kindKeyword, Detail: "modifier",
 			InsertText: "conditional ",
-			Snippet:    "conditional {\n\t$0: true\n}",
+			Snippet:    "conditional {\n\t${1:app.dark}: ${0:true}\n}",
 			Documentation: &doc{Kind: "markdown", Value: "**conditional { bridge.isWide: 10 default: 4 }**\n\n" +
 				"The first true condition picks the value, and `default` is the fallback when none " +
 				"is true. Write entries as `condition: value`."},
